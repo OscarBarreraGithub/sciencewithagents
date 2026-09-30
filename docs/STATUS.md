@@ -1,8 +1,8 @@
 # Build status
 
-As of 2026-09-30, the full release goal is active and incomplete. The drawn Home,
+As of 2026-09-30, the MIT source and website are public. The drawn Home,
 chat, project setup, notepad and Computer health are integrated. The owner can use
-the current app; public release and remaining acceptance are still being completed.
+the current app; the full goal remains open for owner-editor activation and physical-device acceptance.
 Drawings are not blocking the backend. Corrections for the owner's reported keyboard jumps,
 Latest messages/composer overlap and hidden Send button are built. A later full run exposed
 a Safari scroll-before-resize race; the correction passes eight mobile viewport checks,
@@ -59,16 +59,18 @@ connection retained. Fresh-terminal opening now passes injected provider/PTY che
 including no fabricated first message. Project priority/cap controls use existing QUARK
 policy. A priority response lost after saving recovers through reload with the same receipt.
 
-The public landing and combined SyllabusGraph artifact pass local browser/route checks,
-including all six public datasets and legacy links. The public repository release and
-production publication and remaining live device acceptance are still release work.
+The public landing at sciencewithagents.com and combined SyllabusGraph export pass live
+browser/route checks across all five profiles. Both domains respond, all six public datasets
+retain their exact contents, and legacy links redirect correctly. The MIT repository is public
+at [OscarBarreraGithub/sciencewithagents](https://github.com/OscarBarreraGithub/sciencewithagents).
 A clean tracked-source copy passed dependency installation, production build, usage-reader
 setup and Mac launcher compilation with isolated fake provider executables; another person's
 account sign-in and physical device still require their own acceptance. MIT is selected;
-the requested repository contains a clean private source history, without the old private
-Git history or runtime files. GitHub builds/backend checks pass; the complete browser run
-passed 334 checks with one keyboard failure and ten deliberate skips. The corrected final
-source is awaiting its complete run. No Guide/FAQ is published.
+the public repository contains clean source history, without the old private Git history or
+runtime files. The corrected release passed format, production builds, 737 backend checks,
+88 companion checks and 335 browser cases. Thirteen backend/companion and ten browser cases
+are deliberately skipped; physical device acceptance is not inferred from them.
+No Guide/FAQ is published.
 
 Native computer-use currently cannot reach a desktop browser window. Safe companion
 activation and physical phone Home Screen/cellular/restart

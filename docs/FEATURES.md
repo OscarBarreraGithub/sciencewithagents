@@ -673,13 +673,13 @@ and start no model turn. Live native terminal acceptance remains separate. Proje
 the server. Project settings include optional brief plan review and an ambiguity preference;
 neither creates an unbounded review loop or blocks independent work.
 
-The public landing page is in site/. A small staging command preserves the existing public
-SyllabusGraph export under /syllabusgraph/, including legacy links. Staging/dry-run checks
-passed; publication and final visual acceptance remain pending. The owner-created GitHub
-repository contains clean source in private staging, without earlier private history or
-runtime files. Public publication remains pending. The owner selected MIT and
-authorized public release; functional readiness remains pending. Check the setup-prompt section against the current no-guide/FAQ
-direction before publishing.
+The public landing page in site/ is live at sciencewithagents.com and its www domain.
+The existing public SyllabusGraph export lives under /syllabusgraph/, with legacy links
+preserved. Live checks pass across five browser profiles, and all six datasets retain their
+exact contents. The public OscarBarreraGithub/sciencewithagents repository uses MIT and
+clean source history, without earlier private history or runtime files. The landing provides
+a setup prompt and GitHub link; no Guide/FAQ is published. Device/account acceptance limits
+remain explicit in STATUS.md and CONTRIBUTOR_SETUP.md.
 
 Phone chat follows the owner's WhatsApp-style direction: compact message bubbles,
 an expanding composer, and grouped activity with original details available on demand.

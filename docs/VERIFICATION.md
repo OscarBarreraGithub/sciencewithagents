@@ -1,5 +1,28 @@
 # Verification
 
+## 2026-09-30 — public source and production website
+
+The complete [release check](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36691367184)
+passed formatting, production builds, 737 backend checks, 88 companion checks and 335 browser
+cases. Four backend, nine companion and ten browser cases are deliberately skipped. The
+browser matrix took 8.9 minutes. The exported source tree matched the checked local source;
+the 462-file scan found no credentials, owner paths, runtime databases/logs or private history.
+The repository is now public under MIT. Subsequent release-status edits are documentation only.
+
+The combined website is live on sciencewithagents.com and www.sciencewithagents.com.
+Five live browser profiles passed landing/setup-copy/navigation/overflow checks. All six
+SyllabusGraph datasets match the prepared export byte-for-byte; legacy catalog links return
+301, root graph fragments reach /syllabusgraph/, missing graph pages return 404, and font
+notices remain available. Anonymous GitHub access confirms public MIT source. No Guide/FAQ
+was published. The existing Worker identity was retained; rollback and deployment receipts
+are saved privately under ignored data/release-2026-09-30/.
+
+The running app serves the corrected phone bundle. A final verified local recovery copy
+retains four projects, 38 conversations and 1,408 entries. Temporary test listeners are closed;
+the manual app and existing phone connector remain available, with login service off.
+The owner editor still needs one safe reload to activate companion 0.2.6. Physical keyboard,
+Home Screen/cellular and another person's account acceptance remain separate from these checks.
+
 ## 2026-09-30 — shared-chat keyboard event ordering
 
 Two complete GitHub runs passed 334 browser cases and failed the same iPhone WebKit check:

@@ -1,129 +1,69 @@
 # Resume here — current continuation only
 
-Updated 2026-09-30. The owner authorized completing the drawn app, public repository and
-sciencewithagents.com release. The goal is active and incomplete. This supersedes the
-previous device-acceptance-only pause. Preserve native capabilities and simple QUARK
-supervision; do not restart the tool-by-tool parity/restriction approach or broad review loops.
+Updated 2026-09-30. The drawn app, MIT repository and sciencewithagents.com landing are
+published. The full goal remains active for owner-editor activation and physical-device
+acceptance. Preserve native capabilities and simple QUARK supervision; do not restart the
+superseded tool-by-tool restriction approach or broad review loops.
 
-## Current work
+## What is integrated and verified
 
-- Opus 5.5 xhigh Home, chat/project setup/notepad, Computer health and landing page are
-  integrated in source. Codex owns backend integration and acceptance. Home has focused
-  desktop/mobile checks; chat and health journeys are being checked. Latest owner steering
-  requires WhatsApp-style phone chat, grouped activity and instructions during active work.
-- Backend source adds project spending/provider presets, durable internal/human/general
-  to-dos, project notes, draft revision history and manager application of reviewed changes.
-  Manager application is the default; each project may require human review instead.
-  Reviews are atomic and bounded to two correction rounds, followed by recorded judgement
-  or a human handoff according to project policy. Continue other unblocked work.
-- Claude uses native 60% automatic compaction with saved checkpoint/work-item handoffs.
-  Codex retains native compaction. One real automatic compaction saved a handoff and provider summary, then continued
-  frontend work. This is evidence of that run, not a guarantee of complete context retention. New launches use native unattended controls with broad reads and
-  network, scoped writes, and no routine permission queue. Real human questions still surface.
-- Claude usage polling produced intermittent throttling and interrupted frontend workers.
-  Source now spaces successful reads to five minutes with a six-minute usable window and
-  preserves existing retry backoff. Reset timestamp jitter no longer resets attribution.
-  Shared Claude reserve is 25%; never spend the separate Fable allowance for these Opus jobs.
-- Focused backend checks passed for persistence, quota accounting, presets, draft history
-  and manager application. Current readiness is in STATUS.md, capabilities in FEATURES.md.
-  Do not equate these checks with the finished drawn app or a clean-install acceptance.
+Opus 5.5 xhigh built Home, chat, project setup/notepad, Computer health and the public
+landing. Codex integrated the backend and reviewed/tested the changes. Projects have
+independent manager/model choices, worker provider/spending presets, durable internal/human
+work lists, versioned drafts, QUARK supervision and manager application of reviewed changes.
+Reviews are small and bounded to two correction rounds, with recorded judgement or human
+handoff. Continue other unblocked work while one item needs input. See FEATURES.md.
 
-## Next bounded work
+The complete release check passed production builds, 737 backend checks, 88 companion
+checks and 335 browser cases across desktop, 412x915, 360x800, 915x412 and iPhone WebKit.
+Thirteen backend/companion and ten browser checks are deliberately skipped. The latest
+shared-chat keyboard correction has a deterministic scroll-before-resize regression and
+passes all eight mobile keyboard cases. Four busy shared-send cases pass too. No physical
+keyboard animation is inferred from visual-viewport fixtures. Evidence is in VERIFICATION.md.
 
-The newest backend was deployed at 07:55 UTC with no app-managed agents running. Verified
-copies retained 4 projects, 37 conversations and 1,350 entries; phone/editor reconnected.
-Resource model choice/follow-ups and draft history are implemented. The focused resource
-and mirrored-chat journeys pass at desktop, 412x915, 360x800, 915x412 and iPhone WebKit.
-Drawn Spawn/notepad acceptance now passes all five profiles; the landscape settings overlap
-was corrected. Project priority retry survives reload with the same saved request. Preserve zoom. Computer-use currently
-cannot see a desktop browser window, so native hands-on acceptance remains unverified.
+Real native Codex and Claude runs passed broad reads, HTTPS, role-appropriate scoped writes
+and denied outside-folder writes without routine permission prompts. Native tools remain;
+this does not confine arbitrary external MCP services. One real Claude automatic compaction
+saved a handoff/summary, continued and finished; complete context retention is not promised.
+Recovery copies use their own read-only WAL snapshots and preserve normal concurrent writes.
 
-Companion 0.2.6 is built and installed, without reloading the active editor. It adds
-turn-bound Codex steering, native acknowledged Claude queued follow-ups, and message-first
-history pages with lazy tool-group drilldown. Focused provider/gateway checks pass; new
-phone styling passed the focused browser checks. Do not claim the running old editor bridge
-has these capabilities until its updated companion is activated.
+The running manual app serves these fixes and retains the existing phone connection. Its
+final verified recovery copy retained four projects, 38 conversations and 1,408 entries.
+sciencewithagents.app is installed in this owner's Applications folder. Keep the manual app
+and phone connector available; login service stays off. Stop only owned test processes.
 
-Preserve the current graph site under /syllabusgraph/ when deploying the new public landing.
-The requested repository exists privately under OscarBarreraGithub; the owner selected MIT.
-Finish functional readiness before publishing it and the website.
-A clean tracked-source export passed pinned dependency installation, production build, standalone
-usage-reader setup and Mac launcher compilation with isolated fake provider binaries; this is
-source/setup evidence, not another person’s account acceptance. Keep guide notes current.
-The private release evidence and earlier requirement ledger are under ignored data/; never
-publish conversations, private prompts, screenshots, credentials, logs or test databases.
+## Remaining device handoff
 
-The owner is using the app and phone. Keep the manual app and existing connector available;
-login service stays off. Inspect actual runtime status before maintenance. Stop only owned
-test processes. Each other person's installation uses their own credentials and permissions;
-this owner's authorizations do not apply to their accounts or computer.
+Companion 0.2.6 is installed, but the owner's current editor has its older bridge loaded.
+One safe VS Code Reload Window after the active reply finishes activates Codex steering
+and Claude's acknowledged native follow-up queue. Do not reload the active conversation
+mid-turn. Separate real isolated editor checks passed both paths, including unsent desktop
+draft preservation. Refresh the paired phone to load the corrected assets; no new pairing
+or separate editor authentication is needed. The owner has been asked to check keyboard
+stability on the actual phone; no answer has been recorded yet.
 
-See OPERATIONS.md for standing boundaries, CONTRIBUTOR_SETUP.md for new installations,
-VERIFICATION.md for dated evidence and DECISIONS.md for current product decisions. The
-public release was explicitly authorized and MIT selected; marketplace publication is separate.
+Native desktop computer-use currently cannot reach a browser window. Physical Home Screen,
+cellular/reconnect and hardware acceptance remain in OWNER_CHECK_IN.md / PHONE_ACCEPTANCE.md.
+A clean tracked-source installation passed dependency/build/usage-reader/Mac-launcher checks
+with isolated fake provider binaries; another person's accounts require their own sign-in.
+Marketplace publication may follow separately; it is not required to install the companion
+from the public source. Do not invent another feature/review pass while waiting on a device.
 
-## Latest integration checkpoint
+## Public release and continuation boundaries
 
-Project priority and optional usage caps are connected to existing QUARK policy. Configure can
-pause other projects and restore only pauses it owns; later edits and budget holds remain.
-Explicit assisted chat search uses central bulk models and bounded saved candidate evidence.
-It retains reports and opens original chats without messaging them. Internal helper projects
-stay hidden and direct continuation is rejected. The runtime/API check caught and corrected
-a missing-timestamp timeout bug before live activation. Backend focused checks and all ten focus/search browser journeys pass. The idle restart
-completed, then a real Luna search finished and retained its report without messaging a result. The pre-restart verified
-copy is `1fa4974f-64c6-4639-ad89-f2e5a4b0d8de` (3 projects, 36 chats, 1,233 entries).
+The public repository is https://github.com/OscarBarreraGithub/sciencewithagents, with MIT,
+a clean source history and no earlier private Git history or runtime files. Both
+sciencewithagents.com domains serve the new landing. SyllabusGraph remains under
+/syllabusgraph/, with six unchanged datasets and legacy links retained. Five live browser
+profiles pass. Never deploy graph-only source over this combined site. No Guide/FAQ was
+published; implementation and guide notes remain in FEATURES.md and PRODUCT_STORY.md.
 
-The requested OscarBarreraGithub/sciencewithagents repository contains a clean initial source
-history in private staging; no public release has occurred. Its exported tree matches the
-checked source without prior private Git history or runtime data. Initial GitHub builds/backend
-checks passed; the browser matrix timed out before reporting its failures. CI now has a
-realistic duration and named browser output; complete its functional failures before release.
-Public combined-site local checks already pass. The existing production Worker’s deployment
-list is saved privately for rollback; publication awaits functional readiness and the public source step.
-Do not deploy graph-only source over the prepared combined landing. Native desktop computer
-use remains unavailable; do not claim physical device testing from emulated browser checks.
+Private release receipts, screenshots, the detailed requirement ledger and rollback evidence
+remain under ignored data/. Never publish conversations, credentials, logs or worktrees.
+Current Claude reserve is 25%; no Fable allowance was used for the final Opus correction.
+The temporary worker finished and root collected/reviewed its result directly; no extra
+review loop is running. Model/activity/permission changes must use the central policy.
 
-## Latest owner correction
-
-The owner approved MIT, but reports that the real phone keyboard shifts the chat badly,
-the Latest messages control covers the input, and active input still cannot be sent.
-Native Opus's viewport offset/resize, jump-control and managed-composer corrections are
-integrated. Root also removed the inherited composer cap hiding Send. Eight focused keyboard
-checks pass across the four mobile profiles, and four desktop/iPhone shared-send checks pass.
-Production assets are rebuilt and available on refresh; physical phone confirmation remains.
-These checks simulate visual-viewport geometry, not the actual iOS keyboard animation.
-Companion 0.2.6 is installed but the currently loaded bridge cannot steer/queue. Its strict
-old protocol cannot be upgraded by a server restart. Activate it with one safe VS Code
-Reload Window after this active native reply finishes; no auth, fork or new chat is needed.
-Do not add a replacement server queue to conceal this activation requirement. Public source
-uses MIT; release stays incomplete until these reported usability issues are resolved.
-
-Isolated real editor checks now pass Codex steering and Claude native queued follow-ups,
-including both-view replies and preservation of unsent native drafts. The Claude fixture
-showed Opus 5.5 / Extra high. Maintained probe flags are `--steer` and `--queue`; provider
-dependency copies and central routes are corrected. Evidence is in VERIFICATION.md.
-
-Release browser failures were traced to old navigation/dialog expectations after the redesign.
-Those checks now follow the actual controls. Twenty selected desktop journeys and both real
-zoom checks pass; the latter includes full-page Spawn and a retained unsent brief. The web
-build passes. Continue with the corrected complete GitHub matrix, then the authorized public
-source/combined-site release. Do not repeat passing local checks without a new failure.
-
-A real native Claude test exposed harmless shell-variable commands falling into a native
-permission request. Native Bash approval now fixes that for managers/write-enabled workers
-inside the existing strict sandbox; read-only roles remain unchanged. After correction,
-ordinary reads/writes, the shell loop and public HTTPS pass without a permission request;
-an outside-folder write is still denied. Adapter checks/build pass and the idle live app
-restart loaded the fix. Keep this simple native policy; do not add a shell-permission parser.
-
-The complete GitHub browser run now reports 334 passes, ten deliberate skips and one actual
-iPhone WebKit keyboard race. The shared log mistook a resize-generated scroll for reading
-history. Opus's small follow-position correction passes all eight mobile keyboard cases,
-including the deterministic scroll-before-ResizeObserver reproduction. The corrected source
-needs its final complete run before the authorized public source/site publication.
-
-Recovery copies now pin an independent read-only WAL snapshot; eleven backend checks and
-ten related browser journeys pass, including normal writes during copying. Native Codex
-read-only turns now explicitly enable network access while preserving read-only writes.
-Forty runtime checks and real read-only/write-enabled native acceptance pass. Both backend
-fixes are loaded in the manual app; the phone connection and existing records remain intact.
+For another person's installation use CONTRIBUTOR_SETUP.md, not this owner's standing
+approvals or device history. See OPERATIONS.md for scoped authorization, STATUS.md for
+readiness, DECISIONS.md for product decisions and SOURCE_BACKUPS.md for private Git duties.
