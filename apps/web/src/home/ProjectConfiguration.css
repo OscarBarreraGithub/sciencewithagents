@@ -1,0 +1,320 @@
+/* New project and manager configuration: warm white panels, fine borders. */
+.config-form,
+.project-config.embedded {
+  display: grid;
+  gap: 18px;
+  max-width: 880px;
+}
+.config-section {
+  min-width: 0;
+  margin: 0;
+  padding: 20px 22px;
+  border: 1px solid var(--home-line);
+  border-radius: 16px;
+  background: white;
+}
+.config-section > legend,
+.config-section > h3 {
+  float: left;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+.config-section > legend + * {
+  clear: both;
+}
+.config-help {
+  color: var(--home-muted);
+  font-size: 13px;
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+.config-section label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+}
+.config-section select,
+.config-section input:not([type='checkbox']):not([type='radio']):not([type='range']) {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--home-line);
+  border-radius: 10px;
+  background: white;
+  color: var(--home-ink);
+  font: inherit;
+  font-weight: 500;
+}
+.config-section :is(select, input, button):focus-visible {
+  outline: 2px solid var(--home-blue);
+  outline-offset: 2px;
+}
+.config-folder {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.config-section .config-folder label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.config-folder label.selected {
+  border-color: var(--home-blue);
+  background: #f3f5ff;
+}
+.config-folder input {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  accent-color: var(--home-blue);
+  flex-shrink: 0;
+}
+.config-folder strong {
+  display: block;
+  font-size: 14px;
+}
+.config-folder small {
+  display: block;
+  font-weight: 500;
+  color: var(--home-muted);
+}
+.config-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.config-sliders {
+  display: grid;
+  gap: 18px;
+  padding: 4px 0 14px;
+  transition: opacity 0.15s;
+}
+.config-sliders.is-custom .config-slider {
+  opacity: 0.5;
+}
+.config-slider input[type='range'] {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  accent-color: var(--home-blue);
+}
+.config-stops {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--home-muted);
+  text-align: center;
+}
+.config-stops.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.config-stops span:first-child {
+  text-align: left;
+}
+.config-stops span:last-child {
+  text-align: right;
+}
+.config-stops .active {
+  color: var(--home-ink);
+  font-weight: 700;
+}
+.config-custom-note {
+  margin: 0;
+  font-size: 13px;
+  color: #6f5a1f;
+}
+.config-link-button {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--home-blue);
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.config-models,
+.config-defaults {
+  border-top: 1px solid var(--home-line);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+.config-models.is-custom {
+  margin-inline: -10px;
+  padding: 8px 10px 4px;
+  border: 1px solid #d9c98d;
+  border-radius: 12px;
+  background: #fffbeb;
+}
+.config-models > summary,
+.config-defaults > summary {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 650;
+}
+.config-models > summary small {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--home-muted);
+  overflow-wrap: anywhere;
+}
+.config-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--home-line);
+}
+.config-model-row:last-of-type {
+  border-bottom: 0;
+}
+.config-model-row > label:only-of-type {
+  grid-column: 1 / -1;
+}
+.config-warning {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: #8a5a12;
+  overflow-wrap: anywhere;
+}
+.config-defaults p {
+  font-size: 13px;
+  color: var(--home-muted);
+  margin: 8px 0;
+}
+.config-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--home-line);
+  border-radius: 10px;
+}
+.config-defaults table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.config-defaults :is(th, td) {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--home-line);
+  text-align: left;
+}
+.config-defaults thead th {
+  background: #f6f7f4;
+}
+.config-defaults td.current {
+  background: #eef1ff;
+  font-weight: 650;
+}
+.config-section .config-check {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  font-weight: 500;
+  border-top: 1px solid var(--home-line);
+}
+.config-check input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--home-blue);
+}
+.config-check small {
+  display: block;
+  font-size: 12px;
+  color: var(--home-muted);
+}
+.config-tracking {
+  padding: 18px 20px;
+  border: 1px solid #d8decf;
+  border-radius: 16px;
+  background: #f5f7ef;
+  display: grid;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+.config-tracking h3 {
+  margin: 0;
+}
+.config-actions {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+.config-spawn {
+  min-width: 180px;
+}
+.config-error,
+.config-error p {
+  color: #a33122;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.config-error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.config-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--home-muted);
+  font-size: 13px;
+}
+.project-config.embedded .config-section {
+  padding: 16px;
+}
+.project-config.embedded .config-grid,
+.project-config.embedded .config-model-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+.project-config.embedded .settings-card {
+  position: static;
+  max-height: none;
+  overflow: visible;
+  z-index: auto;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+}
+@media (max-width: 700px) {
+  .config-section {
+    padding: 16px;
+  }
+  .config-folder,
+  .config-grid,
+  .config-model-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .config-stops {
+    font-size: 11px;
+  }
+  .config-spawn {
+    width: 100%;
+  }
+}

@@ -1,0 +1,139 @@
+.assisted-search {
+  display: grid;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.assisted-search-toggle {
+  justify-self: start;
+}
+.assisted-search-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  max-height: min(58dvh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px;
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  background: #fcfcfa;
+}
+.assisted-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.assisted-search-row .chat-small-button {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.assisted-search-row .chat-small-button[aria-checked='true'] {
+  border-color: var(--home-blue);
+  background: #eef1ff;
+  color: #3246b8;
+}
+.assisted-search-panel > .chat-small-button {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+.assisted-search-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--home-muted);
+  overflow-wrap: anywhere;
+}
+.assisted-search-pending {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fff6e6;
+}
+.assisted-search-pending p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.assisted-search-result {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--home-line);
+}
+.assisted-search-result header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.assisted-search-result header p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--home-muted);
+  overflow-wrap: anywhere;
+}
+.assisted-search-result header strong {
+  display: block;
+  font-size: 13px;
+  color: var(--home-ink);
+}
+.assisted-search-result .chat-icon-button {
+  border-color: transparent;
+}
+.assisted-search-links {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.assisted-search-links a {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--home-line);
+  border-radius: 10px;
+  background: white;
+  color: var(--home-ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.assisted-search-links a:hover,
+.assisted-search-links a:focus-visible {
+  border-color: var(--home-blue);
+}
+.assisted-search-links strong {
+  font-size: 13px;
+}
+.assisted-search-links small {
+  font-size: 12px;
+  color: var(--home-muted);
+}
+.assisted-search-heading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+}
+.assisted-search-pool {
+  display: grid;
+  gap: 6px;
+}
+.assisted-search-pool > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.assisted-search-result .health-report-text {
+  font-size: 13px;
+  line-height: 1.55;
+}

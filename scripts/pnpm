@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+DOCK_TOOL_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# Keep setup caches private and inside the clone; never repair or chown global caches.
+umask 077
+export npm_config_cache="${npm_config_cache:-$DOCK_TOOL_ROOT/data/npm-cache}"
+exec npx --yes pnpm@10.17.1 "$@"

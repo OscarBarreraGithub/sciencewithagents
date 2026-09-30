@@ -1,0 +1,54 @@
+.retained-drafts {
+  padding: clamp(20px, 4vw, 32px);
+  margin-bottom: 22px;
+  background: #fff;
+  border: 1px solid #e0e5ec;
+  border-radius: 22px;
+  min-width: 0;
+}
+.retained-drafts h2 {
+  margin-top: 0;
+  font-size: 22px;
+}
+.retained-drafts p {
+  color: #657084;
+  line-height: 1.65;
+}
+.retained-copy {
+  border-top: 1px solid #e0e5ec;
+  padding: 16px 0;
+}
+.retained-drafts summary {
+  cursor: pointer;
+  padding: 8px 0;
+  overflow-wrap: anywhere;
+}
+.retained-entry {
+  margin: 12px 0;
+  background: #f6f8fb;
+  border-radius: 12px;
+  padding: 12px;
+}
+.retained-entry label {
+  display: grid;
+  gap: 8px;
+}
+.retained-entry textarea {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid #dce1e9;
+  border-radius: 10px;
+  font: inherit;
+  line-height: 1.5;
+}
+.retained-entry code,
+.retained-entry p {
+  overflow-wrap: anywhere;
+}
+.retained-drafts summary:focus-visible,
+.retained-entry textarea:focus-visible {
+  outline: 3px solid #5966e4;
+  outline-offset: 3px;
+}

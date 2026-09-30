@@ -1,0 +1,29 @@
+{
+  // Only the public combined artifact is uploaded. Never point this at app data or a graph project.
+  "name": "sciencewithagents-preview",
+  "compatibility_date": "2026-09-22",
+  "assets": {
+    "directory": "../data/public-site-release",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "env": {
+    "preview": {
+      "name": "sciencewithagents-preview",
+      "workers_dev": true,
+      "preview_urls": false,
+    },
+    "production": {
+      // Preserve the existing Worker identity and its two domains during the root-site migration.
+      "name": "syllabusgraph",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [
+        { "pattern": "sciencewithagents.com", "custom_domain": true },
+        { "pattern": "www.sciencewithagents.com", "custom_domain": true },
+      ],
+    },
+  },
+}

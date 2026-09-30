@@ -1,0 +1,63 @@
+.pulsar-panel {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border, #ddd);
+}
+.composer-priority {
+  max-width: 126px;
+  padding: 5px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #ddd);
+  background: transparent;
+}
+.pulsar-panel h3 {
+  letter-spacing: 0.08em;
+  color: #355f46;
+}
+.pulsar-panel details {
+  margin: 16px 0;
+}
+.pulsar-panel summary,
+.job-estimate summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.estimate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.job-estimate {
+  border: 0;
+  padding: 0;
+  margin: 12px 0;
+  min-width: 0;
+}
+.estimate-grid input,
+.estimate-grid select,
+.job-estimate input,
+.job-estimate select {
+  width: 100%;
+  min-width: 0;
+}
+.pulsar-job {
+  padding: 16px 0;
+  border-top: 1px solid var(--border, #ddd);
+}
+.pulsar-job h4 {
+  margin: 6px 0;
+}
+.pulsar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pulsar-actions button {
+  font-size: 12px;
+}
+@media (max-width: 480px) {
+  .estimate-grid {
+    grid-template-columns: 1fr;
+  }
+}

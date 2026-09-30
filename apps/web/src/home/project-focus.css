@@ -1,0 +1,53 @@
+.focus-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  background: white;
+  min-width: 0;
+}
+.focus-card.is-mine {
+  border-left: 3px solid var(--home-blue);
+}
+.focus-card.is-other {
+  border-left: 3px solid #d08a1c;
+}
+.focus-card h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.focus-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.focus-state {
+  display: grid;
+  gap: 2px;
+}
+.focus-card .focus-state span,
+.focus-card .focus-muted,
+.focus-card .focus-note,
+.focus-card .focus-names,
+.focus-card .focus-result {
+  font-size: 12px;
+  color: var(--home-muted);
+}
+.focus-card .focus-names {
+  color: #4d5566;
+}
+.focus-pending {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fff6e6;
+}
+.focus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}

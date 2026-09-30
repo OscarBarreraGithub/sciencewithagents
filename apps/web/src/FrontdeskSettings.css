@@ -1,0 +1,53 @@
+.frontdesk-settings fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.frontdesk-settings legend {
+  font-weight: 600;
+  margin: 10px 0;
+}
+.frontdesk-settings label {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  overflow-wrap: anywhere;
+}
+.frontdesk-settings textarea {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  padding: 10px;
+}
+.frontdesk-settings .checkbox-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  margin: 4px 0;
+}
+.frontdesk-settings .checkbox-label input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  margin: 0;
+}
+.frontdesk-settings button {
+  margin-right: 8px;
+  margin-bottom: 12px;
+}
+.frontdesk-settings .modal-heading button {
+  margin: 0;
+}
+.frontdesk-settings section {
+  border: 1px solid #dfe6d4;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 14px 0;
+}
+.frontdesk-settings p {
+  overflow-wrap: anywhere;
+}

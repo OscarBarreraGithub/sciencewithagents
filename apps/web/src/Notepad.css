@@ -1,0 +1,374 @@
+/* Full-page prompt notepad: a warm yellow writing surface in the top layer. */
+dialog.notepad,
+.home-shell dialog.notepad {
+  --pad-ink: #202738;
+  --pad-muted: #6d6a58;
+  --pad-line: #e8dfb8;
+  --pad-paper: #fff9df;
+  --pad-rule: #f1e6bb;
+  --pad-blue: #465cdf;
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #fffdf5;
+  color: var(--pad-ink);
+  font-family:
+    'Manrope',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+dialog.notepad[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+dialog.notepad::backdrop {
+  background: #20273840;
+}
+.notepad-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px max(20px, calc((100vw - 1180px) / 2));
+  border-bottom: 1px solid var(--pad-line);
+  background: #fffdf5;
+}
+.notepad-title {
+  flex: 1;
+  min-width: 0;
+}
+.notepad-title p {
+  font-size: 12px;
+  color: var(--pad-muted);
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.notepad-title h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--pad-ink);
+}
+.notepad-status {
+  font-size: 12px;
+  color: var(--pad-muted);
+  white-space: nowrap;
+}
+.notepad-status.failed {
+  color: #a33122;
+  font-weight: 650;
+}
+.notepad-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.notepad-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--pad-line);
+  border-radius: 10px;
+  background: white;
+  color: var(--pad-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.notepad-button:hover {
+  border-color: var(--pad-blue);
+}
+.notepad-button:focus-visible,
+.notepad textarea:focus-visible,
+.notepad-versions button:focus-visible {
+  outline: 2px solid var(--pad-blue);
+  outline-offset: 2px;
+}
+.notepad-button.primary {
+  background: var(--pad-blue);
+  border-color: var(--pad-blue);
+  color: white;
+}
+.notepad-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.notepad-button[aria-expanded='true'] {
+  background: #f4efd8;
+}
+.notepad-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  padding: 18px max(20px, calc((100vw - 1180px) / 2)) 0;
+  gap: 18px;
+}
+dialog.notepad.with-history .notepad-body {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+}
+.notepad-paper {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--pad-line);
+  border-radius: 14px;
+  background: var(--pad-paper);
+  overflow: hidden;
+}
+.notepad-hint {
+  margin: 0;
+  padding: 14px 22px 0;
+  color: var(--pad-muted);
+  font-size: 13px;
+  max-width: 72ch;
+}
+.notepad .notepad-paper textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  resize: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 14px 22px 28px;
+  background-color: transparent;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 27px,
+    var(--pad-rule) 27px,
+    var(--pad-rule) 28px
+  );
+  background-position: 0 13px;
+  background-attachment: local;
+  color: var(--pad-ink);
+  font: inherit;
+  font-size: 16px;
+  line-height: 28px;
+  overflow-y: auto;
+}
+.notepad-count {
+  margin: 0;
+  padding: 6px 22px 8px;
+  border-top: 1px solid var(--pad-line);
+  font-size: 12px;
+  color: var(--pad-muted);
+  text-align: right;
+}
+.notepad-history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--pad-line);
+  border-radius: 14px;
+  background: white;
+}
+.notepad-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.notepad-history-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.notepad-history p,
+.notepad-history-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--pad-muted);
+  overflow-wrap: anywhere;
+}
+.notepad-history-error p {
+  color: #a33122;
+  margin-bottom: 8px;
+}
+.notepad-versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.notepad-versions button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid var(--pad-line);
+  border-radius: 10px;
+  background: #fffdf5;
+  color: var(--pad-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.notepad-versions button:hover {
+  border-color: var(--pad-blue);
+}
+.notepad-versions span {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+}
+.notepad-versions em {
+  font-style: normal;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #edf0ff;
+  color: #3a4cb8;
+}
+.notepad-versions small {
+  color: var(--pad-muted);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.notepad-version-preview pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 40dvh;
+  overflow: auto;
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid var(--pad-line);
+  border-radius: 10px;
+  background: var(--pad-paper);
+  font: inherit;
+  font-size: 13px;
+}
+.notepad-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.notepad-foot {
+  display: grid;
+  gap: 8px;
+  max-height: 32dvh;
+  overflow-y: auto;
+  padding: 10px max(20px, calc((100vw - 1180px) / 2)) calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--pad-line);
+  background: #fffdf5;
+  font-size: 12px;
+}
+.notepad-foot .draft-handoff {
+  max-height: none;
+}
+.notepad-foot .draft-handoff button {
+  min-height: 44px;
+  margin: 4px 8px 4px 0;
+}
+.notepad-notice {
+  margin: 0;
+  color: #a33122;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.notepad-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.notepad-controls select {
+  min-height: 44px;
+  border: 1px solid var(--pad-line);
+  border-radius: 10px;
+  background: white;
+  color: var(--pad-ink);
+  padding: 0 10px;
+}
+.notepad-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--pad-muted);
+}
+.notepad-export > span:first-child {
+  flex: 1 1 280px;
+}
+@media (max-width: 700px) {
+  .notepad-bar {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 10px 12px;
+  }
+  .notepad-title h2 {
+    font-size: 18px;
+  }
+  .notepad-status {
+    order: 3;
+    width: 100%;
+  }
+  .notepad-actions {
+    width: 100%;
+  }
+  .notepad-actions .notepad-button {
+    flex: 1;
+    padding-inline: 8px;
+  }
+  .notepad-body {
+    padding: 10px 12px 0;
+  }
+  dialog.notepad.with-history .notepad-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .notepad .notepad-paper textarea {
+    padding: 10px 14px 20px;
+  }
+  .notepad-hint {
+    padding: 10px 14px 0;
+  }
+  .notepad-foot {
+    padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    max-height: 26dvh;
+  }
+}
+@media (max-height: 500px) {
+  .notepad-bar {
+    padding-block: 6px;
+  }
+  .notepad-title p,
+  .notepad-hint {
+    display: none;
+  }
+  .notepad-foot {
+    max-height: 22dvh;
+  }
+  dialog.notepad.with-history .notepad-body {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+    grid-template-rows: none;
+  }
+}

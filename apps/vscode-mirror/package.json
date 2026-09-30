@@ -1,0 +1,127 @@
+{
+  "name": "agent-dock-mirror",
+  "displayName": "sciencewithagents",
+  "description": "Unofficial, reversible live Codex and Claude Code chats for your paired sciencewithagents phone.",
+  "version": "0.2.6",
+  "publisher": "oscarphysics",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OscarBarreraGithub/sciencewithagents.git",
+    "directory": "apps/vscode-mirror"
+  },
+  "homepage": "https://sciencewithagents.com",
+  "bugs": "https://github.com/OscarBarreraGithub/sciencewithagents/issues",
+  "engines": {
+    "vscode": "^1.96.2"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "codex",
+    "claude-code",
+    "phone",
+    "mirror",
+    "agent-dock"
+  ],
+  "main": "./dist/extension.cjs",
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentDockMirror.menu",
+        "title": "sciencewithagents: Open Menu"
+      },
+      {
+        "command": "agentDockMirror.shareCodex",
+        "title": "sciencewithagents: Share a Codex Conversation"
+      },
+      {
+        "command": "agentDockMirror.shareClaude",
+        "title": "sciencewithagents: Share a Claude Code Conversation"
+      },
+      {
+        "command": "agentDockMirror.enableClaude",
+        "title": "sciencewithagents: Enable Claude Code Sharing"
+      },
+      {
+        "command": "agentDockMirror.native",
+        "title": "sciencewithagents: Open Native Commands and Settings"
+      },
+      {
+        "command": "agentDockMirror.restoreCodex",
+        "title": "sciencewithagents: Restore Original Codex"
+      },
+      {
+        "command": "agentDockMirror.restoreClaude",
+        "title": "sciencewithagents: Restore Original Claude Code"
+      },
+      {
+        "command": "agentDockMirror.enable",
+        "title": "sciencewithagents Mirror: Enable Codex Bridge"
+      },
+      {
+        "command": "agentDockMirror.share",
+        "title": "sciencewithagents Mirror: Share a Conversation"
+      },
+      {
+        "command": "agentDockMirror.stop",
+        "title": "sciencewithagents Mirror: Stop Sharing"
+      },
+      {
+        "command": "agentDockMirror.restore",
+        "title": "sciencewithagents: Restore an Original Extension"
+      },
+      {
+        "command": "agentDockMirror.open",
+        "title": "sciencewithagents Mirror: Open Mirror"
+      }
+    ],
+    "configuration": {
+      "title": "sciencewithagents Mirror",
+      "properties": {
+        "agentDockMirror.port": {
+          "type": "number",
+          "default": 4330,
+          "minimum": 1024,
+          "maximum": 65535,
+          "scope": "machine",
+          "description": "Local sciencewithagents port. Never a public address. Phone access uses sciencewithagents's existing pairing."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "package": "pnpm build && vsce package --no-dependencies --out ../../data/agent-dock-mirror-0.2.6.vsix"
+  },
+  "dependencies": {
+    "@dock/shared": "workspace:*",
+    "acorn": "^8.18.0",
+    "acorn-walk": "^8.3.5",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.96.0",
+    "@types/ws": "^8.18.1",
+    "@vscode/vsce": "^3.6.2",
+    "esbuild": "^0.25.0",
+    "vitest": "^3.2.4"
+  }
+}

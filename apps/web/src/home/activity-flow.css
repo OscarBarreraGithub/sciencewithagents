@@ -1,0 +1,290 @@
+.activity-page {
+  --ink: var(--home-ink);
+  --line: var(--home-line);
+  --paper: #fff;
+  --accent: var(--home-blue);
+  --muted: var(--home-muted);
+}
+.activity-grid,
+.activity-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 24px;
+}
+.activity-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  background: #fff;
+  border: 1px solid var(--home-line);
+  border-radius: 18px;
+  padding: 25px;
+}
+.activity-card h2 {
+  font-size: 22px;
+  line-height: 1.25;
+  margin: 24px 0 12px;
+  overflow-wrap: anywhere;
+}
+.activity-card > p {
+  flex: 1;
+  color: var(--home-muted);
+  overflow-wrap: anywhere;
+}
+.activity-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  font-size: 12px;
+  color: var(--home-muted);
+}
+.activity-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #4455aa;
+  font-size: 12px;
+  font-weight: 650;
+}
+.activity-kind svg {
+  flex-shrink: 0;
+}
+.activity-card.integration .activity-kind,
+.activity-card.result .activity-kind {
+  color: #47745d;
+}
+.activity-card.approval .activity-kind,
+.activity-card.interrupted .activity-kind {
+  color: #956722;
+}
+.activity-total {
+  border-radius: 20px;
+  padding: 10px 16px;
+  border: 1px solid var(--home-line);
+  background: #fff;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.activity-calm {
+  padding: 56px 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: #f7f8fd;
+  border: 1px solid var(--home-line);
+  border-radius: 22px;
+}
+.activity-calm > svg {
+  color: #7a87a9;
+  margin-bottom: 24px;
+}
+.activity-calm h2 {
+  font-size: 25px;
+}
+.activity-calm p {
+  max-width: 480px;
+  color: var(--home-muted);
+}
+.activity-shortcuts a {
+  display: grid;
+  grid-template-columns: 32px 1fr 20px;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 20px;
+  border: 1px solid var(--home-line);
+  background: white;
+  border-radius: 16px;
+}
+.activity-shortcuts a > span {
+  grid-column: 2;
+  color: var(--home-muted);
+  font-size: 12px;
+}
+.activity-shortcuts a > svg:first-child {
+  grid-row: span 2;
+  color: var(--home-blue);
+}
+.activity-shortcuts a > svg:last-child {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+.activity-shortcuts a:hover {
+  border-color: var(--home-blue);
+}
+.flow-form-panel {
+  padding: 28px;
+  margin: 20px 0;
+  border: 1px solid var(--home-line);
+  border-radius: 20px;
+  background: #fff;
+  min-width: 0;
+}
+.flow-form-panel > h2 {
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+.flow-form-panel p {
+  max-width: 780px;
+  color: var(--home-muted);
+  overflow-wrap: anywhere;
+}
+.flow-form-panel form {
+  display: grid;
+  gap: 18px;
+  margin: 22px 0;
+  min-width: 0;
+}
+.flow-form-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 550;
+  font-size: 13px;
+  color: var(--home-ink);
+  min-width: 0;
+}
+.flow-form-panel :is(input, select, textarea) {
+  min-height: 48px;
+  width: 100%;
+  background: #fcfcfe;
+  border-color: var(--home-line);
+  border-radius: 10px;
+  font-size: 14px;
+}
+.flow-form-panel :is(button, .secondary) {
+  min-height: 44px;
+  font-size: 13px;
+  padding: 10px 15px;
+  border: 1px solid var(--home-line);
+  border-radius: 10px;
+  line-height: 1.4;
+}
+.flow-form-panel .primary {
+  background: var(--home-blue);
+  color: #fff;
+}
+.flow-form-panel form > button {
+  justify-self: start;
+}
+.flow-form-panel .muted {
+  font-size: 12px;
+}
+.flow-form-panel .pulsar-panel {
+  border-top: 1px solid var(--home-line);
+  padding-top: 26px;
+}
+.flow-form-panel .pulsar-panel > h3 {
+  color: var(--home-blue);
+}
+.flow-form-panel .pulsar-job {
+  background: #f8f9fc;
+  border: 1px solid var(--home-line);
+  border-radius: 14px;
+  padding: 22px;
+  margin: 18px 0;
+}
+.flow-form-panel .pulsar-job h4 {
+  font-size: 19px;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.flow-form-panel .pulsar-job small {
+  font-size: 12px;
+}
+.flow-form-panel summary {
+  min-height: 44px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+.flow-form-panel pre {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: 10px;
+  background: #f3f5fa;
+}
+.review-page > .flow-panel {
+  margin-bottom: 22px;
+}
+.activity-warning {
+  background: #fcf7eb;
+  border: 1px solid #eadcb9;
+  border-radius: 13px;
+  padding: 23px;
+  margin: 20px 0;
+}
+.activity-warning h3 {
+  font-size: 20px;
+}
+.activity-diff {
+  border-top: 1px solid var(--home-line);
+  padding: 8px 0;
+  margin: 16px 0;
+}
+.activity-diff pre {
+  max-height: 60dvh;
+  overflow: auto;
+  scrollbar-width: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;
+}
+.activity-diff-stat {
+  padding: 18px;
+}
+.activity-confirm-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.activity-page .flow-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+.activity-page .flow-filters button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--home-line);
+  border-radius: 24px;
+  background: #fff;
+  font-size: 13px;
+}
+.activity-page .flow-filters button.selected {
+  background: #eef0ff;
+  border-color: #b4bfeb;
+  color: var(--home-blue);
+}
+@media (max-width: 650px) {
+  .activity-grid,
+  .activity-shortcuts {
+    grid-template-columns: 1fr;
+  }
+  .activity-card,
+  .flow-form-panel {
+    padding: 20px;
+  }
+  .activity-page .estimate-grid {
+    grid-template-columns: 1fr;
+  }
+  .activity-page .flow-heading {
+    align-items: stretch;
+  }
+  .activity-calm {
+    padding: 38px 22px;
+  }
+}
+
+.flow-form-panel .secondary {
+  background: #fff;
+  color: var(--home-ink);
+}
+.flow-form-panel .secondary:hover:not(:disabled) {
+  border-color: var(--home-blue);
+  background: #f1f3ff;
+}

@@ -1,0 +1,126 @@
+/* Priority, optional caps and a compact allocation reading inside project configuration. */
+.quark-priority {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.config-section .quark-priority label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.quark-priority label.selected {
+  border-color: var(--home-blue);
+  background: #f3f5ff;
+}
+.quark-priority input {
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--home-blue);
+}
+.quark-priority strong {
+  display: block;
+  font-size: 14px;
+}
+.quark-priority small {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--home-muted);
+}
+.quark-caps {
+  display: grid;
+  gap: 4px;
+  padding: 4px 0 8px;
+}
+.quark-caps > .config-help {
+  margin: 4px 0 0;
+}
+.quark-cap-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 0 0 10px 32px;
+}
+.quark-cap-fields input[aria-invalid] {
+  border-color: #b3412e;
+}
+.quark-allocations {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--home-line);
+}
+.quark-allocation-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 12px;
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.quark-allocation-head span {
+  color: var(--home-muted);
+  font-size: 12px;
+}
+.quark-bar {
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid #dfe2dc;
+  border-radius: 999px;
+  background: #f6f7f4;
+}
+.quark-bar.stale {
+  opacity: 0.55;
+}
+.quark-bar > span {
+  flex-shrink: 0;
+  height: 100%;
+}
+.quark-bar-used {
+  background: #b9bec8;
+}
+.quark-bar-project {
+  background: var(--home-blue);
+}
+.quark-bar-reserved {
+  background: repeating-linear-gradient(135deg, #d59a3a 0 3px, #f3dcb2 3px 6px);
+}
+.quark-bar-cap {
+  background: repeating-linear-gradient(135deg, #b9c5f6 0 3px, #e8ecff 3px 6px);
+}
+.quark-allocation-note {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--home-muted);
+  overflow-wrap: anywhere;
+}
+.quark-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.project-config.embedded .quark-priority,
+.project-config.embedded .quark-cap-fields {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (max-width: 700px) {
+  .quark-priority,
+  .quark-cap-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .quark-cap-fields {
+    padding-left: 0;
+  }
+}

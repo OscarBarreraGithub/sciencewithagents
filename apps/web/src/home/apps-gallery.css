@@ -1,0 +1,210 @@
+.apps-page {
+  display: grid;
+  gap: 22px;
+  max-width: 880px;
+  margin: 0 auto;
+  padding-bottom: 12px;
+}
+.apps-heading h1 {
+  margin-top: 6px;
+  font-size: 32px;
+  line-height: 1.15;
+}
+.apps-heading p:not(.home-eyebrow) {
+  margin-top: 8px;
+  color: var(--home-muted);
+  font-size: 14px;
+  max-width: 62ch;
+}
+.apps-heading a {
+  color: var(--home-blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.apps-empty {
+  border: 1px solid var(--home-line);
+  border-radius: 18px;
+  background: var(--home-white);
+  padding: 28px 24px 26px;
+  text-align: center;
+}
+/* Empty outlines only; no app is shown until one is actually added. */
+.apps-empty-grid {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  margin-bottom: 18px;
+}
+.apps-empty-grid span {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  border: 1.5px dashed #cfc7b8;
+  background: #f6f2ea;
+}
+.apps-empty h2 {
+  font-size: 18px;
+}
+.apps-empty p {
+  margin: 6px auto 0;
+  max-width: 46ch;
+  color: var(--home-muted);
+  font-size: 14px;
+}
+.apps-setup {
+  display: grid;
+  gap: 8px;
+}
+.apps-setup > h2 {
+  font-size: 18px;
+}
+.apps-setup > p {
+  color: var(--home-muted);
+  font-size: 14px;
+}
+.setup-guide {
+  display: grid;
+  gap: 14px;
+}
+.setup-guide-note {
+  font-size: 13px;
+  color: var(--home-muted);
+  line-height: 1.6;
+}
+.setup-guide ol {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-guide li {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--home-line);
+  border-radius: 14px;
+  background: var(--home-white);
+  min-width: 0;
+}
+.setup-guide h2,
+.setup-guide h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+.setup-step-number {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--home-ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+.setup-guide li > p {
+  font-size: 13px;
+  color: var(--home-muted);
+  line-height: 1.6;
+}
+.setup-prompt {
+  border-radius: 12px;
+  background: #1d2230;
+  color: #eef0f5;
+  overflow: hidden;
+  min-width: 0;
+}
+.setup-prompt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px 4px 14px;
+  border-bottom: 1px solid #353b4c;
+  font-size: 12px;
+  font-weight: 700;
+  color: #c9cedb;
+}
+.setup-prompt-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  min-width: 88px;
+  justify-content: center;
+  padding: 0 14px;
+  border: 1px solid #4a5166;
+  border-radius: 9px;
+  background: #2a3042;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.setup-prompt-head button:hover {
+  background: #343b50;
+}
+.setup-prompt pre {
+  margin: 0;
+  padding: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  user-select: text;
+}
+.setup-prompt pre:focus-visible {
+  outline: 2px solid #8ea0ff;
+  outline-offset: -4px;
+}
+.setup-prompt-status:empty {
+  display: none;
+}
+.setup-prompt-status {
+  padding: 0 14px 12px;
+  font-size: 12px;
+  color: #ffd98a;
+}
+.setup-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--home-line);
+  border-radius: 10px;
+  background: var(--home-paper);
+  font-size: 13px;
+  font-weight: 700;
+}
+.setup-link:hover {
+  border-color: var(--home-blue);
+  color: var(--home-blue);
+}
+@media (max-width: 700px) {
+  .apps-heading h1 {
+    font-size: 26px;
+  }
+  .apps-empty {
+    padding: 22px 16px;
+  }
+  .apps-empty-grid {
+    gap: 16px;
+  }
+  .apps-empty-grid span {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+  }
+  .setup-guide li {
+    padding: 14px;
+  }
+}

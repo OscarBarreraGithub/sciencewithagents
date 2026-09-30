@@ -1,0 +1,129 @@
+.advanced-page .settings-card {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  max-height: none;
+  overflow: visible;
+  box-shadow: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+}
+.advanced-page .settings-title {
+  color: var(--home-ink);
+  margin: 0 0 20px;
+}
+.advanced-page .settings-title h2 {
+  font-size: 24px;
+}
+.advanced-page .settings-help {
+  font-size: 13px;
+  margin: 14px 0;
+}
+.advanced-page .settings-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.advanced-page .mcp-settings {
+  margin: 20px 0;
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 0;
+}
+.advanced-page .mcp-settings legend {
+  font-size: 14px;
+  font-weight: 650;
+}
+.advanced-page .mcp-settings label:has(input[type='checkbox']) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
+}
+.advanced-page .mcp-settings p {
+  font-size: 13px;
+}
+.advanced-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 20px 0;
+}
+.advanced-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.advanced-terminal {
+  display: flex;
+  min-width: 0;
+  height: 620px;
+  max-height: 85dvh;
+  border: 1px solid var(--home-line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.advanced-terminal .terminal-pane {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+}
+.advanced-terminal .terminal-bar {
+  flex-wrap: wrap;
+}
+.advanced-terminal button {
+  min-height: 44px;
+  font-size: 12px;
+}
+.advanced-page .flow-form-panel .execution-info {
+  max-width: 100%;
+}
+@media (max-width: 650px) {
+  .advanced-page .settings-fields {
+    grid-template-columns: 1fr;
+  }
+  .advanced-terminal {
+    height: 560px;
+    max-height: none;
+  }
+}
+
+.advanced-page .settings-card .primary {
+  color: white;
+  background: var(--home-blue);
+  min-height: 44px;
+  margin-top: 18px;
+}
+.advanced-page .settings-card .settings-help {
+  color: var(--home-muted);
+}
+.advanced-page .execution-info {
+  border: 0;
+  background: transparent;
+  color: var(--home-ink);
+  padding: 0;
+  margin: 0;
+  font-size: 14px;
+}
+.advanced-page .execution-info :is(h3, h4, h5) {
+  color: var(--home-ink);
+  font-size: 16px;
+}
+.advanced-page .execution-info h3 {
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+.advanced-page .execution-info :is(dt, .execution-muted, .execution-observed) {
+  color: var(--home-muted);
+  font-size: 13px;
+}
+.advanced-page .execution-info :is(section, .execution-quota, .execution-snapshot) {
+  border-color: var(--home-line);
+}
+.advanced-page .execution-info summary {
+  min-height: 44px;
+}

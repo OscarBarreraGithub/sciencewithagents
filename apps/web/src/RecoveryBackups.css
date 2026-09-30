@@ -1,0 +1,72 @@
+.recovery-dialog {
+  width: min(620px, calc(100vw - 24px));
+}
+.recovery-dialog p {
+  line-height: 1.5;
+}
+.recovery-warning {
+  padding: 12px;
+  background: #fff5e5;
+  border-radius: 8px;
+  color: #69410a;
+}
+.recovery-notice {
+  padding: 12px;
+  background: #eaf6ef;
+  border-radius: 8px;
+  color: #21553c;
+}
+.recovery-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.recovery-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.recovery-list > li {
+  border: 1px solid var(--line, #dde2e0);
+  border-radius: 10px;
+  padding: 14px;
+}
+.recovery-list h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.recovery-list small {
+  color: var(--muted, #64716b);
+}
+.recovery-list code {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  padding: 8px 0;
+}
+.recovery-help {
+  margin: 16px 0;
+}
+.recovery-dialog summary {
+  cursor: pointer;
+  line-height: 1.5;
+  padding: 8px 0;
+}
+.recovery-update {
+  border-block: 1px solid var(--line, #dde2e0);
+  margin: 20px 0;
+  padding: 12px 0;
+}
+.recovery-request-text {
+  padding: 14px;
+  border-radius: 10px;
+  background: #f3f5fa;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.recovery-copy-feedback {
+  min-height: 4.5em;
+  color: var(--muted, #64716b);
+}

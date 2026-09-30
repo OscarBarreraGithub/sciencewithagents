@@ -1,0 +1,623 @@
+.app-shell.mirror-view {
+  grid-template-columns: 252px minmax(0, 1fr);
+  min-height: 0;
+}
+.mirror-conversation,
+.mirror-home {
+  --border: var(--line);
+}
+.mirror-all-chats {
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  color: #52684b;
+  padding: 10px;
+}
+.mirror-chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.sidebar .mirror-chat-list {
+  flex-shrink: 0;
+  padding: 0 12px;
+  max-height: 34dvh;
+  overflow-y: auto;
+}
+.mirror-chat-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 9px;
+  text-align: left;
+  border-radius: 9px;
+  border: 0;
+  background: transparent;
+  min-width: 0;
+}
+.mirror-chat-link:hover {
+  background: #eeefeb;
+}
+.mirror-chat-link.selected {
+  background: #e6ebe3;
+}
+.mirror-chat-label {
+  min-width: 0;
+  flex: 1;
+}
+.mirror-chat-label strong,
+.mirror-chat-label small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mirror-chat-label strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.mirror-chat-label small {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.mirror-avatar {
+  display: grid;
+  place-items: center;
+  width: 35px;
+  height: 35px;
+  flex-shrink: 0;
+  background: #e6ebe2;
+  border-radius: 12px;
+  color: #48643f;
+}
+.mirror-avatar.claude {
+  background: #f3e9df;
+  color: #916245;
+}
+.mirror-presence {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a5aaa3;
+  flex-shrink: 0;
+}
+.mirror-presence.idle {
+  background: #6a8654;
+}
+.mirror-presence.busy {
+  background: #ad8442;
+}
+.mirror-presence.attention {
+  background: #ba6245;
+}
+.mirror-home {
+  padding: 40px 24px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.mirror-home > * {
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.mirror-home-heading {
+  margin-bottom: 30px;
+}
+.mirror-home-heading > svg {
+  color: #617456;
+}
+.mirror-home h1 {
+  font-size: 27px;
+  margin: 15px 0 10px;
+}
+.mirror-home p,
+.mirror-setup li {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.mirror-home .mirror-chat-list {
+  margin-bottom: 24px;
+}
+.mirror-home .mirror-chat-link {
+  border: 1px solid var(--border);
+  padding: 16px;
+}
+.mirror-home .mirror-chat-label strong {
+  font-size: 15px;
+}
+.mirror-setup {
+  border-top: 1px solid var(--border);
+  padding-top: 22px;
+}
+.mirror-setup h2 {
+  font-size: 16px;
+}
+.mirror-setup ol {
+  padding-left: 22px;
+}
+.mirror-setup li {
+  padding: 4px 0 4px 6px;
+}
+.mirror-setup summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.mirror-conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+.mirror-header {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 20px 30px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.mirror-header > div {
+  min-width: 0;
+  flex: 1;
+}
+.mirror-header h1 {
+  font-size: 18px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mirror-header p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+.mirror-header p .mirror-presence {
+  margin-right: 5px;
+}
+.mirror-controls summary {
+  padding: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.mirror-controls summary::-webkit-details-marker {
+  display: none;
+}
+.mirror-controls > div {
+  position: absolute;
+  right: 14px;
+  top: 73px;
+  width: min(300px, calc(100% - 28px));
+  padding: 18px;
+  z-index: 3;
+  background: #fff;
+  box-shadow: 0 5px 25px #0002;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.mirror-notice {
+  padding: 10px 24px;
+  font-size: 12px;
+  background: #f6f0e5;
+  color: #6b5837;
+  flex-shrink: 0;
+}
+.mirror-log {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 18px 30px;
+  background: #f4f5f1;
+}
+.mirror-history,
+.mirror-text-pages {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+.mirror-history {
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.mirror-history span {
+  flex: 1;
+  color: var(--muted);
+}
+.mirror-history button,
+.mirror-text-pages button {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  color: inherit;
+}
+.mirror-text-pages p {
+  flex-basis: 100%;
+}
+.mirror-messages {
+  max-width: 820px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+/* Message-first timeline: incoming bubbles left, your messages right. */
+.mirror-message {
+  max-width: min(80%, 680px);
+  min-width: 64px;
+  padding: 7px 11px;
+  border-radius: 14px 14px 14px 4px;
+  background: white;
+  border: 1px solid #e6e8e3;
+  box-shadow: 0 1px 1px #2027380d;
+}
+.mirror-message.user {
+  align-self: flex-end;
+  background: #fdf3cf;
+  border-color: #efe1aa;
+  border-radius: 14px 14px 4px 14px;
+}
+.mirror-message small {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.mirror-text {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.mirror-text p {
+  margin: 0 0 6px;
+}
+.mirror-text p:last-child {
+  margin-bottom: 0;
+}
+.mirror-log pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  padding: 10px;
+  background: #f1f2ed;
+  border-radius: 6px;
+  max-width: 100%;
+}
+.mirror-text table {
+  display: block;
+  overflow: auto;
+  max-width: 100%;
+}
+.mirror-activity {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 100%;
+}
+.mirror-activity summary {
+  cursor: pointer;
+  display: flex;
+  gap: 5px;
+  align-items: baseline;
+  overflow-wrap: anywhere;
+}
+.mirror-activity summary > svg {
+  flex-shrink: 0;
+}
+.mirror-activity[open] summary > svg {
+  transform: rotate(90deg);
+}
+/* One collapsed row per run of consecutive tool activity; details load only when opened. */
+.mirror-activity-group {
+  max-width: min(84%, 680px);
+  margin: 2px 0;
+  font-size: 12px;
+  color: #596170;
+}
+.mirror-activity-group > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 4px 12px 4px 8px;
+  border: 1px solid #e2e5e0;
+  border-radius: 999px;
+  background: #ffffffd9;
+  list-style: none;
+  cursor: pointer;
+}
+.mirror-activity-group > summary::-webkit-details-marker {
+  display: none;
+}
+.mirror-activity-group > summary > svg {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.mirror-activity-group[open] > summary > svg {
+  transform: rotate(90deg);
+}
+.mirror-activity-count {
+  flex-shrink: 0;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.mirror-activity-current {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #7a8190;
+}
+.mirror-activity-group-body {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid #e6e8e3;
+  border-radius: 10px;
+  background: white;
+}
+.mirror-activity-group-body > p {
+  margin: 0;
+}
+.mirror-activity-group-body .mirror-history {
+  padding: 4px 0 0;
+  border-bottom: 0;
+}
+.mirror-empty {
+  font-size: 13px;
+  color: var(--muted);
+}
+.mirror-working {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.mirror-composer {
+  padding: 8px 30px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: #fbfbf9;
+}
+.mirror-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  max-width: 820px;
+  margin: auto;
+}
+.mirror-input-row textarea {
+  width: 100%;
+  min-width: 0;
+  resize: none;
+  field-sizing: content;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.45;
+  min-height: 44px;
+  max-height: 140px;
+  padding: 10px 16px;
+  border: 1px solid #dde1dc;
+  border-radius: 22px;
+  background: white;
+}
+.mirror-input-row .mirror-send {
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+  border-radius: 22px;
+  padding: 10px;
+}
+/* Without content sizing, an empty two-row box still starts at one line. */
+@supports not (field-sizing: content) {
+  .mirror-input-row textarea:placeholder-shown {
+    height: 44px;
+  }
+}
+.mirror-note {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+.mirror-composer > p {
+  max-width: 820px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.mirror-receipt {
+  font-size: 12px;
+  margin: 8px 0;
+}
+.mirror-clear {
+  font-size: 12px;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  padding: 8px 0;
+}
+/* A zero-height dock at the end of the history, stuck to its visible bottom edge:
+   the button sits inside the log above the composer and adds no scroll height. */
+.mirror-latest-dock {
+  position: sticky;
+  bottom: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  height: 0;
+  pointer-events: none;
+}
+.mirror-latest {
+  min-height: 44px;
+  transform: translateY(-100%);
+  pointer-events: auto;
+  box-shadow: 0 2px 8px #0001;
+}
+@media (max-width: 1190px) and (min-width: 721px) {
+  .app-shell.mirror-view {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+}
+@media (max-width: 720px) {
+  .app-shell.mirror-view {
+    display: flex;
+  }
+  .mirror-header {
+    padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 6px;
+    gap: 8px;
+  }
+  .mirror-header h1 {
+    font-size: 16px;
+  }
+  .mirror-header p {
+    font-size: 11px;
+    margin-top: 2px;
+  }
+  .mirror-header .mirror-avatar {
+    width: 32px;
+    height: 32px;
+  }
+  .mirror-log {
+    padding: 8px 8px 10px;
+  }
+  .mirror-message,
+  .mirror-activity-group {
+    max-width: 88%;
+  }
+  .mirror-composer {
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+  .mirror-input-row textarea {
+    font-size: 16px;
+  }
+  .mirror-note {
+    font-size: 10px;
+  }
+  .mirror-controls summary {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+  .mirror-history {
+    gap: 4px;
+    padding: 0 8px;
+  }
+  .mirror-history button {
+    min-height: 44px;
+    padding: 0 10px;
+  }
+  .mirror-composer > p.mirror-note {
+    display: -webkit-box;
+    margin: 3px 6px 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .mirror-composer > .mirror-receipt {
+    margin: 4px 6px;
+  }
+  .mirror-stop-row {
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .mirror-stop-row p {
+    font-size: 12px;
+  }
+  .mirror-home {
+    padding: 24px 20px;
+  }
+}
+@media (max-height: 500px) {
+  .mirror-header {
+    padding: 8px 16px;
+  }
+  .mirror-header h1 {
+    font-size: 15px;
+  }
+  .mirror-log {
+    padding: 8px 16px;
+  }
+  .mirror-composer {
+    padding: 6px 16px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+  .mirror-input-row textarea {
+    min-height: 44px;
+    max-height: 88px;
+  }
+  .mirror-header .mirror-avatar {
+    width: 30px;
+    height: 30px;
+  }
+  .mirror-notice {
+    padding: 6px 16px;
+  }
+}
+@media (max-height: 500px) and (pointer: coarse) {
+  .mirror-input-row textarea {
+    font-size: 16px;
+  }
+}
+.mirror-stop-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.compact-view .topbar {
+  height: 40px;
+}
+.compact-view .mirror-header {
+  padding: 8px 16px;
+}
+.compact-view .mirror-header h1 {
+  font-size: 15px;
+}
+.compact-view .mirror-log {
+  padding: 8px 16px;
+}
+.compact-view .mirror-composer {
+  padding: 7px 16px;
+}
+.compact-view .mirror-input-row textarea {
+  min-height: 40px;
+  height: 40px;
+}
+.compact-view .capacity-strip {
+  padding: 3px 12px;
+}
+.compact-view .capacity-strip > span {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.compact-view .capacity-strip > span > span:nth-of-type(n + 2) {
+  display: none;
+}
+.mirror-stop-row p {
+  margin: 0;
+  font-size: 0.8rem;
+  flex: 1 1 12rem;
+}

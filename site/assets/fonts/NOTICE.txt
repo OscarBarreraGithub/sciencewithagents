@@ -1,0 +1,42 @@
+Bundled website fonts
+=====================
+
+These font files are redistributed under the SIL Open Font License 1.1.
+The corresponding copyright notices and complete licences are included alongside
+the fonts. These licences cover the font software, not the sciencewithagents app.
+
+DM Sans
+  Files: dm-sans-latin-400-normal.woff2, dm-sans-latin-500-normal.woff2,
+         dm-sans-latin-600-normal.woff2, dm-sans-latin-700-normal.woff2
+  Copyright 2014 The DM Sans Project Authors
+  Project: https://github.com/googlefonts/dm-fonts
+  Licence: DM-Sans-OFL.txt
+  Authoritative notice: https://github.com/google/fonts/blob/main/ofl/dmsans/OFL.txt
+
+Caveat
+  Files: caveat-latin-400-normal.woff2, caveat-latin-600-normal.woff2
+  Copyright 2014 The Caveat Project Authors
+  Project: https://github.com/googlefonts/caveat
+  Licence: Caveat-OFL.txt
+  Authoritative notice: https://github.com/google/fonts/blob/main/ofl/caveat/OFL.txt
+
+Newsreader
+  File: newsreader-latin-400-normal.woff2
+  Copyright 2020 The Newsreader Project Authors
+  Project: https://github.com/productiontype/Newsreader
+  Licence: Newsreader-OFL.txt
+  Authoritative notice: https://github.com/google/fonts/blob/main/ofl/newsreader/OFL.txt
+
+Distribution provenance
+  The bundled Latin WOFF2 files were copied unchanged from the owner's
+  Sketchcoded site. On 2026-09-30, all seven files were compared byte-for-byte
+  with the corresponding package/files entries in these Fontsource releases:
+    https://www.npmjs.com/package/@fontsource/dm-sans/v/5.3.0
+    https://www.npmjs.com/package/@fontsource/caveat/v/5.3.0
+    https://www.npmjs.com/package/@fontsource/newsreader/v/5.3.0
+  All seven matched. The complete licence notices were obtained from the
+  authoritative Google Fonts repository on the same date.
+
+No font file was modified for sciencewithagents. No additional font families or
+weights are included. The website serves these files locally; it does not request
+fonts from Google Fonts, Fontsource or another third party at runtime.

@@ -1,0 +1,41 @@
+{
+  "name": "agent-dock",
+  "version": "0.1.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OscarBarreraGithub/sciencewithagents.git"
+  },
+  "homepage": "https://sciencewithagents.com",
+  "bugs": "https://github.com/OscarBarreraGithub/sciencewithagents/issues",
+  "type": "module",
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "postinstall": "node scripts/fix-pty.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "dev": "node scripts/dev.mjs",
+    "build": "pnpm --filter @dock/shared build && pnpm --filter @dock/server build && pnpm --filter @dock/web build && pnpm --filter agent-dock-mirror build",
+    "start": "node apps/server/dist/main.js",
+    "dock": "node apps/server/dist/cli.js",
+    "typecheck": "pnpm --filter @dock/shared build && pnpm -r typecheck",
+    "test": "pnpm --filter @dock/shared build && pnpm --filter @dock/server build && pnpm --filter @dock/server test && pnpm --filter agent-dock-mirror test",
+    "test:e2e": "pnpm --filter @dock/web test:e2e",
+    "verify": "pnpm build && pnpm --filter agent-dock-mirror typecheck && pnpm --filter @dock/server test && pnpm --filter agent-dock-mirror test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "prettier": "3.6.2",
+    "typescript": "^5.9.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "node-pty"
+    ]
+  },
+  "license": "MIT"
+}

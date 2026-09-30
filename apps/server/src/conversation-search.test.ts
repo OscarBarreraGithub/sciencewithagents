@@ -1,0 +1,395 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import Fastify from 'fastify';
+import {
+  conversationSearchResultSchema,
+  defaultModelPolicy,
+  type ConversationSearchResult,
+  type ProviderId,
+} from '@dock/shared';
+import { ConversationSearch, registerConversationSearchRoutes } from './conversation-search.js';
+import { ModelPolicy } from './model-policy.js';
+import { Conflict, Missing, Store } from './store.js';
+
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const close of cleanups.splice(0).reverse()) await close();
+});
+function fixture() {
+  const root = mkdtempSync(join(tmpdir(), 'swa-conversation-search-'));
+  const file = join(root, 'dock.sqlite');
+  let store = new Store(file);
+  store.setSetting('model-policy', structuredClone(defaultModelPolicy));
+  let now = Date.now();
+  const models = vi.fn(async (provider: ProviderId) => [
+    {
+      id: provider === 'codex' ? 'luna-fixture' : 'sonnet-fixture',
+      label: provider === 'codex' ? 'Luna' : 'Sonnet',
+      isDefault: false,
+      efforts: ['low', 'high'],
+    },
+    {
+      id: 'native-next-fixture',
+      label: 'Native future choice',
+      isDefault: false,
+      efforts: ['medium'],
+    },
+  ]);
+  const mirrors = vi.fn((): unknown[] => []);
+  const release = vi.fn(async () => true);
+  const interrupt = vi.fn(async (agentId: string, _reason: string) => {
+    for (const run of store
+      .runs()
+      .filter((item) => item.agentId === agentId && item.status === 'running'))
+      store.updateRun(run.id, { status: 'interrupted' });
+    store.updateAgent(agentId, { status: 'interrupted' });
+  });
+  const make = () =>
+    new ConversationSearch(
+      store,
+      root,
+      {
+        policy: new ModelPolicy(store, models),
+        mirrorWindows: mirrors,
+        release,
+        interrupt,
+        waitReason: () => 'Waiting for the saved QUARK headroom.',
+      },
+      () => now,
+    );
+  let search = make();
+  cleanups.push(async () => {
+    await search.close();
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+  return {
+    root,
+    models,
+    mirrors,
+    release,
+    interrupt,
+    get store() {
+      return store;
+    },
+    get search() {
+      return search;
+    },
+    advance(ms: number) {
+      now += ms;
+    },
+    async reopen(recover = false) {
+      await search.close();
+      store.close();
+      store = new Store(file);
+      if (recover) store.recover();
+      search = make();
+    },
+  };
+}
+function seed(store: Store, root: string, name = 'Galaxy analysis') {
+  const project = store.register(join(root, randomUUID()), name, 'Saved research', 'codex');
+  store.entry({
+    id: randomUUID(),
+    agentId: project.managerId,
+    runId: null,
+    kind: 'assistant',
+    title: 'Previous reply',
+    text: 'We discussed the galaxy luminosity data and its uncertainty.',
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+  });
+  return project;
+}
+function complete(
+  store: Store,
+  result: ConversationSearchResult,
+  text = 'A likely match is the supplied galaxy conversation.',
+) {
+  store.entry({
+    id: randomUUID(),
+    agentId: result.agentId,
+    runId: result.runId,
+    kind: 'assistant',
+    title: 'Conversation finder',
+    text,
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+  });
+  store.updateRun(result.runId, { status: 'completed' });
+  store.updateAgent(result.agentId, { status: 'idle' });
+}
+
+it('uses central bulk defaults, saved evidence and one normal queued turn without changing a target', async () => {
+  const f = fixture();
+  const project = seed(f.store, f.root);
+  const original = f.store.agent(project.managerId);
+  const result = await f.search.ask({ key: randomUUID(), query: 'galaxy', provider: 'codex' });
+  expect(result).toMatchObject({
+    status: 'queued',
+    provider: 'codex',
+    model: 'luna-fixture',
+    effort: 'low',
+    report: null,
+  });
+  expect(result.candidates).toContainEqual(
+    expect.objectContaining({
+      id: project.managerId,
+      href: `#/chat/${project.managerId}`,
+      evidence: 'saved-excerpts',
+      excerpt: expect.stringContaining('luminosity'),
+    }),
+  );
+  expect(f.store.agent(result.agentId)).toMatchObject({
+    permission: 'read-only',
+    toolPolicy: 'restricted',
+    assignment: { taskClass: 'bulk', tier: 'uncle' },
+    webSearch: 'disabled',
+    pluginsEnabled: false,
+  });
+  expect(f.store.getSetting(`pulsar:estimate:${result.runId}`)).toMatchObject({
+    priority: 'interactive',
+    tokenBudget: 16000,
+  });
+  expect(f.store.runs()).toHaveLength(1);
+  expect(f.store.agent(project.managerId)).toEqual(original);
+  expect(f.store.getSetting('frontdesk:identity')).toBeNull();
+  expect(f.search.isAgent(project.managerId)).toBe(false);
+  expect(f.search.isAgent(result.agentId)).toBe(true);
+  expect(f.search.context(result.agentId)).toMatchObject({
+    query: 'galaxy',
+    candidates: result.candidates,
+  });
+  expect(() => f.search.context(project.managerId)).toThrow('not a conversation search helper');
+});
+
+it('resolves Claude bulk to central Sonnet and preserves an explicit future native model and effort', async () => {
+  const f = fixture();
+  seed(f.store, f.root);
+  const first = await f.search.ask({ key: randomUUID(), query: 'galaxy', provider: 'claude' });
+  expect(first).toMatchObject({ provider: 'claude', model: 'sonnet-fixture', effort: 'low' });
+  complete(f.store, first);
+  const second = await f.search.ask({
+    key: randomUUID(),
+    query: 'galaxy',
+    provider: 'codex',
+    model: 'native-next-fixture',
+    effort: 'medium',
+  });
+  expect(second).toMatchObject({
+    provider: 'codex',
+    model: 'native-next-fixture',
+    effort: 'medium',
+  });
+  expect(second.agentId).not.toBe(first.agentId);
+  expect(second.candidates.some((candidate) => candidate.id === first.agentId)).toBe(false);
+  expect(f.release).toHaveBeenCalledWith(first.agentId);
+});
+
+it('coalesces simultaneous retries and preserves a lost-response receipt across restart and catalog failure', async () => {
+  const f = fixture();
+  const project = seed(f.store, f.root);
+  const input = { key: randomUUID(), query: 'galaxy', provider: 'codex' };
+  const [one, two] = await Promise.all([f.search.ask(input), f.search.ask(input)]);
+  expect(two).toEqual(one);
+  expect(f.models).toHaveBeenCalledTimes(1);
+  expect(f.store.runs()).toHaveLength(1);
+  complete(f.store, one, `[Galaxy](#/chat/${project.managerId}) discusses luminosity.`);
+  await f.reopen();
+  f.models.mockRejectedValue(new Error('Provider unavailable'));
+  f.mirrors.mockImplementation(() => {
+    throw new Error('No mirror work during retries or GET');
+  });
+  const retried = await f.search.ask(input);
+  expect(retried).toMatchObject({
+    id: one.id,
+    agentId: one.agentId,
+    runId: one.runId,
+    status: 'completed',
+    report: expect.stringContaining('luminosity'),
+  });
+  expect(f.search.get(one.id)).toEqual(retried);
+  expect(f.store.runs()).toHaveLength(1);
+  expect(f.models).toHaveBeenCalledTimes(1);
+  await expect(f.search.ask({ ...input, query: 'different' })).rejects.toThrow('different input');
+  expect(f.store.runs()).toHaveLength(1);
+});
+
+it('retains an interrupted search through host recovery without replaying its provider turn', async () => {
+  const f = fixture();
+  const input = { key: randomUUID(), query: 'a prior conversation', provider: 'codex' };
+  const result = await f.search.ask(input);
+  f.store.updateRun(result.runId, { status: 'running' });
+  f.store.updateAgent(result.agentId, { status: 'running' });
+  await f.reopen(true);
+  expect((await f.search.ask(input)).status).toBe('interrupted');
+  expect(f.store.runs()).toHaveLength(1);
+  expect(f.models).toHaveBeenCalledTimes(1);
+  await f.search.maintain();
+  expect(f.release).toHaveBeenCalledWith(result.agentId);
+});
+
+it('truthfully caps saved evidence and includes only connected editor title metadata, never transcripts', async () => {
+  const f = fixture();
+  for (let index = 0; index < 24; index++) {
+    const project = seed(f.store, f.root, `Galaxy ${index}`);
+    f.store.addAgent({
+      projectId: project.id,
+      parentId: null,
+      taskId: null,
+      role: 'researcher',
+      name: `Galaxy worker ${index}`,
+      cwd: join(f.root, 'unused'),
+      provider: 'codex',
+    });
+    f.store.entry({
+      id: randomUUID(),
+      agentId: project.managerId,
+      runId: null,
+      kind: 'assistant',
+      title: 'Saved reply',
+      text: 'galaxy '.repeat(1000),
+      status: 'complete',
+      createdAt: new Date().toISOString(),
+    });
+  }
+  const firstWindow = randomUUID();
+  f.mirrors.mockReturnValue(
+    Array.from({ length: 10 }, (_, index) => ({
+      windowId: index === 0 ? firstWindow : randomUUID(),
+      provider: 'claude',
+      label: 'Native editor',
+      title: `Galaxy editor ${index}`,
+      threadId: `thread ${index}/x`,
+      status: 'busy',
+      message: 'not model evidence',
+      entries: [{ id: 'private', role: 'assistant', text: 'UNREQUESTED_NATIVE_TRANSCRIPT' }],
+    })),
+  );
+  const result = await f.search.ask({ key: randomUUID(), query: 'galaxy', provider: 'codex' });
+  expect(result.coverage).toMatchObject({
+    projectsConsidered: 20,
+    projectsAvailable: 24,
+    managedCandidates: 32,
+    editorCandidates: 8,
+    bounded: true,
+    editorTranscripts: false,
+  });
+  expect(result.candidates).toHaveLength(40);
+  expect(result.candidates.find((candidate) => candidate.id === firstWindow)).toMatchObject({
+    kind: 'editor',
+    evidence: 'title-only',
+    excerpt: '',
+    href: '#/chats/vscode/claude%3Athread%200%2Fx',
+  });
+  expect(JSON.stringify(f.search.context(result.agentId))).not.toContain(
+    'UNREQUESTED_NATIVE_TRANSCRIPT',
+  );
+  expect(JSON.stringify(f.search.context(result.agentId)).length).toBeLessThan(50_000);
+  const calls = f.mirrors.mock.calls.length;
+  f.search.get(result.id);
+  f.search.get(result.id);
+  expect(f.mirrors).toHaveBeenCalledTimes(calls);
+});
+
+it('expires a queued search and interrupts a running search within the existing maintenance boundary', async () => {
+  const f = fixture();
+  const queued = await f.search.ask({ key: randomUUID(), query: 'galaxy', provider: 'codex' });
+  f.advance(15 * 60_000);
+  await f.search.maintain();
+  expect(f.search.get(queued.id)).toMatchObject({
+    status: 'cancelled',
+    message: expect.stringContaining('15 minutes'),
+  });
+  expect(f.interrupt).not.toHaveBeenCalled();
+  const running = await f.search.ask({ key: randomUUID(), query: 'galaxy', provider: 'codex' });
+  f.store.updateRun(running.runId, { status: 'running' });
+  f.store.updateAgent(running.agentId, { status: 'running' });
+  await f.search.maintain();
+  f.advance(180_000);
+  await f.search.maintain();
+  expect(f.interrupt).toHaveBeenCalledWith(
+    running.agentId,
+    expect.stringContaining('three-minute'),
+  );
+  expect(f.search.get(running.id).status).toBe('interrupted');
+  await f.search.maintain();
+  expect(f.interrupt).toHaveBeenCalledTimes(1);
+  expect(f.store.runs()).toHaveLength(2);
+});
+
+it('refuses another active search and waits for idle cleanup before making a fresh helper', async () => {
+  const f = fixture();
+  const first = await f.search.ask({ key: randomUUID(), query: 'galaxy', provider: 'codex' });
+  await expect(
+    f.search.ask({ key: randomUUID(), query: 'another', provider: 'codex' }),
+  ).rejects.toThrow('already queued or running');
+  complete(f.store, first);
+  let finish!: (released: boolean) => void;
+  f.release.mockImplementationOnce(
+    () =>
+      new Promise<boolean>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const maintenance = f.search.maintain();
+  const second = f.search.ask({ key: randomUUID(), query: 'another', provider: 'codex' });
+  await Promise.resolve();
+  expect(f.store.runs()).toHaveLength(1);
+  finish(true);
+  await maintenance;
+  const fresh = await second;
+  expect(fresh.agentId).not.toBe(first.agentId);
+  expect(f.store.runs()).toHaveLength(2);
+});
+
+it('provides a saved-only GET, rejects browser-selected sources and preserves API request idempotency', async () => {
+  const f = fixture();
+  seed(f.store, f.root);
+  const app = Fastify();
+  app.setErrorHandler((error, _request, reply) =>
+    reply
+      .code(error instanceof Missing ? 404 : error instanceof Conflict ? 409 : 400)
+      .send({ error: error instanceof Error ? error.message : 'Invalid request' }),
+  );
+  const kick = vi.fn();
+  registerConversationSearchRoutes(app, f.search, kick);
+  cleanups.push(() => app.close());
+  expect((await app.inject({ url: `/api/conversations/search/${randomUUID()}` })).statusCode).toBe(
+    404,
+  );
+  expect(f.models).not.toHaveBeenCalled();
+  const input = { key: randomUUID(), query: 'galaxy', provider: 'codex' };
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/conversations/search',
+        payload: { ...input, transcript: 'browser-selected secret', agentId: randomUUID() },
+      })
+    ).statusCode,
+  ).toBe(400);
+  expect(f.models).not.toHaveBeenCalled();
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/conversations/search',
+    payload: input,
+  });
+  expect(response.statusCode).toBe(201);
+  const result = conversationSearchResultSchema.parse(response.json());
+  const retry = await app.inject({
+    method: 'POST',
+    url: '/api/conversations/search',
+    payload: input,
+  });
+  expect(retry.json()).toEqual(result);
+  const read = await app.inject({ url: `/api/conversations/search/${result.id}` });
+  expect(read.json()).toEqual(result);
+  expect(f.models).toHaveBeenCalledTimes(1);
+  expect(f.mirrors).toHaveBeenCalledTimes(1);
+  expect(f.store.runs()).toHaveLength(1);
+  expect(kick).toHaveBeenCalledTimes(2);
+});

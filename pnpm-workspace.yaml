@@ -1,0 +1,4 @@
+packages:
+  - apps/*
+  - packages/*
+storeDir: data/pnpm-store
