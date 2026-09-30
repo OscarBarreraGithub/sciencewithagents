@@ -25,6 +25,12 @@ grouped tools, existing editor busy sends, lost-response recovery and keyboard a
 Production server/web builds and companion typecheck pass; its 97 local checks passed after
 extracting the shared transcript mapper. Physical phone acceptance remains separate.
 
+The first complete public run of this addition passed 759 backend checks, 88 companion checks
+and 339 browser cases, but timed out opening the project brief after recovering a lost setup
+response on iPhone WebKit. The isolated journey passed three consecutive runs against fresh
+demo data; that does not establish the cause of the original failure. CI now retains failed
+browser screenshots and traces. The release rerun is pending; no timeout or assertion was relaxed.
+
 The frontend source labels came from one Opus 5.5/xhigh worker through QUARK. QUARK paused
 that bounded task with its edits intact; root reviewed/applied the seven frontend files,
 wired the unavailable-history flag and corrected a duplicate native-source label. No cap was
@@ -32,6 +38,12 @@ raised or replaced, and only a redundant queued report was cancelled. Evidence r
 ignored data/release-2026-09-30/: daemon-native-acceptance.json, daemon-native-tui.txt,
 daemon-backend-final.log, daemon-browser-final.log and daemon-ui-opus.patch. Screenshots are
 private runtime evidence. Source and physical acceptance are distinct.
+
+The manual app was restarted through its owned launcher after a verified recovery copy
+(four projects, 39 conversations, 1,535 entries). The existing editor and phone connection
+were retained. A separate disposable native session was discovered and read through the live
+app API; its empty-history limitation was visible, and it disappeared after native cleanup.
+The original editor remained connected throughout. All owned temporary listeners were closed.
 
 ## 2026-09-30 — public source and production website
 

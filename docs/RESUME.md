@@ -2,7 +2,7 @@
 
 Updated 2026-09-30. The drawn app, MIT repository and sciencewithagents.com landing are
 published. The full goal remains active for owner-editor activation and physical-device
-acceptance. Preserve native capabilities and simple QUARK supervision; do not restart the
+acceptance. The newest release rerun is still pending (see below). Preserve native capabilities and simple QUARK supervision; do not restart the
 superseded tool-by-tool restriction approach or broad review loops.
 
 ## What is integrated and verified
@@ -14,12 +14,19 @@ work lists, versioned drafts, QUARK supervision and manager application of revie
 Reviews are small and bounded to two correction rounds, with recorded judgement or human
 handoff. Continue other unblocked work while one item needs input. See FEATURES.md.
 
-The complete release check passed production builds, 737 backend checks, 88 companion
+The initial complete release check passed production builds, 737 backend checks, 88 companion
 checks and 335 browser cases across desktop, 412x915, 360x800, 915x412 and iPhone WebKit.
 Thirteen backend/companion and ten browser checks are deliberately skipped. The latest
 shared-chat keyboard correction has a deterministic scroll-before-resize regression and
 passes all eight mobile keyboard cases. Four busy shared-send cases pass too. No physical
 keyboard animation is inferred from visual-viewport fixtures. Evidence is in VERIFICATION.md.
+
+Next: finish checking [CI 36699029736](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36699029736).
+Its builds/backend checks passed; the browser matrix began at 09:56:57 UTC. The prior run
+passed 759 backend, 88 companion and 339 browser cases but timed out opening a new project
+brief on iPhone WebKit. Three fresh-data repetitions passed locally. No app correction or
+relaxed assertion was made; this rerun retains failure screenshots/traces if it recurs.
+Do not describe the intermittent failure as fixed without evidence.
 
 Real native Codex and Claude runs passed broad reads, HTTPS, role-appropriate scoped writes
 and denied outside-folder writes without routine permission prompts. Native tools remain;
@@ -28,7 +35,7 @@ saved a handoff/summary, continued and finished; complete context retention is n
 Recovery copies use their own read-only WAL snapshots and preserve normal concurrent writes.
 
 The running manual app serves these fixes and retains the existing phone connection. Its
-final verified recovery copy retained four projects, 38 conversations and 1,408 entries.
+latest verified recovery copy retained four projects, 39 conversations and 1,535 entries.
 sciencewithagents.app is installed in this owner's Applications folder. Keep the manual app
 and phone connector available; login service stays off. Stop only owned test processes.
 

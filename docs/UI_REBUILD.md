@@ -9,8 +9,10 @@ is not the specification for what belongs in this redesign.
 
 The new chat drawings and handwritten requirements are recorded in
 [CHAT_UI_REQUIREMENTS.md](CHAT_UI_REQUIREMENTS.md) and the Sketchcoded board
-**sciencewithagents · fresh design**. The current task imports and organizes the
-design only. Do not implement this redesign until the owner requests that step.
+**sciencewithagents · fresh design**. The owner subsequently authorized implementation:
+Home, chat, project setup/notepad and Computer health now use these drawings, with the
+backend connected. This is a first design pass; physical-phone acceptance and the owner's
+aesthetic revisions remain. See [Status](STATUS.md) for the current verified behavior.
 
 ## Connected workflow build — 2026-09-28
 

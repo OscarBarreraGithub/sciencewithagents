@@ -18,8 +18,9 @@ no new pairing or interruption of the current editor is required.
 
 Automatic VS Code crash recovery is explicitly not required. Reopen the editor and original
 chat, then share again if necessary; native Agent Dock recovery is a separate contract.
-Marketplace publication still needs the owner's review/release decision,
-public source/license/support choices and publisher confirmation. It has not been published.
+Marketplace publication has not happened. Public source and MIT are now selected and live;
+publisher identity and marketplace account access still need confirmation. Installing the
+companion from the public source does not depend on a marketplace listing.
 
 ## Phone
 
