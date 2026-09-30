@@ -44,15 +44,35 @@ function authorization(role: LocalRole, method: string, path: string) {
   const proof = access.proof({ role, challenge });
   return `Dock ${role}.${proof.nonce}.${localRequestProof(access.configuration[role], origin, role, challenge, proof.nonce, method, path)}`;
 }
-async function server() {
+async function server(webDir?: string) {
   app = await createServer(store, runtime, {
     port,
     localAccess: access,
     phone: new PhoneAccess(store, null),
     ownsRuntime: false,
+    webDir,
   });
   return app;
 }
+
+it('revalidates the app entry document so phone reloads select the current bundle', async () => {
+  const web = join(root, 'web');
+  mkdirSync(web);
+  const file = join(web, 'index.html');
+  writeFileSync(file, '<script type="module" src="/assets/first.js"></script>');
+  const api = await server(web);
+  const first = await api.inject({ url: '/', headers });
+  expect(first.statusCode).toBe(200);
+  expect(first.headers['cache-control']).toBe('no-store');
+  expect(first.body).toContain('/assets/first.js');
+  writeFileSync(file, '<script type="module" src="/assets/second.js"></script>');
+  const next = await api.inject({ url: '/index.html', headers });
+  expect(next.headers['cache-control']).toBe('no-store');
+  expect(next.body).toContain('/assets/second.js');
+  const fallback = await api.inject({ url: '/retained-route', headers });
+  expect(fallback.headers['cache-control']).toBe('no-store');
+  expect(fallback.body).toContain('/assets/second.js');
+});
 beforeEach(() => {
   mkdirSync(join(repoRoot, 'data/tests'), { recursive: true });
   root = mkdtempSync(join(repoRoot, 'data/tests/local-access-'));
@@ -504,6 +524,10 @@ it('connects a native loopback editor without credentials while consumer routes 
     });
     socket.send(JSON.stringify({ type: 'hello', window }));
     await expect.poll(async () => (await read('/api/vscode/windows')).json()).toEqual([window]);
+    // Listing may refresh the native editor summary. Count the explicit history
+    // request independently, rather than assuming list reads never contact it.
+    expect(commands.every((command) => command === 'read')).toBe(true);
+    const beforeHistory = commands.length;
     const result = await read(`/api/vscode/windows/${window.windowId}`);
     expect(result.statusCode).toBe(200);
     expect(result.json()).toMatchObject({
@@ -511,7 +535,7 @@ it('connects a native loopback editor without credentials while consumer routes 
       provider: 'claude',
       entries: [{ text: 'Retained editor text' }],
     });
-    expect(commands).toEqual(['read']);
+    expect(commands.slice(beforeHistory)).toEqual(['read']);
     expect(store.runs()).toHaveLength(0);
   } finally {
     const closed = new Promise<void>((resolve) => socket.once('close', () => resolve()));

@@ -38,7 +38,7 @@ import { AssistedSearch } from './AssistedSearch';
 import { surfaceOf } from './chat-contracts';
 import { ConfigPanel, NotesPanel, PanelFrame, SubagentsPanel, type ChatPanel } from './ChatPanels';
 import type { HomeData } from './useHomeData';
-import { automaticResourceChat, resourceAssistantOf } from './resource-chat';
+import { resourceAssistantOf } from './resource-chat';
 import './workspace-flow.css';
 
 export const flowPages = new Set([
@@ -1008,7 +1008,16 @@ function MainChat({
       const surface = surfaceOf(agent);
       // Terminal-only sessions live in Advanced controls, not the normal chat list.
       if (agent.nativeRootId || surface === 'terminal') return [];
-      if (automaticResourceChat(agent)) return [];
+      // Computer health owns every diagnosis and consultation, including old records
+      // without a reason. They remain searchable there, never one row per check here.
+      if (resourceAssistantOf(agent) || agent.projectId === data.resources.data?.projectId)
+        return [];
+      if (
+        state.projects.find((p) => p.id === agent.projectId)?.internal &&
+        surface !== 'misc' &&
+        agent.id !== personalId
+      )
+        return [];
       const kind: ChatKind | null =
         agent.interview || surface === 'misc' || special.has(agent.projectId)
           ? 'misc'
@@ -1040,7 +1049,7 @@ function MainChat({
           time: agent.updatedAt,
           state: rowState,
           label: rowLabels[rowState],
-          href: resourceAssistantOf(agent) ? go('resources', agent.id) : go('chat', agent.id),
+          href: go('chat', agent.id),
           selected: agent.id === agentId,
         },
       ];
@@ -1117,9 +1126,6 @@ function MainChat({
           />
         </label>
         <AssistedSearch query={query} />
-        <a className="flow-button" href="#/resources/chat">
-          Resource assistant <ArrowUpRight size={16} />
-        </a>
         <div className="flow-tabs chat-filters" role="group" aria-label="Conversation type">
           {filters.map(([value, label]) => (
             <button

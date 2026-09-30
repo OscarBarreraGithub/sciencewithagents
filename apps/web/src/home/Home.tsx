@@ -15,7 +15,6 @@ import {
   ChevronRight,
   CircleHelp,
   Code,
-  House,
   Layers3,
   LayoutGrid,
   LockKeyhole,
@@ -44,6 +43,7 @@ import { Welcome } from './Welcome';
 import { useScrollHints } from './useScrollHints';
 import { HomeOverview, ProviderMark, ago, providerName } from './HomeOverview';
 import { AppsGallery, SetupGuide } from './AppsGallery';
+import { AppUpdate } from './AppUpdate';
 
 // Document titles only. Every route below keeps its existing screen.
 const titles: Record<string, string> = {
@@ -359,7 +359,10 @@ export function Home() {
     const resize = () => {
       if (viewport.scale !== 1) return;
       const height = viewport.height;
-      const top = viewport.offsetTop;
+      // A full-height viewport can move during iOS rubber-band scrolling. Following
+      // that offset moves the whole app and opens blank bands. Only follow a pan
+      // while the keyboard actually reduces the visible height.
+      const top = height < window.innerHeight - 80 ? Math.max(0, viewport.offsetTop) : 0;
       setVisible((old) => (old?.height === height && old.top === top ? old : { height, top }));
     };
     resize();
@@ -515,6 +518,7 @@ export function Home() {
           </div>
         </div>
       </header>
+      <AppUpdate />
       <div className="home-topline">
         <ComputerLink data={data} />
         <button
@@ -575,21 +579,16 @@ export function Home() {
       <div className="home-scroll-hint" aria-hidden={!scrollHint}>
         {scrollHint}
       </div>
-      <nav className="home-bottom-nav" aria-label="Mobile navigation">
-        {[{ key: 'home', label: 'Home', icon: House }, ...nav].map((item) => (
-          <a
-            key={item.key}
-            href={href(item.key)}
-            aria-current={active === item.key ? 'page' : undefined}
-          >
-            <item.icon size={21} />
-            <span>{item.label}</span>
-          </a>
-        ))}
-      </nav>
       {dialog === 'help' && (
         <Modal title="Help and setup" close={() => setDialog(null)} className="home-help-dialog">
           <div className="home-help" onClickCapture={closeOnLink}>
+            <section>
+              <h3>App display</h3>
+              <p>Reload to load the latest interface. Work running on your computer continues.</p>
+              <button type="button" className="setup-link" onClick={() => location.reload()}>
+                Reload app
+              </button>
+            </section>
             <section>
               <h3>Check this computer</h3>
               <p>Check provider sign-in and available models. This does not send a prompt.</p>

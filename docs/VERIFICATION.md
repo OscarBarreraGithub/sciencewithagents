@@ -1,5 +1,43 @@
 # Verification
 
+## 2026-09-30 — correct chat clutter, editor navigation and phone shell
+
+Re-read the last 30 original owner prompts and original Home/chat drawings. Private prompt
+excerpts and recording frames remain under ignored data. The earlier automatic-only chat
+filter did not satisfy the request; all resource-owned diagnoses and consultations now stay
+in Computer health, with a collapsed searchable archive. Internal service contexts stay out
+of Chats. Home's VS Code destination lists editor conversations independently of saved
+main-list filters. Removed the unrequested phone bottom navigation and resource shortcut
+from Chats; corrected inherited label styles making chat search tall and tiny-texted.
+
+Production web/server builds pass. Focused browser commands passed 58 cases with two
+intentional desktop keyboard skips, then 25 fullscreen/notepad/busy-send cases; after the
+search correction, 15 resource-history/search/settings cases passed. All use desktop,
+412×915, 360×800, 915×412 and iPhone WebKit. These cover drafts, lost-response retries,
+steering/queue presentation, normal keyboard pans, ignored full-height viewport bounce,
+whole-minute rates, attention density, completed-work paging and no bottom navigation.
+
+A read-only check against actual saved installation data passed in all five profiles:
+six chat rows, zero resource rows; the VS Code shortcut opens the one shared editor chat;
+composer and notepad remain accessible, activity groups are collapsed, and no document
+width/height overflow occurs. The final search layout was inspected again in iPhone WebKit.
+Native Safari computer-use confirmed Home → VS Code → the current busy conversation with
+steering available, then the clean Chats list. No prompt was sent to the active editor.
+Owned browsers/test servers were closed; the manual app and phone connector remain running.
+
+The configured phone HTTPS entry returns the current built document with no-store. Existing
+long-lived clients offer an explicit Reload app on a new bundle, retaining unsent drafts
+until the owner chooses to reload; already-open pre-update clients need one reload first.
+The static plugin now preserves the server cache header. A focused backend check confirms
+entry/fallback responses and new bundle selection; 24 local-access/mirror checks pass.
+The previous public CI failure was an obsolete assumption that listing never reads the
+editor: the authentication test now separates summary refresh from explicit history reads.
+No authentication or approval rule was weakened.
+
+The owner's physical recording is evidence of a defect, not acceptance. Fixed-document and
+visual-viewport simulations do not reproduce every physical iOS rubber-band/keyboard behavior.
+Do not report that phone scrolling is physically confirmed until new device evidence exists.
+
 ## 2026-09-30 — usable space, assistant conversations and alien branding
 
 Three exact GPT-6.1 Sol/xhigh workers supplied the frontend, resource backend and focused

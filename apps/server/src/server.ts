@@ -1576,7 +1576,9 @@ export async function createServer(
     return { ok: true };
   });
   if (options.webDir && existsSync(join(options.webDir, 'index.html'))) {
-    await app.register(staticFiles, { root: options.webDir });
+    // Preserve the no-store header set above. The static plugin's default cache
+    // header otherwise replaces it, including on the app's entry document.
+    await app.register(staticFiles, { root: options.webDir, cacheControl: false });
     app.setNotFoundHandler((request, reply) =>
       request.url.startsWith('/api/')
         ? reply.code(404).send({ error: 'Unknown API route.' })

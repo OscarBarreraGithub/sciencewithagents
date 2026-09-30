@@ -79,8 +79,8 @@ supported. See [native session sharing and limits](docs/VSCODE_MIRROR.md#existin
 
 Open **Computer health** from the home’s computer card for recent trends, grouped app
 activity and **Open Resource assistant**. Asked diagnoses use native tools in a full-screen
-conversation. Configurable automatic checks remain bounded snapshot reports and stay out of
-the normal chat list. Both use the central model policy, with one bounded consultation when needed. See the
+conversation. Configurable automatic checks remain bounded snapshot reports. All resource-assistant
+conversations stay under Computer health and out of the normal chat list. Both use the central model policy, with one bounded consultation when needed. See the
 [resource watcher guide](docs/RESOURCE_WATCH.md) for metrics, privacy and limits.
 
 Project setup keeps the manager's provider/model separate from the workers' provider mix

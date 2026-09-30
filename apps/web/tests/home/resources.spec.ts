@@ -512,7 +512,7 @@ test('History pages and searches saved diagnoses and readings without starting a
   await noHorizontalOverflow(page);
 });
 
-test('all older automatic resource chats leave Chats, retain collapsed health evidence and preserve asked or unclassified chats', async ({
+test('all resource conversations leave Chats and remain searchable under Computer health', async ({
   page,
 }) => {
   const created = await page.request.post('/api/projects', {
@@ -547,9 +547,18 @@ test('all older automatic resource chats leave Chats, retain collapsed health ev
     name: 'Older resource question',
     resourceAssistant: { mode: 'snapshot' },
   };
-  const ordinary = { ...base.agent, id: randomUUID(), name: 'Automatic resource 0' };
+  const originalSnapshot = await (await page.request.get('/api/snapshot')).json();
+  const ordinary = {
+    ...base.agent,
+    id: randomUUID(),
+    projectId: originalSnapshot.projects.find(
+      (p: { id: string; internal: boolean }) => p.id !== project.id && !p.internal,
+    )!.id,
+    name: 'Automatic resource 0',
+  };
+  const legacy = { ...base.agent, id: randomUUID(), name: 'Legacy resource consultation' };
   const conversations = new Map(
-    automatic.map((agent) => [
+    [...automatic, asked, unknown, legacy].map((agent) => [
       agent.id,
       {
         ...base,
@@ -573,13 +582,22 @@ test('all older automatic resource chats leave Chats, retain collapsed health ev
   await page.route('**/api/snapshot', async (route) => {
     const original = await (await route.fetch()).json();
     await route.fulfill({
-      json: { ...original, agents: [...original.agents, ...automatic, asked, unknown, ordinary] },
+      json: {
+        ...original,
+        agents: [...original.agents, ...automatic, asked, unknown, legacy, ordinary],
+      },
     });
   });
   await page.goto('/#/chats');
   const list = page.getByRole('navigation', { name: 'Conversation list' });
-  await expect(list.getByRole('link', { name: /My resource question/ })).toBeVisible();
-  await expect(list.getByRole('link', { name: /Older resource question/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Resource assistant', exact: true })).toHaveCount(0);
+  const searchBox = await page.getByRole('textbox', { name: 'Find a conversation' }).boundingBox();
+  const searchRow = await page.locator('.chat-search').boundingBox();
+  expect(searchRow!.height).toBeLessThanOrEqual(52);
+  expect(Math.abs(searchRow!.y - searchBox!.y)).toBeLessThanOrEqual(2);
+  await expect(list.getByRole('link', { name: /My resource question/ })).toHaveCount(0);
+  await expect(list.getByRole('link', { name: /Older resource question/ })).toHaveCount(0);
+  await expect(list.getByRole('link', { name: /Legacy resource consultation/ })).toHaveCount(0);
   await expect(list.getByRole('link', { name: /Automatic resource 0/ })).toHaveCount(1);
   await expect(
     list.getByRole('link', { name: /Automatic resource (?:[1-9]|[12][0-9])\b/ }),
@@ -590,7 +608,17 @@ test('all older automatic resource chats leave Chats, retain collapsed health ev
   await expect(archive.locator('li')).toHaveCount(10);
   await expect(archive.locator('li').first()).not.toBeVisible();
   await archive.locator('summary').click();
-  await archive.getByRole('link').first().click();
+  const search = archive.getByRole('searchbox', { name: 'Find a saved resource conversation' });
+  for (const name of [
+    'My resource question',
+    'Older resource question',
+    'Legacy resource consultation',
+  ]) {
+    await search.fill(name);
+    await expect(archive.getByRole('link')).toHaveCount(1);
+    await expect(archive.getByRole('link')).toContainText(name);
+  }
+  await archive.getByRole('link').click();
   const chat = page.getByRole('dialog', { name: 'Resource assistant conversation' });
   await expect(chat.getByText('Retained old automatic evidence.', { exact: true })).toBeVisible();
   await chat.getByRole('button', { name: 'Computer health', exact: true }).click();

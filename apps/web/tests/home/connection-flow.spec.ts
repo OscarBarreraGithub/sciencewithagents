@@ -83,7 +83,6 @@ test('settings pages are reachable, read-only on opening and fit the shared shel
   });
   for (const [title, path] of [
     ['Models and roles', 'models'],
-    ['Assistant privacy', 'assistant-settings'],
     ['Computers and accounts', 'computers'],
     ['Phone access', 'phone'],
     ['Recovery copies', 'recovery'],

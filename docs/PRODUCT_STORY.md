@@ -32,6 +32,11 @@ locally; clearing browser data or losing the device can remove it. Shared editor
 offer a full-page notepad with browser-local recovery versions and separate drafts per tab. See the
 [notepad requirements and storage boundary](CHAT_UI_REQUIREMENTS.md#prompt-notepad--initial-brief-and-later-messages).
 
+Resource diagnoses and routine checks stay together in Computer health, so the main chat
+list remains for your project and shared conversations. Their saved reports remain searchable.
+An installed phone view offers **Reload app** when a newer interface is available, without
+reloading in the middle of writing.
+
 ## Managers keep their place
 
 Managers keep durable internal next steps and separate human action items. Home shows concise

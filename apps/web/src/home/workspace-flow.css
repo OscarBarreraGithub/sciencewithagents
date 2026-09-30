@@ -276,8 +276,12 @@
 }
 .flow-search {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 10px;
+  margin: 0;
+  color: var(--home-muted);
+  font-size: 14px;
   padding: 0 16px;
   border: 1px solid var(--home-line);
   background: white;
@@ -865,6 +869,7 @@
 }
 .chat-search input {
   min-height: 44px;
+  font-size: 16px;
 }
 .chat-filters {
   display: grid;
@@ -1803,7 +1808,7 @@ button.chat-folder:disabled {
    tab bar. This covers Main chat and the older #/vscode/<chat> page; each keeps a back link. */
 @media (max-width: 700px), (max-height: 500px) and (pointer: coarse) {
   .home-shell:has(.main-chat.has-selection, .editor-conversation-frame)
-    :is(.home-header, .home-topline, .home-bottom-nav) {
+    :is(.home-header, .home-topline) {
     display: none;
   }
   /* clip, not just hidden: iOS focus scrolling must not shift the page above the chat. */

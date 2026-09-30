@@ -76,7 +76,7 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
     return (
       <section className="flow-page connection-page">
         <FlowHeading label="YOUR WORKSPACE" title="Settings">
-          Choose how your team works, what your assistant knows, and how you stay connected.
+          Choose how your team works and how you stay connected.
         </FlowHeading>
         <div className="connection-grid">
           <SettingsCard to="welcome" title="Welcome and setup" icon={<ShieldCheck />}>
@@ -87,9 +87,6 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
           </SettingsCard>
           <SettingsCard to="models" title="Models and roles" icon={<Settings2 />}>
             Set provider preferences, the four team roles and exact model choices.
-          </SettingsCard>
-          <SettingsCard to="assistant-settings" title="Assistant privacy" icon={<ShieldCheck />}>
-            Choose the projects and personal notes your assistant may use.
           </SettingsCard>
           <SettingsCard to="computers" title="Computers and accounts" icon={<Laptop />}>
             Choose where work happens. Accounts, files and history stay on their computer.
@@ -326,7 +323,7 @@ function EditorPage({ target }: { target?: string }) {
           )}
           <MirrorHome
             embedded
-            chats={mirrors.chats}
+            chats={mirrors.chats.filter((item) => !mirrorDaemon(item))}
             loaded={mirrors.loaded}
             error={mirrors.error}
             choose={choose}

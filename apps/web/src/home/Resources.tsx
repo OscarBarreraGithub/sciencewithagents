@@ -9,7 +9,7 @@ import {
 } from '@dock/shared';
 import { apiScope } from '../api';
 import { useReading, type HomeData } from './useHomeData';
-import { automaticResourceChat } from './resource-chat';
+import { automaticResourceChat, resourceAssistantOf } from './resource-chat';
 import { useScrollHints } from './useScrollHints';
 import { HealthAssistant, useHealthModels, type HealthModels } from './HealthAssistant';
 import { HealthHistory, type HistoryRequest } from './HealthHistory';
@@ -491,8 +491,16 @@ function Settings({
 export function Resources({ reading }: { reading: HomeData['resources'] }) {
   const status = reading.data;
   const snapshot = useReading('/snapshot', snapshotSchema.parse);
-  const olderAutomatic = (snapshot.data?.agents ?? []).filter(
-    (a) => automaticResourceChat(a) && !status?.checks.some((c) => c.agentId === a.id),
+  const olderConversations = (snapshot.data?.agents ?? []).filter(
+    (a) =>
+      (resourceAssistantOf(a) || a.projectId === status?.projectId) &&
+      !status?.checks.some((c) => c.agentId === a.id),
+  );
+  const [archiveQuery, setArchiveQuery] = useState('');
+  const archived = olderConversations.filter((a) =>
+    `${a.name} ${a.model ?? a.provider} ${new Date(a.createdAt).toLocaleString()}`
+      .toLowerCase()
+      .includes(archiveQuery.toLowerCase().trim()),
   );
   const [archiveLimit, setArchiveLimit] = useState(10);
   const [now, setNow] = useState(Date.now);
@@ -595,26 +603,41 @@ export function Resources({ reading }: { reading: HomeData['resources'] }) {
         stopping={!!stop.busy}
         stopError={stopError}
       />
-      {olderAutomatic.length > 0 && (
+      {olderConversations.length > 0 && (
         <details className="health-section health-older-checks">
-          <summary>Older automatic checks ({olderAutomatic.length})</summary>
+          <summary>Older resource conversations ({olderConversations.length})</summary>
           <p>
             Retained conversations outside the recent diagnosis window. Opening reads their saved
             evidence.
           </p>
+          <label>
+            Find a saved resource conversation
+            <input
+              type="search"
+              value={archiveQuery}
+              onChange={(event) => {
+                setArchiveQuery(event.target.value);
+                setArchiveLimit(10);
+              }}
+            />
+          </label>
           <ul className="health-history-list">
-            {olderAutomatic.slice(0, archiveLimit).map((a) => (
+            {archived.slice(0, archiveLimit).map((a) => (
               <li key={a.id}>
                 <a className="flow-person" href={`#/resources/${a.id}`}>
                   <span>
-                    <strong>Automatic check · {new Date(a.createdAt).toLocaleString()}</strong>
+                    <strong>
+                      {automaticResourceChat(a) ? 'Automatic check' : a.name} ·{' '}
+                      {new Date(a.createdAt).toLocaleString()}
+                    </strong>
                     <small>{a.model ?? a.provider}</small>
                   </span>
                 </a>
               </li>
             ))}
           </ul>
-          {olderAutomatic.length > archiveLimit && (
+          {!archived.length && <p>No saved conversations match.</p>}
+          {archived.length > archiveLimit && (
             <button className="flow-button" onClick={() => setArchiveLimit((n) => n + 10)}>
               Show more saved checks
             </button>

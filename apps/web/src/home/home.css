@@ -12,7 +12,25 @@
   font-weight: 400;
   font-display: swap;
 }
-/* The window is the shell; only the labelled content region scrolls. */
+/* The window is the shell; only the labelled content regions scroll.
+   Lock the document too: iOS otherwise rubber-bands the whole installed app. */
+html:has(.home-shell),
+body:has(.home-shell),
+#root:has(.home-shell) {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body:has(.home-shell) {
+  position: fixed;
+  inset: 0;
+}
+.home-shell .home-content,
+.home-shell .chat-list-scroll,
+.home-shell .conversation,
+.home-shell .mirror-log {
+  overscroll-behavior-y: contain;
+}
 .home-shell {
   --home-paper: #faf8f4;
   --home-white: #fffefb;
@@ -39,6 +57,20 @@
 .home-shell button,
 .home-shell summary {
   touch-action: manipulation;
+}
+.home-update {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #e9edfc;
+  font-size: 13px;
+}
+.home-update button {
+  min-height: 44px;
+  font-weight: 700;
+  text-decoration: underline;
 }
 .home-shell a {
   color: inherit;
@@ -437,9 +469,6 @@
   color: #5e6680;
   background: #ffffffed;
 }
-.home-bottom-nav {
-  display: none;
-}
 
 /* Shared by other screens. */
 .home-eyebrow {
@@ -707,38 +736,11 @@ dialog.home-help-dialog {
     padding: 0 12px;
   }
   .home-content {
-    padding: 0 14px 16px;
+    padding: 0 14px max(16px, env(safe-area-inset-bottom, 0px));
   }
   .home-scroll-hint {
     flex-basis: 20px;
     height: 20px;
-  }
-  .home-bottom-nav {
-    display: grid;
-    flex-shrink: 0;
-    grid-template-columns: repeat(4, 1fr);
-    margin: 0 10px calc(8px + env(safe-area-inset-bottom, 0px));
-    padding: 4px;
-    border: 1px solid var(--home-line);
-    border-radius: 16px;
-    background: var(--home-white);
-    box-shadow: 0 6px 24px #2a211412;
-  }
-  .home-bottom-nav a {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    min-height: 48px;
-    border-radius: 12px;
-    color: var(--home-muted);
-    font-size: 12px;
-    font-weight: 680;
-  }
-  .home-bottom-nav a[aria-current='page'] {
-    background: #e9edfc;
-    color: var(--home-blue);
   }
 }
 @media (max-width: 380px) {

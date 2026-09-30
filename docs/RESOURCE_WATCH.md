@@ -4,7 +4,7 @@ sciencewithagents is the central app. QUARK schedules work. **Computer health** 
 small IT desk: a local watcher plus a resource assistant that wakes only for a diagnosis.
 Open the computer card on Home, then **Open Resource assistant** for a full-screen
 conversation. Add a symptom, read the findings, stop a pending check or return to the charts.
-Automatic reports stay in Computer health history instead of filling the normal chat list.
+All resource conversations stay in Computer health history instead of filling the normal chat list. This includes questions you asked, automatic reports and consultations. Older conversations remain in a collapsed, searchable archive.
 Model settings and the other core workspace destinations are connected; see FEATURES.md.
 
 ## What matters
@@ -67,7 +67,7 @@ Existing snapshot conversations keep their original restrictions. An explicit fo
 an older owner-requested diagnosis upgrades that same conversation to native assistance;
 merely opening history does not. Automatic reports and grad consultations stay bounded.
 Durable origin metadata separates automatic reports from owner conversations, including
-older reports outside the recent history window. Unknown origins stay visible conservatively.
+older reports outside the recent history window. Resource-owned records with unknown origins also stay in Computer health; no conversation is deleted.
 
 Automatic checks are configurable and off on a fresh installation. The owner requested
 them for this computer. Defaults: checkpoint every **6 hours**, plus persistent CPU ≥85%,

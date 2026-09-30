@@ -1,7 +1,7 @@
 # Resume here — current continuation only
 
 Updated 2026-09-30. The drawn app, MIT repository and sciencewithagents.com landing are
-published. The newest complete release check passes (see below). Simulated phone checks
+published. The earlier complete release check and newer focused corrections are recorded below. Simulated phone checks
 are available independently of native desktop computer-use; do not block routine workflow
 verification on the owner operating a physical phone. Physical-device confirmation remains
 additional evidence, not proof supplied by emulation. Preserve native capabilities and simple QUARK supervision; do not restart the
@@ -9,13 +9,16 @@ superseded tool-by-tool restriction approach or broad review loops.
 
 ## Latest slice
 
-The owner's space/clutter, full-screen assistant chat, notepad visibility, native requested
-resource diagnosis and alien-branding corrections are integrated. Exact GPT-6.1 Sol workers
-provided bounded patches; root reviewed them and checked the actual running app in all five
-profiles. The live landscape composer failure was corrected. Shared editor steering stays
-available and the phone remains paired/connected. Automatic resource reports are retained
-but hidden from Chats. See VERIFICATION.md for focused evidence. Do not repeat the old broad
-review or wake the finished temporary dispatch team. New owner feedback drives the next slice.
+The owner's new feedback reopened phone acceptance. Read the original last 30 user prompts,
+not only prior agent summaries. Corrected the incomplete automatic-only chat filter: all
+resource-owned conversations now stay in Computer health, with searchable retained history.
+Home's VS Code entry is editor-only and unaffected by main-list filters. Removed the
+unrequested bottom navigation and redundant Resource assistant shortcut from Chats; fixed
+legacy search-label styling that wasted space. Outer-document scrolling is locked and
+full-height viewport bounce no longer moves the shell. Phone refresh offers a new-release
+notice and an explicit Reload app; old already-open clients require one reload. Do not claim
+physical iOS scrolling acceptance solely from simulation. Prior 6.1 worker fixes, native
+requested diagnosis, full-screen assistant chats and notepads remain integrated.
 
 ## What is integrated and verified
 

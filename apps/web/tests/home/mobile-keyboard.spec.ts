@@ -107,6 +107,30 @@ async function viewportEvent(
   );
 }
 
+test('Home stays fixed during full-height viewport overscroll and has no bottom navigation', async ({
+  page,
+}) => {
+  await keyboardFixture(page);
+  await page.goto('/#/home');
+  await expect(page.locator('.overview')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
+  const height = await page.evaluate(() => innerHeight);
+  for (const offset of [105, -72, 36, 0]) {
+    await viewportEvent(page, height, offset, 'scroll');
+    const shell = await page.locator('.home-shell').boundingBox();
+    expect(shell!.y).toBe(0);
+    expect(shell!.height).toBe(height);
+  }
+  await page.evaluate(() => window.scrollTo(0, 500));
+  expect(await page.evaluate(() => scrollY)).toBe(0);
+  const main = page.locator('.home-content');
+  if (await main.evaluate((e) => e.scrollHeight > e.clientHeight)) {
+    await main.evaluate((e) => e.scrollTo(0, e.scrollHeight));
+    expect(await main.evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
+    expect((await page.locator('.home-shell').boundingBox())!.y).toBe(0);
+  }
+});
+
 type ChatElements = {
   log: string;
   composer: string;

@@ -1,5 +1,22 @@
 # Feature map
 
+## Chat navigation and phone refresh — implemented, 2026-09-30
+
+Home's VS Code button opens editor conversations directly, independent of filters saved in
+Chats. Native Codex sessions remain under Chats. Resource diagnoses, automatic checks,
+consultations and internal service contexts no longer become separate main-list rows;
+Computer health retains their history, including a searchable archive of older conversations.
+The unrequested phone bottom navigation is removed. Chat search uses one compact row with
+readable text. No personal-assistant feature is advertised in Settings while it is deferred.
+
+The outer document stays fixed while designated content panes scroll. Full-height visual
+viewport movement no longer pans the shell as if a keyboard were open. Keyboard reduction
+and pan handling remain. Simulated viewport evidence does not establish physical iOS acceptance.
+The entry document keeps no-store and an already-open client offers Reload app when it finds
+a new frontend bundle. Reload is explicit so typing is not interrupted; Help also offers it.
+Old clients predating this behavior need one reload to receive it. Pairing and running work
+are unchanged.
+
 ## Home and space cleanup — implemented, 2026-09-30
 
 Pages use the browser width. Mobile allowance readings are at the top of Home and scroll
