@@ -2,7 +2,8 @@
 
 As of 2026-09-30, the MIT source and website are public. The drawn Home,
 chat, project setup, notepad and Computer health are integrated. The owner can use
-the current app; the full goal remains open for owner-editor activation and physical-device acceptance.
+the current app; the full goal remains open for remaining acceptance. Ordinary phone flows
+can be tested in browser emulation without waiting for physical-device confirmation.
 Drawings are not blocking the backend. Corrections for the owner's reported keyboard jumps,
 Latest messages/composer overlap and hidden Send button are built. A later full run exposed
 a Safari scroll-before-resize race; the correction passes eight mobile viewport checks,
@@ -22,7 +23,7 @@ full rerun; its cause remains unconfirmed and failure diagnostics are retained. 
 - Phone conversations use compact headers, message bubbles and grouped expandable
   tool activity. Codex steering targets the observed running turn. Claude editor
   follow-ups use its acknowledged native queue. Companion 0.2.6 is installed here,
-  but the active editor needs a safe reload to activate the updated bridge. Both paths
+  and the latest bridge advertises steering, although its conversation is currently offline. Both paths
   passed real isolated native editor checks, preserving unsent desktop drafts.
   Existing Codex shared-server sessions now appear separately in Chats → Shared. A real
   native terminal passed first send, exact-turn guidance, stale-input refusal and Stop;

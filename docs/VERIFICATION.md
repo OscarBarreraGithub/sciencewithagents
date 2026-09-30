@@ -1,5 +1,23 @@
 # Verification
 
+## 2026-09-30 — focused simulated phone acceptance
+
+All 16 keyboard and busy-send checks passed in 20.5 seconds against a fresh isolated demo
+store, at 412x915, 360x800, 915x412 and iPhone WebKit. Screenshots were inspected. Coverage
+includes shared and managed conversation geometry, keyboard resize/offset/event ordering,
+older-message anchors, retained drafts, Latest/composer separation, grouped tool activity,
+Codex exact-turn sending, Claude follow-up queue requests and lost-response recovery.
+These browser tests use controlled provider fixtures; the separate real Codex and Claude
+editor probes also passed steering/queued delivery, both-view replies and preserved drafts.
+Their evidence was re-read, not rerun or substituted with fixture results.
+
+Native desktop control remains unavailable, and `xcrun simctl` is not installed. Neither
+prevents browser emulation. Physical keyboard animation, passkeys and Home Screen storage
+are separate device behaviors; do not make all ordinary app checks depend on the owner
+testing them manually. The live editor now advertises steering while its chat is offline,
+superseding the earlier old-bridge diagnosis. Private log: phone-simulation-recheck.log under
+ignored data/release-2026-09-30/. Owned simulation browsers and server closed after the run.
+
 ## 2026-09-30 — existing native Codex terminal conversations
 
 A supported connection to the installed shared daemon now supplies native Codex sessions to

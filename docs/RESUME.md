@@ -1,8 +1,10 @@
 # Resume here — current continuation only
 
 Updated 2026-09-30. The drawn app, MIT repository and sciencewithagents.com landing are
-published. The full goal remains active for owner-editor activation and physical-device
-acceptance. The newest complete release check passes (see below). Preserve native capabilities and simple QUARK supervision; do not restart the
+published. The newest complete release check passes (see below). Simulated phone checks
+are available independently of native desktop computer-use; do not block routine workflow
+verification on the owner operating a physical phone. Physical-device confirmation remains
+additional evidence, not proof supplied by emulation. Preserve native capabilities and simple QUARK supervision; do not restart the
 superseded tool-by-tool restriction approach or broad review loops.
 
 ## What is integrated and verified
@@ -41,15 +43,19 @@ and phone connector available; login service stays off. Stop only owned test pro
 
 ## Remaining device handoff
 
-Companion 0.2.6 is installed, but the owner's current editor has its older bridge loaded.
-One safe VS Code Reload Window after the active reply finishes activates Codex steering
-and Claude's acknowledged native follow-up queue. Do not reload the active conversation
-mid-turn. Separate real isolated editor checks passed both paths, including unsent desktop
-draft preservation. Refresh the paired phone to load the corrected assets; no new pairing
-or separate editor authentication is needed. The owner has been asked to check keyboard
-stability on the actual phone; no answer has been recorded yet.
+Companion 0.2.6 is installed. The latest live bridge advertises Codex steering but reports
+its conversation offline; the earlier claim that the old bridge is still loaded is stale.
+Do not reload an active conversation mid-turn or treat an offline chat as a failed steering
+request. Separate real isolated editor checks passed Codex steering and Claude's acknowledged
+follow-up queue, including unsent desktop draft preservation. A fresh focused simulation
+passed all 16 mobile keyboard/busy-send cases in 20.5 seconds at 412x915, 360x800, 915x412
+and iPhone WebKit. Real-provider evidence remains under the two isolated editor fixtures.
+Refresh the paired phone to load corrected assets; no new pairing or editor authentication
+is needed. Ask for a physical reproduction only for behavior not resolved by these checks.
 
-Native desktop computer-use currently cannot reach a browser window. Physical Home Screen,
+Native desktop computer-use currently cannot reach a browser window; Playwright phone
+simulation works. Full iOS Simulator is unavailable (`xcrun simctl` is not installed).
+Physical Home Screen,
 cellular/reconnect and hardware acceptance remain in OWNER_CHECK_IN.md / PHONE_ACCEPTANCE.md.
 A clean tracked-source installation passed dependency/build/usage-reader/Mac-launcher checks
 with isolated fake provider binaries; another person's accounts require their own sign-in.
