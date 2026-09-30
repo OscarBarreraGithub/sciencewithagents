@@ -91,9 +91,20 @@ export function useResourceActions(done: (status: ResourceStatus) => void) {
   const receipt = useRef<{ signature: string; key: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<ActionFailure | null>(null);
-  async function run(path: string, payload: Record<string, unknown>) {
-    const signature = `${path}:${JSON.stringify(payload)}`;
+  async function run(path: string, payload: Record<string, unknown>, requestKey?: string) {
     const storageKey = `dock:${apiScope()}:resource-action:${path}`;
+    // A composer's saved send key identifies the complete original request, even
+    // if the visible model choice or current readings changed after a lost reply.
+    if (requestKey) {
+      try {
+        const previous = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null');
+        if (previous?.key === requestKey && previous.signature?.startsWith(`${path}:`))
+          payload = JSON.parse(previous.signature.slice(path.length + 1));
+      } catch {
+        /* The current view still retains its key. */
+      }
+    }
+    const signature = `${path}:${JSON.stringify(payload)}`;
     if (receipt.current?.signature !== signature) {
       receipt.current = { signature, key: crypto.randomUUID() };
       try {
@@ -104,6 +115,12 @@ export function useResourceActions(done: (status: ResourceStatus) => void) {
       } catch {
         // The current view retains its receipt when browser storage is unavailable.
       }
+    }
+    if (requestKey) receipt.current.key = requestKey;
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(receipt.current));
+    } catch {
+      /* Live receipt remains. */
     }
     const body = { key: receipt.current.key, ...payload };
     setBusy(path);

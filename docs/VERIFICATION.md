@@ -1,5 +1,44 @@
 # Verification
 
+## 2026-09-30 — usable space, assistant conversations and alien branding
+
+Three exact GPT-6.1 Sol/xhigh workers supplied the frontend, resource backend and focused
+verification work. Root reviewed and integrated them. The Home layout now uses browser
+width, limits initial attention rows, groups stopped project work, omits internal routine
+failures, and lets mobile allowance scroll away. Computer no longer links to recovery or
+unrelated accounting. General to-dos accept multiple lines; displayed rate periods are rounded.
+Completed QUARK work is separate and paged. Canonical alien artwork is used in the web app,
+public landing, Mac launcher and companion package; both public domains and unchanged
+SyllabusGraph datasets were checked.
+
+Focused resource and browser-local notepad checks passed in all five profiles (40 cases).
+The initial QUARK settings locator failed in five profiles; the corrected control query,
+one settings panel, managed notepad and shared-draft checks then passed 15 cases. Keyboard
+and busy shared-send checks passed 18 cases, with the two desktop-only keyboard cases skipped.
+Home layout/attention, to-do recovery and recent queue/copy checks passed separately. The
+final fullscreen/diagnostic pass covers all five profiles, including the retained-thread composer.
+
+Read-only checks against the actual running app pass desktop, 412x915, 360x800, 915x412 and
+iPhone WebKit. These checks open real saved QUARK/resource conversations, verify reachable
+composers, return navigation, full browser width, non-sticky mobile allowance and removed
+Computer shortcuts. A live landscape failure exposed the old 160px minimum message height;
+the corrected minimum, compact spacing and composer bounds pass the saved-history check.
+No owner conversation was sent a test message. Native Safari also reached the corrected Home
+and Computer pages. Physical phone keyboard animation remains separate from emulation.
+
+The resource backend passed 38 focused checks, including native Codex/Claude launch settings,
+legacy migration and snapshot restrictions. A disposable real Terra request used the central
+model policy and ran macOS version/uptime commands through native tools without permission
+prompts. Its private fixture was closed. Automatic origins are backfilled from retained events,
+and remain in health history rather than Chats. Requested conversations preserve their history;
+opening them alone starts no model. A verified recovery copy preceded the local server update;
+the phone connection/pairing and active VS Code conversation were retained. The editor reports
+busy with steering available. Background/login service remains off.
+
+Private receipts, traces, screenshots and native fixture output remain under ignored `data/`.
+Builds and focused checks are evidence for these changes, not a new claim of physical-device
+acceptance or exact allowance attribution. No broad repeat review was started.
+
 ## 2026-09-30 — focused simulated phone acceptance
 
 All 16 keyboard and busy-send checks passed in 20.5 seconds against a fresh isolated demo
@@ -11,11 +50,11 @@ These browser tests use controlled provider fixtures; the separate real Codex an
 editor probes also passed steering/queued delivery, both-view replies and preserved drafts.
 Their evidence was re-read, not rerun or substituted with fixture results.
 
-Native desktop control remains unavailable, and `xcrun simctl` is not installed. Neither
-prevents browser emulation. Physical keyboard animation, passkeys and Home Screen storage
+Native desktop control was unavailable during that earlier run; the later Safari check above
+succeeded. `xcrun simctl` is not installed. Neither limitation prevents browser emulation. Physical keyboard animation, passkeys and Home Screen storage
 are separate device behaviors; do not make all ordinary app checks depend on the owner
-testing them manually. The live editor now advertises steering while its chat is offline,
-superseding the earlier old-bridge diagnosis. Private log: phone-simulation-recheck.log under
+testing them manually. That run observed stale offline editor summaries; the subsequent list-refresh correction
+and live busy/steering check above supersede that diagnosis. Private log: phone-simulation-recheck.log under
 ignored data/release-2026-09-30/. Owned simulation browsers and server closed after the run.
 
 ## 2026-09-30 — existing native Codex terminal conversations

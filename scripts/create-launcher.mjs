@@ -248,6 +248,11 @@ end quit
         : []),
     ])
       await exec('/usr/libexec/PlistBuddy', ['-c', command, info], { timeout: 5000 });
+    await cp(
+      join(root, 'assets/branding/sciencewithagents.icns'),
+      join(temporary, 'Contents/Resources/applet.icns'),
+    );
+    await exec('/usr/bin/codesign', ['--force', '--sign', '-', temporary], { timeout: 15_000 });
     const appPath = join(stateDir, 'sciencewithagents.app');
     if (await exists(appPath))
       await rename(appPath, join(stateDir, `sciencewithagents-previous-${randomUUID()}.app`));

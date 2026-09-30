@@ -1,5 +1,4 @@
 .quark-page {
-  max-width: 1080px;
   margin: auto;
   padding: 16px 0 60px;
   color: #19243a;
@@ -8,10 +7,10 @@
 }
 .quark-heading {
   max-width: 630px;
-  padding: 32px 0;
+  padding: 16px 0;
 }
 .quark-heading h1 {
-  font-size: clamp(35px, 5vw, 60px);
+  font-size: clamp(28px, 3.2vw, 42px);
   line-height: 1.1;
   letter-spacing: -2px;
   margin: 14px 0;
@@ -283,4 +282,15 @@
     max-width: 40%;
     flex-shrink: 1;
   }
+}
+
+.quark-report > summary {
+  min-height: 44px;
+  padding: 8px 0;
+  font-size: 18px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.quark-report > summary svg {
+  vertical-align: middle;
 }

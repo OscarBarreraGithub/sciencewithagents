@@ -108,7 +108,7 @@ test('large shared history stays responsive, paged and usable on a phone', async
       path: `../../data/mirror-phone-freeze/${info.project.name}-history.png`,
     });
     await page.getByRole('link', { name: 'All editor chats', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'From your editor, to here.' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'VS Code chats' })).toBeVisible();
     expect(sends).toEqual([]);
     console.log(
       JSON.stringify({

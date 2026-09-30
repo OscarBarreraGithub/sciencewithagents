@@ -43,8 +43,8 @@ test('the new Work screen operates the real queue with a single retry receipt an
       await route.fulfill({ response });
     });
     await page.goto('/#/work');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Make room for what matters.');
-    await page.getByText('Queue controls & local jobs', { exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('QUARK');
+    await page.getByText('Queue controls', { exact: true }).click();
     await heldReading;
     await page.getByRole('button', { name: 'Pause new work', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('response was lost');
@@ -68,8 +68,9 @@ test('the new Work screen operates the real queue with a single retry receipt an
     await page.screenshot({
       path: `../../data/screenshots/activity/${info.project.name}-work.png`,
     });
-    await page.getByRole('link', { name: /Transcribe a video/ }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('From video to transcript.');
+    await expect(page.getByRole('link', { name: /Transcribe a video/ })).toHaveCount(0);
+    await page.goto('/#/transcribe');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Local transcription');
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByLabel('YouTube video link').fill('https://www.youtube.com/watch?v=fixture');
     await page.getByRole('combobox', { name: 'Priority', exact: true }).selectOption('background');
@@ -183,7 +184,7 @@ test('a divergent review has an explicit follow-up instead of applying or removi
     return route.fulfill({ json: followup });
   });
   await page.goto(`/#/review/${task.id}`);
-  await expect(page.getByText('Your project moved forward.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Project changed since review', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Apply reviewed changes', exact: true }),
   ).toHaveCount(0);

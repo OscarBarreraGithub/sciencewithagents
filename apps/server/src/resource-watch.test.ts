@@ -91,7 +91,7 @@ it('a fresh Codex-only installation can queue Ask without discovering or requiri
   expect(store.agent(check.agentId)).toMatchObject({
     provider: 'codex',
     model: 'terra-fixture',
-    permission: 'read-only',
+    permission: 'workspace-write',
   });
   expect(models).toHaveBeenCalledWith('codex');
   expect(models).toHaveBeenCalledTimes(1);
@@ -124,7 +124,7 @@ it('honors explicit provider, exact model and effort through central model selec
     provider: 'claude',
     model: 'custom-fixture',
     effort: 'high',
-    permission: 'read-only',
+    permission: 'workspace-write',
     assignment: { source: 'manager_selection', tier: 'undergrad', taskClass: 'routine' },
   });
   expect(models).toHaveBeenLastCalledWith('claude');
@@ -172,8 +172,8 @@ it('continues the saved diagnostic context with fresh evidence and durable follo
     provider: 'claude',
     model: 'sonnet-fixture',
     effort: 'high',
-    permission: 'read-only',
-    toolPolicy: 'restricted',
+    permission: 'workspace-write',
+    toolPolicy: 'native',
   });
   expect(store.agents()).toHaveLength(1);
   expect(store.entries(first.agentId).find((entry) => entry.id === replyId)?.text).toBe(
@@ -223,7 +223,7 @@ it('rejects foreign or unregistered agents and incompatible follow-up model choi
   expect(models.mock.calls).toHaveLength(calls);
   expect(store.runs()).toHaveLength(1);
 });
-it('does not release an older completed check while the same agent has an active follow-up', async () => {
+it('does not release or time-limit native assistance while the same agent has an active follow-up', async () => {
   const { watch, store, release, advance, interrupt } = fixture();
   await watch.tick();
   const first = (await watch.ask({ key: randomUUID() })).checks[0]!;
@@ -238,7 +238,7 @@ it('does not release an older completed check while the same agent has an active
   expect(release).not.toHaveBeenCalled();
   advance(181_000);
   await watch.tick();
-  expect(interrupt).toHaveBeenCalledWith(first.agentId);
+  expect(interrupt).not.toHaveBeenCalled();
   expect(release).not.toHaveBeenCalled();
   store.updateRun(followup.runId, { status: 'completed' });
   await watch.tick();
@@ -335,7 +335,7 @@ it('uses a single durable request, an exact catalog model and the existing queue
   expect(store.agent(check.agentId)).toMatchObject({
     provider: 'claude',
     model: 'sonnet-fixture',
-    permission: 'read-only',
+    permission: 'workspace-write',
     role: 'manager',
   });
   expect(store.getSetting(`pulsar:estimate:${check.runId}`)).toMatchObject({
@@ -370,7 +370,109 @@ it('does not guess another model, and stale or concurrent requests do not create
   await expect(watch.ask({ key: randomUUID() })).rejects.toThrow('no sonnet model');
   expect(store.agents()).toHaveLength(0);
   advance(60_000);
-  await expect(watch.ask({ key: randomUUID() })).rejects.toThrow('fresh computer');
+  watch.save({ key: randomUUID(), settings: { automatic: true } });
+  await expect(watch.ask({ key: randomUUID() }, 'checkpoint')).rejects.toThrow('fresh computer');
+});
+it('requested native inspection can start without a fresh snapshot, while automatic checks wait', async () => {
+  const { watch, store } = fixture(true);
+  watch.save({ key: randomUUID(), settings: { automatic: true } });
+  await expect(watch.ask({ key: randomUUID() }, 'checkpoint')).rejects.toThrow('fresh computer');
+  expect(store.agents()).toHaveLength(0);
+  const check = (await watch.ask({ key: randomUUID(), question: 'Inspect a stalled service.' }))
+    .checks[0]!;
+  expect(store.agent(check.agentId)).toMatchObject({
+    resourceAssistant: { mode: 'interactive', reason: 'asked' },
+    permission: 'workspace-write',
+    toolPolicy: 'native',
+  });
+  expect(watch.context(check.agentId)).toMatchObject({ stale: true, latest: null });
+});
+it('recovers durable automatic identity beyond the recent list without classifying ordinary chats', async () => {
+  const { watch, store, root, dependencies, now } = fixture();
+  watch.save({ key: randomUUID(), settings: { automatic: true } });
+  await watch.tick();
+  const check = (await watch.ask({ key: randomUUID() }, 'checkpoint')).checks[0]!;
+  store.updateRun(check.runId, { status: 'completed' });
+  const followup = (await watch.ask({ key: randomUUID(), agentId: check.agentId })).checks[0]!;
+  store.updateRun(followup.runId, { status: 'completed' });
+  store.updateAgent(check.agentId, { resourceAssistant: undefined });
+  store.setSetting('resources:checks', []);
+  const ordinary = store.addManager(watch.projectId()!, 'My own computer chat', '', 'codex');
+  const restored = new ResourceWatch(store, root, dependencies, now);
+  expect(restored.status().checks).toHaveLength(0);
+  expect(store.agent(check.agentId)).toMatchObject({
+    resourceAssistant: { mode: 'snapshot', reason: 'checkpoint' },
+    permission: 'read-only',
+    toolPolicy: 'restricted',
+  });
+  expect(store.agent(ordinary.id)).not.toHaveProperty('resourceAssistant');
+  expect(store.runs()).toHaveLength(2);
+  await restored.ask({ key: randomUUID(), agentId: check.agentId });
+  expect(restored.isSnapshot(check.agentId)).toBe(true);
+  await restored.close();
+});
+it('keeps a legacy resource identity with unknown origin bounded on an explicit follow-up', async () => {
+  const { watch, store, root, dependencies, now } = fixture();
+  await watch.tick();
+  const check = (await watch.ask({ key: randomUUID() })).checks[0]!;
+  store.updateRun(check.runId, { status: 'completed' });
+  const legacy = store.addManager(watch.projectId()!, 'Legacy resource report', '', 'claude');
+  store.setSetting(`resources:agent:${legacy.id}`, true);
+  store.updateAgent(legacy.id, {
+    model: 'sonnet-fixture',
+    effort: 'low',
+    permission: 'read-only',
+    toolPolicy: 'restricted',
+  });
+  const restored = new ResourceWatch(store, root, dependencies, now);
+  expect(store.agent(legacy.id).resourceAssistant).toEqual({ mode: 'snapshot' });
+  await restored.ask({ key: randomUUID(), agentId: legacy.id });
+  expect(store.agent(legacy.id)).toMatchObject({
+    resourceAssistant: { mode: 'snapshot' },
+    permission: 'read-only',
+    toolPolicy: 'restricted',
+  });
+  await restored.close();
+});
+it('explicitly migrates an old requested snapshot on the same history, but keeps automatic follow-ups bounded', async () => {
+  const { watch, store, root, dependencies, now, release } = fixture();
+  await watch.tick();
+  const first = (await watch.ask({ key: randomUUID() })).checks[0]!;
+  const threadId = 'old-requested-resource-thread';
+  store.updateRun(first.runId, { status: 'completed' });
+  store.updateAgent(first.agentId, {
+    threadId,
+    resourceAssistant: undefined,
+    permission: 'read-only',
+    toolPolicy: 'restricted',
+  });
+  const restored = new ResourceWatch(store, root, dependencies, now);
+  expect(restored.isSnapshot(first.agentId)).toBe(true);
+  const next = (await restored.ask({ key: randomUUID(), agentId: first.agentId })).checks[0]!;
+  expect(next.agentId).toBe(first.agentId);
+  expect(release).toHaveBeenCalledWith(first.agentId);
+  expect(store.agent(first.agentId)).toMatchObject({
+    threadId,
+    resourceAssistant: { mode: 'interactive', reason: 'asked' },
+    permission: 'workspace-write',
+    toolPolicy: 'native',
+  });
+  store.updateRun(next.runId, { status: 'completed' });
+  restored.save({ key: randomUUID(), settings: { automatic: true } });
+  const automatic = (await restored.ask({ key: randomUUID() }, 'pressure')).checks[0]!;
+  store.updateRun(automatic.runId, { status: 'completed' });
+  await restored.ask({
+    key: randomUUID(),
+    agentId: automatic.agentId,
+    question: 'Explain that report.',
+  });
+  expect(store.agent(automatic.agentId)).toMatchObject({
+    resourceAssistant: { mode: 'snapshot', reason: 'pressure' },
+    permission: 'read-only',
+    toolPolicy: 'restricted',
+  });
+  expect(store.runs()).toHaveLength(4);
+  await restored.close();
 });
 it('queues persistent pressure once per episode, coalesces checkpoints and persists cooldown', async () => {
   const { watch, store, cpu, advance, root, dependencies, now } = fixture();
@@ -401,12 +503,13 @@ it('queues persistent pressure once per episode, coalesces checkpoints and persi
 });
 it('expires queued diagnostics and interrupts a long running diagnosis without replay', async () => {
   const { watch, store, advance, interrupt } = fixture();
+  watch.save({ key: randomUUID(), settings: { automatic: true } });
   await watch.tick();
-  const queued = (await watch.ask({ key: randomUUID() })).checks[0]!;
+  const queued = (await watch.ask({ key: randomUUID() }, 'checkpoint')).checks[0]!;
   advance(16 * 60_000);
   await watch.tick();
   expect(store.run(queued.runId).status).toBe('cancelled');
-  const running = (await watch.ask({ key: randomUUID() })).checks[0]!;
+  const running = (await watch.ask({ key: randomUUID() }, 'checkpoint')).checks[0]!;
   store.updateRun(running.runId, { status: 'running' });
   await watch.tick();
   advance(181_000);

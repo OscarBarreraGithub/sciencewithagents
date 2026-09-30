@@ -78,8 +78,9 @@ on the computer; simultaneous inputs can join one reply. Older isolated terminal
 supported. See [native session sharing and limits](docs/VSCODE_MIRROR.md#existing-codex-terminal-sessions).
 
 Open **Computer health** from the home’s computer card for recent trends, grouped app
-activity and **Ask what’s happening**. Its resource assistant gives a bounded read-only
-undergrad diagnosis on request or through configurable automatic checks, with a bounded grad consultation when needed. See the
+activity and **Open Resource assistant**. Asked diagnoses use native tools in a full-screen
+conversation. Configurable automatic checks remain bounded snapshot reports and stay out of
+the normal chat list. Both use the central model policy, with one bounded consultation when needed. See the
 [resource watcher guide](docs/RESOURCE_WATCH.md) for metrics, privacy and limits.
 
 Project setup keeps the manager's provider/model separate from the workers' provider mix

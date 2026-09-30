@@ -1258,7 +1258,7 @@ export async function createServer(
         ? 'restricted'
         : (agent.toolPolicy ?? 'restricted'));
     const inherits = toolPolicy === 'native';
-    if (inherits && runtime.resources.isAgent(target))
+    if (inherits && runtime.resources.isSnapshot(target))
       throw new Conflict('The resource assistant remains a bounded read-only check.');
     if (inherits && runtime.frontdesk.isFrontdesk(target))
       throw new Conflict(
@@ -1293,7 +1293,12 @@ export async function createServer(
       throw new Conflict('Managers delegate image generation to workers.');
     if (['running', 'waiting', 'queued'].includes(agent.status) || terminals.active(target))
       throw new Conflict('Change settings when the agent is idle.');
-    if (agent.role !== 'implementer' && !agent.surface && settings.permission !== 'read-only')
+    if (
+      agent.role !== 'implementer' &&
+      !agent.surface &&
+      !runtime.resources.isInteractive(target) &&
+      settings.permission !== 'read-only'
+    )
       throw new Conflict('Only implementers can receive workspace write permission.');
     const catalog = await runtime.modelPolicy.catalog(provider);
     const resolved = settings.model

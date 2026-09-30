@@ -2,16 +2,19 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, ArrowUpRight, Activity, TriangleAlert } from 'lucide-react';
 import {
   policyProvider,
+  snapshotSchema,
   type ResourceCheck,
   type ResourceJob,
   type ResourceSample,
 } from '@dock/shared';
 import { apiScope } from '../api';
-import type { HomeData } from './useHomeData';
+import { useReading, type HomeData } from './useHomeData';
+import { automaticResourceChat } from './resource-chat';
 import { useScrollHints } from './useScrollHints';
 import { HealthAssistant, useHealthModels, type HealthModels } from './HealthAssistant';
 import { HealthHistory, type HistoryRequest } from './HealthHistory';
 import { HealthPlots } from './HealthPlots';
+import { AssistantFullscreen } from './AssistantFullscreen';
 import {
   ago,
   clock,
@@ -487,9 +490,25 @@ function Settings({
 
 export function Resources({ reading }: { reading: HomeData['resources'] }) {
   const status = reading.data;
+  const snapshot = useReading('/snapshot', snapshotSchema.parse);
+  const olderAutomatic = (snapshot.data?.agents ?? []).filter(
+    (a) => automaticResourceChat(a) && !status?.checks.some((c) => c.agentId === a.id),
+  );
+  const [archiveLimit, setArchiveLimit] = useState(10);
   const [now, setNow] = useState(Date.now);
   const [historyRequest, setHistoryRequest] = useState<HistoryRequest | null>(null);
   const [select, setSelect] = useState<{ check: ResourceCheck; nonce: number } | null>(null);
+  const target = () => location.hash.split('/')[2] ?? '';
+  const [chatTarget, setChatTarget] = useState(target);
+  useEffect(() => {
+    const changed = () => setChatTarget(target());
+    window.addEventListener('hashchange', changed);
+    return () => window.removeEventListener('hashchange', changed);
+  }, []);
+  const chatOpen = chatTarget === 'chat' || /^[0-9a-f-]{36}$/i.test(chatTarget);
+  const closeChat = () => {
+    location.hash = '#/resources';
+  };
   const modelsState = useHealthModels();
   const stop = useResourceActions(() => reading.retry());
   useEffect(() => {
@@ -515,17 +534,43 @@ export function Resources({ reading }: { reading: HomeData['resources'] }) {
         <p>{apiScope() === 'local' ? 'This computer' : 'The selected computer'} · local readings</p>
       </header>
       <Snapshot reading={reading} now={now} />
-      <HealthAssistant
-        status={status}
-        stale={!!stale}
-        modelsState={modelsState}
-        refresh={reading.retry}
-        select={select}
-        showHistory={() => setHistoryRequest({ kind: 'list', nonce: Date.now() })}
-        onStop={stopCheck}
-        stopping={!!stop.busy}
-        stopError={stopError}
-      />
+      <section className="health-section assistant-launch" aria-label="Ask about computer health">
+        <div>
+          <h2>Resource assistant</h2>
+          <p>Ask about this computer in a full-screen conversation. Past checks stay in History.</p>
+        </div>
+        <button
+          className="flow-button primary"
+          onClick={() => {
+            location.hash = '#/resources/chat';
+          }}
+        >
+          Open Resource assistant
+        </button>
+      </section>
+      {chatOpen && (
+        <AssistantFullscreen
+          title="Resource assistant conversation"
+          back="Computer health"
+          close={closeChat}
+        >
+          <HealthAssistant
+            status={status}
+            stale={!!stale}
+            modelsState={modelsState}
+            refresh={reading.retry}
+            select={select}
+            agentId={chatTarget === 'chat' ? undefined : chatTarget}
+            showHistory={() => {
+              closeChat();
+              setHistoryRequest({ kind: 'list', nonce: Date.now() });
+            }}
+            onStop={stopCheck}
+            stopping={!!stop.busy}
+            stopError={stopError}
+          />
+        </AssistantFullscreen>
+      )}
       <HealthPlots
         samples={status?.history ?? []}
         now={now}
@@ -542,11 +587,40 @@ export function Resources({ reading }: { reading: HomeData['resources'] }) {
         samples={status?.history ?? []}
         modelName={modelsState.name}
         request={historyRequest}
-        onContinue={(check) => setSelect({ check, nonce: Date.now() })}
+        onContinue={(check) => {
+          setSelect({ check, nonce: Date.now() });
+          location.hash = `#/resources/${check.agentId}`;
+        }}
         onStop={stopCheck}
         stopping={!!stop.busy}
         stopError={stopError}
       />
+      {olderAutomatic.length > 0 && (
+        <details className="health-section health-older-checks">
+          <summary>Older automatic checks ({olderAutomatic.length})</summary>
+          <p>
+            Retained conversations outside the recent diagnosis window. Opening reads their saved
+            evidence.
+          </p>
+          <ul className="health-history-list">
+            {olderAutomatic.slice(0, archiveLimit).map((a) => (
+              <li key={a.id}>
+                <a className="flow-person" href={`#/resources/${a.id}`}>
+                  <span>
+                    <strong>Automatic check · {new Date(a.createdAt).toLocaleString()}</strong>
+                    <small>{a.model ?? a.provider}</small>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+          {olderAutomatic.length > archiveLimit && (
+            <button className="flow-button" onClick={() => setArchiveLimit((n) => n + 10)}>
+              Show more saved checks
+            </button>
+          )}
+        </details>
+      )}
       <Settings reading={reading} modelsState={modelsState} />
     </section>
   );

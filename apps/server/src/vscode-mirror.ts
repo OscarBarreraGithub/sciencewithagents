@@ -28,6 +28,7 @@ type DaemonChats = Pick<
 type Peer = {
   socket: WebSocket;
   window: Omit<MirrorState, 'entries'>;
+  summaryAt: number;
   pending: Map<
     string,
     {
@@ -48,6 +49,7 @@ const uncertain: MirrorResult = {
 /** Local extension transport only; the phone gets read + send, never arbitrary RPC. */
 export class VscodeMirrors {
   private peers = new Map<string, Peer>();
+  private listing?: Promise<void>;
   constructor(
     private readonly store: Store,
     private readonly daemon?: DaemonChats,
@@ -71,6 +73,39 @@ export class VscodeMirrors {
   }
   async discover() {
     await this.daemon?.discover();
+  }
+  async list() {
+    // The companion's hello is only an initial snapshot. Refresh through the
+    // existing bounded read so a closed chat view cannot leave the list stale.
+    // Share work across phone/desktop polling; an unresponsive editor must not
+    // hold up the whole list for the normal 15-second command timeout.
+    this.listing ??= Promise.all([
+      this.discover(),
+      ...[...this.peers.entries()].map(async ([id, peer]) => {
+        if (Date.now() - peer.summaryAt < 5000) return;
+        const previous = peer.summaryAt;
+        try {
+          await this.read(id, {}, 2000);
+        } catch {
+          if (this.peers.get(id) === peer && peer.summaryAt === previous) {
+            peer.summaryAt = Date.now();
+            peer.window = {
+              ...peer.window,
+              status: 'offline',
+              message: 'VS Code is not responding. Open the conversation to retry.',
+              stopToken: undefined,
+              steerToken: undefined,
+            };
+          }
+        }
+      }),
+    ]).then(() => {});
+    try {
+      await this.listing;
+      return this.windows();
+    } finally {
+      this.listing = undefined;
+    }
   }
   private window(windowId: string) {
     return (
@@ -98,7 +133,7 @@ export class VscodeMirrors {
           if (peer || this.peers.size >= 20 || this.peers.has(message.window.windowId))
             return socket.close(1008);
           clearTimeout(handshake);
-          peer = { socket, window: message.window, pending: new Map() };
+          peer = { socket, window: message.window, summaryAt: 0, pending: new Map() };
           this.peers.set(peer.window.windowId, peer);
           return;
         }
@@ -132,7 +167,7 @@ export class VscodeMirrors {
       peer.pending.clear();
     });
   }
-  private async request(windowId: string, command: unknown): Promise<unknown> {
+  private async request(windowId: string, command: unknown, timeoutMs = 15_000): Promise<unknown> {
     const peer = this.peers.get(windowId);
     const value = mirrorCommandSchema.parse(command);
     if (!peer && this.daemon && this.window(windowId)?.source === 'codex-daemon') {
@@ -153,7 +188,7 @@ export class VscodeMirrors {
             'VS Code did not respond. Check the computer; no message is retried automatically.',
           ),
         );
-      }, 15_000);
+      }, timeoutMs);
       peer.pending.set(value.id, { text: '', bytes: 0, timer, resolve, reject });
       peer.socket.send(JSON.stringify(value), (error) => {
         if (error) {
@@ -164,21 +199,28 @@ export class VscodeMirrors {
       });
     });
   }
-  async read(windowId: string, page?: MirrorPageQuery) {
+  async read(windowId: string, page?: MirrorPageQuery, timeoutMs = 15_000) {
     const window = this.window(windowId);
     // Old paged companions cannot expand a grouped activity query. Only this
     // deliberate drilldown falls back to a full read; normal polling stays paged.
     const paged =
       !!window?.paged && page !== undefined && (!page.activity || !!window.groupedActivity);
     const value = mirrorStateSchema.parse(
-      await this.request(windowId, { id: randomUUID(), type: 'read', ...(paged ? { page } : {}) }),
+      await this.request(
+        windowId,
+        { id: randomUUID(), type: 'read', ...(paged ? { page } : {}) },
+        timeoutMs,
+      ),
     );
     if (value.windowId !== windowId) throw new Conflict('The shared window identity changed.');
     const { entries: _, page: __, ...summary } = value;
     const peer = this.peers.get(windowId);
     if (peer && (value.provider ?? 'codex') !== (peer.window.provider ?? 'codex'))
       throw new Conflict('The shared provider identity changed. Share the conversation again.');
-    if (peer) peer.window = summary;
+    if (peer) {
+      peer.window = summary;
+      peer.summaryAt = Date.now();
+    }
     return page !== undefined && !paged ? mirrorPage(value, page) : value;
   }
   async send(windowId: string, input: MirrorSend): Promise<MirrorResult> {
@@ -337,10 +379,7 @@ export function registerMirrorRoutes(
 ) {
   const windowId = (params: unknown) => z.object({ id: z.uuid() }).parse(params).id;
   const discover = { preHandler: async () => mirrors.discover() };
-  app.get('/api/vscode/windows', async () => {
-    await mirrors.discover();
-    return mirrors.windows();
-  });
+  app.get('/api/vscode/windows', async () => mirrors.list());
   app.get('/api/vscode/deliveries/:id', async (request) =>
     mirrors.receipt(windowId(request.params)),
   );

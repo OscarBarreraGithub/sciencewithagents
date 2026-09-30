@@ -1,0 +1,180 @@
+dialog.assistant-fullscreen,
+.home-shell dialog.assistant-fullscreen {
+  position: fixed;
+  inset: var(--assistant-top, 0px) 0 auto;
+  margin: 0;
+  width: 100%;
+  max-width: none;
+  height: var(--assistant-height, 100dvh);
+  max-height: none;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  color: var(--home-ink, #243538);
+  background: #fbfbf9;
+  overflow: hidden;
+}
+.assistant-fullscreen[open] {
+  display: flex;
+  flex-direction: column;
+}
+.assistant-fullscreen-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-shrink: 0;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 8px;
+  border-bottom: 1px solid #e1e5e9;
+}
+.assistant-fullscreen-bar > strong {
+  flex: 1;
+  min-width: 0;
+}
+.assistant-fullscreen-body.chat-pane {
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+}
+.assistant-fullscreen .flow-chat {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  max-width: none;
+  width: 100%;
+}
+.assistant-fullscreen .flow-chat-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.assistant-fullscreen .flow-chat-main {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+.assistant-fullscreen .flow-chat-notice {
+  display: none;
+}
+.assistant-fullscreen .flow-chat-main .conversation {
+  min-height: 48px;
+}
+.assistant-fullscreen .flow-chat-main .composer {
+  flex-shrink: 0;
+  max-height: none;
+  overflow: visible;
+}
+.assistant-fullscreen .composer textarea {
+  max-height: min(calc(var(--assistant-height, 100dvh) * 0.3), 220px);
+}
+.assistant-fullscreen .quark-settings {
+  overflow: auto;
+  max-height: 40%;
+  flex-shrink: 0;
+}
+.assistant-fullscreen .health-assistant {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  box-shadow: none;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+.assistant-fullscreen .health-assistant-head {
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+.assistant-fullscreen .health-assistant-head > div:first-child {
+  /* The full-screen bar already names this conversation. Keep the labelled region. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.assistant-fullscreen .health-assistant-head p {
+  margin: 3px 0 0;
+}
+.assistant-fullscreen .health-chat-controls {
+  margin: 0;
+  flex-shrink: 0;
+  max-height: 42%;
+  overflow: auto;
+}
+.assistant-fullscreen .health-chat-controls > summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.assistant-fullscreen .health-chat-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.assistant-fullscreen .health-chat-main .conversation {
+  flex: 1;
+}
+.assistant-fullscreen .health-intro {
+  overflow: auto;
+  flex: 1;
+}
+.assistant-fullscreen :is(.health-running, .health-notice, .health-alert) {
+  flex-shrink: 0;
+  margin: 4px 12px;
+  max-height: 85px;
+  overflow: auto;
+}
+.assistant-launch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.assistant-launch p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #67747b;
+}
+@media (max-width: 700px), (max-height: 500px) and (pointer: coarse) {
+  .assistant-fullscreen-bar {
+    padding: calc(4px + env(safe-area-inset-top, 0px)) 6px 4px;
+    gap: 6px;
+  }
+  .assistant-fullscreen-bar > strong {
+    font-size: 14px;
+  }
+  .assistant-fullscreen-bar .flow-button {
+    padding: 6px;
+    font-size: 12px;
+  }
+  .assistant-fullscreen .composer {
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+  .assistant-fullscreen .conversation-inner {
+    padding: 8px;
+  }
+  .assistant-fullscreen .composer textarea {
+    font-size: 16px;
+  }
+  .assistant-fullscreen .health-assistant-head p {
+    display: none;
+  }
+  .assistant-fullscreen .health-assistant-tools button {
+    font-size: 12px;
+    padding: 6px;
+  }
+  .assistant-fullscreen .composer.draft-steady > .draft-handoff > p.muted:first-child {
+    display: none;
+  }
+}

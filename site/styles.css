@@ -122,8 +122,9 @@ section:focus:not(:focus-visible) {
   text-decoration: none;
 }
 .brand img {
-  width: 30px;
-  height: 30px;
+  width: 38px;
+  height: 34px;
+  object-fit: contain;
 }
 .brand .light {
   font-weight: 400;

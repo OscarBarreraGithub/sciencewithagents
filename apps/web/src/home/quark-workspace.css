@@ -215,7 +215,7 @@
 }
 .quark-board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 .quark-board.filtered {
@@ -338,6 +338,27 @@
 .quark-filters {
   margin-bottom: 16px;
   flex-wrap: wrap;
+}
+.quark-history-search {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.quark-history-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  font: inherit;
+  border: 1px solid var(--q-border);
+  border-radius: 10px;
+}
+.quark-completed .quark-ticket {
+  padding: 12px 16px;
+}
+.quark-completed .quark-ticket footer {
+  margin-top: 8px;
+  padding-top: 8px;
 }
 @media (max-width: 1000px) {
   .quark-board {

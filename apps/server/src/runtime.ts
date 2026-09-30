@@ -79,7 +79,7 @@ import { CapacityMonitor } from './capacity.js';
 import { Pulsar } from './pulsar.js';
 import { Quark } from './quark.js';
 import { LocalJobs } from './local-jobs.js';
-import { ResourceWatch, resourceCharter } from './resource-watch.js';
+import { ResourceWatch, resourceCharter, interactiveResourceCharter } from './resource-watch.js';
 import { ModelPolicy } from './model-policy.js';
 import { Setup } from './setup.js';
 import { CodexSignIn } from './codex-sign-in.js';
@@ -304,12 +304,24 @@ export class Runtime {
           ? 'The work queue is paused.'
           : this.pulsar.decision(store.run(id)).reason,
       release: async (id) => {
-        if (this.executing.has(id) || this.starting.has(id)) return false;
+        if (
+          this.executing.has(id) ||
+          this.starting.has(id) ||
+          this.activeChildren(id).length ||
+          this.externalControl.has(id) ||
+          this.providerReads.has(id) ||
+          this.store.approvals().some((a) => a.agentId === id && a.status === 'pending')
+        )
+          return false;
         await this.claude.forget(id);
-        await this.clients.get(id)?.close();
-        this.clients.delete(id);
+        const client = this.clients.get(id);
+        await client?.close();
+        for (const member of this.nativeChildren.family(id))
+          if (this.clients.get(member.id) === client) this.clients.delete(member.id);
         this.mcpConfigs.delete(id);
         this.nativeConfigs.delete(id);
+        this.pluginPolicies.delete(id);
+        this.pluginsChanged.delete(id);
         return true;
       },
       interrupt: (id, reason) =>
@@ -349,7 +361,11 @@ export class Runtime {
         ? nativeInterviewCharter
         : interviewCharter;
     if (this.resources.isAgent(agent.id))
-      return resourceCharter + '\nModel assignment: ' + JSON.stringify(agent.assignment);
+      return (
+        (this.resources.isInteractive(agent.id) ? interactiveResourceCharter : resourceCharter) +
+        '\nModel assignment: ' +
+        JSON.stringify(agent.assignment)
+      );
     return this.frontdesk.isFrontdesk(agent.id)
       ? frontdeskCharter
       : agent.role === 'manager'
@@ -2042,6 +2058,10 @@ export class Runtime {
     return this.store.runs().find((r) => r.agentId === agentId && r.status === 'running');
   }
   requireDirectControl(agentId: string) {
+    if (this.resources.isSnapshot(agentId))
+      throw new Conflict(
+        'This resource report is a bounded snapshot check. Use Ask what’s happening for native computer assistance.',
+      );
     if (this.conversationSearch.isAgent(agentId))
       throw new Conflict(
         'This saved search is a single bounded request. Start another assisted search from Chats.',
@@ -2389,6 +2409,7 @@ export class Runtime {
     };
   }
   prepareNativeContext(agentId: string, method: string, raw: unknown): NativeTransition | null {
+    if (this.resources.isSnapshot(agentId)) this.requireDirectControl(agentId);
     const controlled = this.store.agent(agentId);
     if (controlled.interview)
       throw new Conflict(
@@ -3271,7 +3292,11 @@ export class Runtime {
       return this.coordinator.tool(agentId, key, name, raw, active ?? null);
     if (name === 'dock_escalate') return this.escalate(agent, key, raw);
     if (this.resources.isAgent(agentId))
-      throw new Conflict('The resource assistant can only explain its supplied measurements.');
+      throw new Conflict(
+        this.resources.isSnapshot(agentId)
+          ? 'The resource assistant can only explain its supplied measurements.'
+          : 'Computer assistance uses native inspection. Project coordination belongs to a project manager.',
+      );
     if (this.frontdesk.isFrontdesk(agentId)) {
       if (name === 'dock_frontdesk_route') {
         this.quark.sync();

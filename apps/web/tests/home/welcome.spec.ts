@@ -75,7 +75,7 @@ test('a new workspace opens setup, preserves progress and retries checks without
   });
   await page.goto('/');
   await expect(page).toHaveURL(/#\/welcome$/);
-  await expect(page.getByRole('heading', { name: 'A home for your agents.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome and setup' })).toBeVisible();
   await expect(page.getByText('Saved defaults: Codex')).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('choices are saved');
   expect(writes).toEqual(['/api/setup/check']);
@@ -105,14 +105,14 @@ test('a new workspace opens setup, preserves progress and retries checks without
     fullPage: true,
   });
   await page
-    .getByRole('heading', { name: 'Make room for an idea', exact: true })
+    .getByRole('heading', { name: 'Create a project', exact: true })
     .scrollIntoViewIfNeeded();
   await page.screenshot({
     path: `../../data/screenshots/welcome/${info.project.name}-next-steps.png`,
     fullPage: true,
   });
   await page.goto('/?mirror');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('From your editor, to here.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('VS Code chats');
 });
 
 test('Codex sign-in restores its exact pending code after a lost response and never automatically starts again', async ({
@@ -334,7 +334,7 @@ test('setup makes pacing and stale usage visible without changing saved choices'
   await page.screenshot({ path: `../../data/screenshots/welcome/${info.project.name}-pacing.png` });
   await control.click();
   await expect(page).toHaveURL(/#\/work$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Make room for what matters.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('QUARK');
   mode = 'off';
   await page.goto('/#/welcome');
   await expect(card).toContainText('Shared pacing off');

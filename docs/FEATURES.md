@@ -1,5 +1,25 @@
 # Feature map
 
+## Home and space cleanup — implemented, 2026-09-30
+
+Pages use the browser width. Mobile allowance readings are at the top of Home and scroll
+away. Attention shows three concise requests, with more available explicitly; automatic
+health reports and completed-worker interruptions stay out, and stopped work groups by
+project. General to-dos use an expanding multiline editor with immediate local draft saving.
+QUARK starts with active work; completed work is searchable and shown ten at a time.
+Computer setup no longer links to recovery-copy chores or the unrelated allowance ledger.
+Recovery controls remain in advanced Settings and update instructions. The allowance page
+keeps detailed token and cache reports collapsed until requested. No transcription shortcut
+is advertised; retained local-job records still have their original destination.
+
+## Shared alien branding — implemented, 2026-09-30
+
+The app header, browser icon, phone install icons, Mac launcher, VS Code companion and
+public website use the owner-selected Heldalive alien. `apps/web/public/dock.svg` is the
+canonical artwork; `node scripts/export-web-icons.mjs` regenerates the raster, Mac and
+companion assets and copies the website SVG. Existing installed phone icons may keep their
+OS-cached artwork until the shortcut is re-added. Provider logos still identify their providers.
+
 ## QUARK conversation and board — implemented, 2026-09-30
 
 Work opens a responsive board with a QUARK conversation above it. The owner can ask it to
@@ -51,6 +71,13 @@ reuse the existing conflict and explicit device-transfer controls. Focused creat
 minimize, restore and send-recovery journeys pass on desktop and phone/WebKit at portrait and
 landscape sizes. See the
 [notepad requirements](CHAT_UI_REQUIREMENTS.md#prompt-notepad--initial-brief-and-later-messages).
+
+**Implemented:** normal and shared chats expose a labelled **Open notepad** control. Shared
+editor drafts remain tab-local, with browser-local recovery copies and meaningful version
+checkpoints; reopening offers copies without overwriting another tab. These drafts do not
+sync across devices, and clearing browser storage removes recovery copies. QUARK and the
+Resource assistant open full-screen conversations with a return control, keeping the board
+and health charts available underneath instead of squeezing chat into a small panel.
 
 The [Home drawing requirements](HOME_UI_REQUIREMENTS.md) include implemented general to-do
 dispatch, reusable setup prompts, sortable project allowance rates and header editor status.
@@ -188,6 +215,13 @@ with their project, CPU, resident memory and process count, separately from rese
 Tools and helpers share their registered root group; unrelated processes stay in the app list.
 External/editor/orphaned processes may be absent and summed resident memory is approximate.
 See RESOURCE_WATCH.md for scope; this is observation, not a new process-control system.
+
+Explicitly requested resource assistance now uses native diagnostic tools under ordinary
+workspace permissions and QUARK supervision. Automatic checks remain bounded snapshot-only
+reports, hidden from the main chat list by their durable origin metadata and retained in
+Computer health history. Merely opening a report never starts work or grants permissions.
+An owner follow-up to an old requested diagnosis can resume the same history with native
+capabilities. CPU readings alone are not evidence that a login or service works.
 
 The new UI now connects **Projects, project/task detail and managed Conversations**,
 including new-project creation, manager messages, worker activity, original approvals,

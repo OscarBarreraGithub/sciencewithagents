@@ -15,7 +15,7 @@ export function SchedulerPanel({
   openJob?: (runId: string) => void;
   close: () => void;
   open: (agentId: string) => void;
-  openLocalJobs: () => void;
+  openLocalJobs?: () => void;
 }) {
   const [state, setState] = useState<SchedulerStatus | null>(null);
   const [limit, setLimit] = useState(4);
@@ -157,9 +157,11 @@ export function SchedulerPanel({
         </>
       )}
       <PulsarPanel open={open} openJob={openJob} />
-      <button className="secondary" onClick={openLocalJobs}>
-        Open local compute jobs
-      </button>
+      {openLocalJobs && (
+        <button className="secondary" onClick={openLocalJobs}>
+          Open local compute jobs
+        </button>
+      )}
     </Modal>
   );
 }

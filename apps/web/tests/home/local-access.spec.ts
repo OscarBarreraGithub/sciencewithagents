@@ -146,7 +146,7 @@ test('editor sharing requires no separate code or credential exchange', async ({
       writes.push(request.url());
   });
   await page.goto(`${protectedApp.browserOrigin}/#/vscode`);
-  await expect(page.getByRole('heading', { name: 'From your editor, to here.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'VS Code chats' })).toBeVisible();
   await expect(page.getByText('Share a Codex conversation', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create connection code' })).toHaveCount(0);
   expect(writes).toEqual([]);
@@ -175,7 +175,7 @@ test('expired browser access waits without redirect loops and resumes the intend
   await page.bringToFront();
   await page.evaluate(() => dispatchEvent(new Event('focus')));
   await expect(page).toHaveURL(target);
-  await expect(page.getByRole('heading', { name: 'From your editor, to here.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'VS Code chats' })).toBeVisible();
   await native.close();
 });
 
@@ -187,5 +187,5 @@ test('a connected browser follows an editor link directly without another connec
   await expect(page.locator('.home-shell')).toBeVisible();
   await page.goto(`${protectedApp.origin}/?mirror=1`);
   await expect(page).toHaveURL(`${protectedApp.browserOrigin}/#/vscode`);
-  await expect(page.getByRole('heading', { name: 'From your editor, to here.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'VS Code chats' })).toBeVisible();
 });

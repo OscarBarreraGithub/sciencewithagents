@@ -621,3 +621,18 @@
   font-size: 0.8rem;
   flex: 1 1 12rem;
 }
+.mirror-notepad {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  margin-top: 6px;
+  border: 1px solid #d8dce3;
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: #fff;
+  color: #34465c;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}

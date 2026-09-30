@@ -38,6 +38,7 @@ import { AssistedSearch } from './AssistedSearch';
 import { surfaceOf } from './chat-contracts';
 import { ConfigPanel, NotesPanel, PanelFrame, SubagentsPanel, type ChatPanel } from './ChatPanels';
 import type { HomeData } from './useHomeData';
+import { automaticResourceChat, resourceAssistantOf } from './resource-chat';
 import './workspace-flow.css';
 
 export const flowPages = new Set([
@@ -158,7 +159,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
   if (!state)
     return (
       <section className="flow-page">
-        <FlowHeading label="YOUR WORKSPACE" title="Your work, together.">
+        <FlowHeading label="YOUR WORKSPACE" title="Workspace">
           Projects and conversations stay on this computer.
         </FlowHeading>
         <FlowEmpty
@@ -384,7 +385,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
           </section>
           <section className="flow-panel">
             <div className="flow-section-title">
-              <h2>People behind the work</h2>
+              <h2>Agents</h2>
               <span>{team.length}</span>
             </div>
             {team.length ? (
@@ -415,7 +416,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
     <section className="flow-page">
       <FlowHeading
         label="YOUR PROJECTS"
-        title="Good ideas live here."
+        title="Projects"
         action={
           <a className="flow-button primary" href="#/new">
             <Plus size={18} /> Add project
@@ -742,9 +743,8 @@ export function ChatPage({
             intro={
               embedded
                 ? {
-                    title: 'What should come first?',
-                    description:
-                      'Tell QUARK which projects matter most, what can wait, and how much allowance to make available.',
+                    title: 'QUARK',
+                    description: 'Set project priorities, pause work, or allocate allowance.',
                     note: 'Your instructions and allocation decisions stay saved here. Project managers carry out the work.',
                   }
                 : undefined
@@ -861,8 +861,8 @@ export function ChatPage({
           ? sidePanel
           : !embedded && (
               <aside className="flow-chat-aside">
-                <span className="home-eyebrow">KEEP THE THREAD</span>
-                <h2>{agent.interview ? 'Evidence, with context.' : 'A team behind every idea.'}</h2>
+                <span className="home-eyebrow">PROJECT DETAILS</span>
+                <h2>{agent.interview ? 'Evidence' : 'Project team'}</h2>
                 <p>
                   {agent.interview
                     ? 'Answers should point to the saved record and say when details are missing. New work belongs with your manager.'
@@ -1008,6 +1008,7 @@ function MainChat({
       const surface = surfaceOf(agent);
       // Terminal-only sessions live in Advanced controls, not the normal chat list.
       if (agent.nativeRootId || surface === 'terminal') return [];
+      if (automaticResourceChat(agent)) return [];
       const kind: ChatKind | null =
         agent.interview || surface === 'misc' || special.has(agent.projectId)
           ? 'misc'
@@ -1039,7 +1040,7 @@ function MainChat({
           time: agent.updatedAt,
           state: rowState,
           label: rowLabels[rowState],
-          href: go('chat', agent.id),
+          href: resourceAssistantOf(agent) ? go('resources', agent.id) : go('chat', agent.id),
           selected: agent.id === agentId,
         },
       ];
@@ -1116,6 +1117,9 @@ function MainChat({
           />
         </label>
         <AssistedSearch query={query} />
+        <a className="flow-button" href="#/resources/chat">
+          Resource assistant <ArrowUpRight size={16} />
+        </a>
         <div className="flow-tabs chat-filters" role="group" aria-label="Conversation type">
           {filters.map(([value, label]) => (
             <button

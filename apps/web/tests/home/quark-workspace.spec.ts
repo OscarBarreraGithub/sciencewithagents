@@ -8,13 +8,13 @@ test('QUARK shows chat entry, real queue columns and forecasts without starting 
     if (r.url().includes('/coordinator/start')) starts++;
   });
   await page.goto('/#/work');
-  await expect(page.getByRole('heading', { name: 'Make room for what matters.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'QUARK' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Talk to QUARK', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open QUARK conversation' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Waiting', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Paused / needs input', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Waiting', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'All work', exact: true }).click();
+  await page.getByRole('button', { name: 'Active work', exact: true }).click();
   await expect(page.getByText('Shared reserve', { exact: true })).toBeVisible();
   expect(starts).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -25,7 +25,7 @@ test('QUARK shows chat entry, real queue columns and forecasts without starting 
       el.scrollTop = 0;
     })
     .catch(() => {});
-  await page.getByRole('heading', { name: 'Make room for what matters.' }).scrollIntoViewIfNeeded();
+  await page.getByRole('heading', { name: 'QUARK' }).scrollIntoViewIfNeeded();
   await page.screenshot({
     path: `../../data/screenshots/quark-board/${info.project.name}.png`,
     fullPage: true,

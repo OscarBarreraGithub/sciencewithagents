@@ -50,7 +50,7 @@ export function ActivityFlow({ currentRoute, data }: { currentRoute: string; dat
       <section className="flow-page activity-page">
         <FlowHeading
           label="QUARK JOB"
-          title="One job, a clear view."
+          title="Job details"
           action={
             <a href="#/work" className="flow-button">
               All work <ArrowUpRight size={16} />
@@ -76,7 +76,7 @@ export function ActivityFlow({ currentRoute, data }: { currentRoute: string; dat
       <section className="flow-page activity-page">
         <FlowHeading
           label="LOCAL WORK"
-          title="From video to transcript."
+          title="Local transcription"
           action={
             <a href="#/work" className="flow-button">
               Open QUARK <ArrowUpRight size={16} />
@@ -126,7 +126,7 @@ function Attention({ state }: { state: Snapshot }) {
     <section className="flow-page activity-page">
       <FlowHeading
         label="YOUR ATTENTION"
-        title="A moment for the decisions that matter."
+        title="For your attention"
         action={
           <span className="activity-total">
             {all.length} open {all.length === 1 ? 'item' : 'items'}
@@ -188,7 +188,7 @@ function Attention({ state }: { state: Snapshot }) {
       ) : (
         <div className="activity-calm">
           <Inbox size={36} />
-          <h2>{all.length ? 'Nothing in this view.' : 'You’re all caught up.'}</h2>
+          <h2>{all.length ? 'Nothing in this view.' : 'No pending requests'}</h2>
           <p>
             Your managers can keep working within their approved budgets. New decisions will appear
             here.
@@ -208,7 +208,7 @@ function Results({ state, data }: { state: Snapshot; data: HomeData }) {
     <section className="flow-page activity-page">
       <FlowHeading
         label="RECENT RESULTS"
-        title="Good work, kept close."
+        title="Recent results"
         action={
           <a href="#/projects" className="flow-button">
             All projects <ArrowUpRight size={16} />
@@ -395,7 +395,7 @@ function ReviewPage({ id, state }: { id: string; state: Snapshot }) {
               </div>
               {preview.relation === 'diverged' && (
                 <div className="activity-warning">
-                  <h3>Your project moved forward.</h3>
+                  <h3>Project changed since review</h3>
                   <p>
                     Other work has reached the project since this task began. These are this task’s
                     changes, not a preview of a completed merge. Prepare an updated task that

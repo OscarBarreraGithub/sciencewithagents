@@ -1,5 +1,12 @@
 import { createContext, memo, useContext, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronRight, MessageSquare, Monitor } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronRight,
+  MessageSquare,
+  Monitor,
+  NotebookPen,
+} from 'lucide-react';
 import {
   mirrorStateSchema,
   mirrorResultSchema,
@@ -19,6 +26,8 @@ import {
 } from './useMirrorChats';
 import './VscodeMirror.css';
 import { MirrorStopReply } from './MirrorStopReply';
+import { Notepad, type DraftSelection } from './Notepad';
+import { useBrowserNotepad } from './useBrowserNotepad';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -405,6 +414,24 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
   const [receipt, setReceipt] = useState('');
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<MirrorSend | null>(null);
+  const [notepadOpen, setNotepadOpen] = useState(false);
+  const selection = useRef<DraftSelection>({ start: 0, end: 0 });
+  const refocus = useRef(false);
+  const browserNotepad = useBrowserNotepad(draftKey, text, (value) => {
+    setText(value);
+    try {
+      save(value, pending);
+    } catch {
+      setReceipt('Draft storage is unavailable. Keep this page open.');
+    }
+  });
+  useEffect(() => {
+    if (!notepadOpen && refocus.current) {
+      refocus.current = false;
+      input.current?.focus({ preventScroll: true });
+      input.current?.setSelectionRange(selection.current.start, selection.current.end);
+    }
+  }, [notepadOpen]);
   const [following, setFollowing] = useState(true);
   const [historyQuery, setHistoryQuery] = useState('');
   const viewport = useRef<HTMLDivElement>(null);
@@ -762,12 +789,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
                     : 'Write a draft…'
             }
             onChange={(e) => {
-              setText(e.target.value);
-              try {
-                save(e.target.value, null);
-              } catch {
-                setReceipt('Draft storage is unavailable. Keep this page open.');
-              }
+              browserNotepad.draft.setText(e.target.value);
             }}
             onKeyDown={(e) => {
               if (
@@ -798,6 +820,20 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
             {busy ? '…' : pending ? 'Check delivery' : <ArrowUp size={20} />}
           </button>
         </div>
+        <button
+          type="button"
+          className="mirror-notepad"
+          onClick={() => {
+            if (input.current)
+              selection.current = {
+                start: input.current.selectionStart,
+                end: input.current.selectionEnd,
+              };
+            setNotepadOpen(true);
+          }}
+        >
+          <NotebookPen size={16} /> Open notepad
+        </button>
         <p className="mirror-note">
           {canSteer
             ? daemon
@@ -819,6 +855,42 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           <p className="mirror-receipt" role="status">
             {receipt}
           </p>
+        )}
+        {notepadOpen && (
+          <Notepad
+            draft={browserNotepad.draft}
+            agentId={chat.threadId ?? identity}
+            clientId={null}
+            agentName={provider}
+            mode="message"
+            selection={selection}
+            localOnly
+            localHistory={browserNotepad.history}
+            maxLength={32000}
+            readOnly={busy || !!pending}
+            canSend={!busy && !!text.trim() && (!!pending || canSend)}
+            sending={busy}
+            notice={receipt}
+            onMinimize={() => {
+              browserNotepad.checkpoint();
+              refocus.current = true;
+              setNotepadOpen(false);
+            }}
+            onSend={() => {
+              void send();
+            }}
+            controls={
+              <p className="mirror-note">
+                {pending
+                  ? 'Check delivery resolves the original receipt before another message can be sent.'
+                  : canSteer
+                    ? 'Sends an update to the current reply.'
+                    : canQueue
+                      ? 'Queues a follow-up for Claude.'
+                      : 'Sends to this shared conversation.'}
+              </p>
+            }
+          />
         )}
         {pending && !busy && (
           <button

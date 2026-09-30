@@ -87,6 +87,69 @@ async function connect(
   await expect.poll(() => mirrors.windows().length).toBe(1);
 }
 describe('VS Code mirror gateway', () => {
+  it('refreshes stale list status without opening the chat and shares reads across devices', async () => {
+    const commands: unknown[] = [];
+    let working = true;
+    await connect(
+      (command) => {
+        commands.push(command);
+        return mirrorPage(
+          {
+            ...state,
+            status: working ? 'busy' : 'idle',
+            canSteer: true,
+            ...(working ? { steerToken: 'live-turn', stopToken: 'live-turn' } : {}),
+            paged: true,
+          } as MirrorState,
+          command.page,
+        );
+      },
+      undefined,
+      true,
+    );
+    const lists = await Promise.all([
+      app.inject({ url: '/api/vscode/windows', headers }),
+      app.inject({ url: '/api/vscode/windows', headers }),
+    ]);
+    for (const response of lists) {
+      expect(response.statusCode).toBe(200);
+      expect(response.json()[0]).toMatchObject({ status: 'busy', steerToken: 'live-turn' });
+      expect(response.json()[0].entries).toBeUndefined();
+    }
+    expect(commands).toEqual([expect.objectContaining({ type: 'read', page: {} })]);
+    await app.inject({ url: '/api/vscode/windows', headers });
+    expect(commands).toHaveLength(1);
+
+    // An open chat's newer reading also refreshes the list, including removing
+    // the finished turn's controls. It needs no additional provider request.
+    working = false;
+    await mirrors.read(windowId, {});
+    const idle = await app.inject({ url: '/api/vscode/windows', headers });
+    expect(idle.json()[0].status).toBe('idle');
+    expect(idle.json()[0].steerToken).toBeUndefined();
+    expect(commands).toHaveLength(2);
+  });
+  it('bounds an unresponsive list read and recovers through the normal chat read', async () => {
+    let respond = false;
+    let commands = 0;
+    await connect(() => {
+      commands++;
+      return respond ? state : undefined;
+    });
+    const started = Date.now();
+    const offline = await app.inject({ url: '/api/vscode/windows', headers });
+    expect(Date.now() - started).toBeLessThan(4000);
+    expect(offline.json()[0]).toMatchObject({ status: 'offline' });
+    expect(offline.json()[0].message).toContain('not responding');
+    expect(offline.json()[0].steerToken).toBeUndefined();
+    await app.inject({ url: '/api/vscode/windows', headers });
+    expect(commands).toBe(1);
+    respond = true;
+    await mirrors.read(windowId, {});
+    const recovered = await app.inject({ url: '/api/vscode/windows', headers });
+    expect(recovered.json()[0].status).toBe('idle');
+    expect(commands).toBe(2);
+  });
   it('requests a bounded page directly from an updated companion', async () => {
     const commands: unknown[] = [];
     const large = {

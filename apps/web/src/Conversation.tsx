@@ -29,7 +29,7 @@ import {
   type McpFormValues,
 } from '@dock/shared';
 import { api, apiScope, apiUrl, detail, ApiError } from './api';
-import { useSharedDraft, workspaceStorageKey } from './useWorkspaceState';
+import { useSharedDraft, workspaceStorageKey, type SharedDraft } from './useWorkspaceState';
 import { DraftHandoff } from './WorkspacePanel';
 import { McpFormFields } from './McpFormFields';
 import { McpUrlLink } from './McpUrlLink';
@@ -186,6 +186,7 @@ export function Conversation({
   act,
   personal = false,
   intro,
+  formatEntry,
 }: {
   agent: Agent;
   detail: AgentDetail | null;
@@ -193,6 +194,7 @@ export function Conversation({
   act: (fn: () => Promise<unknown>) => Promise<void>;
   personal?: boolean;
   intro?: { title: string; description: string; note: string };
+  formatEntry?: (entry: Entry) => Entry;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const scrollHint = useScrollHints(scroll, agent.id);
@@ -228,9 +230,9 @@ export function Conversation({
     if (container.firstElementChild) observer.observe(container.firstElementChild);
     return () => observer.disconnect();
   }, []);
-  const entries = [...older, ...(data?.entries ?? [])].filter(
-    (e, i, all) => all.findIndex((v) => v.id === e.id) === i,
-  );
+  const entries = [...older, ...(data?.entries ?? [])]
+    .map((e) => (formatEntry ? formatEntry(e) : e))
+    .filter((e, i, all) => all.findIndex((v) => v.id === e.id) === i);
   const load = async () => {
     const result = await detail(agent.id, entries[0]?.id);
     setOlder((old) => [...result.entries, ...old]);
@@ -268,20 +270,13 @@ export function Conversation({
         {entries.length === 0 && (
           <div className="conversation-intro">
             <Avatar role={agent.role} />
-            <h2>
-              {intro?.title ??
-                (personal
-                  ? 'What’s on your mind?'
-                  : agent.role === 'manager'
-                    ? 'What are we working on?'
-                    : 'A focused place for this work.')}
-            </h2>
+            <h2>{intro?.title ?? agent.name}</h2>
             <p>
               {intro?.description ??
                 (personal
                   ? 'Talk through your priorities, ask about saved progress, or pass a request to a project manager you have chosen to share.'
                   : agent.role === 'manager'
-                    ? 'Tell me the outcome you want. I’ll assemble the right team, keep the work bounded, and bring decisions back here.'
+                    ? 'Describe the project or send the next task. Your manager can delegate work and ask for input here.'
                     : 'Assignments, questions, tool results and handoffs will stay in this conversation.')}
             </p>
             <div className="starter-note">
@@ -409,6 +404,10 @@ export function Composer({
   notepad,
   reference,
   onNotepadClose,
+  draftOverride,
+  maxLength = 24_000,
+  specialized = false,
+  localHistory,
 }: {
   agent: Agent;
   workspace: WorkspaceSnapshot | null;
@@ -429,8 +428,14 @@ export function Composer({
   /** Quote an exact note or to-do at the caret. Referencing never sends. */
   reference?: { nonce: number; text: string } | null;
   onNotepadClose?: () => void;
+  /** Specialized APIs keep their own receipts and can prepare a browser-only first draft. */
+  draftOverride?: SharedDraft;
+  maxLength?: number;
+  specialized?: boolean;
+  localHistory?: { versions: { text: string; at: string }[]; restore: (text: string) => void };
 }) {
-  const draft = useSharedDraft(workspace, agent.id);
+  const managedDraft = useSharedDraft(draftOverride ? null : workspace, agent.id);
+  const draft = draftOverride ?? managedDraft;
   const { text, setText } = draft;
   // The notepad is another view of this same draft, never a second draft.
   const [expanded, setExpanded] = useState<false | 'brief' | 'message'>(notepad ?? false);
@@ -442,6 +447,7 @@ export function Composer({
     onError(reason);
   };
   const storageKey = workspaceStorageKey(`send:${agent.id}`);
+  const receiptStorage = draftOverride ? sessionStorage : localStorage;
   const scope = useRef(apiScope()).current;
   const [legacyBackup, setLegacyBackup] = useState<string | null>(() =>
     localStorage.getItem(`${storageKey}:legacy`),
@@ -450,7 +456,7 @@ export function Composer({
   const [literalSlash, setLiteralSlash] = useState(false);
   // A running Codex turn accepts native steering, so a new message updates it by default.
   // Turning it off sends a separate message; a retry always keeps its recorded mode.
-  const canSteer = agent.provider === 'codex' && agent.status === 'running';
+  const canSteer = !specialized && agent.provider === 'codex' && agent.status === 'running';
   const [steerChoice, setSteer] = useState<boolean | null>(null);
   const steer = canSteer ? (steerChoice ?? true) : false;
   const [priority, setPriority] = useState<JobEstimate['priority']>('interactive');
@@ -495,12 +501,12 @@ export function Composer({
           }
         }
         const oldPending = localStorage.getItem(`${legacyKey}:pending`);
-        if (oldPending && !localStorage.getItem(`${storageKey}:pending`)) {
-          localStorage.setItem(`${storageKey}:pending`, oldPending);
+        if (oldPending && !receiptStorage.getItem(`${storageKey}:pending`)) {
+          receiptStorage.setItem(`${storageKey}:pending`, oldPending);
           localStorage.removeItem(`${legacyKey}:pending`);
         }
       }
-      const raw = localStorage.getItem(`${storageKey}:pending`);
+      const raw = receiptStorage.getItem(`${storageKey}:pending`);
       if (!raw) return;
       const parsed = JSON.parse(raw) as Partial<PendingMessage>;
       const pending: PendingMessage = {
@@ -515,6 +521,7 @@ export function Composer({
       retry.current = pending;
       setUnknownLegacyMode(Boolean(pending.modeUnknown));
       setSteer(pending.steer);
+      if (specialized) return;
       void api<{
         run: { text: string } | null;
         submitted?: { text: string; steer: boolean } | null;
@@ -533,7 +540,7 @@ export function Composer({
             setText('');
             await draft.flush();
           }
-          localStorage.removeItem(`${storageKey}:pending`);
+          receiptStorage.removeItem(`${storageKey}:pending`);
           retry.current = null;
           setUnknownLegacyMode(false);
         })
@@ -553,7 +560,7 @@ export function Composer({
     if (
       !value ||
       sendingRef.current ||
-      disabled ||
+      (disabled && !(specialized && retry.current?.text === value)) ||
       !draft.ready ||
       draft.conflict ||
       unknownLegacyMode
@@ -561,7 +568,7 @@ export function Composer({
       return false;
     if (apiScope() !== scope) return false;
     setNotice('');
-    if (value.startsWith('/') && !asText) {
+    if (!specialized && value.startsWith('/') && !asText) {
       const match = {
         '/new': 'new',
         '/clear': 'new',
@@ -595,7 +602,7 @@ export function Composer({
       let pending = retry.current?.text === value ? retry.current : null;
       if (!pending) {
         const token = await draft.flush();
-        if (!token || draft.currentText().trim() !== value)
+        if ((!token && !draftOverride) || draft.currentText().trim() !== value)
           throw new Error(
             'Your text changed while preparing to send. Review it and choose Send again.',
           );
@@ -603,7 +610,7 @@ export function Composer({
           key: crypto.randomUUID(),
           text: value,
           steer,
-          draft: token,
+          ...(token ? { draft: token } : {}),
           ...(!steer && priority !== 'interactive'
             ? { scheduling: jobEstimateSchema.parse({ priority }) }
             : {}),
@@ -611,7 +618,7 @@ export function Composer({
       }
       retry.current = pending;
       try {
-        localStorage.setItem(`${storageKey}:pending`, JSON.stringify(pending));
+        receiptStorage.setItem(`${storageKey}:pending`, JSON.stringify(pending));
       } catch {
         throw new Error(
           'The retry receipt could not be saved. Keep this page open and free browser storage before sending.',
@@ -628,7 +635,7 @@ export function Composer({
         setText('');
         await draft.flush();
       }
-      localStorage.removeItem(`${storageKey}:pending`);
+      receiptStorage.removeItem(`${storageKey}:pending`);
       retry.current = null;
       setSteer(null);
       textarea.current?.focus({ preventScroll: true });
@@ -638,7 +645,7 @@ export function Composer({
         // The host rejected this before reserving or submitting it. Keep the
         // draft, but let an explicit next Send become a normal follow-up.
         retry.current = null;
-        localStorage.removeItem(`${storageKey}:pending`);
+        receiptStorage.removeItem(`${storageKey}:pending`);
         setSteer(false);
         fail(
           'The reply finished before your update was sent. Your draft is safe; press Send to send it as a follow-up.',
@@ -653,7 +660,12 @@ export function Composer({
     }
   };
   const canSend =
-    !disabled && !sending && draft.ready && !draft.conflict && !unknownLegacyMode && !!text.trim();
+    (!disabled || (specialized && retry.current?.text === text.trim())) &&
+    !sending &&
+    draft.ready &&
+    !draft.conflict &&
+    !unknownLegacyMode &&
+    !!text.trim();
   const openNotepad = (mode: 'brief' | 'message') => {
     const area = textarea.current;
     if (area) selection.current = { start: area.selectionStart, end: area.selectionEnd };
@@ -717,7 +729,7 @@ export function Composer({
     const before = current.slice(0, start);
     const insert = `${before && !before.endsWith('\n') ? '\n' : ''}${reference.text}\n`;
     const next = before + insert + current.slice(end);
-    if (next.length > 24_000) {
+    if (next.length > maxLength) {
       fail('Adding this reference would exceed the message limit. Your draft is unchanged.');
       return;
     }
@@ -761,7 +773,7 @@ export function Composer({
           rememberSelection();
         }}
         onSelect={rememberSelection}
-        maxLength={24_000}
+        maxLength={maxLength}
         rows={1}
         onKeyDown={(event) => {
           if (
@@ -804,7 +816,7 @@ export function Composer({
           <button
             className="secondary"
             onClick={() => {
-              localStorage.removeItem(`${storageKey}:pending`);
+              receiptStorage.removeItem(`${storageKey}:pending`);
               retry.current = null;
               setSteer(null);
               setUnknownLegacyMode(false);
@@ -849,33 +861,37 @@ export function Composer({
       )}
       <div className="composer-toolbar">
         <div>
-          <select
-            className="composer-priority"
-            aria-label="Message priority"
-            value={priority}
-            disabled={steer || sending}
-            onChange={(e) => setPriority(e.target.value as JobEstimate['priority'])}
-          >
-            <option value="interactive">Do this soon</option>
-            <option value="high">High priority</option>
-            <option value="normal">Normal</option>
-            <option value="background">Background</option>
-          </select>
+          {!specialized && (
+            <select
+              className="composer-priority"
+              aria-label="Message priority"
+              value={priority}
+              disabled={steer || sending}
+              onChange={(e) => setPriority(e.target.value as JobEstimate['priority'])}
+            >
+              <option value="interactive">Do this soon</option>
+              <option value="high">High priority</option>
+              <option value="normal">Normal</option>
+              <option value="background">Background</option>
+            </select>
+          )}
+          {!specialized && (
+            <button
+              className="icon-button"
+              title="Session commands"
+              aria-label="Show commands"
+              onClick={onHelp}
+            >
+              <span className="slash-icon">/</span>
+            </button>
+          )}
           <button
-            className="icon-button"
-            title="Session commands"
-            aria-label="Show commands"
-            onClick={onHelp}
-          >
-            <span className="slash-icon">/</span>
-          </button>
-          <button
-            className="icon-button composer-expand"
-            title="Expand to a full-page notepad"
-            aria-label="Expand message"
+            className="composer-notepad"
+            title="Open notepad"
+            aria-label="Open notepad"
             onClick={() => openNotepad('message')}
           >
-            <Maximize2 size={16} />
+            <Maximize2 size={16} /> <span>Open notepad</span>
           </button>
           {draftSteady && (
             <details className="draft-saved">
@@ -896,12 +912,12 @@ export function Composer({
               Update current task
             </label>
           )}
-          {agent.provider === 'claude' && agent.status === 'running' && (
+          {!specialized && agent.provider === 'claude' && agent.status === 'running' && (
             <span className="composer-mode">Follow-ups queue for Claude’s next step</span>
           )}
         </div>
         <div>
-          {['running', 'queued', 'waiting'].includes(agent.status) && (
+          {!specialized && ['running', 'queued', 'waiting'].includes(agent.status) && (
             <button className="stop-button" aria-label="Stop agent" onClick={onStop}>
               <Square size={13} /> Stop
             </button>
@@ -921,6 +937,9 @@ export function Composer({
           draft={draft}
           agentId={agent.id}
           clientId={workspace?.client.id ?? null}
+          localOnly={!!draftOverride}
+          localHistory={localHistory}
+          maxLength={maxLength}
           agentName={agent.name}
           mode={expanded}
           selection={selection}
@@ -934,45 +953,47 @@ export function Composer({
             });
           }}
           controls={
-            <div className="notepad-controls">
-              <label>
-                Priority for this message{' '}
-                <select
-                  value={priority}
-                  disabled={steer || sending}
-                  onChange={(e) => setPriority(e.target.value as JobEstimate['priority'])}
-                >
-                  <option value="interactive">Do this soon</option>
-                  <option value="high">High priority</option>
-                  <option value="normal">Normal</option>
-                  <option value="background">Background</option>
-                </select>
-              </label>
-              {canSteer && (
-                <label className={`steer-toggle${steer ? ' on' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={steer}
-                    onChange={(event) => setSteer(event.target.checked)}
-                  />{' '}
-                  Update current task
+            specialized ? undefined : (
+              <div className="notepad-controls">
+                <label>
+                  Priority for this message{' '}
+                  <select
+                    value={priority}
+                    disabled={steer || sending}
+                    onChange={(e) => setPriority(e.target.value as JobEstimate['priority'])}
+                  >
+                    <option value="interactive">Do this soon</option>
+                    <option value="high">High priority</option>
+                    <option value="normal">Normal</option>
+                    <option value="background">Background</option>
+                  </select>
                 </label>
-              )}
-              {literalSlash && (
-                <button
-                  type="button"
-                  className="notepad-button"
-                  disabled={disabled || sending}
-                  onClick={() => {
-                    void submit(true).then((sent) => {
-                      if (sent) closeNotepad();
-                    });
-                  }}
-                >
-                  Send as text
-                </button>
-              )}
-            </div>
+                {canSteer && (
+                  <label className={`steer-toggle${steer ? ' on' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={steer}
+                      onChange={(event) => setSteer(event.target.checked)}
+                    />{' '}
+                    Update current task
+                  </label>
+                )}
+                {literalSlash && (
+                  <button
+                    type="button"
+                    className="notepad-button"
+                    disabled={disabled || sending}
+                    onClick={() => {
+                      void submit(true).then((sent) => {
+                        if (sent) closeNotepad();
+                      });
+                    }}
+                  >
+                    Send as text
+                  </button>
+                )}
+              </div>
+            )
           }
         />
       )}

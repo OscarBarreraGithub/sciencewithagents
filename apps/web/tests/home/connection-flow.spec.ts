@@ -39,7 +39,7 @@ test('unavailable phone setup retains a usable workspace and only rechecks statu
     path: `../../data/screenshots/connections/${info.project.name}-phone-unavailable.png`,
   });
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Make yourself at home.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
   issue = null;
   await page.getByRole('link', { name: /Phone access/ }).click();
   await expect(
@@ -77,7 +77,7 @@ test('settings pages are reachable, read-only on opening and fit the shared shel
     if (request.method() === 'POST') writes.push(request.url());
   });
   await page.goto('/#/settings');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Make yourself at home.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
   await page.screenshot({
     path: `../../data/screenshots/connections/${info.project.name}-settings.png`,
   });

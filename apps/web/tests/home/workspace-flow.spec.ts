@@ -95,7 +95,7 @@ test('spawn an independently configured manager, retain notepad versions and sen
   await page.reload();
   await expect(composer).toHaveValue(original);
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Expand message', exact: true }).click();
+  await page.getByRole('button', { name: 'Open notepad', exact: true }).click();
   const notepad = page.getByRole('dialog', { name: 'Write at length', exact: true });
   const editor = notepad.getByRole('textbox', {
     name: `Long message to ${name} manager`,

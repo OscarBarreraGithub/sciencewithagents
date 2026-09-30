@@ -11,7 +11,7 @@ It is not part of the pnpm workspace.
 - `styles.css`: all styles. The illustration scales with its frame using container query units.
 - `site.js`: link configuration, the generated setup prompt, Copy prompt and the scroll hint.
   Links also have plain `href` fallbacks in the HTML, so the page works without JavaScript.
-- `assets/favicon.svg`: the app's team mark in Sketchcoded's colours.
+- `assets/favicon.svg`: the owner's alien-and-saucer mark, shared with the app.
 - `assets/fonts/`: DM Sans, Caveat and Newsreader (SIL Open Font License), copied from the
   Sketchcoded site. Each bundled family includes its complete licence; `NOTICE.txt`
   records the included weights and verified distribution provenance. Nothing is loaded

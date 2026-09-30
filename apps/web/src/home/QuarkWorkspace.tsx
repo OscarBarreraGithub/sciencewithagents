@@ -10,6 +10,7 @@ import { api, models } from '../api';
 import { SchedulerPanel } from '../SchedulerPanel';
 import { useReading, type HomeData } from './useHomeData';
 import { ChatPage, FlowHeading, FlowEmpty } from './WorkspaceFlow';
+import { AssistantFullscreen } from './AssistantFullscreen';
 import './quark-workspace.css';
 
 const columns = ['Waiting', 'Working', 'Paused / needs input', 'Completed'] as const;
@@ -18,7 +19,10 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [completedSearch, setCompletedSearch] = useState('');
+  const [completedLimit, setCompletedLimit] = useState(10);
   const startKey = useRef(crypto.randomUUID());
   const s = reading.data;
   useEffect(() => {
@@ -33,6 +37,7 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
     setError('');
     try {
       await api('/quark/coordinator/start', { key: startKey.current });
+      setChatOpen(true);
       refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not open QUARK. Retry when connected.');
@@ -125,11 +130,16 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
     actual: j.phase,
   }));
   const cards = [...jobCards, ...backlog, ...localCards];
+  const visibleCards = cards.filter(
+    (c) =>
+      c.column !== 'Completed' ||
+      `${c.project} ${c.title} ${c.model}`.toLowerCase().includes(completedSearch.toLowerCase()),
+  );
   return (
     <section className="flow-page activity-page quark-workspace">
       <FlowHeading
-        label="QUARK · YOUR ALLOCATION DESK"
-        title="Make room for what matters."
+        label="QUARK"
+        title="QUARK"
         action={
           <a className="flow-button" href="#/usage">
             Allowance details <ArrowUpRight size={16} />
@@ -161,7 +171,7 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
               </small>
             </div>
             <div>
-              <span>In motion</span>
+              <span>Running</span>
               <strong>{cards.filter((c) => c.column === 'Working').length}</strong>
               <small>
                 {cards.filter((c) => c.column === 'Waiting').length} waiting for their turn
@@ -217,17 +227,24 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
                 <Settings2 size={16} /> Model & settings
               </button>
             </header>
-            {settingsOpen && (
+            {settingsOpen && !chatOpen && (
               <CoordinatorSettings key={s.settings.revision} state={s} done={refresh} />
             )}
             {s.agentId && state ? (
-              <ChatPage embedded id={s.agentId} state={state} refresh={refresh} />
+              <div className="quark-welcome">
+                <p>
+                  Your instructions and scheduling decisions stay in QUARK’s saved conversation.
+                </p>
+                <button className="flow-button primary" onClick={() => setChatOpen(true)}>
+                  Open QUARK conversation <ArrowUpRight size={16} />
+                </button>
+              </div>
             ) : (
               <div className="quark-welcome">
                 <span className="quark-symbol">
                   <Layers3 size={30} />
                 </span>
-                <h3>One conversation for all your projects.</h3>
+                <h3>QUARK orchestrator</h3>
                 <p>
                   “Pause the website, prioritize my analysis, and give it at most 20% of my weekly
                   Codex allowance.”
@@ -246,6 +263,27 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
               </div>
             )}
           </section>
+          {chatOpen && s.agentId && state && (
+            <AssistantFullscreen
+              title="QUARK conversation"
+              back="Back to QUARK"
+              close={() => setChatOpen(false)}
+              controls={
+                <button
+                  className="flow-button"
+                  onClick={() => setSettingsOpen(!settingsOpen)}
+                  aria-expanded={settingsOpen}
+                >
+                  <Settings2 size={16} /> Model & settings
+                </button>
+              }
+            >
+              {settingsOpen && (
+                <CoordinatorSettings key={s.settings.revision} state={s} done={refresh} />
+              )}
+              <ChatPage embedded id={s.agentId} state={state} refresh={refresh} />
+            </AssistantFullscreen>
+          )}
           {s.decisions.length > 0 && (
             <details className="quark-decisions">
               <summary>
@@ -261,11 +299,6 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
             </details>
           )}
           <div className="activity-shortcuts">
-            <a href="#/transcribe">
-              <Clock3 size={18} />
-              <strong>Transcribe a video</strong>
-              <span>Local work shares computer resources</span>
-            </a>
             <a href="#/resources">
               <Layers3 size={18} />
               <strong>Computer health</strong>
@@ -274,8 +307,7 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
           </div>
           <div className="quark-board-heading">
             <div>
-              <span className="home-eyebrow">THE SHARED PLAN</span>
-              <h2>Every project. A clear next step.</h2>
+              <h2>Project queue</h2>
             </div>
             <a className="flow-button" href="#/projects">
               Projects <ArrowUpRight size={16} />
@@ -306,57 +338,86 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
                 className={filter === c ? 'selected' : ''}
                 onClick={() => setFilter(c)}
               >
-                {c === 'all' ? 'All work' : c}
+                {c === 'all' ? 'Active work' : c}
               </button>
             ))}
           </div>
+          {filter === 'Completed' && (
+            <label className="quark-history-search">
+              Find completed work
+              <input
+                type="search"
+                value={completedSearch}
+                placeholder="Project, task or model"
+                onChange={(event) => {
+                  setCompletedSearch(event.target.value);
+                  setCompletedLimit(10);
+                }}
+              />
+            </label>
+          )}
           <div className={`quark-board ${filter !== 'all' ? 'filtered' : ''}`}>
             {columns
-              .filter((c) => filter === 'all' || filter === c)
+              .filter((c) => (filter === 'all' ? c !== 'Completed' : filter === c))
               .map((column, index) => (
                 <section
                   key={column}
-                  className={`quark-column column-${index}`}
+                  className={`quark-column column-${index}${column === 'Completed' ? ' quark-completed' : ''}`}
                   aria-label={column}
                 >
                   <h3>
                     <span className="quark-dot" />
                     {column}
-                    <b>{cards.filter((c) => c.column === column).length}</b>
+                    <b>{visibleCards.filter((c) => c.column === column).length}</b>
                   </h3>
                   <div className="quark-cards">
-                    {cards
+                    {visibleCards
                       .filter((c) => c.column === column)
-                      .slice(0, 30)
+                      .slice(0, column === 'Completed' ? completedLimit : 30)
                       .map((c) => (
                         <a key={c.id} className="quark-ticket" href={c.href}>
                           <span className="quark-ticket-project">{c.project}</span>
                           <h4>{c.title}</h4>
                           <span className="quark-ticket-model">{c.model}</span>
-                          <p>{c.reason}</p>
-                          <div className="quark-ticket-facts">
-                            <span>
-                              <Clock3 size={13} />
-                              {c.estimate}
-                            </span>
-                            {c.resources && <span>{c.resources}</span>}
-                            {c.actual && <span>{c.actual}</span>}
-                          </div>
+                          {column !== 'Completed' && <p>{c.reason}</p>}
+                          {column !== 'Completed' && (
+                            <div className="quark-ticket-facts">
+                              <span>
+                                <Clock3 size={13} />
+                                {c.estimate}
+                              </span>
+                              {c.resources && <span>{c.resources}</span>}
+                              {c.actual && <span>{c.actual}</span>}
+                            </div>
+                          )}
                           <footer>
                             <span>
-                              {c.priority} · weight {c.weight}
+                              {column === 'Completed'
+                                ? c.actual || 'Open details'
+                                : `${c.priority} · weight ${c.weight}`}
                             </span>
                             <ArrowUpRight size={15} />
                           </footer>
                         </a>
                       ))}
-                    {!cards.some((c) => c.column === column) && (
+                    {!visibleCards.some((c) => c.column === column) && (
                       <p className="quark-column-empty">
                         {column === 'Completed'
-                          ? 'Finished work will appear here.'
+                          ? completedSearch
+                            ? 'No matching completed work.'
+                            : 'No completed work.'
                           : 'Nothing here right now.'}
                       </p>
                     )}
+                    {column === 'Completed' &&
+                      visibleCards.filter((c) => c.column === column).length > completedLimit && (
+                        <button
+                          className="flow-button"
+                          onClick={() => setCompletedLimit((n) => n + 10)}
+                        >
+                          Show 10 more
+                        </button>
+                      )}
                   </div>
                 </section>
               ))}
@@ -366,7 +427,7 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
             and computer resources can still make a job wait.
           </p>
           <details className="quark-advanced">
-            <summary>Queue controls & local jobs</summary>
+            <summary>Queue controls</summary>
             <SchedulerPanel
               embedded
               openJob={(id) => {
@@ -375,9 +436,6 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
               close={() => {}}
               open={(id) => {
                 location.hash = `#/chat/${id}`;
-              }}
-              openLocalJobs={() => {
-                location.hash = '#/transcribe';
               }}
             />
           </details>

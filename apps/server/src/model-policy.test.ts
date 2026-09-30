@@ -372,6 +372,12 @@ it('queues exactly one resource escalation, persists its receipt and prevents ca
     model: 'opus',
     provider: 'claude',
   });
+  expect(store.agent(result.agentId)).toMatchObject({
+    resourceAssistant: { mode: 'snapshot', reason: 'asked' },
+    permission: 'read-only',
+    toolPolicy: 'restricted',
+  });
+  expect(() => runtime.requireDirectControl(result.agentId)).toThrow('bounded snapshot');
   expect(runtime.resources.status().checks[0]).toMatchObject({
     escalatedFrom: first.id,
     tier: 'grad',
@@ -388,6 +394,11 @@ it('queues exactly one resource escalation, persists its receipt and prevents ca
   cleanups.push(() => restored.close());
   expect(await restored.tool(first.agentId, key, 'dock_escalate', question)).toEqual(result);
   const initial = store.agent(first.agentId);
+  store.updateAgent(initial.id, {
+    resourceAssistant: { mode: 'snapshot', reason: 'checkpoint' },
+    permission: 'read-only',
+    toolPolicy: 'restricted',
+  });
   store.setSetting(`model-policy:escalated:${initial.id}`, null);
   store.setSetting(
     'resources:checks',

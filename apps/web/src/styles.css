@@ -1314,10 +1314,10 @@ dialog .session-confirm input {
   margin-bottom: 22px;
 }
 .conversation-intro h2 {
-  font-family: Georgia, serif;
-  font-size: 29px;
-  font-weight: 400;
-  color: #637056;
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 650;
+  color: var(--ink);
   margin: 0 0 16px;
 }
 .conversation-intro p {
@@ -2320,7 +2320,7 @@ form > .primary {
     padding: 15px 5px;
   }
   .conversation-intro h2 {
-    font-size: 27px;
+    font-size: 22px;
   }
   .conversation-intro p {
     font-size: 12px;
@@ -2879,4 +2879,18 @@ form > .primary {
   min-height: 44px;
   margin-top: 8px;
   white-space: normal;
+}
+.composer-notepad {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 1px solid #d8dce3;
+  border-radius: 8px;
+  background: #fff;
+  color: #34465c;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
 }

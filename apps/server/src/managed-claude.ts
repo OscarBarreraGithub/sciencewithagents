@@ -234,15 +234,16 @@ export class ManagedClaude {
       accountAffinity: identity.affinity,
       inheritNative: agent.toolPolicy === 'native',
       unattended: agent.toolPolicy === 'native',
-      role: agent.surface
-        ? agent.permission === 'workspace-write'
-          ? 'implementer'
-          : 'read-only'
-        : agent.role === 'manager'
-          ? 'manager'
-          : agent.role === 'implementer' && agent.permission === 'workspace-write'
+      role:
+        agent.surface || agent.resourceAssistant?.mode === 'interactive'
+          ? agent.permission === 'workspace-write'
             ? 'implementer'
-            : 'read-only',
+            : 'read-only'
+          : agent.role === 'manager'
+            ? 'manager'
+            : agent.role === 'implementer' && agent.permission === 'workspace-write'
+              ? 'implementer'
+              : 'read-only',
       model: model.id,
       effort: agent.effort,
       charter: this.callbacks.charter(agent),

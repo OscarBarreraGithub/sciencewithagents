@@ -7,6 +7,16 @@ verification on the owner operating a physical phone. Physical-device confirmati
 additional evidence, not proof supplied by emulation. Preserve native capabilities and simple QUARK supervision; do not restart the
 superseded tool-by-tool restriction approach or broad review loops.
 
+## Latest slice
+
+The owner's space/clutter, full-screen assistant chat, notepad visibility, native requested
+resource diagnosis and alien-branding corrections are integrated. Exact GPT-6.1 Sol workers
+provided bounded patches; root reviewed them and checked the actual running app in all five
+profiles. The live landscape composer failure was corrected. Shared editor steering stays
+available and the phone remains paired/connected. Automatic resource reports are retained
+but hidden from Chats. See VERIFICATION.md for focused evidence. Do not repeat the old broad
+review or wake the finished temporary dispatch team. New owner feedback drives the next slice.
+
 ## What is integrated and verified
 
 Opus 5.5 xhigh built Home, chat, project setup/notepad, Computer health and the public
@@ -37,24 +47,24 @@ saved a handoff/summary, continued and finished; complete context retention is n
 Recovery copies use their own read-only WAL snapshots and preserve normal concurrent writes.
 
 The running manual app serves these fixes and retains the existing phone connection. Its
-latest verified recovery copy retained four projects, 39 conversations and 1,535 entries.
+latest verified recovery copy before this update retained four projects, 45 conversations and 1,922 entries.
 sciencewithagents.app is installed in this owner's Applications folder. Keep the manual app
 and phone connector available; login service stays off. Stop only owned test processes.
 
 ## Remaining device handoff
 
-Companion 0.2.6 is installed. The latest live bridge advertises Codex steering but reports
-its conversation offline; the earlier claim that the old bridge is still loaded is stale.
-Do not reload an active conversation mid-turn or treat an offline chat as a failed steering
-request. Separate real isolated editor checks passed Codex steering and Claude's acknowledged
+Companion 0.2.6 is installed, now with the alien icon. A stale shared-chat list caused the
+misleading offline status: list reads now refresh/coalesce the companion summary. The real
+active editor conversation was verified Working with steering available, without an editor
+reload. Do not reload an active conversation mid-turn. Separate real isolated editor checks passed Codex steering and Claude's acknowledged
 follow-up queue, including unsent desktop draft preservation. A fresh focused simulation
 passed all 16 mobile keyboard/busy-send cases in 20.5 seconds at 412x915, 360x800, 915x412
 and iPhone WebKit. Real-provider evidence remains under the two isolated editor fixtures.
 Refresh the paired phone to load corrected assets; no new pairing or editor authentication
 is needed. Ask for a physical reproduction only for behavior not resolved by these checks.
 
-Native desktop computer-use currently cannot reach a browser window; Playwright phone
-simulation works. Full iOS Simulator is unavailable (`xcrun simctl` is not installed).
+Native desktop computer-use can reach the installed app in Safari again; Playwright phone
+simulation also works. Full iOS Simulator is unavailable (`xcrun simctl` is not installed).
 Physical Home Screen,
 cellular/reconnect and hardware acceptance remain in OWNER_CHECK_IN.md / PHONE_ACCEPTANCE.md.
 A clean tracked-source installation passed dependency/build/usage-reader/Mac-launcher checks

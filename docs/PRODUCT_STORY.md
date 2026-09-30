@@ -25,10 +25,11 @@ yourself. Each computer keeps its own accounts and files.
 ## Write in a full-page notepad
 
 Start a project by describing it in a full-page notepad. It saves while you type and keeps
-earlier versions to preview and restore. Expand an ordinary chat draft into the same workspace
+earlier versions to preview and restore. **Open notepad** expands an ordinary chat draft into the same workspace
 when you need more room, then minimize without sending or losing your place. Phone and computer
 drafts remain separate until you deliberately transfer one. The browser keeps an unsent draft
-locally; clearing browser data or losing the device can remove it. See the
+locally; clearing browser data or losing the device can remove it. Shared editor chats also
+offer a full-page notepad with browser-local recovery versions and separate drafts per tab. See the
 [notepad requirements and storage boundary](CHAT_UI_REQUIREMENTS.md#prompt-notepad--initial-brief-and-later-messages).
 
 ## Managers keep their place
@@ -261,10 +262,10 @@ spending grant.
 ## A quiet IT desk for your computer
 
 See more than a CPU percentage: understand memory pressure, swapping, apps with many
-helpers and how that relates to queued work. Keep a day of local history. Tap **Ask what’s
-happening** for a short explanation and practical next steps from the resource assistant.
-It can also check periodically or after sustained pressure, within a small shared budget,
-then goes idle. It offers advice and never quietly closes your apps. Exact scope and
+helpers and how that relates to queued work. Keep a day of local history. Open the Resource
+assistant for a full-screen conversation: it can inspect relevant logs and system state when
+a snapshot cannot answer your question. Periodic and pressure checks stay brief and appear
+in health history, keeping the main chat list clean. It never quietly closes your apps. Exact scope and
 platform limits are in [Computer health](RESOURCE_WATCH.md).
 
 ## Give work a share of your allowance

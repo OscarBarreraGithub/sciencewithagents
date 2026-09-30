@@ -32,6 +32,10 @@ export function Notepad({
   controls,
   onSend,
   onMinimize,
+  localOnly = false,
+  localHistory,
+  maxLength = 24_000,
+  readOnly = false,
 }: {
   draft: SharedDraft;
   agentId: string;
@@ -45,6 +49,10 @@ export function Notepad({
   controls?: ReactNode;
   onSend: () => void;
   onMinimize: () => void;
+  localOnly?: boolean;
+  localHistory?: { versions: { text: string; at: string }[]; restore: (text: string) => void };
+  maxLength?: number;
+  readOnly?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const editor = useRef<HTMLTextAreaElement>(null);
@@ -69,14 +77,18 @@ export function Notepad({
     if (area) selection.current = { start: area.selectionStart, end: area.selectionEnd };
   };
   const status = draft.error
-    ? 'Not saved to this computer'
+    ? localOnly
+      ? 'Not saved in this browser'
+      : 'Not saved to this computer'
     : !draft.ready
       ? 'Kept in this browser · connecting'
       : draft.saving
         ? 'Saving…'
         : draft.unsaved
           ? 'Saved in this browser'
-          : 'Saved';
+          : localOnly
+            ? 'Saved in this browser'
+            : 'Saved';
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(draft.currentText());
@@ -160,7 +172,8 @@ export function Notepad({
             ref={editor}
             aria-label={mode === 'brief' ? 'Project description' : `Long message to ${agentName}`}
             value={draft.text}
-            maxLength={24_000}
+            maxLength={maxLength}
+            readOnly={readOnly}
             spellCheck
             onChange={(event) => {
               draft.setText(event.target.value);
@@ -182,31 +195,63 @@ export function Notepad({
             }}
           />
           <p className="notepad-count" aria-live="off">
-            {draft.text.length.toLocaleString()} / 24,000 characters
+            {draft.text.length.toLocaleString()} / {maxLength.toLocaleString()} characters
           </p>
         </div>
-        {historyOpen && (
-          <DraftHistory
-            id={`${titleId}-history`}
-            draft={draft}
-            agentId={agentId}
-            clientId={clientId}
-            close={() => setHistoryOpen(false)}
-          />
+        {historyOpen && localOnly ? (
+          <aside className="notepad-history" id={`${titleId}-history`} aria-label="Saved versions">
+            <h3>Saved versions</h3>
+            <p>
+              Saved on this browser, including recovery copies from earlier tabs. Restore copies
+              text into this tab and keeps its current text too. It never sends.
+            </p>
+            <ol className="notepad-versions">
+              {localHistory?.versions.map((version, i) => (
+                <li key={`${version.at}:${i}`}>
+                  <button
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => localHistory.restore(version.text)}
+                  >
+                    <strong>{stamp(version.at)}</strong>
+                    <small>{version.text.slice(0, 120) || 'Empty draft'}</small>
+                  </button>
+                </li>
+              ))}
+            </ol>
+            {!localHistory?.versions.length && <p>No saved versions yet.</p>}
+          </aside>
+        ) : (
+          historyOpen && (
+            <DraftHistory
+              id={`${titleId}-history`}
+              draft={draft}
+              agentId={agentId}
+              clientId={clientId}
+              close={() => setHistoryOpen(false)}
+            />
+          )
         )}
       </div>
       <footer className="notepad-foot">
+        {localOnly && draft.error && (
+          <p role="alert" className="notepad-notice">
+            {draft.error}
+          </p>
+        )}
         {notice && (
           <p className="notepad-notice" role="alert">
             {notice}
           </p>
         )}
         {controls}
-        <DraftHandoff draft={draft} />
+        {!localOnly && <DraftHandoff draft={draft} />}
         <div className="notepad-export">
           <span>
-            Autosaved in this browser as you type, then to this computer. Clearing browser data or
-            losing the device can remove unsent drafts.
+            {localOnly
+              ? 'This tab keeps its own draft. Browser-local recovery copies and versions survive closing the tab; reopen Versions to copy them. They do not sync to another device.'
+              : 'Autosaved in this browser as you type, then to this computer.'}{' '}
+            Clearing browser data or losing the device can remove unsent drafts.
           </span>
           <button type="button" className="notepad-button" onClick={() => void copy()}>
             <Copy size={16} /> Copy text

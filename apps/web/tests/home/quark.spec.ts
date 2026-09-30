@@ -175,7 +175,7 @@ test('QUARK budgets, pause recovery and cache settings work on phone and desktop
     return route.fulfill({ json: state });
   });
   await page.goto('/#/usage');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Room to keep going');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Usage and allowances');
   await expect(page.getByText('94.0%', { exact: false })).toBeVisible();
   await page.getByLabel('Project', { exact: true }).selectOption(project);
   await page.getByLabel('Allowance', { exact: true }).selectOption('secondary');
@@ -188,6 +188,7 @@ test('QUARK budgets, pause recovery and cache settings work on phone and desktop
   await expect(page.getByRole('status')).toContainText('Budget saved');
   await page.getByRole('button', { name: 'Continue saved work' }).click();
   await expect(page.getByRole('alert')).toContainText('Increase the budget');
+  await page.getByText('Context cache settings', { exact: true }).click();
   await expect(page.getByText('Expiry not exposed', { exact: true })).toBeVisible();
   await page.getByLabel('Automatically refresh eligible idle task conversations').uncheck();
   await page.getByRole('button', { name: 'Save QUARK settings', exact: true }).click();
@@ -246,6 +247,7 @@ test('reported Claude helper totals remain distinct from unknown breakdowns on e
   ];
   await page.route('**/api/quark', (route) => route.fulfill({ json: state }));
   await page.goto('/#/usage');
+  await page.getByText('Tokens by agent', { exact: true }).click();
   const helper = page.locator('.quark-runs details');
   await helper.locator('summary').click();
   await expect(helper.locator('summary')).toContainText('750');
@@ -281,6 +283,7 @@ test('QUARK read failures recover without starting work or hiding an empty ledge
   await expect(page.getByRole('alert')).toContainText('Usage ledger unavailable');
   await page.getByRole('button', { name: 'Retry reading' }).click();
   await expect(page.getByText('No project caps yet.', { exact: false })).toBeVisible();
+  await page.getByText('Tokens by agent', { exact: true }).click();
   await expect(
     page.getByText('New agent work will appear automatically.', { exact: false }),
   ).toBeVisible();

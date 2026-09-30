@@ -169,8 +169,51 @@ async function fixture(
 ) {
   const writes: string[] = [];
   page.on('request', (request) => {
-    if (new URL(request.url()).pathname.startsWith('/api/') && request.method() !== 'GET')
+    if (
+      /\/api\/(resources\/(ask|stop|settings)|agents\/[^/]+\/(messages|commands))/.test(
+        request.url(),
+      ) &&
+      request.method() !== 'GET'
+    )
       writes.push(request.url());
+  });
+  const hostId = randomUUID(),
+    clientId = randomUUID();
+  const workspace = {
+    hostId,
+    client: {
+      id: clientId,
+      label: 'Health test browser',
+      revision: 0,
+      openAgentIds: [],
+      selectedAgentId: null,
+      updatedAt: new Date().toISOString(),
+    },
+    others: [],
+  };
+  const drafts = new Map<string, { revision: number; text: string; deliveryKey: string | null }>();
+  await page.route('**/api/workspace/clients', (route) => route.fulfill({ json: workspace }));
+  await page.route(`**/api/workspace/${clientId}`, (route) => route.fulfill({ json: workspace }));
+  await page.route(`**/api/workspace/${clientId}/drafts/*`, async (route) => {
+    const agentId = new URL(route.request().url()).pathname.split('/').at(-1)!;
+    const own = drafts.get(agentId) ?? { revision: 0, text: '', deliveryKey: null };
+    if (route.request().method() === 'POST') {
+      const input = route.request().postDataJSON();
+      own.revision++;
+      own.text = input.action.text;
+      own.deliveryKey = randomUUID();
+    }
+    drafts.set(agentId, own);
+    const state = {
+      hostId,
+      clientId,
+      agentId,
+      own: { clientId, agentId, ...own, submitted: false, updatedAt: new Date().toISOString() },
+      others: [],
+    };
+    await route.fulfill({
+      json: route.request().method() === 'POST' ? { status: 'applied', state } : state,
+    });
   });
   const policy = structuredClone(defaultModelPolicy);
   policy.providers.routine = 'codex';
@@ -263,8 +306,14 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   await expect(
     page.getByRole('status').filter({ hasText: 'Memory is under pressure' }),
   ).toBeVisible();
-  await expect(assistant.getByRole('radio', { name: 'Ask Codex', exact: true })).toBeChecked();
   expect(writes).toEqual([]);
+  await page.getByRole('button', { name: 'Open Resource assistant' }).click();
+  const full = page.getByRole('dialog', { name: 'Resource assistant conversation' });
+  await expect(full).toBeVisible();
+  const geometry = await full.boundingBox();
+  expect(geometry!.width).toBe(page.viewportSize()!.width);
+  expect(geometry!.height).toBeGreaterThanOrEqual(page.viewportSize()!.height - 2);
+  await expect(assistant.getByRole('radio', { name: 'Ask Codex', exact: true })).toBeChecked();
 
   await assistant.getByRole('radio', { name: 'Ask Claude', exact: true }).click();
   await expect(assistant.getByRole('radio', { name: 'Ask Claude', exact: true })).toBeChecked();
@@ -279,11 +328,13 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
     .selectOption('adaptive-v2');
   expect(writes).toEqual([]);
   await assistant
-    .getByRole('textbox', { name: /Your question/ })
+    .getByRole('textbox', { name: 'Message Resource assistant' })
     .fill('Why is Chrome slow at only 20% CPU?');
-  await assistant.getByRole('button', { name: 'Ask Claude', exact: true }).click();
-  await expect(assistant.getByRole('alert')).toContainText('The request may have arrived');
-  await expect(assistant.getByRole('button', { name: 'Retry the same request' })).toBeVisible();
+  await assistant.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(
+    assistant.getByRole('alert').filter({ hasText: 'The request may have arrived' }),
+  ).toBeVisible();
+  await expect(assistant.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   await page.reload();
   await expect(assistant.getByRole('radio', { name: 'Ask Claude', exact: true })).toBeChecked();
   await expect(assistant.getByRole('combobox', { name: 'Model', exact: true })).toHaveValue(
@@ -292,10 +343,10 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   await expect(assistant.getByRole('combobox', { name: 'Thinking', exact: true })).toHaveValue(
     'adaptive-v2',
   );
-  await expect(assistant.getByRole('textbox', { name: /Your question/ })).toHaveValue(
+  await expect(assistant.getByRole('textbox', { name: 'Message Resource assistant' })).toHaveValue(
     'Why is Chrome slow at only 20% CPU?',
   );
-  await assistant.getByRole('button', { name: 'Ask Claude', exact: true }).click();
+  await assistant.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(
     assistant.getByText('Memory pressure is the clearest signal.', { exact: false }),
   ).toBeVisible();
@@ -309,15 +360,21 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   });
   expect(status.checks).toHaveLength(1);
   await expect(assistant.getByRole('combobox', { name: 'Model', exact: true })).toHaveCount(0);
+  await assistant.locator('.health-chat-controls > summary').click();
   await expect(
     assistant.getByText('Follow-ups keep this conversation’s provider and model.', {
       exact: false,
     }),
   ).toBeVisible();
+  await assistant.locator('.health-chat-controls > summary').click();
+  await expect(assistant.locator('.composer textarea')).toBeInViewport();
+  await expect(
+    assistant.getByRole('button', { name: 'Open notepad', exact: true }),
+  ).toBeInViewport();
   await assistant
-    .getByRole('textbox', { name: 'Follow-up question' })
+    .getByRole('textbox', { name: 'Message Resource assistant' })
     .fill('What should I compare after closing a tab?');
-  await assistant.getByRole('button', { name: 'Send follow-up' }).click();
+  await assistant.getByRole('button', { name: 'Send message' }).click();
   await expect(
     assistant.getByText('Compare memory pressure again after closing an unused heavy tab.', {
       exact: true,
@@ -332,6 +389,7 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   expect(asks[2]!.key).not.toBe(asks[0]!.key);
   expect(new Set(status.checks.map((check) => check.agentId)).size).toBe(1);
 
+  await page.getByRole('button', { name: 'Computer health', exact: true }).click();
   await page.getByText('Automatic checks and what is measured', { exact: true }).click();
   await page.getByLabel('Automatic check-ins').check();
   await page.getByRole('button', { name: 'Save automatic checks' }).click();
@@ -369,8 +427,7 @@ for (const state of ['missing', 'stale'] as const) {
     await expect(snapshot.getByText('No resource pressure detected', { exact: true })).toHaveCount(
       0,
     );
-    await expect(assistant.getByRole('radio', { name: 'Ask Codex', exact: true })).toBeChecked();
-    await expect(assistant.getByRole('button', { name: 'Ask Codex', exact: true })).toBeDisabled();
+
     if (state === 'missing') {
       await expect(snapshot.getByText('Not measured', { exact: true })).toHaveCount(5);
       await expect(
@@ -387,6 +444,14 @@ for (const state of ['missing', 'stale'] as const) {
           .getByText('Google Chrome', { exact: true }),
       ).toBeVisible();
     }
+    await page.getByRole('button', { name: 'Open Resource assistant' }).click();
+    await expect(assistant.getByRole('radio', { name: 'Ask Codex', exact: true })).toBeChecked();
+    await assistant
+      .getByRole('textbox', { name: 'Message Resource assistant' })
+      .fill('Please explain the slowdown.');
+    await expect(
+      assistant.getByRole('button', { name: 'Send message', exact: true }),
+    ).toBeEnabled();
     expect(writes).toEqual([]);
     await noHorizontalOverflow(page);
   });
@@ -445,4 +510,131 @@ test('History pages and searches saved diagnoses and readings without starting a
   ).toBeVisible();
   expect(writes).toEqual([]);
   await noHorizontalOverflow(page);
+});
+
+test('all older automatic resource chats leave Chats, retain collapsed health evidence and preserve asked or unclassified chats', async ({
+  page,
+}) => {
+  const created = await page.request.post('/api/projects', {
+    headers: { origin: new URL(test.info().project.use.baseURL as string).origin },
+    data: {
+      key: randomUUID(),
+      name: `Resource history ${randomUUID().slice(0, 8)}`,
+      provider: 'codex',
+    },
+  });
+  expect(created.ok()).toBe(true);
+  const project = await created.json();
+  const base = await (await page.request.get(`/api/agents/${project.managerId}`)).json();
+  const status = reading();
+  status.projectId = project.id;
+  const automatic = Array.from({ length: 30 }, (_, i) => ({
+    ...base.agent,
+    id: randomUUID(),
+    name: `Automatic resource ${i}`,
+    parentId: i === 29 ? base.agent.id : null,
+    resourceAssistant: { mode: 'snapshot', reason: i % 2 ? 'pressure' : 'checkpoint' },
+  }));
+  const asked = {
+    ...base.agent,
+    id: randomUUID(),
+    name: 'My resource question',
+    resourceAssistant: { mode: 'interactive', reason: 'asked' },
+  };
+  const unknown = {
+    ...base.agent,
+    id: randomUUID(),
+    name: 'Older resource question',
+    resourceAssistant: { mode: 'snapshot' },
+  };
+  const ordinary = { ...base.agent, id: randomUUID(), name: 'Automatic resource 0' };
+  const conversations = new Map(
+    automatic.map((agent) => [
+      agent.id,
+      {
+        ...base,
+        agent,
+        entries: [
+          {
+            id: randomUUID(),
+            agentId: agent.id,
+            runId: null,
+            kind: 'assistant',
+            title: 'Assistant',
+            text: 'Retained old automatic evidence.',
+            status: 'completed',
+            createdAt: agent.createdAt,
+          },
+        ],
+      },
+    ]),
+  );
+  await fixture(page, status, conversations);
+  await page.route('**/api/snapshot', async (route) => {
+    const original = await (await route.fetch()).json();
+    await route.fulfill({
+      json: { ...original, agents: [...original.agents, ...automatic, asked, unknown, ordinary] },
+    });
+  });
+  await page.goto('/#/chats');
+  const list = page.getByRole('navigation', { name: 'Conversation list' });
+  await expect(list.getByRole('link', { name: /My resource question/ })).toBeVisible();
+  await expect(list.getByRole('link', { name: /Older resource question/ })).toBeVisible();
+  await expect(list.getByRole('link', { name: /Automatic resource 0/ })).toHaveCount(1);
+  await expect(
+    list.getByRole('link', { name: /Automatic resource (?:[1-9]|[12][0-9])\b/ }),
+  ).toHaveCount(0);
+  await page.goto('/#/resources');
+  const archive = page.locator('.health-older-checks');
+  await expect(archive).not.toHaveAttribute('open', '');
+  await expect(archive.locator('li')).toHaveCount(10);
+  await expect(archive.locator('li').first()).not.toBeVisible();
+  await archive.locator('summary').click();
+  await archive.getByRole('link').first().click();
+  const chat = page.getByRole('dialog', { name: 'Resource assistant conversation' });
+  await expect(chat.getByText('Retained old automatic evidence.', { exact: true })).toBeVisible();
+  await chat.getByRole('button', { name: 'Computer health', exact: true }).click();
+  await expect(chat).toHaveCount(0);
+});
+
+test('full-screen automatic snapshot keeps the fresh-reading guard and Stop retries its exact receipt', async ({
+  page,
+}) => {
+  const status = reading(Date.now() - 900000);
+  status.stale = true;
+  const check = diagnosis(Date.now(), '');
+  check.reason = 'pressure';
+  check.state = 'running';
+  status.checks = [check];
+  const thread = conversation(check);
+  thread.agent = {
+    ...thread.agent,
+    status: 'running',
+    resourceAssistant: { mode: 'snapshot', reason: 'pressure' },
+  } as typeof thread.agent;
+  await fixture(page, status, new Map([[check.agentId, thread]]));
+  const stops: { key: string; checkId: string }[] = [];
+  await page.route('**/api/resources/stop', async (route) => {
+    stops.push(route.request().postDataJSON());
+    if (stops.length === 1)
+      await route.fulfill({ status: 503, json: { error: 'Stop response lost.' } });
+    else {
+      check.state = 'interrupted';
+      thread.agent.status = 'interrupted';
+      await route.fulfill({ json: status });
+    }
+  });
+  await page.goto(`/#/resources/${check.agentId}`);
+  const chat = page.getByRole('dialog', { name: 'Resource assistant conversation' });
+  await chat
+    .getByRole('textbox', { name: 'Message Resource assistant' })
+    .fill('Explain the readings.');
+  await expect(chat.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  await chat.locator('.health-running').getByRole('button', { name: 'Stop', exact: true }).click();
+  await expect(chat.getByRole('alert').filter({ hasText: 'Stop response lost.' })).toBeVisible();
+  await chat.locator('.health-running').getByRole('button', { name: 'Stop', exact: true }).click();
+  expect(stops).toHaveLength(2);
+  expect(stops[0]).toEqual(stops[1]);
+  await expect(chat.locator('.health-running')).toHaveCount(0);
+  await expect(chat.getByRole('button', { name: 'Send message' })).toBeDisabled();
 });

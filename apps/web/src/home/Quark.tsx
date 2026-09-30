@@ -91,13 +91,8 @@ export function Quark({ data, now, taskId }: { data: HomeData; now: number; task
       </a>
       <header className="quark-heading">
         <p className="home-eyebrow">QUARK · USAGE & WORK</p>
-        <h1 tabIndex={-1}>
-          Room to <em>keep going.</em>
-        </h1>
-        <p>
-          A shared allowance, a clear budget for each project, and your progress kept safe when work
-          pauses.
-        </p>
+        <h1 tabIndex={-1}>Usage and allowances</h1>
+        <p>Account allowances, project budgets and recorded usage.</p>
       </header>
       {error && (
         <div className="quark-alert" role="alert">
@@ -312,7 +307,7 @@ export function Quark({ data, now, taskId }: { data: HomeData; now: number; task
           </section>
           <section className="quark-section">
             <h2>
-              <Pause size={19} /> Paused, with progress intact
+              <Pause size={19} /> Paused work
             </h2>
             {!state.holds.length ? (
               <p className="quark-empty">
@@ -349,7 +344,7 @@ export function Quark({ data, now, taskId }: { data: HomeData; now: number; task
             )}
           </section>
           <section className="quark-section">
-            <h2>Where the allowance went</h2>
+            <h2>Usage by project</h2>
             <p>
               Estimated shares since tracking began in each current window. Concurrent activity
               outside this app can affect attribution. Accuracy within 2–3 percentage points has not
@@ -379,8 +374,8 @@ export function Quark({ data, now, taskId }: { data: HomeData; now: number; task
               ))}
             </div>
           </section>
-          <section className="quark-section">
-            <h2>Agent token ledger</h2>
+          <details className="quark-section quark-report">
+            <summary>Tokens by agent</summary>
             <p>
               Provider-reported counters for individual runs. Native helpers stay separate from
               parent totals until their overlap can be verified. Missing counts are unknown, not
@@ -488,11 +483,11 @@ export function Quark({ data, now, taskId }: { data: HomeData; now: number; task
                 and budgets.
               </p>
             )}
-          </section>
-          <section className="quark-section">
-            <h2>
-              <Clock3 size={19} /> Keep useful context warm
-            </h2>
+          </details>
+          <details className="quark-section quark-report">
+            <summary>
+              <Clock3 size={19} /> Context cache settings
+            </summary>
             <p>
               Cache expiry does not delete a conversation. A small refresh can help reuse its cached
               prompt, but also spends allowance. Paused work is never nudged, and quota limits take
@@ -614,7 +609,7 @@ export function Quark({ data, now, taskId }: { data: HomeData; now: number; task
                 </button>
               </form>
             )}
-          </section>
+          </details>
           <footer className="quark-footnote">
             QUARK acts while this computer and app are running. Interruptions can overshoot while a
             provider finishes an in-flight request. It does not control independent editor sessions

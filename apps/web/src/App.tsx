@@ -472,7 +472,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
       )}
       <aside className={`sidebar ${leftOpen ? 'open' : ''}`}>
         <a className="brand" href="/" aria-label="sciencewithagents home">
-          <img src="/dock.svg" alt="" />
+          <img src="/dock.svg?v=alien" alt="" />
           <span>
             sciencewithagents<span className="brand-period">.</span>
           </span>
@@ -816,8 +816,8 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
             )
           ) : !state ? (
             <div className="welcome">
-              <span className="eyebrow">YOUR WORK, IN GOOD COMPANY</span>
-              <h1>One home for your agents.</h1>
+              <span className="eyebrow">WORKSPACE</span>
+              <h1>sciencewithagents</h1>
               <p>{connected ? 'Loading your workspace…' : 'Connecting to sciencewithagents…'}</p>
               <button className="secondary" onClick={() => void refresh()}>
                 <RefreshCw size={16} /> Retry connection

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Aperture,
   ArrowDown,
@@ -455,7 +455,7 @@ function RunningPanel({ data, needs }: { data: HomeData; needs: Map<string, numb
         <p>
           {rates.data
             ? `%/h: estimated percentage points of each allowance window used per hour${
-                interval ? `, over the last ${interval} min` : ''
+                interval ? `, over the last ${Math.max(1, Math.round(interval))} min` : ''
               }.`
             : rates.error
               ? 'Allowance rates per project are not available on this computer yet.'
@@ -489,33 +489,60 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
   if (!state) return [];
   const projects = new Map(state.projects.map((p) => [p.id, p.name]));
   const approvals = new Map(state.approvals.map((a) => [a.id, a]));
-  const snapshotNeeds = attention(state).items.map((item): Need => {
-    const approval = item.kind === 'approval' ? approvals.get(item.id) : undefined;
-    return {
-      key: `${item.kind}:${item.id}`,
-      href:
-        item.destination === 'workspace' && item.taskId
-          ? `#/review/${encodeURIComponent(item.taskId)}`
-          : chat(item.agentId),
-      project: item.projectName,
-      label: approval
-        ? approval.kind === 'input'
-          ? 'Question'
-          : approval.kind.startsWith('mcp')
-            ? 'Tool request'
-            : 'Permission request'
-        : {
-            approval: 'Permission request',
-            decision: 'Decision needed',
-            failed: 'Stopped work',
-            interrupted: 'Stopped work',
-            integration: 'Changes ready for review',
-            backup: 'Source backup',
-          }[item.kind],
-      title: item.title,
-      detail: approval?.questions[0]?.question || item.description,
-    };
-  });
+  const agents = new Map(state.agents.map((agent) => [agent.id, agent]));
+  const internal = new Set(
+    state.projects.filter((project) => project.internal).map((project) => project.id),
+  );
+  const tasks = new Map(state.tasks.map((task) => [task.id, task]));
+  const stopped = new Map<string, Need>();
+  const snapshotNeeds = attention(state)
+    .items.filter((item) => {
+      // Keep real questions; routine checks and already finished workers are history.
+      if (item.kind === 'approval') return true;
+      if (internal.has(item.projectId)) return false;
+      if (['failed', 'interrupted'].includes(item.kind)) {
+        const task = item.taskId ? tasks.get(item.taskId) : undefined;
+        if (task && ['done', 'integrated', 'split'].includes(task.status)) return false;
+        if (!stopped.has(item.projectId))
+          stopped.set(item.projectId, {
+            key: `stopped:${item.projectId}`,
+            href: '#/work',
+            project: item.projectName,
+            label: 'Stopped work',
+            title: `${item.projectName}: stopped work to review`,
+            detail: 'Open QUARK to inspect the reason and continue when ready.',
+          });
+        return false;
+      }
+      return !!agents.get(item.agentId);
+    })
+    .map((item): Need => {
+      const approval = item.kind === 'approval' ? approvals.get(item.id) : undefined;
+      return {
+        key: `${item.kind}:${item.id}`,
+        href:
+          item.destination === 'workspace' && item.taskId
+            ? `#/review/${encodeURIComponent(item.taskId)}`
+            : chat(item.agentId),
+        project: item.projectName,
+        label: approval
+          ? approval.kind === 'input'
+            ? 'Question'
+            : approval.kind.startsWith('mcp')
+              ? 'Tool request'
+              : 'Permission request'
+          : {
+              approval: 'Permission request',
+              decision: 'Decision needed',
+              failed: 'Stopped work',
+              interrupted: 'Stopped work',
+              integration: 'Changes ready for review',
+              backup: 'Source backup',
+            }[item.kind],
+        title: item.title,
+        detail: approval?.questions[0]?.question || item.description,
+      };
+    });
   // A manager's saved ask for a person, answered in its original conversation.
   const asks = items
     .filter((i) => i.kind === 'human' && i.status === 'waiting' && !i.humanReply && i.managerId)
@@ -541,7 +568,7 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
         detail: 'Open local work to see what happened and choose whether to retry.',
       }),
     );
-  return [...snapshotNeeds, ...asks, ...local];
+  return [...asks, ...snapshotNeeds, ...stopped.values(), ...local];
 }
 
 function AttentionPanel({
@@ -553,6 +580,8 @@ function AttentionPanel({
   known: boolean;
   error: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? needs : needs.slice(0, 3);
   return (
     <section className="overview-attention" aria-labelledby="attention-heading">
       <div className="overview-panel-head">
@@ -566,8 +595,8 @@ function AttentionPanel({
           {error ? 'Requests will appear when the computer reconnects.' : 'Checking for requests…'}
         </p>
       ) : needs.length ? (
-        <ul className="attention-list">
-          {needs.map((need) => (
+        <ul className="overview-attention-list">
+          {visible.map((need) => (
             <li key={need.key}>
               <a href={need.href} className="attention-item">
                 <span className="attention-meta">
@@ -583,10 +612,11 @@ function AttentionPanel({
       ) : (
         <p className="overview-empty">Nothing needs you right now.</p>
       )}
-      <p className="attention-foot">
-        Opening a request shows it in its original chat. Nothing is answered or approved until you
-        choose there.
-      </p>
+      {needs.length > 3 && (
+        <button className="attention-more" onClick={() => setExpanded(!expanded)}>
+          {expanded ? 'Show fewer' : `Show ${needs.length - 3} more requests`}
+        </button>
+      )}
     </section>
   );
 }
@@ -608,7 +638,35 @@ function TodoPanel({
   const names = new Map(projects.map((p) => [p.id, p.name]));
   const general = reading.data?.items.filter((i) => i.kind === 'general') ?? [];
   const open = general.filter((i) => i.status !== 'done');
-  const [text, setText] = useState('');
+  const draftKey = `dock:${apiScope()}:home-todo:draft`;
+  const [text, setText] = useState(() => {
+    try {
+      return sessionStorage.getItem(draftKey) ?? '';
+    } catch {
+      return '';
+    }
+  });
+  const notepad = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const field = notepad.current;
+    const resize = () => {
+      if (!field) return;
+      field.style.height = 'auto';
+      field.style.height = `${field.scrollHeight}px`;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, [text]);
+  const updateText = (value: string) => {
+    setText(value);
+    try {
+      if (value) sessionStorage.setItem(draftKey, value);
+      else sessionStorage.removeItem(draftKey);
+    } catch {
+      // Keep typing available when this browser cannot retain a local draft.
+    }
+  };
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const [choosing, setChoosing] = useState<string | null>(null);
@@ -646,11 +704,13 @@ function TodoPanel({
   };
   const add = (event: FormEvent) => {
     event.preventDefault();
-    const title = text.trim();
-    if (!title) return;
+    const note = text.trim();
+    if (!note) return;
+    const title = note.split(/\r?\n/, 1)[0].slice(0, 240);
+    const detail = note.slice(title.length).trim();
     void run('add', async () => {
-      await save('add', { kind: 'general', title });
-      setText('');
+      await save('add', { kind: 'general', title, detail });
+      updateText('');
     });
   };
   const send = (event: FormEvent, item: WorkItem) => {
@@ -678,14 +738,16 @@ function TodoPanel({
         <label className="home-sr-only" htmlFor="todo-new">
           New to-do
         </label>
-        <input
+        <textarea
+          ref={notepad}
           id="todo-new"
           value={text}
-          maxLength={240}
+          rows={4}
+          maxLength={8000}
           autoComplete="off"
-          placeholder="Add a to-do"
-          disabled={unavailable}
-          onChange={(event) => setText(event.target.value)}
+          placeholder="Write a to-do…"
+          disabled={unavailable || busy === 'add'}
+          onChange={(event) => updateText(event.target.value)}
         />
         <button type="submit" disabled={!text.trim() || !!busy || unavailable}>
           <Plus size={17} />
@@ -736,6 +798,7 @@ function TodoPanel({
                 )}
                 <span className="todo-text">
                   <strong>{item.title}</strong>
+                  {item.detail && <span className="todo-detail">{item.detail}</span>}
                   <small>
                     {item.managerId
                       ? `Sent to ${(item.projectId && names.get(item.projectId)) || 'a project'} · ${statusNames[item.status]}`

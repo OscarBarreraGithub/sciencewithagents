@@ -341,8 +341,7 @@
 /* For your attention + to-do */
 .overview-side {
   padding: 0;
-  /* Rows are sized by the destinations and bottom panels; this column scrolls inside. */
-  contain: size;
+  align-self: start;
 }
 .overview-attention,
 .overview-todo {
@@ -352,22 +351,22 @@
   padding: 14px 18px 12px;
 }
 .overview-attention {
-  flex: 1 1 55%;
+  flex: 0 0 auto;
 }
 .overview-todo {
   flex: 1 1 45%;
   border-top: 1px solid var(--home-line);
 }
-.attention-list,
+.overview-attention-list,
 .todo-list {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
   margin: 0 -4px;
   padding: 0 4px;
   list-style: none;
 }
-.attention-list {
+.overview-attention-list {
   display: grid;
   align-content: start;
   gap: 8px;
@@ -377,10 +376,9 @@
   gap: 3px;
   min-height: 44px;
   padding: 10px 12px;
-  border: 1px solid #efe4d2;
-  border-left: 3px solid #b3541e;
-  border-radius: 10px;
-  background: #fdf8f0;
+  border-bottom: 1px solid var(--home-line);
+  border-radius: 0;
+  background: transparent;
 }
 .attention-item:hover {
   border-color: #d9b58f;
@@ -419,22 +417,28 @@
 }
 .todo-add {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 8px;
 }
-.todo-add input {
-  flex: 1;
+.todo-add textarea {
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
-  min-height: 44px !important;
-  padding: 0 12px;
+  min-height: 132px;
+  padding: 12px 14px;
   border: 1px solid #d9d2c5;
   border-radius: 10px;
   background: var(--home-paper);
   color: var(--home-ink);
   font: inherit;
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1.65;
+  resize: vertical;
+  overflow-y: hidden;
 }
-.todo-add input:focus-visible,
+.todo-add textarea:focus-visible,
 .todo-send select:focus-visible,
 .running-sort select:focus-visible {
   outline: 3px solid var(--home-blue);
@@ -505,6 +509,12 @@
 .todo-text strong {
   font-size: 14px;
   font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.todo-detail {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .todo-text small {
@@ -642,12 +652,6 @@
   .overview-side {
     contain: none;
   }
-  .attention-list {
-    max-height: 300px;
-  }
-  .todo-list {
-    max-height: 290px;
-  }
   .overview-panel,
   .overview-attention,
   .overview-todo {
@@ -692,4 +696,11 @@
   .running-sort > span {
     display: none;
   }
+}
+
+.attention-more {
+  align-self: flex-start;
+  min-height: 44px;
+  color: var(--home-blue);
+  font-weight: 650;
 }

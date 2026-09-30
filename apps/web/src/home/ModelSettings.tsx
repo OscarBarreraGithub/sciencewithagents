@@ -108,15 +108,8 @@ export function ModelSettings() {
       </a>
       <header className="model-heading">
         <p className="home-eyebrow">WORKSPACE SETTINGS</p>
-        <h1 tabIndex={-1}>
-          The right mind
-          <br />
-          <em>for the work.</em>
-        </h1>
-        <p>
-          One model policy for your managers, workers and computer check-ins. Start with sensible
-          defaults. Make them yours.
-        </p>
+        <h1 tabIndex={-1}>Models and roles</h1>
+        <p>Choose default models for managers, workers and routine computer checks.</p>
       </header>
       {error && (
         <div className="model-feedback error" role="alert">
@@ -232,7 +225,7 @@ export function ModelSettings() {
             <div className="model-section-heading">
               <div>
                 <p className="home-eyebrow">02 / YOUR TEAM</p>
-                <h2>Four levels. Room to choose.</h2>
+                <h2>Model levels</h2>
               </div>
               <button onClick={() => void refresh()} disabled={busy}>
                 <RefreshCw size={15} /> {busy ? 'Working…' : 'Refresh available models'}
@@ -384,7 +377,7 @@ export function ModelSettings() {
           </section>
           <section className="model-routing">
             <p className="home-eyebrow">03 / TASK DEFAULTS</p>
-            <h2>A shared playbook.</h2>
+            <h2>Task defaults</h2>
             <p>
               These provider choices take precedence over the preset. Managers always use the
               postdoc level. Serious work starts at grad student.

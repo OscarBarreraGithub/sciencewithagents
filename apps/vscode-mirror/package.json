@@ -1,6 +1,7 @@
 {
   "name": "agent-dock-mirror",
   "displayName": "sciencewithagents",
+  "icon": "icon.png",
   "description": "Unofficial, reversible live Codex and Claude Code chats for your paired sciencewithagents phone.",
   "version": "0.2.6",
   "publisher": "oscarphysics",

@@ -2,8 +2,9 @@
 
 sciencewithagents is the central app. QUARK schedules work. **Computer health** is its
 small IT desk: a local watcher plus a resource assistant that wakes only for a diagnosis.
-Open the computer card on Home, or the health link below it, then **Ask what’s happening**.
-You can add a symptom, read the report in place, stop a pending check and change watcher settings.
+Open the computer card on Home, then **Open Resource assistant** for a full-screen
+conversation. Add a symptom, read the findings, stop a pending check or return to the charts.
+Automatic reports stay in Computer health history instead of filling the normal chat list.
 Model settings and the other core workspace destinations are connected; see FEATURES.md.
 
 ## What matters
@@ -48,15 +49,25 @@ not automatic deletion of saved work.
 
 ## Agent workflow and limits
 
-The reusable instructions live in `resourceCharter` in `apps/server/src/resource-watch.ts`.
-Managers can use `dock_inspect {resources:true}` without waking another model. The app’s
-Ask action creates one read-only **undergrad** diagnosis using the central
-[model policy](MODEL_POLICY.md): Sonnet or Terra by default, or the owner's exact override.
-It has no execution, filesystem, network or process-control tools. It may use one
-`dock_escalate` call for a **grad student** consultation, then finishes. The separate grad
-report cannot escalate again, uses QUARK and counts against automatic daily limits. Both
-processes are released after completion. Reports explain likely causes, evidence,
-uncertainty and reversible owner actions. No other model/provider is silently substituted.
+The two reusable charters live in `apps/server/src/resource-watch.ts`. Managers can use
+`dock_inspect {resources:true}` without waking another model. Explicit owner questions use
+native diagnostic tools and the provider's normal workspace-write boundary. The assistant
+can inspect relevant system state or logs; it must distinguish actual findings from guesses.
+A question about failed login or switching users does not authorize logging out, restarting,
+killing processes or changing OS/account settings. Low CPU alone never proves a service works.
+
+Central [model policy](MODEL_POLICY.md) selects Sonnet or Terra for routine assistance, or
+the owner's exact model choice. Automatic checkpoint/pressure checks remain snapshot-only:
+no execution, filesystem, network or process-control tools. Either kind may request one
+bounded grad consultation, which cannot escalate again. Automatic consultations count against
+the same daily limit. Finished provider processes are released while saved history remains.
+No provider/model is silently substituted.
+
+Existing snapshot conversations keep their original restrictions. An explicit follow-up to
+an older owner-requested diagnosis upgrades that same conversation to native assistance;
+merely opening history does not. Automatic reports and grad consultations stay bounded.
+Durable origin metadata separates automatic reports from owner conversations, including
+older reports outside the recent history window. Unknown origins stay visible conservatively.
 
 Automatic checks are configurable and off on a fresh installation. The owner requested
 them for this computer. Defaults: checkpoint every **6 hours**, plus persistent CPU ≥85%,
@@ -71,8 +82,9 @@ the original slowdown with current conditions.
 
 Checks use the existing QUARK queue: owner questions are interactive, automatic checks are
 background. They obey shared provider/machine limits and may wait when the machine is too
-busy. A queued check expires after 15 minutes; a running check is stopped after about three
-minutes. Estimates are 6,000 tokens and 1% allowance, not measured cost or a hard provider
+busy. A queued snapshot check expires after 15 minutes; a running snapshot check is stopped
+after about three minutes. Interactive native assistance uses ordinary QUARK supervision
+instead of that three-minute cutoff, and can investigate even when cached readings are stale. Estimates are 6,000 tokens and 1% allowance, not measured cost or a hard provider
 token cap. The local readings remain useful while the agent waits. Turning automatic checks
 off cancels queued automatic checks; an already running check may finish within its limit.
 
@@ -81,8 +93,9 @@ off cancels queued automatic checks; an already running check may finish within 
 Collect executable/app names and counters, never process arguments, URLs, environment or
 file contents. Local samples expire after 24 hours; diagnosis conversations/reports retain
 their history. Asking or enabling automatic checks sends selected measurements and QUARK
-status to the selected signed-in provider. Reports advise; they never close another app or
-change its settings. Monitoring runs while sciencewithagents is running, including without
+status to the selected signed-in provider. Interactive assistance may inspect additional data
+using native tools for the requested diagnosis. Automatic reports only advise. Interactive
+assistance needs an explicit owner request before changing apps or OS/account settings. Monitoring runs while sciencewithagents is running, including without
 an open browser; it is not a new login service and cannot monitor a sleeping/off computer.
 
 Apple describes [memory pressure](https://support.apple.com/guide/activity-monitor/view-memory-usage-actmntr1004/mac)

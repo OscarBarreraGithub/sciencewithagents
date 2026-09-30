@@ -12,6 +12,16 @@ not completed mobile acceptance. The latest complete release check passes. One e
 iPhone WebKit project-brief failure did not recur in three fresh-data repetitions or the
 full rerun; its cause remains unconfirmed and failure diagnostics are retained. See [Verification](VERIFICATION.md).
 
+## Latest owner-reported corrections
+
+Home fills the browser width, shows a short grouped attention list and lets mobile allowance
+scroll away. Computer no longer exposes recovery/accounting shortcuts. QUARK/resource chats
+open full-screen; labelled Open notepad controls also serve shared chats, with separate tab
+drafts and local recovery versions. Automatic resource reports stay in health history. Asked
+resource conversations can use native diagnostic tools. The alien icon is installed across
+the app, launcher, companion and public site. Focused browser checks plus actual saved-history
+checks cover all five profiles; a real native diagnostic command passed. See VERIFICATION.md.
+
 ## Connected behavior
 
 - Home shows remaining Codex/Claude allowance, editor status, computer pressure,
@@ -23,7 +33,8 @@ full rerun; its cause remains unconfirmed and failure diagnostics are retained. 
 - Phone conversations use compact headers, message bubbles and grouped expandable
   tool activity. Codex steering targets the observed running turn. Claude editor
   follow-ups use its acknowledged native queue. Companion 0.2.6 is installed here,
-  and the latest bridge advertises steering, although its conversation is currently offline. Both paths
+  and the live editor now reports Working with steering available after correcting stale list
+  summaries. No editor reload was needed. Both paths
   passed real isolated native editor checks, preserving unsent desktop drafts.
   Existing Codex shared-server sessions now appear separately in Chats → Shared. A real
   native terminal passed first send, exact-turn guidance, stale-input refusal and Stop;
@@ -79,8 +90,8 @@ runtime files. The latest release check passed format, production builds, 759 ba
 are deliberately skipped; physical device acceptance is not inferred from them.
 No Guide/FAQ is published.
 
-Native computer-use currently cannot reach a desktop browser window. Safe companion
-activation and physical phone Home Screen/cellular/restart
+Native computer-use reached the real app in Safari and loaded the corrected layout.
+Physical phone Home Screen/cellular/restart
 journeys are distinct from browser fixtures. Do not claim those passed. Other people must
 use their own accounts and complete their own device sign-ins.
 

@@ -197,7 +197,7 @@ export function Welcome({ data }: { data: HomeData }) {
   const projectReady = !!projects.length;
   return (
     <section className="flow-page welcome-page">
-      <FlowHeading label="WELCOME / WORKSPACE SETUP" title="A home for your agents.">
+      <FlowHeading label="WELCOME / WORKSPACE SETUP" title="Welcome and setup">
         Set up your private workspace and start your first project. Your team, shared allowances and
         results stay connected across computer and phone.
       </FlowHeading>
@@ -391,7 +391,7 @@ export function Welcome({ data }: { data: HomeData }) {
             <div className="welcome-step-top">
               <span className="welcome-number">{projectReady ? <Check size={18} /> : '03'}</span>
               <div>
-                <h2>{projectReady ? 'Your projects are here' : 'Make room for an idea'}</h2>
+                <h2>{projectReady ? 'Your projects are here' : 'Create a project'}</h2>
                 <p>
                   Give a project its own manager. Creating the project starts no model work; your
                   first message does.
@@ -407,7 +407,7 @@ export function Welcome({ data }: { data: HomeData }) {
             <div className="welcome-step-top">
               <span className="welcome-number">04</span>
               <div>
-                <h2>Give work room to run</h2>
+                <h2>QUARK scheduling</h2>
                 <p>QUARK shares provider allowance and computer capacity across your projects.</p>
               </div>
             </div>
@@ -462,7 +462,7 @@ export function Welcome({ data }: { data: HomeData }) {
         <aside className="welcome-phone">
           <Smartphone size={25} />
           <div>
-            <h2>Bring your phone along.</h2>
+            <h2>Phone setup</h2>
             <p>
               Optional after your local workspace is ready. Pairing and phone access have their own
               setup.

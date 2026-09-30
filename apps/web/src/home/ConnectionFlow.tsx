@@ -75,7 +75,7 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
   if (page === 'settings')
     return (
       <section className="flow-page connection-page">
-        <FlowHeading label="YOUR WORKSPACE" title="Make yourself at home.">
+        <FlowHeading label="YOUR WORKSPACE" title="Settings">
           Choose how your team works, what your assistant knows, and how you stay connected.
         </FlowHeading>
         <div className="connection-grid">
@@ -115,7 +115,7 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
   if (page === 'computers')
     return (
       <section className="flow-page connection-page">
-        <FlowHeading label="COMPUTERS AND ACCOUNTS" title="Your work has a home.">
+        <FlowHeading label="COMPUTERS AND ACCOUNTS" title="Computers and accounts">
           Switch computers without moving conversations or mixing account allowances.
         </FlowHeading>
         <div className="flow-form-panel">
@@ -135,25 +135,13 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
             <span>Sign-in and available models, without sending a prompt</span>
             <ArrowUpRight />
           </a>
-          <a href="#/usage">
-            <Monitor />
-            <strong>Accounts and allowances</strong>
-            <span>Readings from the selected computer</span>
-            <ArrowUpRight />
-          </a>
-          <a href="#/recovery">
-            <DatabaseBackup />
-            <strong>Keep a recovery copy</strong>
-            <span>Private records on this computer</span>
-            <ArrowUpRight />
-          </a>
         </div>
       </section>
     );
   if (page === 'recovery')
     return (
       <section className="flow-page connection-page">
-        <FlowHeading label="RECOVERY" title="Keep a way back.">
+        <FlowHeading label="RECOVERY" title="Recovery copies">
           Verified local copies give your managed records an extra checkpoint.
         </FlowHeading>
         <RetainedBrowserDrafts />
@@ -163,7 +151,7 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
   if (page === 'phone')
     return (
       <section className="flow-page connection-page">
-        <FlowHeading label="PHONE ACCESS" title="Take the conversation with you.">
+        <FlowHeading label="PHONE ACCESS" title="Phone access">
           Your computer keeps the work. Your paired phone gives you a private way to reach it.
         </FlowHeading>
         <PhoneSettings embedded close={() => navigate('settings')} />
@@ -171,7 +159,7 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
     );
   return (
     <section className="flow-page connection-page">
-      <FlowHeading label="ASSISTANT PRIVACY" title="You decide what’s shared.">
+      <FlowHeading label="ASSISTANT PRIVACY" title="Assistant privacy">
         Projects and personal notes are shared only when you choose them.
       </FlowHeading>
       {data.snapshot.data ? (
@@ -247,14 +235,14 @@ function AssistantPage({ data }: { data: HomeData }) {
     );
   return (
     <section className="flow-page connection-page">
-      <FlowHeading label="YOUR PERSONAL AGENT" title="A little perspective.">
+      <FlowHeading label="YOUR PERSONAL AGENT" title="Personal assistant">
         A private place for priorities, questions and coordinating the work you choose to share.
       </FlowHeading>
       <div className="connection-welcome">
         <span className="connection-orb">
           <Sparkles size={34} />
         </span>
-        <h2>Start with what matters to you.</h2>
+        <h2>Start a conversation</h2>
         <p>
           Your assistant can explain saved progress and pass requests to project managers. Choose
           its access before sharing project details.
@@ -320,7 +308,7 @@ function EditorPage({ target }: { target?: string }) {
           <ArrowUpRight size={17} />
         </a>
       ) : (
-        <FlowHeading label="SHARED EDITOR CHATS" title="From your editor, to here.">
+        <FlowHeading label="SHARED EDITOR CHATS" title="VS Code chats">
           Shared Codex and Claude chats keep their original editor identity, tools and account.
         </FlowHeading>
       )}
@@ -360,7 +348,7 @@ function SearchPage({ data, projectId }: { data: HomeData; projectId?: string })
     ) ?? [];
   return (
     <section className="flow-page connection-page">
-      <FlowHeading label="SAVED HISTORY" title="Find the thread.">
+      <FlowHeading label="SAVED HISTORY" title="Saved history">
         Find your projects and conversations, then read the saved evidence behind their work.
       </FlowHeading>
       {!state ? (
@@ -423,7 +411,7 @@ function SearchPage({ data, projectId }: { data: HomeData; projectId?: string })
               open={chat}
             />
           ) : (
-            <FlowEmpty title="Decisions stay with their context">
+            <FlowEmpty title="No matching history">
               Choose a project to search saved conversations, tool results and messages between
               agents. Reading does not start work.
             </FlowEmpty>
@@ -440,7 +428,7 @@ function SavedWorkspace({ data }: { data: HomeData }) {
   );
   return (
     <section className="flow-page connection-page">
-      <FlowHeading label="YOUR SAVED VIEWS" title="Pick up the thread.">
+      <FlowHeading label="YOUR SAVED VIEWS" title="Open conversations">
         Open conversations and browser drafts have separate, deliberate handoffs.
       </FlowHeading>
       <WorkspacePanel

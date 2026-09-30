@@ -108,6 +108,13 @@ export const agentSchema = z.object({
   assignment: assignmentSchema.nullable().default(null),
   modelSelection: z.enum(['policy', 'exact', 'native']).optional(),
   surface: conversationSurfaceSchema.optional(),
+  resourceAssistant: z
+    .object({
+      mode: z.enum(['interactive', 'snapshot']),
+      // Absent only when a legacy resource identity has no retained origin evidence.
+      reason: z.enum(['asked', 'checkpoint', 'pressure']).optional(),
+    })
+    .optional(),
   interview: z
     .object({
       sourceAgentId: id,

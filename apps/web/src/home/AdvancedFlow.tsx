@@ -51,7 +51,7 @@ export function AdvancedFlow({ route, data }: { route: string; data: HomeData })
     <section className="flow-page connection-page advanced-page">
       <FlowHeading
         label="ADVANCED CONTROLS"
-        title={agent ? agent.name : 'Keep the controls you know.'}
+        title={agent ? agent.name : 'Advanced controls'}
         action={
           agent ? (
             <a

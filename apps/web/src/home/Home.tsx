@@ -114,16 +114,7 @@ const section = (page: string) =>
       : page;
 
 function Mark({ className = '' }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 40 40" fill="none" aria-hidden="true">
-      <path d="M9 11 29 9 31 29 11 31Z" stroke="currentColor" strokeWidth="1.5" />
-      <path d="m9 11 22 18M29 9 11 31" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="9" cy="11" r="4.5" fill="currentColor" />
-      <circle cx="29" cy="9" r="4.5" fill="currentColor" />
-      <circle cx="31" cy="29" r="4.5" fill="currentColor" />
-      <circle cx="11" cy="31" r="4.5" fill="currentColor" />
-    </svg>
-  );
+  return <img className={className} src="/dock.svg?v=alien" alt="" width="36" height="32" />;
 }
 function resetLabel(value: string | null, now: number) {
   if (!value) return 'Reset time not reported';
@@ -351,6 +342,13 @@ function phoneState(
 }
 
 export function Home() {
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 700px)').matches);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 700px)');
+    const change = () => setMobile(query.matches);
+    query.addEventListener('change', change);
+    return () => query.removeEventListener('change', change);
+  }, []);
   const [visible, setVisible] = useState<{ height: number; top: number }>();
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -485,10 +483,12 @@ export function Home() {
               ))}
             </nav>
           )}
-          <div className="home-header-status" aria-label="Allowance and editor status">
-            <Allowances data={data} now={now} />
-            <EditorStatus data={data} />
-          </div>
+          {!mobile && (
+            <div className="home-header-status" aria-label="Allowance and editor status">
+              <Allowances data={data} now={now} />
+              <EditorStatus data={data} />
+            </div>
+          )}
           <div className="home-header-actions">
             <button
               type="button"
@@ -530,6 +530,13 @@ export function Home() {
         </button>
       </div>
       <main className="home-content" id="home-content" ref={main}>
+        {mobile && page === 'home' && (
+          <div className="home-mobile-status" aria-label="Computer and allowances">
+            <ComputerLink data={data} />
+            <Allowances data={data} now={now} />
+            <EditorStatus data={data} />
+          </div>
+        )}
         {page === 'welcome' ? (
           <Welcome data={data} />
         ) : page === 'home' ? (
