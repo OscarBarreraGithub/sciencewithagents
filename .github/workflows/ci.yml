@@ -22,3 +22,11 @@ jobs:
       - run: pnpm verify
       - run: pnpm --filter @dock/web exec playwright install --with-deps chromium webkit
       - run: pnpm test:e2e --reporter=line
+      - name: Retain browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failures
+          path: data/browser-results/home/
+          if-no-files-found: ignore
+          retention-days: 7
