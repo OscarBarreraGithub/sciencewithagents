@@ -198,6 +198,46 @@ for (const size of [
             }
           }
           if (route === 'new') {
+            const sent: string[] = [];
+            page.on('request', (request) => {
+              if (request.method() === 'POST' && request.url().endsWith('/messages'))
+                sent.push(request.url());
+            });
+            await expect(
+              page.getByRole('heading', { name: 'Start or connect a project', exact: true }),
+            ).toBeVisible();
+            await page.getByRole('radio', { name: /Start fresh/ }).check();
+            const name = `Zoom ${size.width} ${factor}`;
+            await page.getByLabel('Project name', { exact: true }).fill(name);
+            const spawn = page.getByRole('button', { name: 'Spawn', exact: true });
+            await spawn.scrollIntoViewIfNeeded();
+            await expect(spawn).toBeInViewport();
+            await page.reload();
+            await expect(page.getByLabel('Project name', { exact: true })).toHaveValue(name);
+            await page.getByRole('button', { name: 'Spawn', exact: true }).click();
+            const brief = page.getByRole('dialog', { name: 'Describe your project', exact: true });
+            await expect(brief).toBeVisible();
+            const description = `Draft retained at ${factor}x zoom.`;
+            const descriptionField = brief.getByRole('textbox', {
+              name: 'Project description',
+              exact: true,
+            });
+            await descriptionField.fill(description);
+            await expect(brief.locator('.notepad-status')).toHaveText('Saved');
+            await page.reload();
+            await expect(
+              page.getByRole('dialog', { name: 'Describe your project', exact: true }),
+            ).toBeVisible();
+            await expect(
+              page
+                .getByRole('dialog', { name: 'Describe your project', exact: true })
+                .getByRole('textbox', { name: 'Project description', exact: true }),
+            ).toHaveValue(description);
+            const managerId = new URL(page.url()).hash.split('/')[2];
+            const created = await (await page.request.get(`/api/agents/${managerId}`)).json();
+            expect(created.runs).toEqual([]);
+            expect(sent).toEqual([]);
+
             await page.route('**/api/project-options', (route) =>
               route.fulfill({ json: { canChooseFolder: true } }),
             );
@@ -212,15 +252,11 @@ for (const size of [
                 },
               }),
             );
-            await page.reload();
-            await expect(page.getByRole('dialog')).toBeVisible();
-            await page.getByLabel('Project name', { exact: true }).fill('A project at every zoom');
-            await page
-              .getByRole('button', { name: 'Create project', exact: true })
-              .scrollIntoViewIfNeeded();
+            await page.goto('http://127.0.0.1:4339/#/new');
             await expect(
-              page.getByRole('button', { name: 'Create project', exact: true }),
-            ).toBeInViewport();
+              page.getByRole('heading', { name: 'Start or connect a project', exact: true }),
+            ).toBeVisible();
+            await page.getByRole('radio', { name: /Connect a folder/ }).check();
           }
           if (route === 'new') {
             await page.getByRole('button', { name: 'Use an existing project folder' }).click();
@@ -237,18 +273,24 @@ for (const size of [
           }
           const measured = await page.evaluate(() => {
             const panel = document.querySelector('.home-content')!;
+            const panelOverflowPx = panel.scrollHeight - panel.clientHeight;
             return {
               width: innerWidth,
               height: innerHeight,
               documentWidth: document.documentElement.scrollWidth,
               documentHeight: document.documentElement.scrollHeight,
-              panelScroll: panel.scrollHeight > panel.clientHeight,
+              panelOverflowPx,
+              panelScroll: panelOverflowPx > 8,
               hint: document.querySelector('.home-scroll-hint')?.textContent,
             };
           });
           expect(measured.documentWidth).toBeLessThanOrEqual(measured.width);
           expect(measured.documentHeight).toBeLessThanOrEqual(measured.height);
-          if (measured.panelScroll) await expect(page.locator('.home-scroll-hint')).not.toBeEmpty();
+          if (measured.panelScroll)
+            await expect(
+              page.locator('.home-scroll-hint'),
+              JSON.stringify({ size, factor, route, ...measured }),
+            ).not.toBeEmpty();
           measurements.push({ size, factor, route, ...measured });
         }
         await page.screenshot({ path: join(root, `${size.width}-${factor}-form.png`) });

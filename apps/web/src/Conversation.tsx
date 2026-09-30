@@ -289,7 +289,7 @@ export function Conversation({
               {intro?.note ??
                 (personal
                   ? 'Your assistant sees only the projects and notes you choose in Assistant privacy.'
-                  : 'Your team prepares changes separately. You review them before applying them.')}
+                  : 'Your team prepares changes separately. Your project settings decide how reviewed changes are applied.')}
             </div>
           </div>
         )}

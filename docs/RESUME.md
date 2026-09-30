@@ -102,3 +102,9 @@ Isolated real editor checks now pass Codex steering and Claude native queued fol
 including both-view replies and preservation of unsent native drafts. The Claude fixture
 showed Opus 5.5 / Extra high. Maintained probe flags are `--steer` and `--queue`; provider
 dependency copies and central routes are corrected. Evidence is in VERIFICATION.md.
+
+Release browser failures were traced to old navigation/dialog expectations after the redesign.
+Those checks now follow the actual controls. Twenty selected desktop journeys and both real
+zoom checks pass; the latter includes full-page Spawn and a retained unsent brief. The web
+build passes. Continue with the corrected complete GitHub matrix, then the authorized public
+source/combined-site release. Do not repeat passing local checks without a new failure.

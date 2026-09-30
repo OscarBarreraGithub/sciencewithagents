@@ -86,7 +86,10 @@ test('a new workspace opens setup, preserves progress and retries checks without
   await expect(page.getByText('Native sign-in found', { exact: true })).toBeVisible();
   expect(writes).toEqual(['/api/setup/check', '/api/setup/check']);
   await page.getByRole('link', { name: 'Create first project', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page).toHaveURL(/#\/new$/);
+  await expect(page.getByRole('heading', { name: 'Start or connect a project' })).toBeVisible();
+  await expect(page.getByLabel('Project name')).toHaveValue('New project');
+  await expect(page.getByRole('button', { name: 'Spawn', exact: true })).toBeEnabled();
   await page.goto('/#/welcome');
   await page.getByRole('link', { name: 'Open home', exact: true }).click();
   await expect(page).toHaveURL(/#\/home$/);
@@ -331,7 +334,7 @@ test('setup makes pacing and stale usage visible without changing saved choices'
   await page.screenshot({ path: `../../data/screenshots/welcome/${info.project.name}-pacing.png` });
   await control.click();
   await expect(page).toHaveURL(/#\/work$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Work, at the right pace.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Make room for what matters.');
   mode = 'off';
   await page.goto('/#/welcome');
   await expect(card).toContainText('Shared pacing off');

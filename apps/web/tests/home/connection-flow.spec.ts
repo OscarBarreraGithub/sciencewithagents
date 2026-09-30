@@ -38,7 +38,7 @@ test('unavailable phone setup retains a usable workspace and only rechecks statu
   await page.screenshot({
     path: `../../data/screenshots/connections/${info.project.name}-phone-unavailable.png`,
   });
-  await page.getByRole('link', { name: 'Workspace settings', exact: true }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Make yourself at home.');
   issue = null;
   await page.getByRole('link', { name: /Phone access/ }).click();
@@ -279,6 +279,7 @@ test('history opens retained evidence without executing work and workspace recon
   await page.getByRole('link', { name: 'Find a conversation', exact: true }).click();
   await page.locator(`a[href="#/chat/${project.managerId}"]`).first().click();
   await expect(page.getByRole('textbox', { name: 'Message Fieldnotes manager' })).toHaveValue(text);
+  await page.getByRole('button', { name: 'Configure', exact: true }).click();
   await page.getByRole('link', { name: 'Saved history', exact: true }).click();
   await expect(page.getByLabel('Find in saved history')).toBeVisible();
   await page.getByRole('button', { name: 'Read saved item' }).first().click();

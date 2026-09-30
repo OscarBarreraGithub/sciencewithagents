@@ -2,6 +2,17 @@
 
 ## 2026-09-30 — real editor steering and queued follow-ups
 
+Release browser triage found stale expectations for project-header navigation, Settings,
+Configure → Saved history, the full-page Spawn screen and QUARK's new heading. Those tests
+now follow the visible controls and retain their original persistence/retry/no-work checks.
+Twenty selected desktop journeys pass. Both real browser-zoom checks also pass across
+their viewport/zoom combinations, creating a project, saving/reloading its brief without
+sending, and reaching folder controls. Each run used an isolated database; rerunning an
+already-imported demo session in an old fixture is not evidence of a product regression.
+The default conversation note now describes project-controlled application rather than
+incorrectly implying every project requires human approval. Web production build passes.
+The corrected complete GitHub browser matrix remains separate from these focused checks.
+
 Two isolated native VS Code runs passed with companion 0.2.6. Codex 26.917.62051
 accepted phone guidance against its observed busy turn and followed the new instruction.
 Claude Code 2.1.284 acknowledged a phone follow-up as queued, then delivered its reply in
