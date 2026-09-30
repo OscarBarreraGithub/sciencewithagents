@@ -2,7 +2,7 @@
 
 Updated 2026-09-30. The drawn app, MIT repository and sciencewithagents.com landing are
 published. The full goal remains active for owner-editor activation and physical-device
-acceptance. The newest release rerun is still pending (see below). Preserve native capabilities and simple QUARK supervision; do not restart the
+acceptance. The newest complete release check passes (see below). Preserve native capabilities and simple QUARK supervision; do not restart the
 superseded tool-by-tool restriction approach or broad review loops.
 
 ## What is integrated and verified
@@ -14,19 +14,19 @@ work lists, versioned drafts, QUARK supervision and manager application of revie
 Reviews are small and bounded to two correction rounds, with recorded judgement or human
 handoff. Continue other unblocked work while one item needs input. See FEATURES.md.
 
-The initial complete release check passed production builds, 737 backend checks, 88 companion
-checks and 335 browser cases across desktop, 412x915, 360x800, 915x412 and iPhone WebKit.
+The latest complete release check passed production builds, 759 backend checks, 88 companion
+checks and 340 browser cases across desktop, 412x915, 360x800, 915x412 and iPhone WebKit.
 Thirteen backend/companion and ten browser checks are deliberately skipped. The latest
 shared-chat keyboard correction has a deterministic scroll-before-resize regression and
 passes all eight mobile keyboard cases. Four busy shared-send cases pass too. No physical
 keyboard animation is inferred from visual-viewport fixtures. Evidence is in VERIFICATION.md.
 
-Next: finish checking [CI 36699029736](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36699029736).
-Its builds/backend checks passed; the browser matrix began at 09:56:57 UTC. The prior run
-passed 759 backend, 88 companion and 339 browser cases but timed out opening a new project
-brief on iPhone WebKit. Three fresh-data repetitions passed locally. No app correction or
-relaxed assertion was made; this rerun retains failure screenshots/traces if it recurs.
-Do not describe the intermittent failure as fixed without evidence.
+[CI 36699029736](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36699029736)
+finished successfully at 10:06:32 UTC; its browser matrix took 9.5 minutes. An earlier run
+timed out opening a new project brief on iPhone WebKit. Three fresh-data repetitions and
+the full rerun passed unchanged. Its cause is unconfirmed; diagnostics now retain future
+failure evidence. No speculative correction, relaxed assertion or further broad review is
+needed without new evidence. No test or worker process remains to wait for.
 
 Real native Codex and Claude runs passed broad reads, HTTPS, role-appropriate scoped writes
 and denied outside-folder writes without routine permission prompts. Native tools remain;

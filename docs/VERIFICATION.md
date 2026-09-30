@@ -29,7 +29,12 @@ The first complete public run of this addition passed 759 backend checks, 88 com
 and 339 browser cases, but timed out opening the project brief after recovering a lost setup
 response on iPhone WebKit. The isolated journey passed three consecutive runs against fresh
 demo data; that does not establish the cause of the original failure. CI now retains failed
-browser screenshots and traces. The release rerun is pending; no timeout or assertion was relaxed.
+browser screenshots and traces. The [complete rerun](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36699029736)
+passed formatting, builds, 759 backend checks, 88 companion checks and all 340 browser cases
+(9.5 minutes). Four backend, nine companion and ten browser cases are deliberately skipped.
+No application behavior, timeout or assertion changed between runs. Manager disposition:
+retain this as an unexplained intermittent failure with diagnostics enabled; make no speculative
+product correction or further broad rerun without a recurrence or other new evidence.
 
 The frontend source labels came from one Opus 5.5/xhigh worker through QUARK. QUARK paused
 that bounded task with its edits intact; root reviewed/applied the seven frontend files,
@@ -44,6 +49,10 @@ The manual app was restarted through its owned launcher after a verified recover
 were retained. A separate disposable native session was discovered and read through the live
 app API; its empty-history limitation was visible, and it disappeared after native cleanup.
 The original editor remained connected throughout. All owned temporary listeners were closed.
+The final source export matches the public repository, which GitHub reports as public/MIT.
+Native computer-use was rechecked: no browser surface is connected, and Chrome returns
+`cgWindowNotFound`. The owner editor still advertises neither steering nor queue capabilities
+until its installed companion is safely activated. Physical-phone acceptance remains open.
 
 ## 2026-09-30 — public source and production website
 

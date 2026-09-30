@@ -7,9 +7,9 @@ Drawings are not blocking the backend. Corrections for the owner's reported keyb
 Latest messages/composer overlap and hidden Send button are built. A later full run exposed
 a Safari scroll-before-resize race; the correction passes eight mobile viewport checks,
 including a deterministic reproduction of that event ordering. Actual phone confirmation remains. The UI is a connected first pass,
-not completed mobile acceptance. The latest release rerun is pending after an intermittent
-iPhone WebKit project-brief failure; see [Verification](VERIFICATION.md). The isolated
-fresh-data journey passed three repetitions, but the original failure's cause is unconfirmed.
+not completed mobile acceptance. The latest complete release check passes. One earlier
+iPhone WebKit project-brief failure did not recur in three fresh-data repetitions or the
+full rerun; its cause remains unconfirmed and failure diagnostics are retained. See [Verification](VERIFICATION.md).
 
 ## Connected behavior
 
@@ -73,8 +73,8 @@ A clean tracked-source copy passed dependency installation, production build, us
 setup and Mac launcher compilation with isolated fake provider executables; another person's
 account sign-in and physical device still require their own acceptance. MIT is selected;
 the public repository contains clean source history, without the old private Git history or
-runtime files. The initial corrected release passed format, production builds, 737 backend checks,
-88 companion checks and 335 browser cases. Thirteen backend/companion and ten browser cases
+runtime files. The latest release check passed format, production builds, 759 backend checks,
+88 companion checks and 340 browser cases. Thirteen backend/companion and ten browser cases
 are deliberately skipped; physical device acceptance is not inferred from them.
 No Guide/FAQ is published.
 
