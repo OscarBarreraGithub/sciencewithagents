@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronRight, MessageSquare, Monitor } from 'lucide-react';
 import {
   mirrorStateSchema,
@@ -9,11 +9,21 @@ import {
   type MirrorSend,
 } from '@dock/shared';
 import { api, apiScope } from './api';
-import { mirrorKey, mirrorProvider, mirrorStatus, type MirrorChat } from './useMirrorChats';
+import {
+  mirrorDaemon,
+  mirrorKey,
+  mirrorKind,
+  mirrorProvider,
+  mirrorStatus,
+  type MirrorChat,
+} from './useMirrorChats';
 import './VscodeMirror.css';
 import { MirrorStopReply } from './MirrorStopReply';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+// A native Codex daemon session lives on the computer, never in a VS Code window.
+const DaemonSource = createContext(false);
 
 const markdownComponents = {
   a: ({ href, children }: React.ComponentProps<'a'>) => (
@@ -21,7 +31,10 @@ const markdownComponents = {
       {children}
     </a>
   ),
-  img: ({ alt }: React.ComponentProps<'img'>) => <span>[Image: {alt ?? 'view in VS Code'}]</span>,
+  img: function MirrorImage({ alt }: React.ComponentProps<'img'>) {
+    const daemon = useContext(DaemonSource);
+    return <span>[Image: {alt ?? (daemon ? 'view on your computer' : 'view in VS Code')}]</span>;
+  },
 };
 
 function EntryText({
@@ -166,6 +179,7 @@ function ActivityGroup({
   const first = entries[0];
   const count = first.activityGroup?.count ?? entries.length;
   const remote = !!first.activityGroup;
+  const daemon = useContext(DaemonSource);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState<MirrorState | null>(null);
   const [query, setQuery] = useState<Record<string, string>>({});
@@ -213,7 +227,12 @@ function ActivityGroup({
         <div className="mirror-activity-group-body">
           {busy && <p role="status">Loading activity…</p>}
           {error && <p role="alert">{error}</p>}
-          {loaded?.page?.reset && <p>Activity changed in VS Code. Reopen its current summary.</p>}
+          {loaded?.page?.reset && (
+            <p>
+              Activity changed {daemon ? 'on your computer' : 'in VS Code'}. Reopen its current
+              summary.
+            </p>
+          )}
           {visible.map((entry) => (
             <MirrorEntry key={entry.id} entry={entry} windowId={windowId} provider={provider} />
           ))}
@@ -273,7 +292,10 @@ export function MirrorChatList({
   choose(key: string): void;
 }) {
   return (
-    <nav className="mirror-chat-list" aria-label="VS Code chats">
+    <nav
+      className="mirror-chat-list"
+      aria-label={chats.some(mirrorDaemon) ? 'Shared chats' : 'VS Code chats'}
+    >
       {chats.map((chat) => (
         <button
           key={mirrorKey(chat)}
@@ -287,7 +309,7 @@ export function MirrorChatList({
           <span className="mirror-chat-label">
             <strong>{chat.title || 'Untitled conversation'}</strong>
             <small>
-              {mirrorProvider(chat)} · {mirrorStatus(chat)}
+              {mirrorKind(chat)} · {mirrorStatus(chat)}
             </small>
           </span>
           <span aria-hidden="true" className={`mirror-presence ${chat.status}`} />
@@ -310,17 +332,28 @@ export function MirrorHome({
   choose(key: string): void;
   embedded?: boolean;
 }) {
+  const daemon = chats.some(mirrorDaemon);
   return (
-    <section className="mirror-home" aria-label="VS Code conversations">
+    <section
+      className="mirror-home"
+      aria-label={daemon ? 'Shared conversations' : 'VS Code conversations'}
+    >
       {!embedded && (
         <div className="mirror-home-heading">
           <Monitor size={28} />
-          <h1>Your VS Code chats</h1>
+          <h1>{daemon ? 'Your shared chats' : 'Your VS Code chats'}</h1>
           <p>Pick up the same conversation on your phone or computer.</p>
         </div>
       )}
       {error && <p role="alert">{error}</p>}
       {!loaded && <p role="status">Looking for shared conversations…</p>}
+      {daemon && (
+        <p className="mirror-note">
+          A Codex session is a native Codex conversation on your computer, possibly running in a
+          terminal. Messages typed there and here at the same time can join the same reply.
+          Approvals stay on the computer.
+        </p>
+      )}
       {!!chats.length && <MirrorChatList chats={chats} selected={null} choose={choose} />}
       <div className="mirror-setup">
         <h2>{chats.length ? 'Share another conversation' : 'Connect a conversation'}</h2>
@@ -356,6 +389,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const identity = mirrorKey(chat);
   const provider = mirrorProvider(chat);
+  const daemon = mirrorDaemon(chat);
   // Retain the original Codex draft key for upgrades from the modal preview.
   const draftKey = `dock:mirror:${apiScope()}:${chat.provider === 'claude' ? 'claude:' : ''}${chat.threadId}`;
   const [state, setState] = useState<MirrorState | null>(null);
@@ -406,7 +440,9 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
         if (mirrorKey(value) !== identity) {
           setState((s) => (s ? { ...s, status: 'offline' } : null));
           setError(
-            'VS Code is sharing a different conversation. Choose it from your chat list, or share this one again.',
+            daemon
+              ? 'This Codex session now shows a different conversation. Choose it from your chat list.'
+              : 'VS Code is sharing a different conversation. Choose it from your chat list, or share this one again.',
           );
         } else {
           setState(value);
@@ -426,7 +462,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
       ended = true;
       clearTimeout(timer);
     };
-  }, [identity, chat.windowId, chat.online, historyQuery]);
+  }, [identity, chat.windowId, chat.online, historyQuery, daemon]);
   useEffect(() => {
     const restore = () => {
       try {
@@ -496,7 +532,9 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
       save(text, input);
     } catch {
       setReceipt(
-        'Draft storage is unavailable. Keep this page open and inspect VS Code after any connection failure.',
+        daemon
+          ? 'Draft storage is unavailable. Keep this page open and inspect the Codex session on your computer after any connection failure.'
+          : 'Draft storage is unavailable. Keep this page open and inspect VS Code after any connection failure.',
       );
     }
     setPending(input);
@@ -542,31 +580,52 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           <h1>{state?.title || chat.title || 'Untitled conversation'}</h1>
           <p>
             <span className={`mirror-presence ${status}`} />
-            {mirrorStatus({ ...chat, status })} · {provider} in {chat.label}
+            {mirrorStatus({ ...chat, status })} ·{' '}
+            {daemon ? chat.label : `${provider} in ${chat.label}`}
           </p>
         </div>
         <details className="mirror-controls">
           <summary aria-label="Chat information">
             <Monitor size={18} />
           </summary>
-          <div>
-            <strong>Same chat, different screen</strong>
-            <p>Sent messages sync both ways. Unsent drafts stay separate.</p>
-            <p>
-              Use VS Code for permissions, models, slash commands and attachments. Stop reply is
-              available here when the connected provider supports it. No new agent is started here.
-              After an editor crash, reopen VS Code and the original chat.
-            </p>
-          </div>
+          {daemon ? (
+            <div>
+              <strong>Same Codex session, different screen</strong>
+              <p>
+                This is a native Codex conversation on your computer’s shared Codex server, possibly
+                running in a terminal. Sent messages sync both ways. Unsent drafts stay separate.
+              </p>
+              <p>
+                Messages typed on the computer and here at the same time can join the same reply.
+                Approvals, permissions, models and slash commands stay in the original session on
+                your computer. Stop reply is available here when supported. No new agent is started
+                here.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <strong>Same chat, different screen</strong>
+              <p>Sent messages sync both ways. Unsent drafts stay separate.</p>
+              <p>
+                Use VS Code for permissions, models, slash commands and attachments. Stop reply is
+                available here when the connected provider supports it. No new agent is started
+                here. After an editor crash, reopen VS Code and the original chat.
+              </p>
+            </div>
+          )}
         </details>
       </header>
-      {(error || status === 'offline' || status === 'attention') && (
+      {(error || status === 'offline' || status === 'attention' || state?.historyUnavailable) && (
         <div className="mirror-notice" role="status">
           {error ||
             (state?.status === status && state.message) ||
-            (status === 'attention'
-              ? 'A request needs your attention in VS Code. Approvals remain on your computer.'
-              : 'Offline. Open VS Code and share this conversation to continue. Your draft stays here.')}
+            (daemon
+              ? status === 'attention'
+                ? 'A request needs your attention on your computer. Approvals stay in the original Codex session there.'
+                : 'Offline. Reopen this Codex session on your computer to continue. Your draft stays here.'
+              : status === 'attention'
+                ? 'A request needs your attention in VS Code. Approvals remain on your computer.'
+                : 'Offline. Open VS Code and share this conversation to continue. Your draft stays here.')}
         </div>
       )}
       {(state?.page?.before || state?.page?.after || historyQuery) && (
@@ -588,7 +647,9 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
         </nav>
       )}
       {state?.page?.reset && (
-        <p className="mirror-notice">History changed in VS Code. Showing the latest messages.</p>
+        <p className="mirror-notice">
+          History changed {daemon ? 'on your computer' : 'in VS Code'}. Showing the latest messages.
+        </p>
       )}
       <div
         className="mirror-log"
@@ -610,28 +671,33 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
         }}
       >
         <div className="mirror-messages">
-          {timelineRows(state?.entries ?? []).map((entries, index, rows) =>
-            entries[0].role === 'activity' ? (
-              <ActivityGroup
-                key={entries[0].id}
-                entries={entries}
-                provider={provider}
-                windowId={chat.windowId}
-                working={status === 'busy' && index === rows.length - 1}
-              />
-            ) : (
-              <MirrorEntry
-                key={entries[0].id}
-                entry={entries[0]}
-                provider={provider}
-                windowId={chat.windowId}
-              />
-            ),
-          )}
-          {!state?.entries.length && (
+          {/* Renders no element; nested history and images name the right computer place. */}
+          <DaemonSource.Provider value={daemon}>
+            {timelineRows(state?.entries ?? []).map((entries, index, rows) =>
+              entries[0].role === 'activity' ? (
+                <ActivityGroup
+                  key={entries[0].id}
+                  entries={entries}
+                  provider={provider}
+                  windowId={chat.windowId}
+                  working={status === 'busy' && index === rows.length - 1}
+                />
+              ) : (
+                <MirrorEntry
+                  key={entries[0].id}
+                  entry={entries[0]}
+                  provider={provider}
+                  windowId={chat.windowId}
+                />
+              ),
+            )}
+          </DaemonSource.Provider>
+          {!state?.entries.length && !state?.historyUnavailable && (
             <p className="mirror-empty">
               {status === 'offline'
-                ? 'Conversation history is kept in VS Code. It will appear when connected.'
+                ? daemon
+                  ? 'Conversation history is kept on your computer. It will appear when connected.'
+                  : 'Conversation history is kept in VS Code. It will appear when connected.'
                 : 'No messages yet. Say hello when the conversation is ready.'}
             </p>
           )}
@@ -675,6 +741,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
             threadId={chat.threadId}
             provider={chat.provider ?? 'codex'}
             token={status !== 'offline' ? state?.stopToken : undefined}
+            daemon={daemon}
           />
         )}
         <div className="mirror-input-row">
@@ -733,13 +800,17 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
         </div>
         <p className="mirror-note">
           {canSteer
-            ? 'Your message updates the current task. '
+            ? daemon
+              ? 'Your message joins the current reply, together with anything typed on the computer. '
+              : 'Your message updates the current task. '
             : canQueue
               ? 'Your message joins Claude’s native queue. '
               : status === 'busy'
-                ? (chat.provider ?? 'codex') === 'codex'
-                  ? 'Update the VS Code companion to send instructions while Codex works. '
-                  : 'Update the VS Code companion to queue follow-ups while Claude works. '
+                ? daemon
+                  ? 'Codex is working; you can send when this reply finishes. '
+                  : (chat.provider ?? 'codex') === 'codex'
+                    ? 'Update the VS Code companion to send instructions while Codex works. '
+                    : 'Update the VS Code companion to queue follow-ups while Claude works. '
                 : ''}
           Drafts stay on this device.{' '}
           <span className="desktop-only">Enter to send · Shift + Enter for a new line.</span>
@@ -756,7 +827,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
             onClick={() => {
               if (
                 window.confirm(
-                  'Have you inspected the conversation in VS Code? Clearing this receipt does not undo a message that was already sent.',
+                  `Have you inspected the conversation ${daemon ? 'on your computer' : 'in VS Code'}? Clearing this receipt does not undo a message that was already sent.`,
                 )
               ) {
                 try {

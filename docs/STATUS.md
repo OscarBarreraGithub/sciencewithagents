@@ -22,6 +22,10 @@ not completed mobile acceptance.
   follow-ups use its acknowledged native queue. Companion 0.2.6 is installed here,
   but the active editor needs a safe reload to activate the updated bridge. Both paths
   passed real isolated native editor checks, preserving unsent desktop drafts.
+  Existing Codex shared-server sessions now appear separately in Chats → Shared. A real
+  native terminal passed first send, exact-turn guidance, stale-input refusal and Stop;
+  disconnecting the observer retained the terminal and completed work. Older isolated
+  terminals remain unsupported; simultaneous native/phone sends can join one reply.
 - QUARK's conversation and status board share the existing scheduler, signed manager
   leases, account readings, resource limits, project caps and durable pauses. Its
   bounded automatic checks spend nothing while idle. Owner instructions and timing

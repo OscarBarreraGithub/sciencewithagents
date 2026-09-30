@@ -30,6 +30,7 @@ import {
   type ProviderCapacity,
 } from '@dock/shared';
 import { apiScope } from '../api';
+import { mirrorDaemon } from '../useMirrorChats';
 import { Modal } from '../Modal';
 import { PhoneSettings, usePhoneLockAvailable } from '../PhoneAccess';
 import { useHomeData, useReading, type HomeData } from './useHomeData';
@@ -260,7 +261,8 @@ function Allowances({ data, now }: { data: HomeData; now: number }) {
   );
 }
 function EditorStatus({ data }: { data: HomeData }) {
-  const windows = data.mirrors.data ?? [];
+  // Native Codex daemon sessions are not VS Code windows; Chats lists them separately.
+  const windows = (data.mirrors.data ?? []).filter((w) => !mirrorDaemon(w));
   const live = windows.filter((w) => w.status !== 'offline');
   const shared = live.filter((w) => w.threadId).length;
   const [text, tone] = data.mirrors.error

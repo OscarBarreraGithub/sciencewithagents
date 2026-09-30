@@ -233,9 +233,14 @@ authentication. Long conversations and oversized tool results load in explicit p
 original text and drafts remain. Updated app servers also page older companions’ responses,
 so the phone fix does not require interrupting a running editor for a reload.
 See [current status](STATUS.md) for the installed version, not just the source/package.
-Arbitrary terminal attachment is still not implemented. The
-[dated protocol evidence](VERIFICATION.md#external-live-session-attachment-probe--2026-09-17-not-a-deployed-feature)
-records the independent-client input race; the maintained editor integration is described above.
+Existing Codex sessions on a compatible running native shared server now appear in
+**Chats → Shared**, with reading, sending, exact-turn guidance and Stop. They retain their
+native settings and ownership; closing the observer does not stop the terminal. The app
+reuses bounded history, drafts and durable delivery receipts. Fresh unavailable history is
+labelled explicitly. Simultaneous native/phone sends may join one reply. Older isolated or
+`--no-daemon` terminals remain unsupported; this is not arbitrary process attachment.
+See [native session sharing](VSCODE_MIRROR.md#existing-codex-terminal-sessions) and the
+current dated verification. The earlier independent-client input race is not claimed solved.
 This is a capability map, not a new implementation plan. [Start using the app](../README.md)
 or open the [documentation index](README.md) for the right setup/recovery guide.
 

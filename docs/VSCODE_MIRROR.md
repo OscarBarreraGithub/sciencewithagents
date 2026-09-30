@@ -1,4 +1,33 @@
-# VS Code conversations — private companion preview
+# Shared native conversations
+
+## Existing Codex terminal sessions
+
+**Chats → Shared** now also lists loaded conversations from an already-running Codex shared
+server. Select a **Codex session** to read, send, guide the observed active reply or request
+Stop. No companion, new sign-in, import or replacement agent is needed for this path. VS Code
+sharing still uses its existing companion. The Home VS Code status counts editor connections
+only; the Chats card counts native Codex sessions separately.
+
+The app asks the installed CLI for its existing daemon socket, follows its managed link to
+an owned Unix socket, and connects only its own client. It never starts, stops or reconfigures
+the daemon, resumes an unloaded thread, changes the model/permissions, or answers native
+requests. Original approvals and advanced controls stay in Codex. A fresh session may not
+expose history before its first turn; the app says so explicitly while allowing input when
+native metadata confirms it is idle. It never labels unavailable history as an empty archive.
+
+Phone and native terminal input share the same conversation. Simultaneous sends can join
+the same reply; this is not exclusive input ownership. Steering and Stop target exact observed
+turns. Lost acknowledgements retain a durable receipt and are never automatically replayed.
+Closing the app's observation connection leaves the terminal and its work running. These
+outside sessions are not converted into QUARK-managed workers.
+
+This requires a running compatible Codex shared server, verified here with CLI 0.158.0 and
+managed daemon/native terminal 0.159.2. An older isolated terminal or `--no-daemon` session
+cannot be attached through this interface. Only up to 100 loaded sessions are discovered;
+ephemeral and explicitly non-interactive helper threads are excluded. It does not scan saved
+history. Native responses are bounded to 32 MiB; phone pages keep the existing 40-row/64,000
+character bounds and lazy tool expansion. Unknown future protocol changes remain a
+compatibility limit, not grounds for patching a binary or changing native permissions.
 
 ## 2026-09-30 — message-first history and instructions during work
 

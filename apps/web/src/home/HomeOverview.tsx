@@ -22,6 +22,7 @@ import {
   type WorkItem,
 } from '@dock/shared';
 import { api, apiScope } from '../api';
+import { mirrorDaemon } from '../useMirrorChats';
 import { useReading, type HomeData } from './useHomeData';
 import './home-overview.css';
 
@@ -87,7 +88,9 @@ function Destinations({ data }: { data: HomeData }) {
   const projects = new Set(ownerProjects(data).map((p) => p.id));
   const managers =
     state?.agents.filter((a) => a.role === 'manager' && projects.has(a.projectId)).length ?? 0;
-  const editor = data.mirrors.data?.filter((w) => w.threadId && w.status !== 'offline').length;
+  const live = data.mirrors.data?.filter((w) => w.threadId && w.status !== 'offline');
+  const editor = live?.filter((w) => !mirrorDaemon(w)).length;
+  const sessions = live?.filter(mirrorDaemon).length ?? 0;
   const jobs = [...(data.work.data?.jobs ?? []), ...(data.local.data?.jobs ?? [])];
   const running = jobs.filter((j) => j.status === 'running').length;
   const queued = jobs.filter((j) => j.status === 'queued').length;
@@ -104,7 +107,7 @@ function Destinations({ data }: { data: HomeData }) {
           ? 'Reading your conversations…'
           : `${plural(managers, 'project manager')}${
               editor === undefined ? '' : ` · ${plural(editor, 'VS Code chat')}`
-            }`,
+            }${sessions ? ` · ${plural(sessions, 'Codex session')}` : ''}`,
     },
     {
       href: '#/apps',

@@ -8,11 +8,14 @@ export function MirrorStopReply({
   threadId,
   provider,
   token,
+  daemon = false,
 }: {
   windowId: string;
   threadId: string;
   provider: 'codex' | 'claude';
   token?: string;
+  // A native Codex daemon session is inspected on the computer, not in VS Code.
+  daemon?: boolean;
 }) {
   const storageKey = `dock:mirror-stop:${apiScope()}:${provider}:${threadId}`;
   const [pending, setPending] = useState<MirrorControl | null>(() => {
@@ -65,7 +68,9 @@ export function MirrorStopReply({
       }
     } catch {
       setMessage(
-        'Stop was not confirmed. Check its status or inspect VS Code; nothing is repeated automatically.',
+        daemon
+          ? 'Stop was not confirmed. Check its status or inspect the Codex session on your computer; nothing is repeated automatically.'
+          : 'Stop was not confirmed. Check its status or inspect VS Code; nothing is repeated automatically.',
       );
     } finally {
       setBusy(false);
@@ -92,7 +97,7 @@ export function MirrorStopReply({
           onClick={() => {
             if (
               !window.confirm(
-                'Have you checked this reply in VS Code? This only clears the stop receipt; it will not stop or restart anything.',
+                `Have you checked this reply ${daemon ? 'on your computer' : 'in VS Code'}? This only clears the stop receipt; it will not stop or restart anything.`,
               )
             )
               return;
@@ -106,7 +111,7 @@ export function MirrorStopReply({
             setMessage('Stop receipt cleared after your check.');
           }}
         >
-          I checked in VS Code
+          {daemon ? 'I checked on my computer' : 'I checked in VS Code'}
         </button>
       )}
     </div>

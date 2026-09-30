@@ -1,5 +1,16 @@
 # Design decisions
 
+## 2026-09-30 — supported existing Codex shared sessions
+
+Use the current native daemon’s supported Unix WebSocket protocol for already-running Codex
+conversations, including compatible terminals. Reuse the existing chat pages, transcript mapper,
+paging and durable send/Stop receipts; no generic browser RPC, new runtime launcher or global
+hooks. Discover only loaded sessions and preserve native ownership, model and permissions.
+Following the native managed socket link is required; validate its resolved same-owner socket.
+A known pre-first-turn history limitation is shown explicitly rather than inventing history.
+Native and phone input may join one turn; exact-token steering is not an exclusive input lock.
+Older isolated terminals remain unsupported. Do not resurrect private-pipe takeover machinery.
+
 ## 2026-09-30 — MIT public source
 
 The owner selected MIT for public distribution. The root source and VS Code companion

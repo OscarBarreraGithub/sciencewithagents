@@ -56,6 +56,8 @@ export const mirrorPageQuerySchema = z
 export type MirrorPageQuery = z.infer<typeof mirrorPageQuerySchema>;
 export const mirrorStateSchema = z.object({
   windowId: z.uuid(),
+  // Omitted by editor companions; daemon sessions keep their native ownership.
+  source: z.enum(['vscode', 'codex-daemon']).optional(),
   // Omitted by the original Codex-only companion; retain wire compatibility.
   provider: z.enum(['codex', 'claude']).optional(),
   label: z.string().max(200),
@@ -63,6 +65,8 @@ export const mirrorStateSchema = z.object({
   title: z.string().max(500),
   status: z.enum(['idle', 'busy', 'attention', 'offline']),
   message: z.string().max(1000),
+  // Native history may not be readable before the first turn; never imply an empty archive.
+  historyUnavailable: z.boolean().optional(),
   entries: z.array(mirrorEntrySchema).max(100_000),
   stopToken: z.string().min(1).max(128).optional(),
   // Capability omission means an older companion, or a provider without steering.

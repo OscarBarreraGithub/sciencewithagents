@@ -21,7 +21,7 @@ import { HostSelector } from '../HostSelector';
 import { HistoryBrowser } from '../HistoryBrowser';
 import { WorkspacePanel } from '../WorkspacePanel';
 import { useWorkspaceState } from '../useWorkspaceState';
-import { useMirrorChats, mirrorKey } from '../useMirrorChats';
+import { useMirrorChats, mirrorDaemon, mirrorKey } from '../useMirrorChats';
 import { MirrorHome, VscodeMirror } from '../VscodeMirror';
 import { ChatPage, FlowEmpty, FlowHeading } from './WorkspaceFlow';
 import type { HomeData } from './useHomeData';
@@ -316,7 +316,8 @@ function EditorPage({ target }: { target?: string }) {
     <section className="flow-page connection-page editor-page">
       {current ? (
         <a className="flow-button editor-back" href="#/vscode">
-          All editor chats <ArrowUpRight size={17} />
+          {mirrorDaemon(current) ? 'All shared chats' : 'All editor chats'}{' '}
+          <ArrowUpRight size={17} />
         </a>
       ) : (
         <FlowHeading label="SHARED EDITOR CHATS" title="From your editor, to here.">

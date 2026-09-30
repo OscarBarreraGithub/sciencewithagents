@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { codexTranscript as transcript } from '@dock/shared';
+export { codexTranscript as transcript } from '@dock/shared';
 import type { MirrorState, MirrorSend, MirrorResult, MirrorControl } from '@dock/shared';
 
 type ObjectValue = Record<string, unknown>;
@@ -44,67 +46,6 @@ export function isCodexConnection(value: unknown): value is Connection {
     )
   );
 }
-function contents(v: unknown): string {
-  return array(v)
-    .map((x) => {
-      const a = object(x);
-      return (
-        str(a.text) ||
-        (a.type === 'image' || a.type === 'localImage' ? '[Image — view in VS Code]' : '')
-      );
-    })
-    .filter(Boolean)
-    .join('\n');
-}
-export function transcript(thread: ObjectValue): MirrorState['entries'] {
-  return array(thread.turns).flatMap((turn, ti) =>
-    array(object(turn).items).map((value, ii) => {
-      const item = object(value);
-      const type = str(item.type);
-      let text: string;
-      let role: 'user' | 'assistant' | 'activity' = 'activity';
-      if (type === 'userMessage') {
-        role = 'user';
-        text = contents(item.content);
-      } else if (type === 'agentMessage') {
-        role = 'assistant';
-        text = str(item.text);
-      } else if (type === 'reasoning')
-        text =
-          contents(item.summary) ||
-          array(item.summary)
-            .filter((x) => typeof x === 'string')
-            .join('\n') ||
-          '[Reasoning summary unavailable]';
-      else if (type === 'commandExecution')
-        text = [
-          str(item.command),
-          str(item.aggregatedOutput),
-          item.exitCode === undefined ? '' : `Exit: ${item.exitCode}`,
-        ]
-          .filter(Boolean)
-          .join('\n');
-      else if (type === 'fileChange')
-        text = array(item.changes)
-          .map((x) => `${str(object(x).path)}\n${str(object(x).diff)}`)
-          .join('\n');
-      else if (type === 'mcpToolCall' || type === 'dynamicToolCall')
-        text = `${str(item.server)} ${str(item.tool)}\n${JSON.stringify(item.arguments ?? {})}\n${JSON.stringify(item.result ?? item.contentItems ?? item.error ?? {})}`;
-      else if (type === 'plan') text = str(item.text);
-      else if (type === 'webSearch') text = str(item.query) || JSON.stringify(item.action ?? {});
-      else if (type === 'contextCompaction')
-        text =
-          'Context compacted. Retained messages remain below/above; hidden context is not reconstructed.';
-      else text = `[${type || 'Saved activity'} — view this item in VS Code]`;
-      return {
-        id: `${str(object(turn).id) || ti}:${str(item.id) || ii}`,
-        role,
-        text: role === 'activity' ? `${type}\n${text}` : text,
-      };
-    }),
-  );
-}
-
 /** One owner-selected existing thread. No resume, fork, config override or approvals. */
 export class MirrorConnection {
   readonly windowId = randomUUID();

@@ -1,5 +1,38 @@
 # Verification
 
+## 2026-09-30 — existing native Codex terminal conversations
+
+A supported connection to the installed shared daemon now supplies native Codex sessions to
+Chats → Shared. A disposable real 0.159.2 terminal, using the configured 0.158.0 CLI's daemon
+metadata, passed first input, current-turn guidance, final response in both views, stale-steer
+refusal, Stop and return to idle. Closing the observer while work ran left the native terminal
+alive and its reply completed. No owner conversation was selected, resumed or sent a prompt;
+the daemon and native configuration were unchanged. The fixture used native Luna/read-only
+settings; the app adapter inherited the loaded session and supplied no model/permission overrides.
+
+Real acceptance found two compatibility cases: the published socket path is a managed link,
+and a fresh thread can reject full history with `list_turns is not supported yet`. Discovery
+now validates the resolved same-owner socket. That exact history error is labelled as
+unavailable; idle sends use fresh loaded metadata, while steering/Stop still require an
+observed turn. Other errors do not manufacture history or resume a thread. Explicit native
+non-interactive/ephemeral helpers are excluded. This is supported daemon access, not arbitrary
+terminal process attachment or exclusive control of simultaneous native input.
+
+Thirty-nine focused backend checks and 23 browser cases passed; two desktop keyboard cases
+were deliberately skipped. Browser coverage includes desktop, 412x915, 360x800, 915x412 and
+iPhone WebKit: first send with unavailable history, steering, native attention, retained drafts,
+grouped tools, existing editor busy sends, lost-response recovery and keyboard anchoring.
+Production server/web builds and companion typecheck pass; its 97 local checks passed after
+extracting the shared transcript mapper. Physical phone acceptance remains separate.
+
+The frontend source labels came from one Opus 5.5/xhigh worker through QUARK. QUARK paused
+that bounded task with its edits intact; root reviewed/applied the seven frontend files,
+wired the unavailable-history flag and corrected a duplicate native-source label. No cap was
+raised or replaced, and only a redundant queued report was cancelled. Evidence remains under
+ignored data/release-2026-09-30/: daemon-native-acceptance.json, daemon-native-tui.txt,
+daemon-backend-final.log, daemon-browser-final.log and daemon-ui-opus.patch. Screenshots are
+private runtime evidence. Source and physical acceptance are distinct.
+
 ## 2026-09-30 — public source and production website
 
 The complete [release check](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36691367184)
@@ -7,7 +40,8 @@ passed formatting, production builds, 737 backend checks, 88 companion checks an
 cases. Four backend, nine companion and ten browser cases are deliberately skipped. The
 browser matrix took 8.9 minutes. The exported source tree matched the checked local source;
 the 462-file scan found no credentials, owner paths, runtime databases/logs or private history.
-The repository is now public under MIT. Subsequent release-status edits are documentation only.
+The repository is now public under MIT. This was the initial release; later native-session
+implementation and its focused evidence are recorded above.
 
 The combined website is live on sciencewithagents.com and www.sciencewithagents.com.
 Five live browser profiles passed landing/setup-copy/navigation/overflow checks. All six

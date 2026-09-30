@@ -23,7 +23,14 @@ import { ProjectTools } from './ProjectTools';
 import { SourceBackup } from './SourceBackup';
 import { TaskProgress } from './TaskProgress';
 import { useWorkspaceState } from '../useWorkspaceState';
-import { useMirrorChats, mirrorKey, mirrorProvider, type MirrorChat } from '../useMirrorChats';
+import {
+  useMirrorChats,
+  mirrorDaemon,
+  mirrorKey,
+  mirrorProvider,
+  mirrorStatus,
+  type MirrorChat,
+} from '../useMirrorChats';
 import { VscodeMirror } from '../VscodeMirror';
 import { ProjectConfiguration } from './ProjectConfiguration';
 import { NewConversation } from './NewConversation';
@@ -894,6 +901,8 @@ type RowState = 'awaiting' | 'working' | 'queued' | 'attention' | 'idle' | 'offl
 type ChatRow = {
   key: string;
   kind: ChatKind;
+  // Replaces the kind label, e.g. a native Codex session inside the shared tab.
+  tag?: string;
   name: string;
   caption: string;
   time: string | null;
@@ -914,7 +923,8 @@ const rowOrder: RowState[] = ['awaiting', 'working', 'queued', 'attention', 'idl
 const filters: [ChatFilter, string][] = [
   ['all', 'All'],
   ['manager', 'Managers'],
-  ['vscode', 'VS Code'],
+  // VS Code chats and native Codex sessions; the saved filter key stays 'vscode'.
+  ['vscode', 'Shared'],
   ['misc', 'Misc'],
 ];
 const kindLabels: Record<ChatKind, string> = {
@@ -1037,6 +1047,7 @@ function MainChat({
     ...mirrors.chats.flatMap((chat: MirrorChat): ChatRow[] => {
       if (!chat.threadId) return [];
       const key = mirrorKey(chat);
+      const daemon = mirrorDaemon(chat);
       const rowState: RowState =
         chat.status === 'busy'
           ? 'working'
@@ -1049,16 +1060,12 @@ function MainChat({
         {
           key,
           kind: 'vscode',
+          tag: daemon ? 'Codex session' : undefined,
           name: chat.title || 'Untitled conversation',
-          caption: `${mirrorProvider(chat)} · ${chat.label}`,
+          caption: daemon ? chat.label : `${mirrorProvider(chat)} · ${chat.label}`,
           time: null,
           state: rowState,
-          label:
-            rowState === 'awaiting'
-              ? 'Check VS Code'
-              : rowState === 'idle'
-                ? 'Connected'
-                : rowLabels[rowState],
+          label: mirrorStatus(chat),
           href: `#/chats/vscode/${encodeURIComponent(key)}`,
           selected: key === editorKey,
         },
@@ -1073,7 +1080,7 @@ function MainChat({
   const shown = rows.filter(
     (row) =>
       (filter === 'all' || row.kind === filter) &&
-      (!term || `${row.name} ${row.caption}`.toLowerCase().includes(term)),
+      (!term || `${row.name} ${row.caption} ${row.tag ?? ''}`.toLowerCase().includes(term)),
   );
   const editor = mirrors.chats.find((chat) => mirrorKey(chat) === editorKey);
   const selected = !!agentId || !!editorKey;
@@ -1141,7 +1148,8 @@ function MainChat({
               <span className="chat-row-text">
                 <strong>{row.name}</strong>
                 <small>
-                  <span className="chat-row-kind">{kindLabels[row.kind]}</span> {row.caption}
+                  <span className="chat-row-kind">{row.tag ?? kindLabels[row.kind]}</span>{' '}
+                  {row.caption}
                 </small>
               </span>
               <span className="chat-row-side">
@@ -1160,8 +1168,8 @@ function MainChat({
                 : filter === 'vscode'
                   ? mirrors.error ||
                     (mirrors.loaded
-                      ? 'No shared editor chats. Share a Codex or Claude chat from VS Code to continue it here.'
-                      : 'Checking your editor…')
+                      ? 'No shared chats. Share a Codex or Claude chat from VS Code to continue it here. Codex sessions on this computer’s shared Codex server also appear here.'
+                      : 'Checking for shared chats…')
                   : filter === 'misc'
                     ? 'Personal and read-only discussions appear here.'
                     : 'No conversations yet. Choose New to start a project.'}
@@ -1194,8 +1202,8 @@ function MainChat({
             ) : (
               <p className="flow-chat-notice" role="status">
                 {mirrors.loaded
-                  ? 'This shared conversation is unavailable. Share it again from its original editor; no other chat has been selected.'
-                  : 'Looking for this shared editor conversation…'}
+                  ? 'This shared conversation is unavailable. Reopen or share it again where it started on your computer; no other chat has been selected.'
+                  : 'Looking for this shared conversation…'}
               </p>
             )}
           </div>
@@ -1203,7 +1211,10 @@ function MainChat({
           <div className="chat-pane-empty">
             <MessageCircle size={26} />
             <h2>Choose a conversation</h2>
-            <p>Managers, shared VS Code chats and saved discussions keep their own history.</p>
+            <p>
+              Managers, shared VS Code chats, Codex sessions and saved discussions keep their own
+              history.
+            </p>
           </div>
         )}
       </div>

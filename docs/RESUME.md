@@ -61,8 +61,13 @@ published; implementation and guide notes remain in FEATURES.md and PRODUCT_STOR
 Private release receipts, screenshots, the detailed requirement ledger and rollback evidence
 remain under ignored data/. Never publish conversations, credentials, logs or worktrees.
 Current Claude reserve is 25%; no Fable allowance was used for the final Opus correction.
-The temporary worker finished and root collected/reviewed its result directly; no extra
-review loop is running. Model/activity/permission changes must use the central policy.
+The original standalone-terminal requirement was rechecked and a supported shared-daemon
+path is now implemented, reusing shared chat contracts. Native first send/guidance/Stop and
+observer-close survival pass; old isolated terminals remain unsupported. See VSCODE_MIRROR.md.
+The source-aware Opus frontend edits were retained when QUARK paused that small task; root
+reviewed/applied them and wired the explicit unavailable-history notice without raising caps.
+The keyboard worker finished; the source-label worker was paused with its edits retained.
+Root collected and reviewed both results directly; no extra review loop is running. Model/activity/permission changes must use the central policy.
 
 For another person's installation use CONTRIBUTOR_SETUP.md, not this owner's standing
 approvals or device history. See OPERATIONS.md for scoped authorization, STATUS.md for

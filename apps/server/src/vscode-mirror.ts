@@ -18,6 +18,12 @@ import {
   type MirrorResult,
 } from '@dock/shared';
 import { Store, Conflict, Missing } from './store.js';
+import type { CodexDaemonChats } from './codex-daemon-chats.js';
+
+type DaemonChats = Pick<
+  CodexDaemonChats,
+  'discover' | 'windows' | 'read' | 'send' | 'control' | 'close'
+>;
 
 type Peer = {
   socket: WebSocket;
@@ -36,19 +42,41 @@ type Peer = {
 const uncertain: MirrorResult = {
   state: 'uncertain',
   message:
-    'Delivery was not confirmed. Inspect the conversation in VS Code before composing another message. This request will not be resent.',
+    'Delivery was not confirmed. Inspect the conversation on the computer before composing another message. This request will not be resent.',
 };
 
 /** Local extension transport only; the phone gets read + send, never arbitrary RPC. */
 export class VscodeMirrors {
   private peers = new Map<string, Peer>();
-  constructor(private readonly store: Store) {
+  constructor(
+    private readonly store: Store,
+    private readonly daemon?: DaemonChats,
+  ) {
     store.db.exec(
       'CREATE TABLE IF NOT EXISTS mirror_deliveries (key TEXT PRIMARY KEY, input_hash TEXT NOT NULL, result TEXT NOT NULL)',
     );
   }
   windows() {
-    return [...this.peers.values()].map((p) => p.window);
+    const editors = [...this.peers.values()].map((p) => p.window);
+    return [
+      ...editors,
+      ...(this.daemon?.windows() ?? []).filter(
+        (window) =>
+          !editors.some(
+            (editor) =>
+              (editor.provider ?? 'codex') === 'codex' && editor.threadId === window.threadId,
+          ),
+      ),
+    ];
+  }
+  async discover() {
+    await this.daemon?.discover();
+  }
+  private window(windowId: string) {
+    return (
+      this.peers.get(windowId)?.window ??
+      this.daemon?.windows().find((window) => window.windowId === windowId)
+    );
   }
   connect(socket: WebSocket) {
     let peer: Peer | undefined;
@@ -106,12 +134,17 @@ export class VscodeMirrors {
   }
   private async request(windowId: string, command: unknown): Promise<unknown> {
     const peer = this.peers.get(windowId);
+    const value = mirrorCommandSchema.parse(command);
+    if (!peer && this.daemon && this.window(windowId)?.source === 'codex-daemon') {
+      if (value.type === 'read') return this.daemon.read(windowId, value.page);
+      if (value.type === 'send') return this.daemon.send(windowId, value.input);
+      return this.daemon.control(windowId, value.input);
+    }
     if (!peer)
       throw new Missing(
         'This VS Code window is offline. Open it on the computer and share the conversation again.',
       );
     if (peer.pending.size >= 4) throw new Conflict('The mirror is catching up. Please wait.');
-    const value = mirrorCommandSchema.parse(command);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         peer.pending.delete(value.id);
@@ -132,7 +165,7 @@ export class VscodeMirrors {
     });
   }
   async read(windowId: string, page?: MirrorPageQuery) {
-    const window = this.peers.get(windowId)?.window;
+    const window = this.window(windowId);
     // Old paged companions cannot expand a grouped activity query. Only this
     // deliberate drilldown falls back to a full read; normal polling stays paged.
     const paged =
@@ -161,11 +194,11 @@ export class VscodeMirrors {
         throw new Conflict('This submission ID belongs to a different message. Nothing was sent.');
       return mirrorResultSchema.parse(JSON.parse(saved.result));
     }
-    const peer = this.peers.get(windowId);
+    const window = this.window(windowId);
     if (
-      !peer ||
-      peer.window.threadId !== input.threadId ||
-      (peer.window.provider ?? 'codex') !== (input.provider ?? 'codex')
+      !window ||
+      window.threadId !== input.threadId ||
+      (window.provider ?? 'codex') !== (input.provider ?? 'codex')
     )
       return {
         state: 'not_sent',
@@ -186,7 +219,7 @@ export class VscodeMirrors {
     let result: MirrorResult;
     if (
       input.expectedTurnId &&
-      (peer.window.canSteer !== true || (peer.window.provider ?? 'codex') !== 'codex')
+      (window.canSteer !== true || (window.provider ?? 'codex') !== 'codex')
     ) {
       result = {
         state: 'not_sent',
@@ -195,7 +228,7 @@ export class VscodeMirrors {
       };
     } else if (
       input.mode === 'queue' &&
-      (peer.window.canQueue !== true || peer.window.provider !== 'claude')
+      (window.canQueue !== true || window.provider !== 'claude')
     ) {
       result = {
         state: 'not_sent',
@@ -232,11 +265,11 @@ export class VscodeMirrors {
         throw new Conflict('This receipt belongs to a different action. Nothing was repeated.');
       return mirrorResultSchema.parse(JSON.parse(saved.result));
     }
-    const peer = this.peers.get(windowId);
+    const window = this.window(windowId);
     if (
-      !peer ||
-      peer.window.threadId !== input.threadId ||
-      (peer.window.provider ?? 'codex') !== (input.provider ?? 'codex')
+      !window ||
+      window.threadId !== input.threadId ||
+      (window.provider ?? 'codex') !== (input.provider ?? 'codex')
     )
       return {
         state: 'not_sent',
@@ -288,10 +321,11 @@ export class VscodeMirrors {
       : {
           state: 'uncertain',
           message:
-            'No delivery receipt is available yet. Inspect the conversation in VS Code before clearing this message. Nothing was resent.',
+            'No delivery receipt is available yet. Inspect the conversation on the computer before clearing this message. Nothing was resent.',
         };
   }
   close() {
+    this.daemon?.close();
     for (const peer of this.peers.values()) peer.socket.terminate();
   }
 }
@@ -302,17 +336,21 @@ export function registerMirrorRoutes(
   remote: boolean,
 ) {
   const windowId = (params: unknown) => z.object({ id: z.uuid() }).parse(params).id;
-  app.get('/api/vscode/windows', async () => mirrors.windows());
+  const discover = { preHandler: async () => mirrors.discover() };
+  app.get('/api/vscode/windows', async () => {
+    await mirrors.discover();
+    return mirrors.windows();
+  });
   app.get('/api/vscode/deliveries/:id', async (request) =>
     mirrors.receipt(windowId(request.params)),
   );
-  app.get('/api/vscode/windows/:id', async (request) =>
+  app.get('/api/vscode/windows/:id', discover, async (request) =>
     mirrors.read(windowId(request.params), mirrorPageQuerySchema.parse(request.query)),
   );
-  app.post('/api/vscode/windows/:id/send', async (request) =>
+  app.post('/api/vscode/windows/:id/send', discover, async (request) =>
     mirrors.send(windowId(request.params), mirrorSendSchema.parse(request.body)),
   );
-  app.post('/api/vscode/windows/:id/control', async (request) =>
+  app.post('/api/vscode/windows/:id/control', discover, async (request) =>
     mirrors.control(windowId(request.params), mirrorControlSchema.parse(request.body)),
   );
   // Never register the extension producer on the public/paired phone entry. A phone

@@ -15,6 +15,7 @@ import { PhoneTunnel } from './phone-tunnel.js';
 import { PhoneSetup } from './phone-setup.js';
 import { Hosts } from './hosts.js';
 import { VscodeMirrors } from './vscode-mirror.js';
+import { CodexDaemonChats } from './codex-daemon-chats.js';
 import { prepareAgentClient } from './agent-client.js';
 import { initializeScheduling } from './pulsar.js';
 import { LocalAccess, prepareLocalAccess } from './local-access.js';
@@ -173,7 +174,7 @@ startup = (async () => {
       : undefined,
   );
   const phone = new PhoneAccess(store, phoneConfig, undefined, phoneIssue);
-  const mirrors = new VscodeMirrors(store);
+  const mirrors = new VscodeMirrors(store, demo ? undefined : new CodexDaemonChats(binary));
   tunnel = new PhoneTunnel(phone, root);
   terminals = new Terminals(runtime);
   backups = new SourceBackups(store, root, undefined, demo ? [] : undefined);

@@ -71,6 +71,12 @@ locally without a separate editor code. Long histories open in bounded sections,
 messages and large tool results available on demand; original conversations are retained.
 See [connected workflow and guide notes](docs/WORKFLOW_BUILD.md) for the current slice.
 
+**Chats → Shared** also opens existing Codex conversations from a running native shared
+server, including compatible terminal sessions. Read, send, guide the current reply and
+request Stop without importing or restarting the agent. Native settings and approvals stay
+on the computer; simultaneous inputs can join one reply. Older isolated terminals are not
+supported. See [native session sharing and limits](docs/VSCODE_MIRROR.md#existing-codex-terminal-sessions).
+
 Open **Computer health** from the home’s computer card for recent trends, grouped app
 activity and **Ask what’s happening**. Its resource assistant gives a bounded read-only
 undergrad diagnosis on request or through configurable automatic checks, with a bounded grad consultation when needed. See the

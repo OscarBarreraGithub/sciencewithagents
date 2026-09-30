@@ -6,11 +6,16 @@ export type MirrorChat = Omit<MirrorState, 'entries'> & { online?: boolean };
 export const mirrorKey = (chat: MirrorChat) => `${chat.provider ?? 'codex'}:${chat.threadId}`;
 export const mirrorProvider = (chat: MirrorChat) =>
   chat.provider === 'claude' ? 'Claude Code' : 'Codex';
+/** A native Codex shared-server session (possibly a terminal); omitted source is VS Code. */
+export const mirrorDaemon = (chat: Pick<MirrorChat, 'source'>) => chat.source === 'codex-daemon';
+/** List caption: editor chats name their provider; daemon sessions say what they are. */
+export const mirrorKind = (chat: MirrorChat) =>
+  mirrorDaemon(chat) ? 'Codex session' : mirrorProvider(chat);
 export const mirrorStatus = (chat: MirrorChat) =>
   ({
     idle: 'Connected',
     busy: 'Working',
-    attention: 'Check VS Code',
+    attention: mirrorDaemon(chat) ? 'Check your computer' : 'Check VS Code',
     offline: 'Offline',
   })[chat.status];
 
