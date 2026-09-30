@@ -19,7 +19,8 @@ not completed mobile acceptance.
 - Phone conversations use compact headers, message bubbles and grouped expandable
   tool activity. Codex steering targets the observed running turn. Claude editor
   follow-ups use its acknowledged native queue. Companion 0.2.6 is installed here,
-  but the active editor needs a safe reload to activate the updated bridge.
+  but the active editor needs a safe reload to activate the updated bridge. Both paths
+  passed real isolated native editor checks, preserving unsent desktop drafts.
 - QUARK's conversation and status board share the existing scheduler, signed manager
   leases, account readings, resource limits, project caps and durable pauses. Its
   bounded automatic checks spend nothing while idle. Owner instructions and timing
@@ -62,7 +63,10 @@ including all six public datasets and legacy links. The public repository releas
 production publication and remaining live device acceptance are still release work.
 A clean tracked-source copy passed dependency installation, production build, usage-reader
 setup and Mac launcher compilation with isolated fake provider executables; another person's
-account sign-in and physical device still require their own acceptance. MIT is selected; the requested repository exists privately for staging. No Guide/FAQ has been published.
+account sign-in and physical device still require their own acceptance. MIT is selected;
+the requested repository contains a clean private source history, without the old private
+Git history or runtime files. Initial GitHub builds/backend checks passed; the browser
+matrix timed out before its failure report and is being corrected. No Guide/FAQ is published.
 
 Native computer-use currently cannot reach a desktop browser window. Safe companion
 activation, remaining live provider checks and physical phone Home Screen/cellular/restart

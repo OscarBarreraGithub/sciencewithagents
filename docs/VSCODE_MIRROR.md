@@ -17,8 +17,10 @@ The original native history is unchanged. Old companions retain their supported 
 the new capability requires activating the updated companion, without separate sign-in.
 
 Focused native-adapter, gateway and desktop/mobile browser checks pass, including iPhone
-WebKit and lost-response/reload journeys. The 0.2.6 package is installed; live activation in
-the owner's active editor remains a separate safe-reload step.
+WebKit and lost-response/reload journeys. Isolated real Codex and Claude editor runs also
+verified busy-turn steering and acknowledged queued follow-ups, respectively, with both
+views synchronized and unsent desktop drafts preserved. The 0.2.6 package is installed;
+activation in the owner's active editor remains a separate safe-reload step.
 
 For this installed update, wait until the current native reply and tools finish, then use
 **Developer: Reload Window** in VS Code and reopen the same saved conversation if needed.
@@ -245,6 +247,9 @@ Run the Codex opt-in fixture with `node scripts/probe-vscode-mirror.mjs --run --
 with `node scripts/probe-claude-mirror.mjs --run --stop-reply`; each follows VS Code's registered
 installed macOS provider and makes clearly labeled disposable model turns. Omitting
 `--stop-reply` runs the original message/handoff probe without the extra interruption turns.
+Use `--steer` for the real Codex busy-turn check or `--queue` for Claude's native queue.
+For the Claude fixture only, `DOCK_MIRROR_MODEL` and `DOCK_MIRROR_EFFORT` can select native
+model/effort settings without changing the owner's editor profile.
 Never run it against an owner's existing conversation.
 
 Before marketplace publication:

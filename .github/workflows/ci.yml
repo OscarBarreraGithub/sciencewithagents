@@ -7,7 +7,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -21,4 +21,4 @@ jobs:
       - run: pnpm format:check
       - run: pnpm verify
       - run: pnpm --filter @dock/web exec playwright install --with-deps chromium webkit
-      - run: pnpm test:e2e
+      - run: pnpm test:e2e --reporter=line

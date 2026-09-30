@@ -30,8 +30,8 @@ supervision; do not restart the tool-by-tool parity/restriction approach or broa
 
 ## Next bounded work
 
-The newest backend was deployed at 06:39 UTC with no app-managed agents running. Verified
-copies retained 3 projects, 36 conversations and 1,233 entries; phone/editor reconnected.
+The newest backend was deployed at 07:04 UTC with no app-managed agents running. Verified
+copies retained 4 projects, 37 conversations and 1,348 entries; phone/editor reconnected.
 Resource model choice/follow-ups and draft history are implemented. The focused resource
 and mirrored-chat journeys pass at desktop, 412x915, 360x800, 915x412 and iPhone WebKit.
 Drawn Spawn/notepad acceptance now passes all five profiles; the landscape settings overlap
@@ -60,7 +60,7 @@ this owner's authorizations do not apply to their accounts or computer.
 
 See OPERATIONS.md for standing boundaries, CONTRIBUTOR_SETUP.md for new installations,
 VERIFICATION.md for dated evidence and DECISIONS.md for current product decisions. The
-public release was explicitly authorized; pending licence/publisher choices are distinct.
+public release was explicitly authorized and MIT selected; marketplace publication is separate.
 
 ## Latest integration checkpoint
 
@@ -73,8 +73,12 @@ a missing-timestamp timeout bug before live activation. Backend focused checks a
 completed, then a real Luna search finished and retained its report without messaging a result. The pre-restart verified
 copy is `1fa4974f-64c6-4639-ad89-f2e5a4b0d8de` (3 projects, 36 chats, 1,233 entries).
 
-The requested OscarBarreraGithub/sciencewithagents repository now exists as private staging;
-no public release has occurred. Public combined-site local checks already pass. The existing production Worker’s deployment
+The requested OscarBarreraGithub/sciencewithagents repository contains a clean initial source
+history in private staging; no public release has occurred. Its exported tree matches the
+checked source without prior private Git history or runtime data. Initial GitHub builds/backend
+checks passed; the browser matrix timed out before reporting its failures. CI now has a
+realistic duration and named browser output; complete its functional failures before release.
+Public combined-site local checks already pass. The existing production Worker’s deployment
 list is saved privately for rollback; publication awaits functional readiness and the public source step.
 Do not deploy graph-only source over the prepared combined landing. Native desktop computer
 use remains unavailable; do not claim physical device testing from emulated browser checks.
@@ -93,3 +97,8 @@ old protocol cannot be upgraded by a server restart. Activate it with one safe V
 Reload Window after this active native reply finishes; no auth, fork or new chat is needed.
 Do not add a replacement server queue to conceal this activation requirement. Public source
 uses MIT; release stays incomplete until these reported usability issues are resolved.
+
+Isolated real editor checks now pass Codex steering and Claude native queued follow-ups,
+including both-view replies and preservation of unsent native drafts. The Claude fixture
+showed Opus 5.5 / Extra high. Maintained probe flags are `--steer` and `--queue`; provider
+dependency copies and central routes are corrected. Evidence is in VERIFICATION.md.

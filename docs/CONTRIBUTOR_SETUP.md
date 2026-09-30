@@ -5,6 +5,11 @@ guide. The agent does the technical steps below. Complete your own account sign-
 when the provider asks; never send passwords or codes through chat. Recommend GitHub signup
 when offered, but do not require GitHub or Cloudflare account login on the phone.
 
+Your choices are private GitHub backup, optional phone access, and the phone connection
+(no-domain Tailscale or Cloudflare with your own domain). All are optional for local use.
+Your agent handles the technical work; you complete your account sign-ins and, if pairing,
+save the phone passkey and confirm its matching number on the computer.
+
 ## Setup agent
 
 The current interface connects projects, conversations, tasks, reviews, shared editor chats,

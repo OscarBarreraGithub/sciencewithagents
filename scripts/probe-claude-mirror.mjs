@@ -20,6 +20,13 @@ const registered = JSON.parse(
 ).find((extension) => extension.identifier.id === 'anthropic.claude-code');
 if (!registered) throw new Error('Install Claude Code in VS Code before running this probe.');
 const source = registered.location.path;
+// Optional native choices apply only to this disposable editor profile.
+const providerEnvironment = [
+  ['ANTHROPIC_MODEL', process.env.DOCK_MIRROR_MODEL],
+  ['CLAUDE_CODE_EFFORT_LEVEL', process.env.DOCK_MIRROR_EFFORT],
+]
+  .filter(([, value]) => value)
+  .map(([name, value]) => ({ name, value }));
 const copy = join(fixture, 'extensions', basename(source));
 const evidence = { fixture, providerVersion: registered.version, stage: 'prepare', passed: [] };
 let claudeOriginalHash;
@@ -65,6 +72,7 @@ try {
       'git.openRepositoryInParentFolders': 'never',
       'git.autoRepositoryDetection': false,
       'claudeCode.hideOnboarding': true,
+      'claudeCode.environmentVariables': providerEnvironment,
     }),
     { mode: 0o600 },
   );
@@ -175,7 +183,9 @@ try {
     .toBe(1);
   browser = await chromium.launch();
   const phone = await browser.newPage({ viewport: { width: 412, height: 915 } });
-  await phone.goto(`${api}/?mirror=1`);
+  const opened = (await windows()).find((value) => value.provider === 'claude');
+  if (!opened?.threadId) throw new Error('Disposable shared conversation unavailable');
+  await phone.goto(`${api}/#/chats/vscode/${encodeURIComponent(`claude:${opened.threadId}`)}`);
   const log = phone.getByRole('log', { name: 'Claude Code conversation' });
   await expect(reply(log, 'DESKTOP')).toBeVisible({ timeout: 20_000 });
   evidence.passed.push('complete retained Claude transcript visible in central phone chat');
@@ -200,6 +210,42 @@ try {
     timeout: 20_000,
   });
   evidence.passed.push('browser reload restores retained transcript');
+  if (process.argv.includes('--queue')) {
+    evidence.stage = 'phone-queued-followup';
+    await save();
+    const shared = (await windows()).find((value) => value.provider === 'claude');
+    if (!shared?.threadId) throw new Error('Disposable shared Claude conversation unavailable');
+    // Bounded text gives the native queue a busy turn without permission prompts,
+    // file changes or a second process. Only this new fixture conversation runs.
+    await editor.fill(
+      'This is an isolated native queue test. Do not use tools, execute commands, or change files. List integers from 1 to 150, one per line, and finish with CLAUDE_MIRROR_FIRST_DONE.',
+    );
+    await editor.press('Enter');
+    const input = phone.getByLabel('Message Claude Code');
+    await expect(input).toHaveAttribute('placeholder', 'Add a follow-up…', {
+      timeout: 30_000,
+    });
+    const draft = 'UNSENT_CLAUDE_DRAFT_DURING_QUEUE';
+    await editor.fill(draft);
+    await input.fill(prompt('QUEUED'));
+    const delivered = phone.waitForResponse(
+      (response) => response.request().method() === 'POST' && response.url().endsWith('/send'),
+    );
+    await phone.getByRole('button', { name: 'Queue follow-up', exact: true }).click();
+    const delivery = await delivered;
+    const receipt = await delivery.json();
+    expect(receipt.state, JSON.stringify(receipt)).toBe('sent');
+    expect(delivery.request().postDataJSON().mode).toBe('queue');
+    await expect(reply(log, 'QUEUED')).toBeVisible({ timeout: 90_000 });
+    await expect(reply(native, 'QUEUED')).toBeVisible({ timeout: 20_000 });
+    if (await editor.evaluate((element) => element.tagName === 'TEXTAREA'))
+      await expect(editor).toHaveValue(draft);
+    else await expect(editor).toHaveText(draft);
+    evidence.queue = { state: receipt.state, message: receipt.message };
+    evidence.passed.push(
+      'busy native Claude acknowledges phone follow-up; reply reaches both views; native draft preserved',
+    );
+  }
   if (process.argv.includes('--stop-reply')) {
     evidence.stage = 'phone-stop-reply';
     await save();

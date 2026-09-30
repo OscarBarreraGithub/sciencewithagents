@@ -14,9 +14,10 @@ const { _electron, chromium, expect } = requireWeb('@playwright/test');
 const requireExtension = createRequire(join(root, 'apps/vscode-mirror/package.json'));
 const { build } = requireExtension('esbuild');
 const fixture = await mkdtemp(join(root, 'data/mirror-vscode-'));
-const registered = JSON.parse(
+const installed = JSON.parse(
   await readFile(join(homedir(), '.vscode/extensions/extensions.json'), 'utf8'),
-).find((extension) => extension.identifier.id === 'openai.chatgpt');
+);
+const registered = installed.find((extension) => extension.identifier.id === 'openai.chatgpt');
 if (!registered) throw new Error('Install Codex in VS Code before running this probe.');
 const source = registered.location.path;
 const copy = join(fixture, 'extensions', basename(source));
@@ -26,6 +27,25 @@ const save = () =>
   writeFile(join(fixture, 'evidence.json'), JSON.stringify(evidence, null, 2), { mode: 0o600 });
 try {
   await cp(source, copy, { recursive: true });
+  // A provider can add native extension dependencies between releases. Copy those
+  // installed extensions into the disposable host too, without copying any user profile.
+  const copied = new Set(['openai.chatgpt']);
+  const copyDependencies = async (directory) => {
+    const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
+    for (const id of manifest.extensionDependencies ?? []) {
+      if (copied.has(id) || id.startsWith('vscode.')) continue;
+      const dependency = installed.find((extension) => extension.identifier.id === id);
+      if (!dependency) throw new Error(`Install the provider's required extension: ${id}`);
+      copied.add(id);
+      await cp(
+        dependency.location.path,
+        join(fixture, 'extensions', basename(dependency.location.path)),
+        { recursive: true },
+      );
+      await copyDependencies(dependency.location.path);
+    }
+  };
+  await copyDependencies(source);
   await build({
     entryPoints: [join(root, 'apps/vscode-mirror/src/patch.ts')],
     bundle: true,
@@ -169,7 +189,11 @@ try {
     .toBe(1);
   browser = await chromium.launch();
   const phone = await browser.newPage({ viewport: { width: 412, height: 915 } });
-  await phone.goto('http://127.0.0.1:4345/?mirror=1');
+  const [opened] = await (await fetch('http://127.0.0.1:4345/api/vscode/windows')).json();
+  if (!opened?.threadId) throw new Error('Disposable shared conversation unavailable');
+  await phone.goto(
+    `http://127.0.0.1:4345/#/chats/vscode/${encodeURIComponent(`codex:${opened.threadId}`)}`,
+  );
   const log = phone.getByRole('log', { name: 'Codex conversation' });
   await expect(
     log
@@ -210,6 +234,61 @@ try {
   await phone.reload();
   await expect(phone.getByRole('log')).toContainText('MIRROR_LOCAL_AGAIN_OK', { timeout: 20_000 });
   evidence.passed.push('browser reload restores retained transcript');
+  if (process.argv.includes('--steer')) {
+    evidence.stage = 'phone-steers-active-native-reply';
+    await save();
+    const [shared] = await (await fetch('http://127.0.0.1:4345/api/vscode/windows')).json();
+    if (!shared?.threadId) throw new Error('Disposable shared conversation unavailable');
+    await editor.fill(
+      'Isolated steering acceptance: run the harmless shell command sleep 8 exactly once, with no other tools or file changes. After it finishes reply MIRROR_BEFORE_STEERING. If a later instruction arrives, follow that instruction instead.',
+    );
+    await editor.press('Enter');
+    await expect
+      .poll(
+        async () => {
+          const state = await (
+            await fetch(`http://127.0.0.1:4345/api/vscode/windows/${shared.windowId}`)
+          ).json();
+          return state.status === 'busy' && state.canSteer && Boolean(state.steerToken);
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    const draft = 'UNSENT_NATIVE_DRAFT_DURING_STEERING';
+    await editor.fill(draft);
+    await expect(phone.getByLabel('Message Codex')).toHaveAttribute(
+      'placeholder',
+      'Update the current task…',
+      { timeout: 15_000 },
+    );
+    await phone
+      .getByLabel('Message Codex')
+      .fill(
+        'Update the current task: after the command finishes, reply with exactly MIRROR_STEER_OK.',
+      );
+    const delivered = phone.waitForResponse(
+      (response) => response.request().method() === 'POST' && response.url().endsWith('/send'),
+    );
+    await phone.getByRole('button', { name: 'Send', exact: true }).click();
+    const delivery = await delivered;
+    const sent = await delivery.json();
+    expect(sent.state, JSON.stringify(sent)).toBe('sent');
+    expect(delivery.request().postDataJSON().expectedTurnId).toBeTruthy();
+    await expect(
+      log
+        .getByText('MIRROR_STEER_OK.', { exact: true })
+        .or(log.getByText('MIRROR_STEER_OK', { exact: true }))
+        .first(),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(
+      native
+        .getByText('MIRROR_STEER_OK.', { exact: true })
+        .or(native.getByText('MIRROR_STEER_OK', { exact: true }))
+        .first(),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(editor).toHaveText(draft);
+    evidence.passed.push('phone steering updates a real busy Codex turn; native draft preserved');
+  }
   if (process.argv.includes('--stop-reply')) {
     evidence.stage = 'phone-stop-reply';
     await save();

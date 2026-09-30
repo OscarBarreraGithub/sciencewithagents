@@ -6,6 +6,19 @@ See your Codex and Claude usage, follow the teams working on your projects, and 
 conversations and decisions behind the results. Each computer keeps its own accounts,
 files and history.
 
+## Your three setup choices
+
+1. **GitHub backup:** decide whether you want private copies of your project code.
+   Your setup agent connects your own GitHub account; you complete its sign-in.
+2. **Phone:** decide whether you want the same chats on your phone. Open the pairing
+   link, save the passkey and confirm the matching number on your computer.
+3. **Phone connection:** choose the private, no-domain Tailscale option, or use
+   Cloudflare with a domain you already control. Your setup agent configures the connection;
+   you complete any account sign-in. There is no separate sciencewithagents account.
+
+All three are optional for local computer use. Your agent handles installation and setup;
+you choose the options and complete account/device prompts. Start with [Set up on your computer](#set-up-on-your-computer).
+
 ## The interface is being rebuilt
 
 The current app opens to a new home designed for phones and adapted for desktop. It shows

@@ -1,5 +1,29 @@
 # Verification
 
+## 2026-09-30 — real editor steering and queued follow-ups
+
+Two isolated native VS Code runs passed with companion 0.2.6. Codex 26.917.62051
+accepted phone guidance against its observed busy turn and followed the new instruction.
+Claude Code 2.1.284 acknowledged a phone follow-up as queued, then delivered its reply in
+both views. Its disposable profile displayed Opus 5.5 / Extra high. Both runs preserved an
+unsent native draft, synchronized ordinary messages in both directions, retained history
+after browser reload, stopped sharing and restored the copied provider file byte-for-byte.
+Phone screenshots were inspected. The owner's active editor/profile was not reloaded or
+used for test messages; it still requires safe activation of the installed companion.
+
+Maintained probes now open the central chat route. The Codex fixture copies declared native
+extension dependencies into its disposable host. Optional `--steer` and `--queue` exercise
+the real busy provider, including its acknowledgement; no replacement app queue is used.
+Private evidence lives under ignored `data/mirror-vscode-PgL87K/` and
+`data/claude-mirror-vscode-kUuefP/`. These are native Electron plus browser checks, not
+physical-phone keyboard acceptance.
+
+The initial private-source GitHub run passed format, production builds, 734 server checks
+and 88 companion checks (13 deliberately skipped checks total). Its serial five-profile
+browser suite exceeded the old 15-minute job limit while still progressing, with failure
+markers but no completed report. CI now allows 35 minutes and prints named browser cases
+so a canceled run cannot hide the failing cases. That initial run was not a full pass.
+
 ## 2026-09-30 — reported phone keyboard and composer corrections
 
 The owner's real-phone report exposed gaps in the earlier resize checks. New focused

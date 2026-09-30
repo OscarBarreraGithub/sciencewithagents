@@ -454,6 +454,12 @@ Check: [saved-view UI](../apps/web/src/WorkspacePanel.tsx), [handoff tests](../a
 
 ## Live editor conversations — deliberately lighter recovery
 
+Companion 0.2.6 adds phone guidance during a running Codex turn and acknowledged Claude
+queued follow-ups. Both pass real isolated native editor checks, preserving unsent desktop
+drafts. Activating an installed update in an existing editor requires one safe reload;
+server or phone refresh alone cannot replace its loaded companion. Phone history groups
+tool activity below message bubbles, with original details available on demand.
+
 | Feature                               | Status                         | Actual behavior and boundary                                                                                                                                                                                                                                      |
 | ------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Central Codex and Claude editor chats | Implemented                    | **VS Code chats** uses the normal sidebar and conversation pane. One selected conversation per provider/window can be shared; desktop messages synchronize while native drafts remain untouched. Original approvals and advanced controls stay in the editor.     |
@@ -664,7 +670,8 @@ neither creates an unbounded review loop or blocks independent work.
 The public landing page is in site/. A small staging command preserves the existing public
 SyllabusGraph export under /syllabusgraph/, including legacy links. Staging/dry-run checks
 passed; publication and final visual acceptance remain pending. The owner-created GitHub
-repository is currently private staging with no source pushed. The owner selected MIT and
+repository contains clean source in private staging, without earlier private history or
+runtime files. Public publication remains pending. The owner selected MIT and
 authorized public release; functional readiness remains pending. Check the setup-prompt section against the current no-guide/FAQ
 direction before publishing.
 
