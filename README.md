@@ -19,7 +19,7 @@ files and history.
 All three are optional for local computer use. Your agent handles installation and setup;
 you choose the options and complete account/device prompts. Start with [Set up on your computer](#set-up-on-your-computer).
 
-## The interface is being rebuilt
+## The connected app
 
 The current app opens to a new home designed for phones and adapted for desktop. It shows
 real subscription readings, items needing attention, project summaries, recent results and
@@ -54,7 +54,8 @@ and exact nested ancestry remain incomplete; parent team totals are not charged 
 choices, multiple selections and custom answers, forwarded to the original request once. See
 [native capabilities and saved restrictions](docs/WORKER_TOOLS.md).
 
-The complete connected app is still being built from the AI-designed Sketchcoded board.
+The connected interface follows the AI-designed Sketchcoded board and the owner's drawings.
+Mobile refinement and release acceptance are recorded in [Build status](docs/STATUS.md).
 Advanced/native controls and manual task/module-manager creation are connected. **Welcome and
 setup** automatically checks existing native sign-in and available models without a prompt, links saved team choices
 and first-project creation, and provides bounded native Codex device-code sign-in. A new empty
@@ -75,11 +76,12 @@ activity and **Ask what’s happening**. Its resource assistant gives a bounded 
 undergrad diagnosis on request or through configurable automatic checks, with a bounded grad consultation when needed. See the
 [resource watcher guide](docs/RESOURCE_WATCH.md) for metrics, privacy and limits.
 
-Open **Settings → Models and roles** to choose Codex heavy, Claude heavy or Pick as I go. One shared
-policy maps uncle, undergrad, grad student and postdoc roles to current model families.
-Defaults follow available updates; exact model versions remain selectable. Missing models
-are reported rather than silently replaced. See [model policy](docs/MODEL_POLICY.md) for
-coverage, native-session boundaries and the full mapping.
+Project setup keeps the manager's provider/model separate from the workers' provider mix
+(Codex only through Claude only) and spending level (Light, Default or Tokenmax).
+The controls show actual available model names. **Workspace settings** holds the shared
+defaults and family mappings. Defaults follow available updates; exact versions remain
+selectable, and missing models are reported rather than silently replaced. See
+[model policy](docs/MODEL_POLICY.md) for coverage, native-session boundaries and the full mapping.
 
 Read the [interface handoff](docs/UI_REBUILD.md) for the exact scope, or the
 [nontechnical product story](docs/PRODUCT_STORY.md) for the broader vision.

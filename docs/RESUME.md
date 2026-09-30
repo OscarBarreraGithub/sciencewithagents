@@ -115,3 +115,15 @@ inside the existing strict sandbox; read-only roles remain unchanged. After corr
 ordinary reads/writes, the shell loop and public HTTPS pass without a permission request;
 an outside-folder write is still denied. Adapter checks/build pass and the idle live app
 restart loaded the fix. Keep this simple native policy; do not add a shell-permission parser.
+
+The complete GitHub browser run now reports 334 passes, ten deliberate skips and one actual
+iPhone WebKit keyboard race. The shared log mistook a resize-generated scroll for reading
+history. Opus's small follow-position correction passes all eight mobile keyboard cases,
+including the deterministic scroll-before-ResizeObserver reproduction. The corrected source
+needs its final complete run before the authorized public source/site publication.
+
+Recovery copies now pin an independent read-only WAL snapshot; eleven backend checks and
+ten related browser journeys pass, including normal writes during copying. Native Codex
+read-only turns now explicitly enable network access while preserving read-only writes.
+Forty runtime checks and real read-only/write-enabled native acceptance pass. Both backend
+fixes are loaded in the manual app; the phone connection and existing records remain intact.

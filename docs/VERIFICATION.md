@@ -1,5 +1,22 @@
 # Verification
 
+## 2026-09-30 — shared-chat keyboard event ordering
+
+Two complete GitHub runs passed 334 browser cases and failed the same iPhone WebKit check:
+opening the keyboard left a 266px gap below the shared conversation. A stronger regression
+delivers a scroll after the real layout shrink but before ResizeObserver; it reproduces the
+failure without changing log geometry, scroll positions, timers or tolerances.
+
+One native Opus 5.5 / xhigh worker supplied a small VscodeMirror correction. Following a
+conversation now survives a layout-only scroll; a deliberate upward scroll still switches
+to reading history. All eight mobile keyboard cases pass across the four mobile profiles,
+retaining drafts, older-message anchors and composer/Latest-button separation. Desktop cases
+are intentionally skipped because they exercise mobile visual-viewport geometry. Production
+web build passes. Evidence is under ignored `data/release-2026-09-30/keyboard-ordered-*`.
+Four shared-chat checks also pass on desktop/iPhone WebKit: busy Codex steering and Claude
+queued follow-ups retain ordinary messages and recover a lost response without double-send.
+Physical iOS keyboard animation remains a separate acceptance check.
+
 ## 2026-09-30 — live Codex network and scoped-write acceptance
 
 A real app-managed Codex manager exposed a gap: workspace network configuration did not

@@ -59,15 +59,51 @@ async function viewportEvent(
   height: number,
   offsetTop: number,
   event: 'resize' | 'scroll',
+  scrollBeforeObserver?: string,
 ) {
-  await page.evaluate(
-    async ({ height, offsetTop, event }) => {
+  return page.evaluate(
+    async ({ height, offsetTop, event, scrollBeforeObserver }) => {
+      const log = scrollBeforeObserver
+        ? document.querySelector<HTMLElement>(scrollBeforeObserver)
+        : null;
+      const beforeHeight = log?.clientHeight ?? 0;
+      const beforeTop = log?.scrollTop ?? 0;
+      const layoutScroll: {
+        beforeHeight: number;
+        height: number;
+        beforeTop: number;
+        top: number;
+        gap: number;
+      }[] = [];
+      // The shell's style commit precedes ResizeObserver delivery. Read the actual
+      // shrunken log and deliver Safari's possible layout-scroll ordering explicitly;
+      // leave scrollTop and the native ResizeObserver untouched.
+      const observer = log
+        ? new MutationObserver(() => {
+            if (log.clientHeight >= beforeHeight) return;
+            observer!.disconnect();
+            layoutScroll.push({
+              beforeHeight,
+              height: log.clientHeight,
+              beforeTop,
+              top: log.scrollTop,
+              gap: log.scrollHeight - log.clientHeight - log.scrollTop,
+            });
+            log.dispatchEvent(new Event('scroll'));
+          })
+        : null;
+      observer?.observe(document.querySelector('.home-shell')!, {
+        attributes: true,
+        attributeFilter: ['style'],
+      });
       window.__testKeyboard.set(height, offsetTop, event);
       await new Promise<void>((resolve) =>
         requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
       );
+      observer?.disconnect();
+      return layoutScroll[0] ?? null;
     },
-    { height, offsetTop, event },
+    { height, offsetTop, event, scrollBeforeObserver },
   );
 }
 
@@ -116,7 +152,19 @@ async function checkKeyboard(page: Page, elements: ChatElements, screenshot: str
   const initial = await geometry(page, elements);
   const keyboardHeight = Math.round(initial.innerHeight * (initial.innerHeight < 500 ? 0.72 : 0.6));
   await input.focus();
-  await viewportEvent(page, keyboardHeight, 0, 'resize');
+  const layoutScroll = await viewportEvent(
+    page,
+    keyboardHeight,
+    0,
+    'resize',
+    elements.latest ? elements.log : undefined,
+  );
+  if (elements.latest) {
+    expect(layoutScroll).not.toBeNull();
+    expect(layoutScroll!.beforeHeight - layoutScroll!.height).toBeGreaterThan(80);
+    expect(Math.abs(layoutScroll!.top - layoutScroll!.beforeTop)).toBeLessThanOrEqual(1);
+    expect(layoutScroll!.gap).toBeGreaterThan(80);
+  }
   const opened = await geometry(page, elements);
   expect(opened.innerHeight).toBe(initial.innerHeight);
   expect(opened.log.height).toBeLessThan(initial.log.height - 80);

@@ -693,6 +693,7 @@ material, not a claim of complete editor UI parity.
 
 Keyboard layout follows the visible phone viewport, including its vertical offset. The
 message list preserves older reading positions while the composer grows, and Latest messages
-stays above the composer inside history. Eight focused viewport checks pass for shared and
-managed chat, including multiline drafts and visible Send controls. Actual device keyboard
+stays above the composer inside history. Shared-chat following also survives Safari delivering
+a layout scroll before its resize notification. Eight focused viewport checks pass for shared
+and managed chat, including that event ordering, multiline drafts and visible Send controls. Actual device keyboard
 behaviour still needs confirmation; the earlier generic mobile checks did not cover it.

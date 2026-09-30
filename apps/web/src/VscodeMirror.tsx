@@ -375,6 +375,8 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
   const [historyQuery, setHistoryQuery] = useState('');
   const viewport = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
+  // Where a following reader last was; only scrolling up from here reads history.
+  const followTop = useRef(0);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -596,7 +598,14 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
         aria-live="off"
         onScroll={() => {
           const el = viewport.current!;
-          follow.current = el.scrollHeight - el.clientHeight - el.scrollTop < 80;
+          const top = el.scrollTop;
+          const near = el.scrollHeight - el.clientHeight - top < 80;
+          // A keyboard or taller composer shrinks the log, and Safari can report that
+          // layout scroll before ResizeObserver repins it. The reader has not moved, so
+          // keep following unless they scrolled up toward older messages.
+          const held = !near && follow.current && top >= followTop.current - 2;
+          follow.current = near || held;
+          followTop.current = held ? Math.max(followTop.current, top) : top;
           setFollowing(follow.current);
         }}
       >

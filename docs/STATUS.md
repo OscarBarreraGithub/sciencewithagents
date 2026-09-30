@@ -4,8 +4,9 @@ As of 2026-09-30, the full release goal is active and incomplete. The drawn Home
 chat, project setup, notepad and Computer health are integrated. The owner can use
 the current app; public release and remaining acceptance are still being completed.
 Drawings are not blocking the backend. Corrections for the owner's reported keyboard jumps,
-Latest messages/composer overlap and hidden Send button are built; eight focused mobile
-viewport checks pass. Actual phone confirmation remains. The UI is a connected first pass,
+Latest messages/composer overlap and hidden Send button are built. A later full run exposed
+a Safari scroll-before-resize race; the correction passes eight mobile viewport checks,
+including a deterministic reproduction of that event ordering. Actual phone confirmation remains. The UI is a connected first pass,
 not completed mobile acceptance.
 
 ## Connected behavior
@@ -65,13 +66,18 @@ A clean tracked-source copy passed dependency installation, production build, us
 setup and Mac launcher compilation with isolated fake provider executables; another person's
 account sign-in and physical device still require their own acceptance. MIT is selected;
 the requested repository contains a clean private source history, without the old private
-Git history or runtime files. Initial GitHub builds/backend checks passed; the browser
-matrix timed out before its failure report and is being corrected. No Guide/FAQ is published.
+Git history or runtime files. GitHub builds/backend checks pass; the complete browser run
+passed 334 checks with one keyboard failure and ten deliberate skips. The corrected final
+source is awaiting its complete run. No Guide/FAQ is published.
 
 Native computer-use currently cannot reach a desktop browser window. Safe companion
-activation, remaining live provider checks and physical phone Home Screen/cellular/restart
+activation and physical phone Home Screen/cellular/restart
 journeys are distinct from browser fixtures. Do not claim those passed. Other people must
 use their own accounts and complete their own device sign-ins.
+
+Real native Codex and Claude checks pass broad reads, public HTTPS, role-appropriate scoped
+writes and refused outside-folder writes without routine permission requests. Recovery copies
+now use a separate read snapshot, with normal writes and retry receipts verified during copying.
 
 Allowance attribution is an estimate without validated 2–3 percentage-point accuracy.
 Cache expiry is estimated or unknown; refreshes cannot guarantee retention. Native tools
