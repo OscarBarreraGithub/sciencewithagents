@@ -1315,6 +1315,11 @@ export class Runtime {
         clientUserMessageId: run.id,
         input: [{ type: 'text', text: input, text_elements: [] }],
         additionalContext: { agent_dock_state: { value: state, kind: 'untrusted' } },
+        // Workspace network settings do not apply to Codex's read-only sandbox.
+        // Keep read-only roles read-only while permitting native network requests.
+        ...(current.toolPolicy === 'native' && current.permission === 'read-only'
+          ? { sandboxPolicy: { type: 'readOnly', networkAccess: true } }
+          : {}),
         model: current.model,
         effort: current.effort,
       }),

@@ -133,6 +133,28 @@ it('native Codex inheritance avoids capability probes and keeps original manager
   expect(respond).toHaveBeenCalledWith('original-native-request', { decision: 'decline' });
 });
 
+it.each(['native', 'restricted'] as const)(
+  '%s read-only turns preserve writes policy while native turns allow network access',
+  async (toolPolicy) => {
+    store.updateAgent(manager, { toolPolicy });
+    const client = await runtime.client(store.agent(manager));
+    const request = vi.spyOn(client, 'request');
+    store.transaction(() => store.enqueue(manager, randomUUID(), 'Read the project status.'));
+    runtime.kick();
+    await vi.waitFor(() =>
+      expect(request.mock.calls.some(([method]) => method === 'turn/start')).toBe(true),
+    );
+    const params = request.mock.calls.find(([method]) => method === 'turn/start')![1] as Record<
+      string,
+      unknown
+    >;
+    expect(params.sandboxPolicy).toEqual(
+      toolPolicy === 'native' ? { type: 'readOnly', networkAccess: true } : undefined,
+    );
+    expect(store.agent(manager).permission).toBe('read-only');
+  },
+);
+
 it('new Codex delegations inherit native settings while saved restrictions survive later creation', async () => {
   const t = await task();
   const worker = (await managerTool(runtime, manager, randomUUID(), 'dock_delegate', {

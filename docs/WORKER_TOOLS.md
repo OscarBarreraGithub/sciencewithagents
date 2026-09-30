@@ -1,8 +1,8 @@
 # Native capabilities and saved worker restrictions
 
 **Current native policy (2026-09-30):** broad reads and internet access with scoped native
-writes and no routine permission queue. New inherited Codex sessions use workspace writes,
-network access and approval policy `never`. Claude managers/write-enabled workers use native
+writes and no routine permission queue. New inherited Codex sessions use broad reads and
+network access with approval policy `never`; write access follows their saved role. Claude managers/write-enabled workers use native
 edit acceptance and Bash approval inside its strict command sandbox; unsandboxed retries
 remain disabled. Read-only roles retain native plan permissions. Real questions still surface.
 This supersedes the earlier blanket bypass request. Saved explicit restrictions and native
@@ -32,6 +32,9 @@ parent; full helper output accounting and exact nested hierarchy remain pending.
 Native inheritance adds QUARK tools and observation without disabling the provider's hooks,
 skills, plugins, web tools or configured MCPs. The launch policy above supplies unattended
 native controls; explicitly saved restricted sessions keep their separate settings.
+Codex read-only turns explicitly allow native network requests without granting file writes;
+workspace-write turns retain their native folder boundary and network access. Both paths have
+live macOS evidence, including a denied sibling-folder write and no routine approval wait.
 Task file permissions and exact review/apply remain. No plugin inventory/probe thread is needed
 to launch an inherited Codex conversation. Native manager children join the existing supervised
 family; they are not independent managers with fresh budgets. See VERIFICATION.md for evidence.

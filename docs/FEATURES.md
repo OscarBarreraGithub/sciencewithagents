@@ -632,8 +632,10 @@ and native user overrides are not a project filesystem isolation guarantee. Adap
 checks pass. A real Claude acceptance run verifies outside-folder reads, public HTTPS,
 scoped shell/file writes and rejection of an outside-folder write, with zero permission
 requests. Native Bash approval fixes harmless shell-variable refusals while the strict
-sandbox stays enabled; read-only roles do not receive that approval. Equivalent Codex and
-physical-device checks remain separately evidenced in VERIFICATION.md.
+sandbox stays enabled; read-only roles do not receive that approval. Live Codex checks also
+pass for a read-only manager with network access and a scoped-write conversation; neither
+waited for routine approval, and outside writes were denied. Physical-device checks remain
+separate in VERIFICATION.md.
 
 ### Durable project workflow (release integration in progress)
 

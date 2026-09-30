@@ -1,5 +1,21 @@
 # Verification
 
+## 2026-09-30 — live Codex network and scoped-write acceptance
+
+A real app-managed Codex manager exposed a gap: workspace network configuration did not
+enable network access in its read-only sandbox. Native read-only turns now send the provider's
+explicit `readOnly`/`networkAccess: true` policy; saved restricted contexts retain their policy.
+Forty runtime checks and the server build pass. No provider configuration file is changed.
+
+A fresh Astra manager then read a sibling marker and received HTTP 200 from a public HTTPS
+HEAD request, while both file-write attempts stayed denied. A separate native Sol conversation,
+created through the real conversation service and central live model policy, read the marker,
+wrote its own `inside.txt`, reached HTTPS and was denied a sibling-folder write. The outside
+file was absent. Both completed without approval requests, retries or delegation; the owned
+runtimes closed. Evidence: ignored `data/codex-scope-OUDKOw/` and `codex-scope-4sTBNU/`.
+The original failing manager evidence is `data/codex-scope-2YKyaP/`. These checks establish
+current installed macOS behavior, not containment of external MCP services.
+
 ## 2026-09-30 — recovery copies during live writes
 
 Release checks exposed occasional empty recovery files. A bounded reproduction isolated
