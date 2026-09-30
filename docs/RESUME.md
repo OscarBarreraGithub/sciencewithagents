@@ -30,8 +30,8 @@ supervision; do not restart the tool-by-tool parity/restriction approach or broa
 
 ## Next bounded work
 
-The newest backend was deployed at 07:04 UTC with no app-managed agents running. Verified
-copies retained 4 projects, 37 conversations and 1,348 entries; phone/editor reconnected.
+The newest backend was deployed at 07:55 UTC with no app-managed agents running. Verified
+copies retained 4 projects, 37 conversations and 1,350 entries; phone/editor reconnected.
 Resource model choice/follow-ups and draft history are implemented. The focused resource
 and mirrored-chat journeys pass at desktop, 412x915, 360x800, 915x412 and iPhone WebKit.
 Drawn Spawn/notepad acceptance now passes all five profiles; the landscape settings overlap
@@ -108,3 +108,10 @@ Those checks now follow the actual controls. Twenty selected desktop journeys an
 zoom checks pass; the latter includes full-page Spawn and a retained unsent brief. The web
 build passes. Continue with the corrected complete GitHub matrix, then the authorized public
 source/combined-site release. Do not repeat passing local checks without a new failure.
+
+A real native Claude test exposed harmless shell-variable commands falling into a native
+permission request. Native Bash approval now fixes that for managers/write-enabled workers
+inside the existing strict sandbox; read-only roles remain unchanged. After correction,
+ordinary reads/writes, the shell loop and public HTTPS pass without a permission request;
+an outside-folder write is still denied. Adapter checks/build pass and the idle live app
+restart loaded the fix. Keep this simple native policy; do not add a shell-permission parser.

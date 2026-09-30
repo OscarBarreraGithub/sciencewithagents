@@ -460,7 +460,17 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
         ? [
             '--settings',
             JSON.stringify({
-              permissions: { allow: ['Read(//**)', 'WebFetch', 'WebSearch'] },
+              // The native command parser can still ask for harmless variable
+              // expansions in acceptEdits mode. Approve Bash natively; the strict
+              // OS sandbox below keeps its filesystem boundary in force.
+              permissions: {
+                allow: [
+                  'Read(//**)',
+                  ...(options.role === 'read-only' ? [] : ['Bash']),
+                  'WebFetch',
+                  'WebSearch',
+                ],
+              },
               sandbox: {
                 enabled: true,
                 failIfUnavailable: true,

@@ -629,7 +629,11 @@ with approval policy `never`; Claude edit acceptance, native command sandbox and
 requests outside that policy. Actual human questions retain their original answer flow.
 Explicit older restricted contexts retain their saved approval behavior. External MCP servers
 and native user overrides are not a project filesystem isolation guarantee. Adapter regression
-checks pass; live provider execution checks remain part of release acceptance.
+checks pass. A real Claude acceptance run verifies outside-folder reads, public HTTPS,
+scoped shell/file writes and rejection of an outside-folder write, with zero permission
+requests. Native Bash approval fixes harmless shell-variable refusals while the strict
+sandbox stays enabled; read-only roles do not receive that approval. Equivalent Codex and
+physical-device checks remain separately evidenced in VERIFICATION.md.
 
 ### Durable project workflow (release integration in progress)
 

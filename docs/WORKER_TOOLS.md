@@ -1,12 +1,18 @@
 # Native capabilities and saved worker restrictions
 
-**Latest requested policy (2026-09-30), pending native-sandbox verification:** broad read
-and internet access, with writes confined to the assigned project/worktree. Automatically
-deny operations outside the allowed scope instead of waiting on routine tool approvals.
-Read-only diagnostic roles may remain read-only. This supersedes the blanket full-access/
-bypass request. Arbitrary MCP and remote tools need their own enforcement; native inheritance
-alone neither enables unattended access nor proves a filesystem boundary. Current saved
-permission behavior remains unchanged by the QUARK board work. See [coordinator notes](QUARK_COORDINATOR.md).
+**Current native policy (2026-09-30):** broad reads and internet access with scoped native
+writes and no routine permission queue. New inherited Codex sessions use workspace writes,
+network access and approval policy `never`. Claude managers/write-enabled workers use native
+edit acceptance and Bash approval inside its strict command sandbox; unsandboxed retries
+remain disabled. Read-only roles retain native plan permissions. Real questions still surface.
+This supersedes the earlier blanket bypass request. Saved explicit restrictions and native
+administrative rules remain; arbitrary MCP/remote tools have their own enforcement.
+
+A real Claude run verified an outside-folder read, public HTTPS, scoped file/shell writes and
+rejection of an outside-folder write. Adding native Bash approval corrected refusal of a
+harmless shell-variable loop without changing that write boundary. This is one installed
+provider/platform acceptance, not proof that every external tool is contained. See
+[dated evidence](VERIFICATION.md) and [Anthropic's sandbox behavior](https://code.claude.com/docs/en/sandboxing).
 
 **Direction superseded, implementation retained (2026-09-28):** the owner requested native
 capability inheritance with QUARK observation/supervision, rather than expanding these
@@ -24,14 +30,17 @@ input/cache usage with durable catch-up. Unlinked streamed text/team totals rema
 parent; full helper output accounting and exact nested hierarchy remain pending.
 
 Native inheritance adds QUARK tools and observation without disabling the provider's hooks,
-skills, plugins, web tools or configured MCPs, and without rewriting its approval preferences.
+skills, plugins, web tools or configured MCPs. The launch policy above supplies unattended
+native controls; explicitly saved restricted sessions keep their separate settings.
 Task file permissions and exact review/apply remain. No plugin inventory/probe thread is needed
 to launch an inherited Codex conversation. Native manager children join the existing supervised
 family; they are not independent managers with fresh budgets. See VERIFICATION.md for evidence.
 
 Claude adds only the private Dock MCP integration and appends coordination instructions.
-It forwards native permission requests without a tool-name gate. Read-only workers retain
-native plan permissions. A hook's successful admission returns no tool permission grant.
+Unattended launches deny residual permission requests instead of leaving work waiting for
+routine approval; human questions remain answerable. Saved restricted sessions forward their
+original permission requests. Read-only workers retain native plan permissions. A hook's
+successful admission returns no tool permission grant.
 If native Stop does not end an owned run, QUARK closes that owned group after its grace period,
 retaining queued messages, files, quota holds and original session identities.
 

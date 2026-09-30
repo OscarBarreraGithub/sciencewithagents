@@ -1,5 +1,27 @@
 # Verification
 
+## 2026-09-30 — native unattended shell correction and live activation
+
+A real Opus 5.5 / xhigh run through the production Claude adapter reproduced an ordinary
+read-only shell loop being denied. Claude's native permission request reported
+`Contains simple_expansion`; this was not a QUARK quota refusal or an outside-folder write.
+Managers/write-enabled workers now approve Bash through native settings while retaining
+the enabled, required sandbox and disabled unsandboxed retry. Read-only roles keep plan
+permissions without the added Bash grant; pending human questions remain answerable.
+
+The same bounded live fixture then passed a broad file read, scoped Bash append and Write,
+the variable/grep/awk/sed/head loop, and HTTPS HEAD to example.com (HTTP 200), with zero
+permission requests. An explicitly requested write to a sibling fixture path still failed
+with the native operating-system denial; the outside file was absent. No owner files or
+provider settings were changed. Forty-three adapter checks and the server build pass.
+Private before/after evidence: `data/release-2026-09-30/native-scope-zkgeEa/` and
+`native-scope-oXgklD/`. This is installed macOS Claude evidence, not every platform/tool.
+
+The idle manual-app restart at 07:55 UTC loaded the correction. Verified recovery copies
+before/after retained 4 projects, 37 conversations and 1,350 entries with identical project
+and agent identities; phone access stayed on and the existing editor reconnected. Login
+service remains off. Owner editor companion activation is still a separate safe reload.
+
 ## 2026-09-30 — real editor steering and queued follow-ups
 
 Release browser triage found stale expectations for project-header navigation, Settings,

@@ -172,10 +172,15 @@ describe('Claude native launch policy', () => {
     const args = claudeArguments(f.config);
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits');
     expect(JSON.parse(args[args.indexOf('--settings') + 1]!)).toMatchObject({
-      permissions: { allow: ['Read(//**)', 'WebFetch', 'WebSearch'] },
+      permissions: { allow: ['Read(//**)', 'Bash', 'WebFetch', 'WebSearch'] },
       sandbox: { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false },
     });
     expect(args).not.toContain('--tools');
+    const readOnly = claudeArguments({ ...f.config, role: 'read-only' });
+    expect(readOnly[readOnly.indexOf('--permission-mode') + 1]).toBe('plan');
+    expect(
+      JSON.parse(readOnly[readOnly.indexOf('--settings') + 1]!).permissions.allow,
+    ).not.toContain('Bash');
     await f.submit();
     const request = permission();
     f.emit(request);

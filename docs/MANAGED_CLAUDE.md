@@ -1,5 +1,13 @@
 # Managed Claude conversations
 
+**Unattended native execution (2026-09-30):** new inherited launches use native scoped
+execution and do not queue routine permission prompts. Managers/write-enabled workers
+approve Bash through Claude's own permissions while its strict sandbox enforces command
+writes; file edits use native edit acceptance. Read-only roles retain plan permissions.
+Residual permission requests are denied, and actual human questions remain answerable.
+The older pending-approval descriptions below apply to saved restricted contexts. See
+[current controls and live evidence](WORKER_TOOLS.md).
+
 **Current update (2026-09-25):** [Model settings](MODEL_POLICY.md) now centralizes tier/provider defaults, latest-family resolution, exact pins and bounded undergrad escalation. It is a working home destination. Earlier descriptions below that defer automatic routing or describe inherited manager models are superseded by that policy. Original native editor sessions retain their own choices.
 
 **Native capability migration (2026-09-28):** new conversations inherit Claude configuration,
@@ -24,8 +32,9 @@ Choose Claude when creating an empty conversation/project, then use its ordinary
 model settings, permission cards and session actions. Existing conversations cannot switch
 providers. Managers delegate through the central model policy, preserving explicit model
 choices and sharing the QUARK queue and allowance readings.
-The existing queue, task worktree, independent review, manager arbitration and exact owner
-confirmation of integration remain shared; there is no second Claude scheduler.
+The existing queue, task worktree, independent review and manager arbitration remain shared;
+there is no second Claude scheduler. Managers apply exact reviewed changes by default.
+Projects may require human approval instead through their workflow setting.
 
 This is different from [sharing a live VS Code chat](VSCODE_MIRROR.md). A mirrored chat
 remains owned by the original extension. A managed conversation is owned by Agent Dock's
