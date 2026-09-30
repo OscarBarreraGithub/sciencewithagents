@@ -1,5 +1,20 @@
 # Verification
 
+## 2026-09-30 — recovery copies during live writes
+
+Release checks exposed occasional empty recovery files. A bounded reproduction isolated
+the cause to asynchronous SQLite backup sharing the live write connection. Recovery now
+pins its own read-only WAL snapshot and closes it after the copy; normal writes continue.
+Eleven focused backend checks pass, including committed writes during the copy, preserved
+snapshot contents, re-verification, restart receipts and failure handling. The server builds.
+
+The two affected browser journeys pass across all five profiles (10 checks): manager/task
+creation with lost-response recovery and recovery-copy retry/update handoff. Navigation uses
+the visible Configure menu on phones; the copy check targets the exact newly created receipt
+and waits for both retry responses. Welcome's ordinary sign-in check is allowed without
+permitting a model launch or an update on navigation. Private evidence is under
+`data/release-2026-09-30/recovery-*-final.log` and `recovery-snapshot-unit.log`.
+
 ## 2026-09-30 — native unattended shell correction and live activation
 
 A real Opus 5.5 / xhigh run through the production Claude adapter reproduced an ordinary

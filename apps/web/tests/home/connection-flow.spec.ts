@@ -182,7 +182,7 @@ test('a lost recovery-copy response retains the same copy and update handoff', a
   await page.getByRole('button', { name: 'Create recovery copy', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('connection ended');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Verified recovery copy' }).first()).toBeVisible();
+  await expect.poll(() => copies.length).toBe(2);
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(keys[1]);
   expect(copies[0]).toBe(copies[1]);
@@ -192,6 +192,9 @@ test('a lost recovery-copy response retains the same copy and update handoff', a
     .filter({
       has: page.locator('code', { hasText: copies[0] }),
     });
+  await expect(
+    item.getByRole('heading', { name: 'Verified recovery copy', exact: true }),
+  ).toBeVisible();
   await item.getByText('Use this copy before updating', { exact: true }).click();
   await expect(item.locator('.recovery-request-text')).toContainText(copies[0]);
   await expect(item.locator('.recovery-request-text')).toContainText('docs/UPDATE_APP.md');
@@ -235,7 +238,8 @@ test('a lost recovery-copy response retains the same copy and update handoff', a
   await page.goBack();
   await page.getByRole('link', { name: 'Check this computer', exact: true }).click();
   await expect(page).toHaveURL(/#\/welcome$/);
-  expect(writes).toEqual([]);
+  // Welcome can check native sign-in; navigating the update handoff must start no work.
+  expect(writes.filter((url) => new URL(url).pathname !== '/api/setup/check')).toEqual([]);
 });
 
 test('history opens retained evidence without executing work and workspace reconnects a forgotten browser without replay', async ({

@@ -148,7 +148,8 @@ test('module manager and task drafts recover the same actual creations after los
   );
   expect(added).toHaveLength(1);
   expect((await (await page.request.get(`/api/agents/${added[0].id}`)).json()).runs).toEqual([]);
-  await page.getByRole('link', { name: owner.name, exact: true }).click();
+  await page.getByRole('button', { name: 'Configure', exact: true }).click();
+  await page.getByRole('link', { name: 'Project overview', exact: true }).click();
   await page.getByRole('button', { name: 'Add task', exact: true }).click();
   await page.getByLabel('Responsible manager').selectOption(added[0].id);
   await page.getByLabel('Task name', { exact: true }).fill('Improve keyboard navigation');

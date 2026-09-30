@@ -163,7 +163,16 @@ export class RecoveryBackups {
       const file = this.file(id);
       // Reserve only a new generated filename. Existing files are never overwritten.
       closeSync(openSync(file, 'wx', 0o600));
-      await backup(this.store.db, file);
+      // Keep the asynchronous copy off the connection used by live write transactions.
+      // Pin a WAL read snapshot so later writes neither interrupt nor restart the copy.
+      const reader = new DatabaseSync(this.store.path, { readOnly: true });
+      try {
+        reader.exec('BEGIN;');
+        reader.prepare('SELECT 1 FROM sqlite_schema LIMIT 1').get();
+        await backup(reader, file);
+      } finally {
+        reader.close();
+      }
       // The source uses WAL. Finalize only our new copy as a self-contained file
       // before hashing it, so an untracked sidecar can never contribute to verification.
       const standalone = new DatabaseSync(file);

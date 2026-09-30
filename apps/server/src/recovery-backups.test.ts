@@ -97,6 +97,27 @@ it('deduplicates concurrent requests and retains the exact receipt across restar
   expect(restarted.status().copies).toHaveLength(1);
 });
 
+it('copies a stable snapshot while normal write transactions continue', async () => {
+  const backups = new RecoveryBackups(store, root);
+  const copying = backups.create({ key: randomUUID() });
+  store.transaction(() => {
+    for (let i = 0; i < 500; i++) store.setSetting('during-copy', { revision: i });
+  });
+  const copy = await copying;
+  expect(copy.state).toBe('verified');
+  const saved = new DatabaseSync(file(copy.id), { readOnly: true });
+  try {
+    expect(
+      saved.prepare('SELECT value FROM settings WHERE key=?').get('during-copy'),
+    ).toBeUndefined();
+    expect(saved.prepare('SELECT COUNT(*) AS count FROM entries').get()?.count).toBe(1);
+  } finally {
+    saved.close();
+  }
+  expect(store.getSetting('during-copy')).toEqual({ revision: 499 });
+  expect((await backups.verify(copy.id)).state).toBe('verified');
+});
+
 it('opens an independent restored fixture with the saved archive and image bytes, without copying external setup files', async () => {
   const entry = store.entries(manager)[0];
   const imageId = randomUUID();
