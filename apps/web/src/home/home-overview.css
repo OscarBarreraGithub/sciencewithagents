@@ -647,16 +647,17 @@
   }
   .overview-destinations {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: repeat(3, minmax(144px, 1fr));
-    min-height: calc(66svh + 24px);
-    gap: 12px;
+    grid-template-rows: repeat(3, minmax(min-content, 1fr));
+    height: calc(var(--home-visible-height, 100svh) * 0.6);
+    min-height: 0;
+    gap: 10px;
   }
   .destination {
     flex-direction: row;
     justify-content: flex-start;
-    min-height: 144px;
-    gap: 20px;
-    padding: 24px 20px;
+    min-height: 0;
+    gap: 16px;
+    padding: 16px 18px;
     text-align: left;
   }
   .destination-text {
