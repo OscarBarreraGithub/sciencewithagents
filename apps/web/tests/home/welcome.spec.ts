@@ -209,8 +209,7 @@ test('welcome lets a Claude-only user choose their provider before readiness wit
   await page.getByLabel('Use Claude in defaults').check();
   await page.getByLabel('Use Codex in defaults').uncheck();
   await expect(page.getByLabel('Use Claude in defaults')).toBeDisabled();
-  await expect(page.getByLabel('Routine checks & monitoring provider')).toHaveValue('preset');
-  await expect(page.getByLabel('Unattended checks provider')).toHaveValue('claude');
+  await expect(page.getByLabel('Computer health checks provider')).toHaveValue('claude');
   await page.getByRole('button', { name: 'Save model settings', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('saved');
   await page.reload();

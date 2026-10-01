@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { defaultModelPolicy, type ModelPolicyStatus } from '@dock/shared';
+import { defaultModelPolicy, policyProvider, type ModelPolicyStatus } from '@dock/shared';
 import { mkdir } from 'node:fs/promises';
 
 test('model settings support mobile editing, exact versions, safe save retry and a renamed family', async ({
@@ -64,6 +64,7 @@ test('model settings support mobile editing, exact versions, safe save retry and
     'codex',
   );
   await page.getByRole('button', { name: 'Refresh available models' }).click();
+  await page.getByText('Model levels and advanced choices', { exact: true }).click();
   await expect(
     page.getByLabel('Uncle Claude model', { exact: true }).locator('option[value="haiku"]'),
   ).toBeAttached();
@@ -80,8 +81,7 @@ test('model settings support mobile editing, exact versions, safe save retry and
   await page
     .getByLabel('Grad student Codex thinking level', { exact: true })
     .selectOption('adaptive-v2');
-  await page.getByLabel('Routine checks & monitoring provider').selectOption('codex');
-  await page.getByLabel('Unattended checks provider').selectOption('codex');
+  await page.getByLabel('Computer health checks provider').selectOption('codex');
   const uncle = page
     .getByRole('article')
     .filter({ has: page.getByRole('heading', { name: 'Uncle', exact: true }) });
@@ -122,9 +122,7 @@ test('model settings support mobile editing, exact versions, safe save retry and
   await expect(page.getByLabel('Grad student Codex thinking level', { exact: true })).toHaveValue(
     'adaptive-v2',
   );
-  await expect(
-    page.getByText('One consultation on the same provider', { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByText('One stronger-model consultation', { exact: false })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.evaluate(async () => {
     await document.fonts.ready;
@@ -136,6 +134,74 @@ test('model settings support mobile editing, exact versions, safe save retry and
     path: `../../data/screenshots/model-settings/${info.project.name}.png`,
     fullPage: true,
   });
+});
+
+test('assistant choices name the effective models and save independently from manager and worker choices', async ({
+  page,
+}, info) => {
+  let state: ModelPolicyStatus = {
+    policy: { ...structuredClone(defaultModelPolicy), preset: 'claude-heavy' },
+    catalogs: [
+      {
+        provider: 'codex',
+        observedAt: new Date().toISOString(),
+        error: null,
+        models: ['gpt-6-terra', 'gpt-6-luna'].map((id) => ({
+          id,
+          label: id,
+          isDefault: false,
+          efforts: ['low', 'high'],
+        })),
+      },
+      {
+        provider: 'claude',
+        observedAt: new Date().toISOString(),
+        error: null,
+        models: [{ id: 'sonnet', label: 'Sonnet', isDefault: false, efforts: ['low', 'high'] }],
+      },
+    ],
+  };
+  await page.route('**/api/model-policy', (route) => {
+    if (route.request().method() === 'POST') {
+      const input = route.request().postDataJSON();
+      state = { ...state, policy: { ...input.policy, revision: input.expectedRevision + 1 } };
+    }
+    return route.fulfill({ json: state });
+  });
+  await page.goto('/#/models');
+  const health = page.getByLabel('Computer health checks provider');
+  const search = page.getByLabel('Assisted search provider');
+  await expect(health).toHaveValue('codex');
+  await expect(health.locator('option:checked')).toHaveText('Codex · gpt-6-terra');
+  await expect(search).toHaveValue('claude');
+  await expect(page.locator('option').filter({ hasText: 'Follow preset' })).toHaveCount(0);
+  await expect(page.locator('.model-advanced')).not.toHaveAttribute('open');
+  await expect(page.getByLabel('Unattended checks provider')).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Manager provider', exact: true }).selectOption('ask');
+  await expect(health).toHaveValue('codex');
+  await expect(search).toHaveValue('claude');
+  await health.selectOption('claude');
+  await search.selectOption('codex');
+  await expect(health.locator('option:checked')).toHaveText('Claude · Sonnet');
+  await expect(search.locator('option:checked')).toHaveText('Codex · gpt-6-luna');
+  await page.getByRole('button', { name: 'Save model settings', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Model settings saved');
+  expect(policyProvider(state.policy, 'routine', undefined, true)).toBe('claude');
+  expect(policyProvider(state.policy, 'routine')).toBe('claude');
+  expect(policyProvider(state.policy, 'bulk')).toBe('codex');
+  expect(policyProvider(state.policy, 'manager')).toBeUndefined();
+  expect(state.policy.scheduledProvider).toBe('claude');
+  expect(state.policy.projectDefaults).toEqual(defaultModelPolicy.projectDefaults);
+  await page.reload();
+  await expect(health).toHaveValue('claude');
+  await expect(search).toHaveValue('codex');
+  await page.locator('.model-routing').first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath('assistant-model-choices.png') });
+  await page.goto('/#/chats');
+  await page.getByRole('button', { name: 'Assisted search', exact: true }).click();
+  await expect(
+    page.getByRole('radio', { name: 'Codex · gpt-6-luna', exact: true }),
+  ).toHaveAttribute('aria-checked', 'true');
 });
 
 test('settings failures are retryable and another device cannot silently overwrite a draft', async ({

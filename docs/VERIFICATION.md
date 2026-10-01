@@ -1,5 +1,27 @@
 # Verification
 
+## 2026-10-01 — simpler model defaults with explicit assistant choices
+
+Model preferences now separates new-project choices and two app-assistant choices. Removed
+the opaque Follow preset options, duplicate unattended-check menu and repeated scope text;
+detailed model levels and retained non-project task routing are in one closed disclosure.
+Assistant menus resolve the saved policy into provider/model names. Health edits save both
+routine and unattended choices. Selecting a manager at setup preserves assistant routing.
+
+- Production web build passes. Thirty functional browser cases pass across desktop,
+  412×915, 360×800, 915×412 and iPhone WebKit: model edits, exact pins/thinking levels,
+  save/retry/conflicts, independent manager/worker/assistant choices, recommendation reset,
+  Claude-only setup and retained project drafts. The new check confirms the saved search
+  provider is actually selected when Assisted search opens.
+- Six text/zoom cases pass with the detailed settings expanded, including doubled text and
+  actual 80–400% Chromium zoom. Four duplicate zoom cases are intentionally skipped.
+  These checks caught long provider/model labels widening mobile form rows; zero minimum
+  widths on the containing rows correct that. All five new assistant-choice cases also pass
+  after the layout correction. Compact and expanded phone screenshots were inspected.
+- Demo fixtures only, with no owner preference writes or real agent launches. Evidence is
+  under ignored `data/models-simplify-*` and `data/browser-results/home/`. Owned test servers
+  and browser processes are closed; the owner's app continues serving the rebuilt frontend.
+
 ## 2026-10-01 — model preferences spacing and alignment
 
 Provider choices align checkbox and name horizontally, legends sit inside their cards,

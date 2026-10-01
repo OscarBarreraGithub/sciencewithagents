@@ -41,7 +41,6 @@
 .model-heading {
   display: grid;
   gap: 12px;
-  max-width: 780px;
 }
 .model-heading h1 {
   font-size: clamp(1.75rem, 3vw, 2.75rem);
@@ -168,10 +167,11 @@
   color: #926335;
 }
 .model-route-list {
+  min-width: 0;
   border-top: 1px solid #dfe4ec;
 }
-.model-route-list > label,
-.model-scheduled {
+.model-route-list > label {
+  min-width: 0;
   display: flex;
   flex-flow: row wrap;
   align-items: center;
@@ -179,12 +179,10 @@
   padding: 16px 0;
   border-bottom: 1px solid #dfe4ec;
 }
-.model-route-list > label > span,
-.model-scheduled > span {
+.model-route-list > label > span {
   flex: 1 1 22rem;
 }
-.model-route-list select,
-.model-scheduled select {
+.model-route-list select {
   flex: 1 1 13rem;
   width: auto;
 }
@@ -197,24 +195,20 @@
 .model-escalation input {
   margin-top: 5px;
 }
-.model-scope {
-  display: flex;
-  gap: 12px;
-  background: #f0f3f9;
-  padding: 18px 20px;
-  border-radius: 10px;
-  color: #59677e;
-  font-size: var(--text-caption);
-  line-height: 1.8;
+.model-advanced {
+  min-width: 0;
+  border: 1px solid var(--home-line);
+  border-radius: 16px;
+  padding: 16px;
 }
-.model-scope svg {
-  flex-shrink: 0;
+.model-advanced > summary {
+  cursor: pointer;
+  font-weight: 650;
+  min-height: 44px;
+  padding: 8px 0;
 }
-.model-scope p {
-  margin: 0;
-}
-.model-scope a {
-  color: #2b58c4;
+.model-advanced > section {
+  margin-top: 24px;
 }
 .model-save {
   display: flex;
@@ -308,9 +302,6 @@
 .model-unavailable {
   font-size: var(--text-caption);
 }
-.model-scope {
-  font-size: var(--text-small);
-}
 .model-settings .model-escalation {
   flex-direction: row;
 }
@@ -358,9 +349,6 @@
 }
 .model-project-defaults .config-form {
   max-width: none;
-}
-.model-manager-grid + .config-help {
-  margin: 16px 0 0;
 }
 .model-restore {
   border-top: 1px solid #dfe4ec;

@@ -4,11 +4,11 @@ Open **Settings → Model preferences**. Set your manager and worker defaults, r
 available models, then **Save model settings**. This works on the
 computer and paired phone; each selected computer keeps its own policy and sign-ins.
 
-| Level        | Codex family | Claude family | Default work                                                                                    |
-| ------------ | ------------ | ------------- | ----------------------------------------------------------------------------------------------- |
-| Postdoc      | Astra        | Fable         | Project/module managers and the strongest worker defaults                                       |
-| Grad student | Sol          | Opus          | Research, implementation, review, calculations, difficult questions and delegated orchestration |
-| Undergrad    | Terra        | Sonnet        | Routine checks, recurring monitoring                                                            |
+| Level        | Codex family | Claude family | Default work                                                                                                  |
+| ------------ | ------------ | ------------- | ------------------------------------------------------------------------------------------------------------- |
+| Postdoc      | Astra        | Fable         | Project/module managers and the strongest worker defaults                                                     |
+| Grad student | Sol          | Opus          | Research, implementation, review, calculations, difficult questions and delegated orchestration               |
+| Undergrad    | Terra        | Sonnet        | Routine checks, recurring monitoring                                                                          |
 | Uncle        | Luna         | Sonnet        | They sound confident, but also believe whatever they read. Be careful trusting them. Use for cheap, bulk work |
 
 These are the owner's work preferences, not measured intelligence ratings or accuracy
@@ -51,15 +51,23 @@ assignment; an exact pin stays on that version. Later global changes do not rewr
 snapshot. Existing projects without a snapshot retain legacy behavior until their settings
 are changed. An already registered folder is never reinitialized with new preferences.
 
-**App assistant defaults** controls non-project routine checks, bulk search and stronger
-consultations through the same central model levels. QUARK retains its explicit coordinator
+**App assistants** has one computer-health choice and one assisted-search choice. Each menu
+shows the effective provider and model; changing it saves an explicit provider. Computer-health
+changes also set the unattended provider, so there is no competing check-provider menu.
+These assistants and stronger consultations reuse the central model levels. QUARK retains its explicit coordinator
 model in its own controls. Inside new projects, routine work and calculations use the project's
 provider choice; calculations and delegated orchestration retain the grad-or-higher minimum.
 A Light Terra research choice is therefore not used for calculations. Explicit native choices
 and imported conversations remain separate from defaults.
 
 Old provider presets/task routing remain readable for saved installations and legacy projects.
-The ordinary settings page no longer presents those as a second competing worker editor.
+The ordinary settings page resolves those to named choices instead of showing **Follow preset**.
+Opening/saving an unrelated setting preserves existing routing. Choosing a manager at setup
+retains the already resolved assistant choices instead of switching them to pick-as-you-go.
+**Model levels and advanced choices** contains the family/version/thinking controls and
+the retained calculation/orchestration defaults for work without saved project choices.
+Detailed mappings are collapsed initially; catalog errors remain visible outside that section.
+Thinking controls show the resolved level even when the saved choice follows the latest family.
 Choosing the manager at project setup requires an explicit provider before Spawn when the
 user-wide manager preference is **Choose at project setup**.
 

@@ -64,6 +64,10 @@ async function inspect(page: Page, route: string) {
   if (route === 'models') {
     await expect(page.getByRole('group', { name: 'Providers in your defaults' })).toBeVisible();
     await expectModelFormLayout(page);
+    const advanced = page.locator('.model-advanced');
+    if ((await advanced.getAttribute('open')) === null)
+      await advanced.locator(':scope > summary').click();
+    await expectModelFormLayout(page);
     await page
       .getByRole('group', { name: 'Manager default', exact: true })
       .scrollIntoViewIfNeeded();

@@ -14,7 +14,11 @@ the intended paragraph/heading gaps on Settings and project setup.
 
 **General model preferences (2026-10-01): implemented.** Settings → Model preferences owns
 new-project manager/worker defaults, separate from per-project customization. Model levels in
-preferences and Welcome read Postdoc → Grad student → Undergrad → Uncle. The creator's
+preferences and Welcome read Postdoc → Grad student → Undergrad → Uncle.
+Model preferences separates project defaults and app assistants, with detailed model mappings
+under **Model levels and advanced choices**. Assistant menus show their effective provider/model
+instead of an opaque preset; computer-health and unattended checks share one choice.
+Choosing a manager at project setup preserves independent assistant defaults. The creator's
 corrected matrix starts at Balanced + Tokenmax (the provider's Only preset for one-provider
 installs), follows live family versions and supports exact pins. Restore recommended defaults
 stages the original recommendations for saving while retaining subscriptions and existing

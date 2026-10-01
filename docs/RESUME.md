@@ -1,5 +1,15 @@
 # Resume here — current continuation only
 
+## Latest model preferences simplification
+
+The default view has new-project manager/worker settings and two app-assistant choices:
+computer health and assisted search. Provider/model names replace the opaque Follow preset
+option; health changes save both routine and unattended routing. Detailed family/version/
+thinking/meter choices and legacy task routing are under Model levels and advanced choices.
+Removed repeated scope explanations and the extra check-provider menu. Choosing the manager
+at setup now preserves resolved assistant defaults instead of changing them through the old
+shared preset. Keep legacy saved policies readable; no startup migration or project rewrite.
+
 ## Latest model form layout correction
 
 Model preferences now aligns provider checkboxes beside their names, places headings inside

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Check, RefreshCw } from 'lucide-react';
+import { Check, RefreshCw } from 'lucide-react';
 import {
   latestFamily,
   effortLabel,
@@ -18,6 +18,7 @@ import {
   type ModelPolicy,
   type ModelPolicyStatus,
   type ProviderId,
+  type TaskClass,
 } from '@dock/shared';
 import { api } from '../api';
 import { WorkerSettings } from './ProjectConfiguration';
@@ -29,7 +30,7 @@ const descriptions = {
     'They sound confident, but also believe whatever they read. Be careful trusting them. Use for cheap, bulk work',
   undergrad: 'Routine checks and recurring monitoring. Can ask a grad student for help.',
   grad: 'Research, implementation, review, calculations and difficult questions.',
-  postdoc: 'Managers and the strongest worker defaults. Manager choices above stay separate.',
+  postdoc: 'Managers and the strongest workers.',
 };
 const providerNames = { codex: 'Codex', claude: 'Claude' };
 export function ModelSettings() {
@@ -117,15 +118,66 @@ export function ModelSettings() {
     : managerChoice
       ? latestFamily(managerCatalog, managerChoice.family)
       : undefined;
+  function assistantChoice(task: TaskClass, label: string = taskLabels[task]) {
+    if (!draft) return null;
+    const policy = draft;
+    const provider = policyProvider(policy, task, undefined, task === 'routine');
+    const modelName = (provider: ProviderId) => {
+      const choice = policy.models[provider][taskTiers[task]];
+      const status = saved?.catalogs.find((c) => c.provider === provider);
+      const catalog = status?.models ?? [];
+      const model = choice.model
+        ? catalog.find((m) => m.id === choice.model)
+        : latestFamily(catalog, choice.family);
+      return (
+        model?.label ??
+        (status?.observedAt && !status.error
+          ? `${choice.model ?? choice.family} · unavailable`
+          : (choice.model ?? `Latest ${choice.family}`))
+      );
+    };
+    return (
+      <label key={task}>
+        <span>
+          <strong>{label}</strong>
+        </span>
+        <select
+          aria-label={`${label} provider`}
+          disabled={busy}
+          value={provider ?? ''}
+          onChange={(event) => {
+            const provider = event.target.value as ProviderId;
+            setDraft({
+              ...draft,
+              providers: { ...draft.providers, [task]: provider },
+              ...(task === 'routine' ? { scheduledProvider: provider } : {}),
+            });
+          }}
+        >
+          {!provider && (
+            <option value="" disabled>
+              Choose a provider
+            </option>
+          )}
+          {draft.enabledProviders.map((provider) => (
+            <option key={provider} value={provider}>
+              {providerNames[provider]} · {modelName(provider)}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
   return (
     <section className="model-settings">
       <header className="model-heading">
-        <p className="home-eyebrow">WORKSPACE SETTINGS</p>
-        <h1 tabIndex={-1}>Model preferences</h1>
-        <p>
-          Your defaults for new projects and app assistants. Customize each project when you create
-          it.
-        </p>
+        <div className="model-section-heading">
+          <h1 tabIndex={-1}>Model preferences</h1>
+          <button onClick={() => void refresh()} disabled={busy}>
+            <RefreshCw size={15} /> {busy ? 'Working…' : 'Refresh available models'}
+          </button>
+        </div>
+        <p>Set your starting choices here. Existing projects keep their own settings.</p>
       </header>
       {error && (
         <div className="model-feedback error" role="alert">
@@ -137,6 +189,13 @@ export function ModelSettings() {
           <Check size={18} /> {notice}
         </div>
       )}
+      {saved?.catalogs
+        .filter((c) => draft?.enabledProviders.includes(c.provider) && c.error)
+        .map((c) => (
+          <p role="status" className="model-feedback error" key={c.provider}>
+            {c.error}
+          </p>
+        ))}
       {!draft ? (
         <button disabled={busy} onClick={() => void load()}>
           {busy ? 'Loading model settings…' : 'Retry loading settings'}
@@ -145,10 +204,7 @@ export function ModelSettings() {
         <>
           <fieldset className="model-enabled config-section" disabled={busy}>
             <legend>Providers in your defaults</legend>
-            <p>
-              Choose the subscriptions you use. With one provider, it handles both managers and
-              workers. Explicit conversation choices still keep their original provider.
-            </p>
+            <p>Choose the subscriptions you use.</p>
             <div>
               {(['codex', 'claude'] as const).map((provider) => (
                 <label key={provider}>
@@ -196,10 +252,7 @@ export function ModelSettings() {
             aria-labelledby="model-project-defaults-title"
           >
             <h2 id="model-project-defaults-title">New project defaults</h2>
-            <p className="model-explainer">
-              These are copied into each new project. Existing projects keep their saved choices.
-              You can customize the manager and workers during setup.
-            </p>
+            <p className="model-explainer">You can change these for each project during setup.</p>
             <div className="config-form">
               <fieldset className="config-section" disabled={busy}>
                 <legend>Manager default</legend>
@@ -210,11 +263,22 @@ export function ModelSettings() {
                       value={policyProvider(draft, 'manager') ?? 'ask'}
                       onChange={(event) => {
                         const value = event.target.value;
+                        const providers = { ...draft.providers };
+                        // The legacy preset also routes assistants. Choosing a manager at
+                        // setup must not change those independent defaults.
+                        if (value === 'ask') {
+                          for (const task of taskClassSchema.options) {
+                            if (task !== 'manager' && providers[task] === 'preset')
+                              providers[task] =
+                                policyProvider(draft, task, undefined, task === 'routine') ??
+                                'preset';
+                          }
+                        }
                         setDraft({
                           ...draft,
                           ...(value === 'ask' ? { preset: 'pick' as const } : {}),
                           providers: {
-                            ...draft.providers,
+                            ...providers,
                             manager: value === 'ask' ? 'preset' : (value as ProviderId),
                           },
                         });
@@ -299,10 +363,6 @@ export function ModelSettings() {
                     </>
                   )}
                 </div>
-                <p className="config-help">
-                  Managers start from the Postdoc mapping below, with xhigh where supported.
-                  Choosing a manager model here leaves worker models unchanged.
-                </p>
               </fieldset>
               <WorkerSettings
                 workflow={newProjectWorkflow(draft)}
@@ -333,249 +393,174 @@ export function ModelSettings() {
               />
             </div>
           </section>
-          <section className="model-team">
-            <div className="model-section-heading">
-              <div>
-                <h2>Model levels</h2>
-              </div>
-              <button onClick={() => void refresh()} disabled={busy}>
-                <RefreshCw size={15} /> {busy ? 'Working…' : 'Refresh available models'}
-              </button>
-            </div>
-            <p className="model-explainer">
-              “Latest” follows the newest available model in each family when a new assignment
-              starts. An exact model keeps that version. These levels express your work preferences,
-              not an accuracy guarantee.
-            </p>
-            {saved?.catalogs
-              .filter((c) => saved.policy.enabledProviders.includes(c.provider))
-              .map((c) =>
-                c.error ? (
-                  <p role="status" className="model-feedback error" key={c.provider}>
-                    {c.error}
-                  </p>
-                ) : (
-                  <p className="model-catalog-note" key={c.provider}>
-                    {providerNames[c.provider]}:{' '}
-                    {c.observedAt
-                      ? `${c.models.length} models · checked ${new Date(c.observedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-                      : 'Refresh to see models available on this computer.'}
-                  </p>
-                ),
-              )}
-            <div className="model-tier-grid">
-              {tiersHighToLow.map((tier, index) => (
-                <article className="model-tier" key={tier}>
-                  <header>
-                    <span className="model-tier-number">0{index + 1}</span>
-                    <div>
-                      <h3>{tierLabels[tier]}</h3>
-                      <p>{descriptions[tier]}</p>
-                    </div>
-                  </header>
-                  <div className="model-provider-grid">
-                    {(['codex', 'claude'] as const).map((provider) => {
-                      const selection = draft.models[provider][tier];
-                      const catalog = saved?.catalogs.find((c) => c.provider === provider);
-                      const models = catalog?.models ?? [];
-                      const update = (patch: Partial<typeof selection>) =>
-                        setDraft({
-                          ...draft,
-                          models: {
-                            ...draft.models,
-                            [provider]: {
-                              ...draft.models[provider],
-                              [tier]: { ...selection, ...patch },
-                            },
-                          },
-                        });
-                      const latest = latestFamily(models, selection.family);
-                      const selected = models.find((m) => m.id === selection.model);
-                      return (
-                        <div className="model-provider-choice" key={provider}>
-                          <label>
-                            {providerNames[provider]} model
-                            <select
-                              aria-label={`${tierLabels[tier]} ${providerNames[provider]} model`}
-                              disabled={busy}
-                              value={selection.model ?? ''}
-                              onChange={(e) =>
-                                update({ model: e.target.value || null, effort: null })
-                              }
-                            >
-                              <option value="">Latest {selection.family}</option>
-                              {selection.model && !selected && (
-                                <option value={selection.model}>
-                                  {selection.model} · unavailable
-                                </option>
-                              )}
-                              {models.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.label} · {m.id}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          {catalog?.observedAt && !catalog.error && !selection.model && !latest && (
-                            <p className="model-unavailable">
-                              Family unavailable. Choose another provider or update the mapping. We
-                              won’t substitute silently.
-                            </p>
-                          )}
-                          {!selection.model && latest && (
-                            <p className="model-catalog-note">Resolves to {latest.label}</p>
-                          )}
-                          <details>
-                            <summary>Family & thinking level</summary>
-                            <label>
-                              Family name
-                              <input
-                                aria-label={`${tierLabels[tier]} ${providerNames[provider]} family`}
-                                value={selection.family}
-                                maxLength={60}
-                                disabled={busy}
-                                onChange={(e) => update({ family: e.target.value })}
-                              />
-                            </label>
-                            <label>
-                              Thinking level
-                              <select
-                                aria-label={`${tierLabels[tier]} ${providerNames[provider]} thinking level`}
-                                disabled={busy}
-                                value={selection.effort ?? ''}
-                                onChange={(e) =>
-                                  update({
-                                    effort: (e.target.value as typeof selection.effort) || null,
-                                  })
-                                }
-                              >
-                                <option value="">Automatic for this level</option>
-                                {[
-                                  ...new Set([
-                                    ...(selected?.efforts ?? []),
-                                    ...(selection.effort ? [selection.effort] : []),
-                                  ]),
-                                ].map((e) => (
-                                  <option key={e} value={e}>
-                                    {effortLabel(e)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label>
-                              <input
-                                type="checkbox"
-                                checked={selection.requiresModelAllowance}
-                                disabled={busy}
-                                onChange={(e) =>
-                                  update({ requiresModelAllowance: e.target.checked })
-                                }
-                              />{' '}
-                              Require its own usage meter
-                            </label>
-                            <p>
-                              Change the family here if a provider renames it. Exact models and
-                              thinking levels must be offered by the installed provider.
-                            </p>
-                          </details>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
           <section className="model-routing">
-            <h2>App assistant defaults</h2>
-            <p>
-              Used outside project teams, such as computer checks and assisted search. Their models
-              come from the levels above. Projects use their saved worker preferences.
+            <h2>App assistants</h2>
+            <p className="model-explainer">
+              Defaults for computer checks and searching saved chats.
             </p>
             <div className="model-route-list">
-              {taskClassSchema.options
-                .filter((task) => task !== 'manager' && task !== 'reasoning')
-                .map((task) => {
-                  const provider = policyProvider(draft, task);
-                  return (
-                    <label key={task}>
-                      <span>
-                        <strong>{taskLabels[task]}</strong>
-                        <small>
-                          {tierLabels[taskTiers[task]]} ·{' '}
-                          {provider ? providerNames[provider] : 'Choose at dispatch'}
-                        </small>
-                      </span>
-                      <select
-                        aria-label={`${taskLabels[task]} provider`}
-                        disabled={busy}
-                        value={draft.providers[task]}
-                        onChange={(e) =>
-                          setDraft({
-                            ...draft,
-                            providers: {
-                              ...draft.providers,
-                              [task]: e.target.value as 'preset' | ProviderId,
-                            },
-                          })
-                        }
-                      >
-                        <option value="preset">Follow preset</option>
-                        {draft.enabledProviders.map((provider) => (
-                          <option key={provider} value={provider}>
-                            {providerNames[provider]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  );
-                })}
+              {assistantChoice('routine', 'Computer health checks')}
+              {assistantChoice('bulk', 'Assisted search')}
             </div>
-            <label className="model-scheduled">
-              <span>
-                <strong>Automatic checks provider</strong>
-                <small>Used when the routine provider follows the preset.</small>
-              </span>
-              <select
-                aria-label="Unattended checks provider"
-                value={draft.scheduledProvider}
-                disabled={busy}
-                onChange={(e) =>
-                  setDraft({ ...draft, scheduledProvider: e.target.value as ProviderId })
-                }
-              >
-                {draft.enabledProviders.map((provider) => (
-                  <option key={provider} value={provider}>
-                    {providerNames[provider]}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label className="model-escalation">
               <input
                 type="checkbox"
                 disabled={busy}
                 checked={draft.escalation}
-                onChange={(e) => setDraft({ ...draft, escalation: e.target.checked })}
+                onChange={(event) => setDraft({ ...draft, escalation: event.target.checked })}
               />
               <span>
-                <strong>Let undergrads ask a grad student</strong>
-                <small>
-                  One consultation on the same provider, through QUARK. Computer checks keep their
-                  daily limit. No repeated escalation.
-                </small>
+                <strong>Let routine helpers ask for help</strong>
+                <small>One stronger-model consultation, within QUARK’s limits.</small>
               </span>
             </label>
           </section>
-          <aside className="model-scope">
-            <ArrowUpRight size={20} />
-            <p>
-              New projects copy these preferences; their automatic family choices still follow the
-              latest available version. Exact versions stay pinned. App assistants use their shared
-              defaults. Existing projects and native editor conversations keep their own settings.{' '}
-              <a href="#/resources">Computer health</a> uses the routine-check default.
-            </p>
-          </aside>
+          <details className="model-advanced">
+            <summary>Model levels and advanced choices</summary>
+            <section className="model-team">
+              <h2>Model levels</h2>
+              <p className="model-explainer">
+                Change the models behind each level, or pin an exact version. Latest follows
+                available updates.
+              </p>
+              <div className="model-tier-grid">
+                {tiersHighToLow.map((tier, index) => (
+                  <article className="model-tier" key={tier}>
+                    <header>
+                      <span className="model-tier-number">0{index + 1}</span>
+                      <div>
+                        <h3>{tierLabels[tier]}</h3>
+                        <p>{descriptions[tier]}</p>
+                      </div>
+                    </header>
+                    <div className="model-provider-grid">
+                      {(['codex', 'claude'] as const).map((provider) => {
+                        const selection = draft.models[provider][tier];
+                        const catalog = saved?.catalogs.find((c) => c.provider === provider);
+                        const models = catalog?.models ?? [];
+                        const update = (patch: Partial<typeof selection>) =>
+                          setDraft({
+                            ...draft,
+                            models: {
+                              ...draft.models,
+                              [provider]: {
+                                ...draft.models[provider],
+                                [tier]: { ...selection, ...patch },
+                              },
+                            },
+                          });
+                        const latest = latestFamily(models, selection.family);
+                        const selected = models.find((m) => m.id === selection.model);
+                        const availableEfforts = (selected ?? latest)?.efforts ?? [];
+                        const effort =
+                          selection.effort ?? policyDefaultEffort(availableEfforts, tier) ?? '';
+                        return (
+                          <div className="model-provider-choice" key={provider}>
+                            <label>
+                              {providerNames[provider]} model
+                              <select
+                                aria-label={`${tierLabels[tier]} ${providerNames[provider]} model`}
+                                disabled={busy}
+                                value={selection.model ?? ''}
+                                onChange={(e) =>
+                                  update({ model: e.target.value || null, effort: null })
+                                }
+                              >
+                                <option value="">Latest {selection.family}</option>
+                                {selection.model && !selected && (
+                                  <option value={selection.model}>
+                                    {selection.model} · unavailable
+                                  </option>
+                                )}
+                                {models.map((m) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.label} · {m.id}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            {catalog?.observedAt &&
+                              !catalog.error &&
+                              !selection.model &&
+                              !latest && (
+                                <p className="model-unavailable">
+                                  Family unavailable. Choose another provider or update the mapping.
+                                  We won’t substitute silently.
+                                </p>
+                              )}
+                            {!selection.model && latest && (
+                              <p className="model-catalog-note">Resolves to {latest.label}</p>
+                            )}
+                            <details>
+                              <summary>Family & thinking level</summary>
+                              <label>
+                                Family name
+                                <input
+                                  aria-label={`${tierLabels[tier]} ${providerNames[provider]} family`}
+                                  value={selection.family}
+                                  maxLength={60}
+                                  disabled={busy}
+                                  onChange={(e) => update({ family: e.target.value })}
+                                />
+                              </label>
+                              <label>
+                                Thinking level
+                                <select
+                                  aria-label={`${tierLabels[tier]} ${providerNames[provider]} thinking level`}
+                                  disabled={busy}
+                                  value={effort}
+                                  onChange={(e) =>
+                                    update({
+                                      effort: (e.target.value as typeof selection.effort) || null,
+                                    })
+                                  }
+                                >
+                                  {!effort && <option value="">Refresh available models</option>}
+                                  {[
+                                    ...new Set([
+                                      ...availableEfforts,
+                                      ...(selection.effort ? [selection.effort] : []),
+                                    ]),
+                                  ].map((e) => (
+                                    <option key={e} value={e}>
+                                      {effortLabel(e)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={selection.requiresModelAllowance}
+                                  disabled={busy}
+                                  onChange={(e) =>
+                                    update({ requiresModelAllowance: e.target.checked })
+                                  }
+                                />{' '}
+                                Require its own usage meter
+                              </label>
+                              <p>
+                                Change the family here if a provider renames it. Exact models and
+                                thinking levels must be offered by the installed provider.
+                              </p>
+                            </details>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+            <section className="model-routing">
+              <h2>Other task defaults</h2>
+              <p className="model-explainer">Used for work without saved project worker choices.</p>
+              <div className="model-route-list">
+                {assistantChoice('calculation')}
+                {assistantChoice('orchestration')}
+              </div>
+            </section>
+          </details>
           <section className="model-restore">
             <button
               type="button"
@@ -589,14 +574,10 @@ export function ModelSettings() {
             >
               Restore recommended defaults
             </button>
-            <p>
-              The creator’s corrected model matrix, latest available families, an independent
-              manager choice and Balanced + Tokenmax. With one enabled provider, use its Only
-              preset. Review the choices, then Save.
-            </p>
+            <p>Reset to my recommendations, then Save to apply.</p>
           </section>
           <div className="model-save">
-            <span>{dirty ? 'You have unsaved changes' : 'Your shared model policy'}</span>
+            <span>{dirty ? 'You have unsaved changes' : 'All changes saved'}</span>
             <div>
               <button disabled={busy} onClick={() => void load()}>
                 Reload saved settings
