@@ -12,6 +12,7 @@ import {
 } from './Conversation';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Aperture,
   ArrowUpRight,
   ChevronDown,
   ChevronRight,
@@ -46,6 +47,7 @@ import {
   type FrontdeskStatus,
 } from '@dock/shared';
 import { api, apiScope, apiUrl, detail, snapshot } from './api';
+import claudeMark from './assets/claude.svg';
 import { Modal } from './Modal';
 import { ProjectModal } from './ProjectModal';
 import { SessionBrowser } from './SessionBrowser';
@@ -391,7 +393,13 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
           <>
             <div className="model-row">
               <button className="model-button" onClick={() => setSettings(!settings)}>
-                <span className="model-spark">✳</span>
+                <span className="model-spark" aria-hidden="true">
+                  {agent.provider === 'claude' ? (
+                    <img src={claudeMark} width={16} height={16} alt="" />
+                  ) : (
+                    <Aperture size={15} />
+                  )}
+                </span>
                 {agent.model ?? (agent.provider === 'claude' ? 'Claude default' : 'Codex default')}
                 <ChevronDown size={13} />
               </button>

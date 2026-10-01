@@ -22,6 +22,7 @@ import {
   type WorkItem,
 } from '@dock/shared';
 import { api, apiScope } from '../api';
+import claudeMark from '../assets/claude.svg';
 import { mirrorDaemon } from '../useMirrorChats';
 import { useReading, type HomeData } from './useHomeData';
 import './home-overview.css';
@@ -35,7 +36,13 @@ export const providerName = (provider: string) =>
 export function ProviderMark({ provider }: { provider: string }) {
   return (
     <span className={`provider-mark provider-mark-${provider}`} aria-hidden="true">
-      {provider === 'claude' ? '✳' : provider === 'codex' ? <Aperture size={15} /> : provider[0]}
+      {provider === 'claude' ? (
+        <img src={claudeMark} width={16} height={16} alt="" />
+      ) : provider === 'codex' ? (
+        <Aperture size={15} />
+      ) : (
+        provider[0]
+      )}
     </span>
   );
 }

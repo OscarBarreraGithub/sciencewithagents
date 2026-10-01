@@ -911,6 +911,8 @@ small {
   font-size: var(--text-caption);
 }
 .model-spark {
+  display: inline-flex;
+  flex-shrink: 0;
   color: #758a6b;
   font-size: var(--text-reading);
 }
