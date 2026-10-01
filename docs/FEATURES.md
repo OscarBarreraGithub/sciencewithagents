@@ -75,8 +75,8 @@ are unchanged.
 
 ## Home and space cleanup — implemented, 2026-09-30
 
-The Chats, Apps and QUARK tiles together occupy about 60% of the visible phone viewport, with
-larger labels and icons. Desktop tiles and panels expand to fill the available window
+The Chats, Apps and QUARK tiles together occupy about 42% of the visible phone viewport,
+with compact labels and icons. Desktop tiles and panels expand to fill the available window
 height; the attention/to-do column reaches the same bottom edge. Longer content still
 scrolls normally. Verified at desktop, 412×915, 360×800, 915×412 and iPhone WebKit.
 
