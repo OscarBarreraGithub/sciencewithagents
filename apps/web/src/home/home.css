@@ -548,7 +548,8 @@ body:has(.home-shell) {
   flex-shrink: 0;
   min-width: 44px;
   min-height: 44px;
-  padding: 0 10px;
+  padding: 6px 12px;
+  margin-block: 4px;
   border: 1px solid var(--home-line);
   border-radius: 10px;
   background: var(--home-white);
