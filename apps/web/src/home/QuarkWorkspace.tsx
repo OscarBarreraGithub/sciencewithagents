@@ -353,8 +353,8 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
   return (
     <section className="flow-page activity-page quark-workspace">
       <FlowHeading label="QUARK" title="QUARK">
-        Tell QUARK what comes first. It coordinates the queue, protects your allowance and keeps
-        your decisions.
+        QUARK stands for Queued Usage, Agent Routing Kernel. Tell it what comes first. It
+        coordinates the queue, protects your allowance and keeps your decisions.
       </FlowHeading>
       {error && (
         <p className="form-error" role="alert">
