@@ -61,7 +61,9 @@ It sits beside the computer/allowance readings, with an 80-pixel target
 on phones, rather than in the top toolbar. No model or network call is made by the orb.
 
 The paired phone origin serves the original drawn alien without requiring a session,
-including the conventional Apple touch-icon path. Existing iPhone shortcuts can retain
+including the conventional Apple touch-icon path. The declared Apple icon URL now carries
+the same artwork version as the manifest icons, avoiding reuse of the old URL when adding
+a shortcut. Existing iPhone shortcuts can retain
 their cached icon: setup help explains adding and checking a new shortcut before removing
 the old one. Do not clear browser data or reset pairing to fix an icon.
 

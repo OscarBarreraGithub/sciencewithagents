@@ -144,8 +144,8 @@ recreation. `assets/branding/alien-drawing.png` preserves the original white-ink
 companion and website icons. The Mac launcher points directly to its `.icns`, rather than
 the generated AppleScript asset-catalog icon. Existing installed phone icons may keep their
 OS-cached artwork until the shortcut is re-added. Provider logos still identify their providers.
-The conventional Apple touch-icon path serves the same drawing, with explicit icon dimensions
-and app title. Phone setup includes instructions to replace a stale shortcut without clearing
+The conventional Apple touch-icon path serves the same drawing, with an artwork-versioned
+link, explicit icon dimensions and app title. Phone setup includes instructions to replace a stale shortcut without clearing
 browser data or removing a working connection first.
 
 ## QUARK conversation and board — implemented, 2026-09-30
