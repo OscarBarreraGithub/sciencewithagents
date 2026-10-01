@@ -1,5 +1,25 @@
 # Verification
 
+## 2026-10-01 — bounded recovery lists and full-width layout
+
+Recovery uses desktop columns for saved copies and update/restore help, stacking on phones.
+Each dated copy is a compact disclosure; its counts, check action, reference and update request
+remain available inside the bounded list. Retained browser drafts use a separate bounded list.
+Consistent card padding, paragraph gaps and action spacing replace the narrow form layout.
+
+- Production web build and formatting pass. Twenty focused browser cases pass across
+  desktop, 412×915, 360×800, 915×412 and iPhone WebKit. Long-list fixtures include twenty
+  recovery copies and twenty browser-draft copies. Checks cover independent scrolling,
+  preserved open rows after refresh, doubled text, desktop columns, durable create retry,
+  update-request copying/fallback and retained-draft read/download after reconnect.
+- All eight retained classic-dialog recovery cases pass, including real isolated SQLite
+  copy creation/recheck, failed first reads and retrying the same request after a lost reply.
+  After the final spacing/height adjustment, all ten long-list and update-handoff browser
+  cases pass again. Phone and desktop screenshots were inspected.
+- Isolated demo/protected-browser fixtures only. Owner copies, drafts, copy creation
+  policy and backend storage are unchanged. Evidence is under ignored `data/recovery-layout-*`
+  and browser screenshot directories. Owned test servers/browser children are closed.
+
 ## 2026-10-01 — simpler model defaults with explicit assistant choices
 
 Model preferences now separates new-project choices and two app-assistant choices. Removed

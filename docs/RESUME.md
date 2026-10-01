@@ -1,5 +1,13 @@
 # Resume here — current continuation only
 
+## Latest recovery layout correction
+
+Recovery uses full-width desktop columns and stacked phone panels. Saved copies are compact,
+expandable rows in a bounded scroll area; retained browser drafts have their own bounded list.
+Update/restore guidance sits beside the copies on desktop. Opening/refreshing does not create
+a copy or replay a draft. Preserve existing create/check/retry/download behavior and stored
+copies. Focused normal/enlarged-text and recovery-action evidence is in VERIFICATION.md.
+
 ## Latest model preferences simplification
 
 The default view has new-project manager/worker settings and two app-assistant choices:

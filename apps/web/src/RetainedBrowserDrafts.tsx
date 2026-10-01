@@ -71,34 +71,41 @@ export function RetainedBrowserDrafts() {
       {unreadable && (
         <p role="alert">Some browser copies could not be read. They have not been removed.</p>
       )}
-      {copies.map(({ id, value }) => (
-        <details key={id} className="retained-copy">
-          <summary>
-            {value.entries.length} retained {value.entries.length === 1 ? 'item' : 'items'} ·{' '}
-            {new Date(value.createdAt).toLocaleString()}
-          </summary>
-          <button className="flow-button" onClick={() => download(value)}>
-            Download this copy
-          </button>
-          {value.entries.map((entry, index) => (
-            <details key={`${entry.kind}:${entry.key}`} className="retained-entry">
-              <summary>
-                {label(entry.key)} {index + 1}
-              </summary>
-              <label>
-                Retained text
-                <textarea readOnly value={display(entry.value)} spellCheck={false} />
-              </label>
-              <details>
-                <summary>Record details</summary>
-                <p>{entry.kind === 'session' ? 'From the original tab' : 'From this browser'}</p>
-                <code>{entry.key}</code>
-                <p>Original local address: {value.source}</p>
+      <div
+        className="retained-copy-list"
+        role="region"
+        aria-label="Retained browser copies"
+        tabIndex={0}
+      >
+        {copies.map(({ id, value }) => (
+          <details key={id} className="retained-copy">
+            <summary>
+              {value.entries.length} retained {value.entries.length === 1 ? 'item' : 'items'} ·{' '}
+              {new Date(value.createdAt).toLocaleString()}
+            </summary>
+            <button className="flow-button" onClick={() => download(value)}>
+              Download this copy
+            </button>
+            {value.entries.map((entry, index) => (
+              <details key={`${entry.kind}:${entry.key}`} className="retained-entry">
+                <summary>
+                  {label(entry.key)} {index + 1}
+                </summary>
+                <label>
+                  Retained text
+                  <textarea readOnly value={display(entry.value)} spellCheck={false} />
+                </label>
+                <details>
+                  <summary>Record details</summary>
+                  <p>{entry.kind === 'session' ? 'From the original tab' : 'From this browser'}</p>
+                  <code>{entry.key}</code>
+                  <p>Original local address: {value.source}</p>
+                </details>
               </details>
-            </details>
-          ))}
-        </details>
-      ))}
+            ))}
+          </details>
+        ))}
+      </div>
     </section>
   );
 }

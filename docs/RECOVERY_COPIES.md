@@ -5,7 +5,8 @@
 Open **Settings → Recovery copies**. Choose **Create recovery copy**.
 Agent Dock saves an extra snapshot on the selected computer and checks it before
 showing **Verified recovery copy**. This does not start a model turn, stop work or
-change a conversation. **Check this copy** checks a previously saved copy again.
+change a conversation. Expand a dated row to see counts, its reference and **Check this copy**.
+The list scrolls within a bounded panel; expanded details do not stretch the whole page.
 
 For an app update, open **Use this copy before updating** on a verified copy and choose
 **Copy update request**. Give it to the coding agent that set up this computer. The request
@@ -13,14 +14,18 @@ includes this copy's reference and the [update runbook](UPDATE_APP.md); it does 
 an update or send a model request. If clipboard access fails, the same text stays selectable.
 The agent rechecks prerequisites, active work and the copy before changing the installation.
 
-On a phone, this uses the same pairing/unlock boundary as your conversations. With
+On a phone, this uses the same paired-browser access as your conversations. With
 another computer selected, the copy stays on that computer; it is not downloaded
 to the phone or transferred to the entry computer. Only dates, counts, state and
 an opaque copy reference are returned to the browser.
 
-The dialog shows the latest 20 recorded copies. Older copies remain on disk. No
+The list shows the latest 20 recorded copies. Older copies remain on disk. No
 copy is deleted automatically. Existing advanced `dock backup` copies are separate:
 they do not acquire a verified receipt merely because they exist in another folder.
+
+Desktop shows update/restore guidance beside the list; phones stack those sections.
+Retained browser drafts have their own bounded list below, with their existing read/download
+actions. Refreshing either display does not create a new recovery copy or resend a draft.
 
 If a connection fails, **Try again** reuses the same request rather than saving a
 duplicate. Its request reference survives a reload in the same browser tab when

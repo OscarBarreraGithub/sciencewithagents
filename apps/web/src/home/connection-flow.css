@@ -84,6 +84,9 @@
 .connection-page .recovery-dialog {
   width: 100%;
 }
+.recovery-page > .retained-drafts {
+  margin: 24px 0 0;
+}
 .connection-page .flow-form-panel > :is(label, button) {
   margin: 14px 8px 14px 0;
 }

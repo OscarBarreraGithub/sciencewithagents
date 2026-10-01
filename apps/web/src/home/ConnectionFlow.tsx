@@ -123,12 +123,12 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
     );
   if (page === 'recovery')
     return (
-      <section className="flow-page connection-page">
+      <section className="flow-page connection-page recovery-page">
         <FlowHeading label="RECOVERY" title="Recovery copies">
-          Verified local copies give your managed records an extra checkpoint.
+          Check saved copies or prepare an app update.
         </FlowHeading>
-        <RetainedBrowserDrafts />
         <RecoveryBackups embedded close={() => navigate('settings')} />
+        <RetainedBrowserDrafts />
       </section>
     );
   if (page === 'phone')

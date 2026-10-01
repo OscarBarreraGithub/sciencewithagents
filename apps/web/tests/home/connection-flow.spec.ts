@@ -1,5 +1,102 @@
 import { expect, test } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import type { RecoveryCopy } from '@dock/shared';
+
+test('recovery copies and browser drafts stay in bounded lists with usable details', async ({
+  page,
+}, info) => {
+  const base = Date.UTC(2026, 9, 1, 12);
+  let copies: RecoveryCopy[] = Array.from({ length: 20 }, (_, i) => ({
+    id: randomUUID(),
+    state: i === 1 ? 'failed' : 'verified',
+    createdAt: new Date(base - i * 60_000).toISOString(),
+    checkedAt: new Date(base - i * 60_000).toISOString(),
+    sizeBytes: 4096,
+    counts: { projects: 4, conversations: 25, entries: 2000, images: 3 },
+    message:
+      i === 1
+        ? 'Copy could not be checked. The original records are retained.'
+        : 'Database integrity checked.',
+  }));
+  const writes: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST') writes.push(request.url());
+  });
+  await page.route('**/api/recovery-backups', (route) =>
+    route.fulfill({ json: { copies, creating: false } }),
+  );
+  await page.addInitScript((base) => {
+    for (let i = 0; i < 20; i++)
+      localStorage.setItem(
+        `dock:local-access:retained:layout-${i}`,
+        JSON.stringify({
+          version: 1,
+          source: 'http://127.0.0.1:4339',
+          createdAt: new Date(base - i * 60_000).toISOString(),
+          entries: [
+            { kind: 'local', key: 'dock:local:workspace:draft:test', value: `Retained draft ${i}` },
+          ],
+        }),
+      );
+  }, base);
+  await page.goto('/#/recovery');
+  const list = page.getByRole('list', { name: 'Recent recovery copies' });
+  await expect(list.locator('li')).toHaveCount(20);
+  await expect(page.locator('.recovery-copy[open]')).toHaveCount(0);
+  await expect(list).toContainText('Copy needs attention');
+  const drafts = page.getByRole('region', { name: 'Retained browser copies' });
+  for (const target of [list, drafts]) {
+    await target.scrollIntoViewIfNeeded();
+    const outerScroll = await page.locator('.home-content').evaluate((e) => e.scrollTop);
+    const sizes = await target.evaluate((e) => {
+      e.scrollTop = e.scrollHeight;
+      return {
+        height: e.clientHeight,
+        content: e.scrollHeight,
+        scroll: e.scrollTop,
+        viewport: innerHeight,
+      };
+    });
+    expect(sizes.height).toBeLessThanOrEqual(sizes.viewport * 0.53 + 2);
+    expect(sizes.content).toBeGreaterThan(sizes.height);
+    expect(sizes.scroll).toBeGreaterThan(0);
+    expect(await page.locator('.home-content').evaluate((e) => e.scrollTop)).toBe(outerScroll);
+  }
+  await list.evaluate((e) => e.scrollTo(0, 0));
+  const first = list.locator('li').first();
+  await first.locator('.recovery-copy > summary').click();
+  await expect(first.getByRole('button', { name: 'Check this copy' })).toBeVisible();
+  copies = [
+    { ...copies[0]!, id: randomUUID(), createdAt: new Date(base + 60_000).toISOString() },
+    ...copies.slice(0, 19),
+  ];
+  await page.getByRole('button', { name: 'Refresh list' }).click();
+  await expect(list.locator('li').nth(1).locator('.recovery-copy')).toHaveAttribute('open');
+  await list.locator('li').nth(1).locator('.recovery-copy > summary').click();
+  await page.locator('.home-content').evaluate((e) => e.scrollTo(0, 0));
+  const panels = await page.locator('.recovery-layout').evaluate((e) => {
+    const main = e.querySelector('.recovery-main')!.getBoundingClientRect();
+    const side = e.querySelector('.recovery-guidance')!.getBoundingClientRect();
+    return {
+      main: { x: main.x, y: main.y, right: main.right },
+      side: { x: side.x, y: side.y },
+      width: e.clientWidth,
+    };
+  });
+  if (panels.width >= 864) {
+    expect(panels.side.x).toBeGreaterThan(panels.main.right);
+    expect(panels.side.y).toBeCloseTo(panels.main.y, 0);
+  }
+  await page.screenshot({ path: info.outputPath('recovery-bounded-lists.png') });
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%';
+  });
+  const fit = await page
+    .locator('.home-content')
+    .evaluate((e) => ({ width: e.clientWidth, content: e.scrollWidth }));
+  expect(fit.content).toBeLessThanOrEqual(fit.width + 1);
+  expect(writes).toEqual([]);
+});
 
 test('unavailable phone setup retains a usable workspace and only rechecks status', async ({
   page,
@@ -211,9 +308,8 @@ test('a lost recovery-copy response retains the same copy and update handoff', a
     .filter({
       has: page.locator('code', { hasText: copies[0] }),
     });
-  await expect(
-    item.getByRole('heading', { name: 'Verified recovery copy', exact: true }),
-  ).toBeVisible();
+  await expect(item.locator('.recovery-copy > summary')).toContainText('Verified recovery copy');
+  await item.locator('.recovery-copy > summary').click();
   await item.getByText('Use this copy before updating', { exact: true }).click();
   await expect(item.locator('.recovery-request-text')).toContainText(copies[0]);
   await expect(item.locator('.recovery-request-text')).toContainText('docs/UPDATE_APP.md');

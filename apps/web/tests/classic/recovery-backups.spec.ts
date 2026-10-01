@@ -12,12 +12,15 @@ test('recovery copies explain scope, make a real checked snapshot, and survive v
   page,
 }, testInfo) => {
   const dialog = await openCopies(page);
-  await expect(dialog).toContainText('They do not protect against a lost or broken computer');
+  await expect(dialog).toContainText(
+    'Stored on this computer, not on GitHub or another backup drive',
+  );
   await dialog.getByRole('button', { name: 'Create recovery copy', exact: true }).click();
   await expect(dialog.getByRole('status')).toContainText('passed the database integrity check');
-  await expect(
-    dialog.getByRole('heading', { name: 'Verified recovery copy' }).first(),
-  ).toBeVisible();
+  await expect(dialog.locator('.recovery-copy > summary').first()).toContainText(
+    'Verified recovery copy',
+  );
+  await dialog.locator('.recovery-copy > summary').first().click();
   await page.screenshot({ path: `../../data/recovery-ui-${testInfo.project.name}.png` });
   await dialog.getByRole('button', { name: 'Check this copy', exact: true }).first().click();
   await expect(dialog.getByRole('status')).toContainText('matches its original bytes');
@@ -37,9 +40,9 @@ test('recovery copies explain scope, make a real checked snapshot, and survive v
   if (page.viewportSize()!.width <= 720)
     await page.getByRole('button', { name: 'Open projects' }).click();
   await page.getByRole('button', { name: 'Recovery copies', exact: true }).click();
-  await expect(
-    dialog.getByRole('heading', { name: 'Verified recovery copy' }).first(),
-  ).toBeVisible();
+  await expect(dialog.locator('.recovery-copy > summary').first()).toContainText(
+    'Verified recovery copy',
+  );
 });
 
 test('failed first load and an uncertain copy response stay visible and retry one durable request', async ({
@@ -75,7 +78,7 @@ test('failed first load and an uncertain copy response stay visible and retry on
   const dialog = await openCopies(page);
   await expect(dialog.getByRole('alert')).toContainText('Could not read recovery copies');
   await dialog.getByRole('button', { name: 'Refresh list' }).click();
-  await expect(dialog).toContainText('No recovery copies made here yet');
+  await expect(dialog).toContainText('No recovery copies yet');
   await dialog.getByRole('button', { name: 'Create recovery copy' }).click();
   await expect(dialog.getByRole('alert')).toContainText('will not create a duplicate');
   await dialog.getByRole('button', { name: 'Try again', exact: true }).click();

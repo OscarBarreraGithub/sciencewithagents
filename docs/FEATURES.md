@@ -1,5 +1,10 @@
 # Feature map
 
+**Recovery layout (2026-10-01): implemented.** Recovery copies and retained browser drafts
+use bounded, independently scrolling lists. Each copy expands for its counts, reference,
+verification and update request. Desktop uses the page width with help alongside; phones
+stack the panels. Existing copies, retry receipts and draft downloads are preserved.
+
 **Readable app text (2026-10-01): implemented.** Body copy, settings labels, forms, chat
 messages and supporting details share a larger text scale that respects browser text sizing.
 The three main Home destination tiles keep their existing sizes. Narrow controls wrap, the

@@ -1,14 +1,28 @@
 .retained-drafts {
-  padding: clamp(20px, 4vw, 32px);
+  display: grid;
+  gap: 16px;
+  padding: 22px;
   margin-bottom: 22px;
   background: #fff;
   border: 1px solid #e0e5ec;
-  border-radius: 22px;
+  border-radius: 16px;
   min-width: 0;
+}
+.retained-copy-list {
+  min-width: 0;
+  max-height: min(48dvh, 30rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 4px;
+}
+.retained-copy-list:focus-visible {
+  outline: 2px solid #5966e4;
+  outline-offset: 2px;
 }
 .retained-drafts h2 {
   margin-top: 0;
-  font-size: 22px;
+  font-size: var(--text-reading);
 }
 .retained-drafts p {
   color: #657084;
@@ -16,7 +30,7 @@
 }
 .retained-copy {
   border-top: 1px solid #e0e5ec;
-  padding: 16px 0;
+  padding: 8px 0;
 }
 .retained-drafts summary {
   cursor: pointer;
@@ -51,4 +65,9 @@
 .retained-entry textarea:focus-visible {
   outline: 3px solid #5966e4;
   outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .retained-drafts {
+    padding: 16px;
+  }
 }
