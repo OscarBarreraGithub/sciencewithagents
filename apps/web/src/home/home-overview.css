@@ -1,11 +1,16 @@
 /* Home follows the owner's drawing: three destinations in the centre, then the
    resource snapshot, running projects and the attention/to-do column. */
 .overview {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
   padding: 8px 0 12px;
 }
 .overview-grid {
+  flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr) minmax(0, 1.1fr);
+  grid-template-rows: minmax(min-content, 1.75fr) minmax(min-content, 1fr);
   grid-template-areas:
     '. nav side'
     'resources running side';
@@ -15,8 +20,8 @@
 .overview-destinations {
   grid-area: nav;
   display: grid;
+  grid-template-rows: repeat(3, minmax(120px, 1fr));
   gap: 12px;
-  align-content: start;
 }
 .overview-side {
   grid-area: side;
@@ -32,9 +37,9 @@
   --tone-soft: #e9edfc;
   display: flex;
   align-items: center;
-  gap: 16px;
-  min-height: 80px;
-  padding: 14px 18px 14px 16px;
+  gap: 20px;
+  min-height: 120px;
+  padding: 24px;
   border: 1px solid var(--home-line);
   border-radius: 16px;
   background: var(--home-white);
@@ -59,26 +64,30 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 48px;
-  height: 48px;
-  border-radius: 13px;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
   background: var(--tone-soft);
   color: var(--tone);
 }
+.destination-icon svg {
+  width: 30px;
+  height: 30px;
+}
 .destination-text {
   display: grid;
-  gap: 2px;
+  gap: 6px;
   flex: 1;
   min-width: 0;
 }
 .destination-text strong {
-  font-size: 22px;
+  font-size: 30px;
   font-weight: 720;
   letter-spacing: -0.03em;
   line-height: 1.2;
 }
 .destination-text small {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--home-muted);
 }
 .destination > svg {
@@ -341,7 +350,6 @@
 /* For your attention + to-do */
 .overview-side {
   padding: 0;
-  align-self: start;
 }
 .overview-attention,
 .overview-todo {
@@ -600,6 +608,7 @@
 @media (max-width: 1099px) {
   .overview-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr 1fr;
     grid-template-areas:
       'nav nav'
       'side running'
@@ -608,23 +617,19 @@
   }
   .overview-destinations {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
+    grid-template-rows: auto;
+    min-height: clamp(200px, 60svh, 360px);
+    gap: 12px;
   }
   .destination {
-    min-height: 68px;
-    gap: 12px;
-    padding: 10px 12px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 18px;
+    padding: 24px 16px;
+    text-align: center;
   }
-  .destination-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 11px;
-  }
-  .destination-text strong {
-    font-size: 18px;
-  }
-  .destination-text small {
-    font-size: 12px;
+  .destination-text {
+    flex: 0 1 auto;
   }
   .destination > svg {
     display: none;
@@ -636,15 +641,26 @@
   }
   .overview-grid {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
     grid-template-areas: 'nav' 'side' 'running' 'resources';
     gap: 14px;
   }
   .overview-destinations {
     grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
+    grid-template-rows: repeat(3, minmax(144px, 1fr));
+    min-height: calc(66svh + 24px);
+    gap: 12px;
   }
   .destination {
-    min-height: 62px;
+    flex-direction: row;
+    justify-content: flex-start;
+    min-height: 144px;
+    gap: 20px;
+    padding: 24px 20px;
+    text-align: left;
+  }
+  .destination-text {
+    flex: 1;
   }
   .destination > svg {
     display: block;

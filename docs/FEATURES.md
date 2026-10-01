@@ -75,6 +75,11 @@ are unchanged.
 
 ## Home and space cleanup — implemented, 2026-09-30
 
+The Chats, Apps and QUARK tiles occupy roughly two-thirds of the phone viewport, with
+larger labels and icons. Desktop tiles and panels expand to fill the available window
+height; the attention/to-do column reaches the same bottom edge. Longer content still
+scrolls normally. Verified at desktop, 412×915, 360×800, 915×412 and iPhone WebKit.
+
 Pages use the browser width. Mobile allowance readings are at the top of Home and scroll
 away. Attention shows three concise requests, with more available explicitly; automatic
 health reports and completed-worker interruptions stay out, and stopped work groups by
