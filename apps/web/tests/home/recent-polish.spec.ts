@@ -112,14 +112,12 @@ test('an app update offers a reload without replacing an unsent draft', async ({
   await expect(page.locator('.home-update')).toHaveCount(0);
 });
 
-test('Home rounds the usage observation interval to whole minutes, with a one-minute minimum', async ({
-  page,
-}) => {
+test('Home labels hourly usage directly without the explanatory footer', async ({ page }) => {
   const state = await snapshot(page);
   const project = state.projects.find((p) => !p.internal)!;
   state.agents.find((a) => a.id === project.managerId)!.status = 'running';
   await page.route('**/api/snapshot', (route) => route.fulfill({ json: state }));
-  let minutes = 10.51;
+  const minutes = 10.51;
   await page.route('**/api/project-rates', (route) => {
     const now = Date.now();
     return route.fulfill({
@@ -145,16 +143,8 @@ test('Home rounds the usage observation interval to whole minutes, with a one-mi
     });
   });
   await page.goto('/#/home');
-  const notes = page.locator('.running-notes');
-  await expect(notes).toContainText('over the last 11 min');
-  for (const [interval, displayed] of [
-    [10.49, 10],
-    [0.2, 1],
-  ]) {
-    minutes = interval;
-    await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
-    await expect(notes).toContainText(`over the last ${displayed} min`);
-  }
+  await expect(page.getByRole('heading', { name: '% usage / hour', exact: true })).toBeVisible();
+  await expect(page.locator('.running-notes')).not.toContainText('%/h:');
   await expect(page.locator('.overview-running')).toContainText('2.4 %/h');
   await noOverflow(page);
 });

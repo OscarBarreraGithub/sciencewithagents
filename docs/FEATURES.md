@@ -215,6 +215,7 @@ room for the conversation; saved multiline drafts resize when the conversation r
 
 The [Home drawing requirements](HOME_UI_REQUIREMENTS.md) include implemented general to-do
 dispatch, reusable setup prompts, sortable project allowance rates and editor setup status in Chats.
+Home titles the rate table **% usage / hour**, without the explanatory rate footer.
 Rate readings retain their allowance window and measurement limits. The connected
 Sketchcoded board distinguishes actual drawings from undrawn destination frames.
 

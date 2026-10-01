@@ -329,8 +329,6 @@ function RunningPanel({ data, needs }: { data: HomeData; needs: Map<string, numb
         a.id.localeCompare(b.id)
       );
     });
-  const unattributed = rates.data?.filter((r) => r.projectId === null) ?? [];
-  const interval = rates.data?.find((r) => r.intervalMinutes)?.intervalMinutes;
   const header = (key: SortKey, label: ReactNode, className = '') => (
     <th
       scope="col"
@@ -352,7 +350,7 @@ function RunningPanel({ data, needs }: { data: HomeData; needs: Map<string, numb
   return (
     <section className="overview-panel overview-running" aria-labelledby="running-heading">
       <div className="overview-panel-head">
-        <h2 id="running-heading">Currently running</h2>
+        <h2 id="running-heading">% usage / hour</h2>
         <label className="running-sort">
           <span>Sort</span>
           <select
@@ -452,23 +450,7 @@ function RunningPanel({ data, needs }: { data: HomeData; needs: Map<string, numb
         <p className="overview-empty">No project is running work right now.</p>
       )}
       <div className="running-notes">
-        <p>
-          {rates.data
-            ? `%/h: estimated percentage points of each allowance window used per hour${
-                interval ? `, over the last ${Math.max(1, Math.round(interval))} min` : ''
-              }.`
-            : rates.error
-              ? 'Allowance rates per project are not available on this computer yet.'
-              : 'Reading allowance rates…'}
-          {unattributed.length > 0 &&
-            ` Not attributed to a project: ${unattributed
-              .map((r) =>
-                r.percentPerHour === null
-                  ? `${providerName(r.provider)} unknown`
-                  : `${providerName(r.provider)} ${r.percentPerHour.toFixed(1)} %/h`,
-              )
-              .join(', ')}.`}
-        </p>
+        {rates.error && <p>Allowance rates per project are not available on this computer yet.</p>}
         <a href="#/work" className="home-text-link">
           Queued and paused work is in QUARK <ArrowUpRight size={15} />
         </a>
