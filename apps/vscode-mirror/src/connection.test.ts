@@ -192,3 +192,38 @@ it('offers personal loaded chats without native subagents or app-created helpers
     mirror.dispose();
   }
 });
+
+it('rechecks explicit helper provenance after sharing, without hiding a personal chat by title', async () => {
+  const { connection, mirror, calls } = fixture();
+  let helper = false;
+  const send = connection.sendRequest.bind(connection);
+  connection.sendRequest = (provider, id, method, params, delivery) => {
+    if (method !== 'thread/read') return send(provider, id, method, params, delivery);
+    queueMicrotask(() =>
+      connection.providers.get(provider)?.onResult?.({
+        id,
+        result: {
+          thread: {
+            id: 'thread',
+            name: 'Computer health',
+            status: { type: 'idle' },
+            turns: [],
+            ...(helper ? { threadSource: 'sciencewithagents' } : {}),
+          },
+        },
+      }),
+    );
+  };
+  try {
+    await mirror.select('thread');
+    expect((await mirror.read(true)).status).toBe('idle');
+    helper = true;
+    expect(await mirror.read(true)).toMatchObject({ status: 'offline', entries: [] });
+    expect(
+      await mirror.send({ key: randomUUID(), threadId: 'thread', text: 'Do not send' }),
+    ).toMatchObject({ state: 'not_sent' });
+    expect(calls.filter((call) => call.method.startsWith('turn/'))).toEqual([]);
+  } finally {
+    mirror.dispose();
+  }
+});

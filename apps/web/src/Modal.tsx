@@ -17,7 +17,15 @@ export function Modal({
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
-    if (!embedded) dialog.current?.showModal();
+    if (embedded) return;
+    const opener = document.activeElement;
+    dialog.current?.showModal();
+    // React removes the dialog rather than closing it, so restore the keyboard position here.
+    return () => {
+      const lost = !document.activeElement || document.activeElement === document.body;
+      if (lost && opener instanceof HTMLElement && opener.isConnected)
+        opener.focus({ preventScroll: true });
+    };
   }, [embedded]);
   if (embedded)
     return (

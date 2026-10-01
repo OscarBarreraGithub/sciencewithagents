@@ -137,7 +137,7 @@ describe('provider-aware assignments through shared policy', () => {
       assignment: {
         source: 'manager_selection',
         difficulty: 'high',
-        policyRevision: '0',
+        policyRevision: '0:0',
       },
     });
     expect(store.agent(managerId)).toMatchObject({ model: 'manager-model', effort: 'high' });
@@ -179,6 +179,7 @@ describe('provider-aware assignments through shared policy', () => {
       assignment: {
         source: 'model_policy',
         difficulty: 'unspecified',
+        policyRevision: '0:0',
       },
     });
     expect(provider.calls).toEqual(['model/list']);

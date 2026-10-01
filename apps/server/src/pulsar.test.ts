@@ -237,6 +237,22 @@ it('waits on stale data and elapsed resets, then admits the same queued job afte
   expect(pulsar.decision(value.run).reason).toContain('fresh shared usage');
   expect(store.runs()).toHaveLength(1);
 });
+it('does not let an unknown-usage override bypass a known exhausted or elapsed window', () => {
+  const value = job('Known limit');
+  pulsar.control({ key: randomUUID(), runId: value.run.id, action: 'override' });
+  usage(100);
+  clock += capacityMaxAge('claude') + 1;
+  machine.observedAt = new Date(clock).toISOString();
+  expect(pulsar.decision(value.run).reason).toContain('exhausted');
+
+  usage(5, clock + 60_000);
+  clock += 60_001;
+  machine.observedAt = new Date(clock).toISOString();
+  expect(pulsar.decision(value.run).reason).toContain('reset time has passed');
+
+  store.setSetting('capacity:v1:claude', null);
+  expect(pulsar.decision(value.run).eligible).toBe(true);
+});
 it('paces background five-hour consumption and keeps the owner reserve available to interactive work', () => {
   usage(20);
   const value = job('Slow', 'background', 4);

@@ -7,6 +7,8 @@ type BudgetEdit = {
   draft?: { value: number; base: BoardBudget };
   receipt?: { key: string; body: object };
   busy?: boolean;
+  /** A release/key-up arrived while a save was in flight. */
+  pending?: boolean;
   error?: string;
   saved?: boolean;
 };
@@ -38,13 +40,15 @@ export function BudgetSlider({
     !state.confirmed || budget.revision >= state.confirmed.revision ? budget : state.confirmed;
   const value = state.draft?.value ?? latest.limitPercent;
   const { busy, error, saved } = state;
+  // Keyboard moves during a save become the next draft; the slider stays focusable throughout.
   const change = (next: number) => {
-    if (state.busy || state.error) return;
+    if (state.error) return;
     state.draft = { value: next, base: state.draft?.base ?? latest };
     state.saved = false;
     changed();
   };
   const save = async (retry = false) => {
+    if (state.busy) state.pending = true;
     if (state.busy || (state.error && !retry)) return;
     const proposed = state.draft;
     if (!proposed) return;
@@ -81,16 +85,20 @@ export function BudgetSlider({
       const updated = response.budgets.find((b) => b.id === budget.id);
       if (!updated) throw new Error('The saved budget could not be confirmed.');
       state.confirmed = updated;
-      state.draft = undefined;
+      state.draft =
+        state.draft === proposed ? undefined : state.draft && { ...state.draft, base: updated };
       state.receipt = undefined;
-      state.saved = true;
+      state.saved = !state.draft;
       refresh();
     } catch (reason) {
       state.error = reason instanceof Error ? reason.message : 'Could not save this budget.';
       refresh();
     } finally {
       state.busy = false;
+      const again = state.pending && !state.error;
+      state.pending = false;
       changed();
+      if (again) void save();
     }
   };
   const label = `${budget.provider === 'claude' ? 'Claude' : 'Codex'} · ${windowLabel}`;
@@ -109,7 +117,8 @@ export function BudgetSlider({
           value={value}
           aria-label={`${label} spending limit`}
           aria-valuetext={`${pct(value)} of the full allowance`}
-          disabled={busy || !!error}
+          // Not `disabled`: that drops keyboard focus to the page mid-adjustment.
+          aria-disabled={error ? true : undefined}
           onChange={(event) => change(Number(event.target.value))}
           onPointerUp={() => void save()}
           onKeyUp={(event) => {

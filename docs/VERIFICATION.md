@@ -6,11 +6,26 @@ Private logs, screenshots, disposable databases and native-session receipts stay
 
 ## Current evidence — 2026-10-01
 
-- The last inspected backend CI run failed six model-routing/runtime/lease checks. These
-  remain release blockers; documentation or UI checks do not resolve them.
-- Focused model-preference, phone/recovery layout, copy-prompt, navigation-loop and Back-spacing
-  checks passed on desktop, 412×915, 360×800, 915×412 and iPhone WebKit. They include retries,
-  conflicting saves and enlarged text where relevant, using isolated data.
+- Local production builds/typechecks passed with **827 backend and 99 companion checks**.
+  The previous provider-routing/runtime/lease failures are corrected. Published-source CI
+  separately checks Ubuntu; local success is not a substitute for that result.
+- The current browser suite exercised desktop, 412×915, 360×800, 915×412 and iPhone WebKit.
+  After correcting fixture isolation and native input targeting, all affected checks passed
+  against the same populated database. Forty retained-workspace checks also passed. Coverage
+  includes retries, conflicting saves, paged history, notepad, steering/queueing and keyboard
+  layout. Chromium tab zoom was checked from 80% to 400%; phone keyboard tests are simulated.
+- Crowded fixtures included 30 projects and 100 tasks, long unbroken titles, open human
+  requests, stale readings and budget boundaries. Truncated lists have explicit continuation
+  controls; budget links reveal and focus the relevant card.
+- Isolated live work exercised an Opus manager, Sol implementation, independent Opus review,
+  one correction and manager integration; another project continued while awaiting a human
+  answer. QUARK priority/pause instructions persisted, and a quota stop ended an actually
+  executing owned Python child before acknowledgement. Files, queued input and context
+  identities stayed saved. Native read-only Claude allowed reads, a calculation and scoped
+  review coordination while refusing both file-tool and shell writes to source sentinels.
+- A clean source copy installed dependencies, built and compiled the Mac launcher. A moved
+  launcher test needed an explicit fixture data path; its corrected checks and the remaining
+  companion checks passed in that copy. No owner accounts or installation were replaced.
 - Additional-computer prompt checks passed copying both machine-specific prompts, selectable
   fallback when copying fails, doubled text and no setup mutation merely from opening/copying.
 - Both public domains were verified in Chromium and iPhone WebKit to redirect to GitHub and

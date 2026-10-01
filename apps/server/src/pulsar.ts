@@ -10,6 +10,7 @@ import {
   pulsarStatusSchema,
   jobControlSchema,
   tokenUsageSnapshotSchema,
+  type PulsarStatus,
   type JobEstimate,
   type MachineCapacity,
   type LocalJob,
@@ -49,7 +50,12 @@ export function initializeScheduling(store: Store) {
   });
 }
 export class Pulsar {
-  allowanceDecision: (run: PrivateRun) => string | null = () => null;
+  allowanceDecision: (
+    run: PrivateRun,
+  ) =>
+    | string
+    | { reason: string; budgetBlock?: PulsarStatus['jobs'][number]['budgetBlock'] }
+    | null = () => null;
   localResources: () => (LocalResources & { id: string })[] = () => [];
   hasForegroundLocal: () => boolean = () => false;
   constructor(
@@ -189,14 +195,19 @@ export class Pulsar {
     run: PrivateRun,
     executing: ReadonlySet<string> = new Set(),
     preparingPreemption = false,
-  ): { eligible: boolean; reason: string } {
+  ): {
+    eligible: boolean;
+    reason: string;
+    budgetBlock?: PulsarStatus['jobs'][number]['budgetBlock'];
+  } {
     const estimate = this.estimate(run),
       policy = this.policy();
     const agent = this.store.agent(run.agentId);
     const taskId = this.taskId(run);
     const reject = (reason: string) => ({ eligible: false, reason });
     const allowance = this.allowanceDecision(run);
-    if (allowance) return reject(allowance);
+    if (allowance)
+      return typeof allowance === 'string' ? reject(allowance) : { eligible: false, ...allowance };
     if (
       this.store.getSetting(`pulsar:held:${run.id}`) === true ||
       (taskId && this.store.getSetting(`pulsar:held-task:${taskId}`) === true)
@@ -232,9 +243,12 @@ export class Pulsar {
         .reduce((n, l) => n + l.tokensCharged, 0);
       const taskBudget = this.store.task(taskId).scheduling.tokenBudget;
       if (charged + estimate.expectedTokens > taskBudget && !override)
-        return reject(
-          `Task token budget: ${charged.toLocaleString()} charged or reserved; this turn estimates ${estimate.expectedTokens.toLocaleString()}. Increase the budget or explicitly override.`,
-        );
+        return {
+          ...reject(
+            `Task token budget: ${charged.toLocaleString()} charged or reserved; this turn estimates ${estimate.expectedTokens.toLocaleString()}. Increase the budget or explicitly override.`,
+          ),
+          budgetBlock: { kind: 'tokens', targetId: taskId },
+        };
     }
     if (estimate.priority === 'background' && !override) {
       const foreground = this.foregroundWork(run.id, executing);
@@ -247,6 +261,23 @@ export class Pulsar {
     const resource = this.resourceDecision(estimate, override, active);
     if (!resource.eligible && !preparingPreemption) return resource;
     const capacity = readCapacity(this.store, agent.provider, this.clock());
+    const windows = capacity.windows.filter(
+      (w) =>
+        w.scope === 'general' ||
+        (w.scope === 'model' && w.model && agent.model?.toLowerCase().includes(w.model)),
+    );
+    // An override may accept an unknown reading, but cannot erase a known
+    // exhausted window or assume that an elapsed reset has refilled it.
+    for (const window of windows) {
+      if (window.resetsAt && Date.parse(window.resetsAt) <= this.clock())
+        return reject(
+          'A reset time has passed. Waiting for a new provider report before assuming renewed capacity.',
+        );
+      if (window.usedPercent >= 100)
+        return reject(
+          `${window.label} allowance is exhausted; native limits cannot be overridden.`,
+        );
+    }
     if (capacity.stale || capacity.state !== 'ready')
       return override
         ? {
@@ -257,11 +288,6 @@ export class Pulsar {
         : reject(
             'Waiting for fresh shared usage; missing or stale allowance is not spare capacity.',
           );
-    const windows = capacity.windows.filter(
-      (w) =>
-        w.scope === 'general' ||
-        (w.scope === 'model' && w.model && agent.model?.toLowerCase().includes(w.model)),
-    );
     if (!windows.length && !override) return reject('No verified allowance matches this model.');
     const models = modelPolicySchema.parse(
       this.store.getSetting('model-policy') ?? defaultModelPolicy,
@@ -282,14 +308,6 @@ export class Pulsar {
         `Waiting for a verified ${independent.family} allowance; an absent model meter is not extra capacity.`,
       );
     for (const window of windows) {
-      if (window.resetsAt && Date.parse(window.resetsAt) <= this.clock())
-        return reject(
-          'A reset time has passed. Waiting for a new provider report before assuming renewed capacity.',
-        );
-      if (window.usedPercent >= 100)
-        return reject(
-          `${window.label} allowance is exhausted; native limits cannot be overridden.`,
-        );
       // Retain finished reservations until a later poll can observe their effects.
       const reserved = all
         .filter(
@@ -526,7 +544,9 @@ export class Pulsar {
           this.store.getSetting(`pulsar:held:${run.id}`) === true ||
           (!!taskId && this.store.getSetting(`pulsar:held-task:${taskId}`) === true);
         const ended = !['queued', 'running'].includes(run.status);
-        const runningBlock = run.status === 'running' ? this.allowanceDecision(run) : null;
+        const runningAllowance = run.status === 'running' ? this.allowanceDecision(run) : null;
+        const runningBlock =
+          typeof runningAllowance === 'string' ? runningAllowance : runningAllowance?.reason;
         const decision = ended
           ? {
               eligible: false,

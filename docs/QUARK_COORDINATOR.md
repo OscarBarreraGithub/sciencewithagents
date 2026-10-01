@@ -7,6 +7,8 @@ QUARK is the cross-project allocation desk. Its conversation sits above a simple
 waiting, working, paused/needs input and completed. Show the task, project, actual model,
 priority, allowance/resource forecast, measured progress and reason for waiting. Budget
 feasibility is an estimate, never a guarantee. Retain detailed queue/accounting controls.
+Long project and column lists are bounded with a count-labelled **Show more**. Budget and task
+links reveal and focus their card behind a filter, search or bounded list.
 
 The owner can say “pause A, prioritize B, give B 20% of this weekly allowance.” Save the
 instruction and its concrete changes. Priority weight changes ordering; it does not create

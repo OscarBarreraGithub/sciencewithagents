@@ -107,7 +107,8 @@ test('attention and to-dos grow from compact panels to independently scrolling s
   const panes = panel.locator('.overview-section-body');
   for (const pane of await panes.all()) {
     expect(await pane.evaluate((e) => e.scrollHeight > e.clientHeight + 40)).toBe(true);
-    expect((await pane.boundingBox())!.height).toBeGreaterThan(20);
+    // A section must show a complete question/to-do row, not just a scrollable sliver.
+    expect((await pane.boundingBox())!.height).toBeGreaterThan(96);
     await pane.evaluate((e) => e.scrollTo(0, 0));
   }
   const mainScroll = await page.locator('.home-content').evaluate((e) => e.scrollTop);

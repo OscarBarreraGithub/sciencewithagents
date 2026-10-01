@@ -257,9 +257,39 @@ export class ConversationSearch {
     candidates: ConversationSearchCandidate[];
     coverage: ConversationSearchCoverage;
   } {
+    const personal = this.store.getSetting('frontdesk:identity') as { agentId?: string } | null;
+    const resourceProject = this.store.getSetting('resources:project');
+    const agents = this.store.agents();
+    // Match the normal Chats surface before applying candidate limits. Durable
+    // identities survive restart; titles never establish helper ownership.
+    const eligible = new Set(
+      agents
+        .filter((agent) => {
+          if (
+            agent.nativeRootId ||
+            agent.resourceAssistant ||
+            agent.surface === 'terminal' ||
+            agent.projectId === resourceProject ||
+            this.isAgent(agent.id) ||
+            this.store.getSetting('resources:agent:' + agent.id) === true
+          )
+            return false;
+          if (
+            this.store.project(agent.projectId).internal &&
+            agent.surface !== 'misc' &&
+            agent.id !== personal?.agentId
+          )
+            return false;
+          return agent.role === 'manager' || agent.surface === 'misc' || !!agent.interview;
+        })
+        .map((agent) => agent.id),
+    );
+    const eligibleProjects = new Set(
+      agents.filter((agent) => eligible.has(agent.id)).map((agent) => agent.projectId),
+    );
     const projects = this.store
       .projects()
-      .filter((project) => project.id !== this.projectId())
+      .filter((project) => project.id !== this.projectId() && eligibleProjects.has(project.id))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
     const selected = projects.slice(0, 20);
     const literal = query.slice(0, 200);
@@ -267,23 +297,36 @@ export class ConversationSearch {
     const preferred: string[] = [];
     const recent: string[][] = [];
     for (const project of selected) {
-      const titleMatches = projectCatalog(this.store, project.id, {
-        kind: 'agents',
-        query: literal,
-        limit: 10,
-      });
+      const agentIds = agents
+        .filter((agent) => agent.projectId === project.id && eligible.has(agent.id))
+        .map((agent) => agent.id);
+      const titleMatches = projectCatalog(
+        this.store,
+        project.id,
+        {
+          kind: 'agents',
+          query: literal,
+          limit: 10,
+        },
+        agentIds,
+      );
       preferred.push(...titleMatches.items.map((item) => item.id));
-      const history = historyPage(this.store, project.id, {
-        query: literal,
-        source: 'conversations',
-        limit: 10,
-      });
+      const history = historyPage(
+        this.store,
+        project.id,
+        {
+          query: literal,
+          source: 'conversations',
+          limit: 10,
+        },
+        agentIds,
+      );
       for (const item of history.items) {
         preferred.push(item.agentId);
         if (!matched.has(item.agentId)) matched.set(item.agentId, item.text);
       }
       recent.push(
-        projectCatalog(this.store, project.id, { kind: 'agents', limit: 20 }).items.map(
+        projectCatalog(this.store, project.id, { kind: 'agents', limit: 20 }, agentIds).items.map(
           (item) => item.id,
         ),
       );
@@ -291,29 +334,32 @@ export class ConversationSearch {
     // Round robin keeps one large recent project from consuming every fallback candidate.
     for (let index = 0; index < 20; index++)
       for (const list of recent) if (list[index]) preferred.push(list[index]!);
-    const managed = [...new Set(preferred)].slice(0, 32).map((id): ConversationSearchCandidate => {
-      const agent = this.store.agent(id);
-      const snippet =
-        matched.get(id) ??
-        historyPage(this.store, agent.projectId, {
-          agentId: id,
-          source: 'conversations',
-          limit: 4,
-        })
-          .items.filter((item) => ['user', 'assistant', 'message'].includes(item.kind))
-          .map((item) => item.text)
-          .join('\n');
-      return {
-        id,
-        kind: 'managed',
-        provider: agent.provider,
-        title: agent.name.slice(0, 240),
-        project: this.store.project(agent.projectId).name.slice(0, 240),
-        href: `#/chat/${id}`,
-        excerpt: (snippet || agent.scope).slice(0, 1000),
-        evidence: snippet ? 'saved-excerpts' : 'title-only',
-      };
-    });
+    const managed = [...new Set(preferred)]
+      .filter((id) => eligible.has(id))
+      .slice(0, 32)
+      .map((id): ConversationSearchCandidate => {
+        const agent = this.store.agent(id);
+        const snippet =
+          matched.get(id) ??
+          historyPage(this.store, agent.projectId, {
+            agentId: id,
+            source: 'conversations',
+            limit: 4,
+          })
+            .items.filter((item) => ['user', 'assistant', 'message'].includes(item.kind))
+            .map((item) => item.text)
+            .join('\n');
+        return {
+          id,
+          kind: 'managed',
+          provider: agent.provider,
+          title: agent.name.slice(0, 240),
+          project: this.store.project(agent.projectId).name.slice(0, 240),
+          href: `#/chat/${id}`,
+          excerpt: (snippet || agent.scope).slice(0, 1000),
+          evidence: snippet ? 'saved-excerpts' : 'title-only',
+        };
+      });
     const editors: ConversationSearchCandidate[] = [];
     const seen = new Set<string>();
     for (const raw of (this.deps.mirrorWindows?.() ?? []).slice(0, 20)) {

@@ -30,6 +30,8 @@ import './home-overview.css';
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 const chat = (agentId: string) => `#/chat/${encodeURIComponent(agentId)}`;
+const needsHumanAnswer = (item: WorkItem) =>
+  item.kind === 'human' && item.status !== 'done' && !item.humanReply && !!item.managerId;
 
 export const providerName = (provider: string) =>
   provider === 'claude' ? 'Claude' : provider === 'codex' ? 'Codex' : provider;
@@ -534,18 +536,16 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
       };
     });
   // A manager's saved ask for a person, answered in its original conversation.
-  const asks = items
-    .filter((i) => i.kind === 'human' && i.status === 'waiting' && !i.humanReply && i.managerId)
-    .map(
-      (i): Need => ({
-        key: `ask:${i.id}`,
-        href: chat(i.managerId!),
-        project: (i.projectId && projects.get(i.projectId)) || 'Project',
-        label: 'Question',
-        title: i.title,
-        detail: i.detail || 'Open the manager chat to answer.',
-      }),
-    );
+  const asks = items.filter(needsHumanAnswer).map(
+    (i): Need => ({
+      key: `ask:${i.id}`,
+      href: chat(i.managerId!),
+      project: (i.projectId && projects.get(i.projectId)) || 'Project',
+      label: 'Question',
+      title: i.title,
+      detail: i.detail || 'Open the manager chat to answer.',
+    }),
+  );
   const local = (data.local.data?.jobs ?? [])
     .filter((j) => j.status === 'failed' || j.status === 'interrupted')
     .map(
@@ -558,7 +558,29 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
         detail: 'Open local work to see what happened and choose whether to retry.',
       }),
     );
-  return [...asks, ...snapshotNeeds, ...stopped.values(), ...local];
+  const budgets = new Map<string, Need>();
+  for (const job of data.work.data?.jobs ?? []) {
+    const agent = agents.get(job.agentId);
+    if (
+      job.status !== 'queued' ||
+      job.eligible ||
+      job.held ||
+      !job.budgetBlock ||
+      !agent ||
+      internal.has(agent.projectId)
+    )
+      continue;
+    const target = job.budgetBlock.targetId;
+    budgets.set(target, {
+      key: `budget:${target}`,
+      href: `#/work/${target}`,
+      project: projects.get(agent.projectId) ?? job.projectName,
+      label: 'Budget needs attention',
+      title: `${tasks.get(target)?.title ?? job.projectName}: queued work needs budget`,
+      detail: job.reason,
+    });
+  }
+  return [...asks, ...snapshotNeeds, ...stopped.values(), ...budgets.values(), ...local];
 }
 
 function AttentionPanel({
@@ -584,7 +606,7 @@ function AttentionPanel({
         aria-label="Attention items"
         tabIndex={0}
       >
-        {!known ? (
+        {!known && !needs.length ? (
           <p className="overview-empty">
             {error
               ? 'Requests will appear when the computer reconnects.'
@@ -673,9 +695,10 @@ function TodoPanel({
       request: string;
     } | null;
     const key = pending?.request === request ? pending.key : crypto.randomUUID();
-    sessionStorage.setItem(storage, JSON.stringify({ key, request }));
+    const receipt = JSON.stringify({ key, request });
+    sessionStorage.setItem(storage, receipt);
     const item = workItemSchema.parse(await api('/work-items', { key, ...body }));
-    sessionStorage.removeItem(storage);
+    if (sessionStorage.getItem(storage) === receipt) sessionStorage.removeItem(storage);
     return item;
   };
   const run = async (id: string, action: () => Promise<void>) => {
@@ -702,7 +725,14 @@ function TodoPanel({
     const detail = note.slice(title.length).trim();
     void run('add', async () => {
       await save('add', { kind: 'general', title, detail });
-      updateText('');
+      // A response can arrive after Home has remounted and a newer draft was
+      // started. Only clear the draft that this request actually saved.
+      setText((current) => (current === text ? '' : current));
+      try {
+        if (sessionStorage.getItem(draftKey) === text) sessionStorage.removeItem(draftKey);
+      } catch {
+        // Draft storage may be unavailable; keep the current editor usable.
+      }
     });
   };
   const send = (event: FormEvent, item: WorkItem) => {
@@ -710,6 +740,14 @@ function TodoPanel({
     const project = projects.find((p) => p.id === target);
     if (!project) return;
     void run(item.id, async () => {
+      // A refresh may already have confirmed a send whose response was lost.
+      // Opening that assignment must not create a second edit/receipt.
+      if (item.assignmentRunId && item.managerId === project.managerId) {
+        sessionStorage.removeItem(`dock:${apiScope()}:home-todo:send:${item.id}`);
+        setChoosing(null);
+        location.hash = chat(item.managerId);
+        return;
+      }
       const saved = await save(`send:${item.id}`, {
         id: item.id,
         expectedRevision: item.revision,
@@ -872,9 +910,12 @@ export function HomeOverview({ data, now }: { data: HomeData; now: number }) {
   for (const item of state ? attention(state).items : [])
     needsByProject.set(item.projectId, (needsByProject.get(item.projectId) ?? 0) + 1);
   for (const item of workItems.data?.items ?? [])
-    if (item.kind === 'human' && item.status === 'waiting' && !item.humanReply && item.projectId)
+    if (needsHumanAnswer(item) && item.projectId)
       needsByProject.set(item.projectId, (needsByProject.get(item.projectId) ?? 0) + 1);
-  const known = !!state && !data.snapshot.error && data.local.loaded;
+  const attentionError =
+    data.snapshot.error || workItems.error || data.local.error || data.work.error;
+  const known =
+    !!state && !attentionError && workItems.loaded && data.local.loaded && data.work.loaded;
   return (
     <div className="overview">
       <h1 className="home-sr-only" tabIndex={-1}>
@@ -896,7 +937,7 @@ export function HomeOverview({ data, now }: { data: HomeData; now: number }) {
       <div className="overview-grid">
         <Destinations data={data} />
         <aside className="overview-panel overview-side" aria-label="Requests and to-dos">
-          <AttentionPanel needs={needs} known={known} error={data.snapshot.error} />
+          <AttentionPanel needs={needs} known={known} error={attentionError} />
           <TodoPanel data={data} reading={workItems} />
         </aside>
         <RunningPanel data={data} needs={needsByProject} />

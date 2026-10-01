@@ -1,16 +1,14 @@
 # Current status
 
-Checked 2026-10-01. **Early access; not yet signed off for an unattended collaborator release.**
-Documentation cleanup and a passing UI check do not resolve backend release failures.
+Checked 2026-10-01. **Beta: current workflows have been exercised with real Codex/Claude
+projects and desktop/phone browser checks.** This is not a claim that every device or
+future provider version is certified. See [verification](VERIFICATION.md) and the
+[published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
 
-## Release blockers
-
-The [last inspected failing CI run](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36842768536)
-has six backend failures involving provider/model routing, Claude runtime defaults, a
-read-only review and the asynchronous manager-lease recheck, including an unhandled
-assertion. Triage must distinguish stale expectations from runtime defects, correct them,
-and pass the relevant checks before a new release sign-off. Later runs are on the
-[CI page](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
+The earlier provider-routing, Claude review and manager-lease failures are corrected.
+The beta pass also fixed owned-process stopping, delayed allowance attribution, crowded
+attention/QUARK layouts, keyboard composers, draft races and helper search filtering.
+Product work below remains outside this polish pass.
 
 ## Delivered, with acceptance limits
 

@@ -4,7 +4,8 @@
 writes and no routine permission queue. New inherited Codex sessions use broad reads and
 network access with approval policy `never`; write access follows their saved role. Claude managers/write-enabled workers use native
 edit acceptance and Bash approval inside its strict command sandbox; unsandboxed retries
-remain disabled. Read-only roles retain native plan permissions. Real questions still surface.
+remain disabled. Read-only roles retain native plan permissions, and the native command sandbox
+explicitly denies writes to their workspace. Real questions still surface.
 This supersedes the earlier blanket bypass request. Saved explicit restrictions and native
 administrative rules remain; arbitrary MCP/remote tools have their own enforcement.
 
@@ -41,10 +42,17 @@ family; they are not independent managers with fresh budgets. See VERIFICATION.m
 Claude adds only the private Dock MCP integration and appends coordination instructions.
 Unattended launches deny residual permission requests instead of leaving work waiting for
 routine approval; human questions remain answerable. Saved restricted sessions forward their
-original permission requests. Read-only workers retain native plan permissions. A hook's
-successful admission returns no tool permission grant.
-If native Stop does not end an owned run, QUARK closes that owned group after its grace period,
-retaining queued messages, files, quota holds and original session identities.
+original permission requests. Read-only workers retain native plan permissions. The private
+Dock SDK integration accepts mode-based coordination requests for its exact registered tools
+in an active unattended native turn, allowing reviewers to record `dock_review` without leaving
+plan mode. Native ask rules and user-interaction requirements remain effective; this grants no
+file-write or external-MCP approval. An actual Opus reviewer resumed and recorded a scoped `changes_requested` verdict in the
+2026-10-01 beta check; the follow-up correction retained its independent review requirement.
+A hook's successful admission returns no tool permission grant.
+Before acknowledging a stopped active turn and releasing its reservation, QUARK closes the
+owned provider process group: a native turn interruption alone can leave a tool command running.
+The grace-period fallback also handles missing stop events. Queued messages, files, quota holds
+and original session identities remain saved; continuation resumes that identity.
 
 ## Project choice
 

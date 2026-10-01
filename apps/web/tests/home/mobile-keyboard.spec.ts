@@ -333,7 +333,7 @@ test('managed phone chat resizes its message pane for the keyboard and retains a
   );
   await keyboardFixture(page);
   const response = await page.request.post('/api/projects', {
-    headers: { origin: 'http://127.0.0.1:4339' },
+    headers: { origin: new URL(info.project.use.baseURL!).origin },
     data: { key: randomUUID(), name: `Keyboard ${randomUUID().slice(0, 8)}`, provider: 'codex' },
   });
   expect(response.ok(), await response.text()).toBe(true);

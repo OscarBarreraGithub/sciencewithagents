@@ -842,7 +842,8 @@ dialog.home-help-dialog {
   }
   .home-topline {
     padding-top: 0;
-    padding-bottom: 0;
+    /* Keeps the phone chip's border off the scroller's clipped edge. */
+    padding-bottom: 2px;
   }
   .home-scroll-hint {
     flex-basis: 18px;

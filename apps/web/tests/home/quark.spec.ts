@@ -13,8 +13,18 @@ test('old usage links open QUARK with no separate accounting or cache screen', a
   await expect(page).toHaveURL(new RegExp(`#/work/${task.id}$`));
   await expect(page.locator(`#quark-task-${task.id}`)).toBeAttached();
   await page.goto('/#/settings');
-  await expect(page.locator('a[href="#/work"]', { hasText: 'QUARK' }).last()).toBeVisible();
+  const quark = page
+    .getByRole('navigation', { name: 'Main navigation', includeHidden: true })
+    .getByRole('link', { name: 'QUARK', exact: true, includeHidden: true });
+  await expect(quark).toHaveAttribute('href', '#/work');
   await expect(page.locator('a[href^="#/usage"]')).toHaveCount(0);
+  if ((page.viewportSize()?.width ?? 0) > 700) await expect(quark).toBeVisible();
+  else {
+    // Phones hide the header navigation; QUARK is one step away on Home.
+    await expect(quark).toBeHidden();
+    await page.getByRole('link', { name: 'sciencewithagents home', exact: true }).click();
+    await expect(page.locator('.overview-destinations a[href="#/work"]')).toBeVisible();
+  }
 });
 
 test('QUARK shows remaining allowances, reset times and connection recovery in plain language', async ({

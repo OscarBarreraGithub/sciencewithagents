@@ -116,6 +116,9 @@ headroom and worker limits, or pause/release queued work. The message composer d
 **Do this soon — I’m waiting**. Task creation and **Change priority or budget** expose
 priority, rough tokens, task budget, allowance reservation, CPU, memory, time and optional
 planning cost/deadline. Editing a task-associated job also updates its task’s future budget.
+Queued work blocked by a task token budget or explicit allowance cap appears in Home’s
+**For your attention** and links to its QUARK budget card, even before its first admission.
+Ordinary capacity waits and deliberate queue pauses do not create budget attention items.
 Recent outcomes compare estimated and measured tokens; cache input counts can be large.
 A planning cost is optional and is never presented as a subscription bill.
 
@@ -182,3 +185,7 @@ previous off default; the owner can enable it from Work after inspecting old que
 New empty installations start with pacing on. Native approvals, task writer exclusion, independent review and exact integration validation
 remain. Managers apply by default; the human-review policy requires confirmation. See
 [verification](VERIFICATION.md) and [status](STATUS.md).
+
+Native interruption closes the owned provider process group before QUARK acknowledges the
+stop. A completed provider turn alone does not prove its terminal children stopped. Files,
+conversation identity and unsent messages remain available for explicit continuation.

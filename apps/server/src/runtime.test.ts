@@ -334,8 +334,19 @@ it('rechecks the allowance after worktree preparation and never silently routes 
 });
 
 it('QUARK interrupts the exact active reply while preserving unsent messages and requiring explicit continuation', async () => {
+  let releaseClose!: () => void;
+  const closeGate = new Promise<void>((resolve) => {
+    releaseClose = resolve;
+  });
   class LongProvider extends DemoProvider {
     stops: unknown[] = [];
+    closing = false;
+    override async close() {
+      this.closing = true;
+      await closeGate;
+      await super.close();
+    }
+
     override async request(method: string, raw?: unknown): Promise<unknown> {
       if (method === 'turn/start') return { turn: { id: randomUUID(), status: 'inProgress' } };
       if (method === 'turn/interrupt') {
@@ -397,12 +408,37 @@ it('QUARK interrupts the exact active reply while preserving unsent messages and
   runtime.kick();
   await vi.waitFor(() => expect(store.agent(manager).turnId).toBeTruthy());
   const exactTurn = store.agent(manager).turnId;
+  const toolId = randomUUID();
+  store.entry({
+    id: toolId,
+    agentId: manager,
+    runId: first.id,
+    kind: 'tool',
+    title: 'Owned command',
+    text: 'Partial output',
+    status: 'running',
+    createdAt: new Date().toISOString(),
+  });
+
   const queued = store.enqueue(manager, randomUUID(), 'This message has not been sent');
   await new Promise((resolve) => setTimeout(resolve, 15));
   usage(12);
   runtime.kick();
+  try {
+    await vi.waitFor(() => expect(provider.closing).toBe(true));
+    expect(store.run(first.id).status).toBe('running');
+    expect(runtime.quark.holds()[0]?.stopAcknowledgedAt).toBeNull();
+    expect(store.run(queued.id).status).toBe('queued');
+  } finally {
+    releaseClose();
+  }
   await vi.waitFor(() => expect(store.run(first.id).status).toBe('interrupted'));
   expect(provider.stops).toEqual([{ threadId: store.agent(manager).threadId, turnId: exactTurn }]);
+  expect(store.savedEntry(manager, toolId)).toMatchObject({
+    status: 'interrupted',
+    text: expect.stringContaining('Partial output\n\nStopped with this turn.'),
+  });
+
   expect(store.run(queued.id).status).toBe('queued');
   expect(runtime.quark.holds()).toHaveLength(1);
   expect(() => runtime.quark.release(first.id)).toThrow('budget');

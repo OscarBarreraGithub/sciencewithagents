@@ -262,7 +262,10 @@ test('connection failure has an explicit read-only retry and clears after recove
     return route.fallback();
   });
   await page.goto('/');
-  await expect(page.getByRole('status')).toContainText('Computer connection interrupted');
+  // Home also keeps an empty pull-to-refresh live region.
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Computer connection interrupted' }),
+  ).toBeVisible();
   fail = false;
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page.locator('.home-connection-note')).toHaveCount(0);

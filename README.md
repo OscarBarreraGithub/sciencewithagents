@@ -93,7 +93,7 @@ report anything incomplete rather than claiming success.
 account. Your setup agent checks these. Apple Silicon macOS is the verified desktop target;
 see [other platforms](docs/CONTRIBUTOR_SETUP.md#check-the-machine-first).
 
-**Status:** early access. Known release-check failures and unfinished features are listed in
+**Status:** beta. Tested workflows, device limitations and unfinished features are listed in
 [current status](docs/STATUS.md). This is source installation, not a one-click installer.
 The computer must stay awake and running the app for work and phone access.
 

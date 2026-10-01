@@ -47,8 +47,13 @@ native unattended policies provide broad reads/network access and role-appropria
 explicit saved restrictions remain editable. Provider/organization rules and external tool
 boundaries still apply. [Worker tools](WORKER_TOOLS.md), [provider compatibility](PROVIDER_COMPATIBILITY.md).
 
-Stored app conversations and worker records remain searchable even when the screen pages
-old messages. A bulk worker can recap requests with source references for a manager to check.
+Stored app conversations and worker records remain searchable in project history even when
+the screen pages old messages. Managed chats show up to 200 entries per page; **Latest messages**
+returns to current replies without changing the draft. The Chats finder excludes background
+helpers and resource checks using saved identities before candidate limits; a matching title never
+hides a personal chat. Finder coverage remains partial: up to 20 recent projects, 32 saved chats,
+and 8 connected editor titles, with no editor transcript search. A bulk worker can recap requests
+with source references for a manager to check.
 Independent native/editor histories, unsent drafts and private reasoning have different
 retention boundaries. Original VS Code chats retain their native identity and model choices.
 The optional companion needs no separate editor login. [Companion](../apps/vscode-mirror/README.md).

@@ -231,3 +231,55 @@ it('binds the owner’s no-weekly statement to one verified account, without inf
   await monitor.refresh('claude');
   expect(readCapacity(store, 'claude', clock).weeklyPolicy).toBe('not-reported');
 });
+
+it.each(['codex', 'claude'] as const)(
+  'keeps %s failures distinct from exhaustion and bounds retry backoff, clearing it after recovery',
+  async (provider) => {
+    const { root, store } = fixture();
+    let clock = stamp,
+      calls = 0,
+      fail = false;
+    const monitor = new CapacityMonitor(
+      store,
+      root,
+      async () => {
+        calls++;
+        if (fail) throw new Error('unavailable');
+        const row = report(clock)[0]!;
+        return [
+          {
+            ...row,
+            provider,
+            usage: { ...row.usage, primary: { ...row.usage.primary, usedPercent: 100 } },
+          },
+        ];
+      },
+      () => clock,
+    );
+    monitors.push(monitor);
+    await Promise.all(Array.from({ length: 20 }, () => monitor.refresh(provider)));
+    expect(calls).toBe(1);
+    const good = readCapacity(store, provider, clock);
+    clock = Date.parse(good.nextRefreshAt!);
+    fail = true;
+    for (const delay of [120, 240, 480, 900, 900]) {
+      const before = calls;
+      await Promise.all(Array.from({ length: 20 }, () => monitor.refresh(provider)));
+      expect(calls).toBe(before + 1);
+      const saved = readCapacity(store, provider, clock);
+      expect(saved).toMatchObject({ state: 'error', stale: true, observedAt: good.observedAt });
+      expect(saved.windows[0].usedPercent).toBe(100);
+      expect(Date.parse(saved.nextRefreshAt!) - clock).toBe(delay * 1000);
+      clock = Date.parse(saved.nextRefreshAt!) - 1;
+      await monitor.refresh(provider);
+      expect(calls).toBe(before + 1);
+      clock++;
+    }
+    fail = false;
+    await monitor.refresh(provider);
+    expect(readCapacity(store, provider, clock)).toMatchObject({ state: 'ready', stale: false });
+    expect(Date.parse(readCapacity(store, provider, clock).nextRefreshAt!) - clock).toBe(
+      provider === 'claude' ? 300000 : 60000,
+    );
+  },
+);

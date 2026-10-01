@@ -53,7 +53,7 @@ test('queue pause, work limit and error retry have ordinary app controls', async
   const dialog = page.getByRole('dialog', { name: 'Work queue' });
   await dialog.getByRole('button', { name: 'Pause new work' }).click();
   await expect(dialog.getByRole('alert')).toContainText('Could not save');
-  await dialog.getByRole('button', { name: 'Pause new work' }).click();
+  await dialog.getByRole('button', { name: 'Retry queue change' }).click();
   expect(keys[0]).toBe(keys[1]);
   await expect(dialog).toContainText('New queued work is paused');
   await dialog.getByLabel('Concurrent work groups').selectOption('2');

@@ -6,6 +6,7 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   managerApplySchema,
   escalationSchema,
+  entrySchema,
   jobEstimateSchema,
   agentSchema,
   checkpointSchema,
@@ -194,11 +195,21 @@ export class Runtime {
     this.capacity = new CapacityMonitor(store, dataDir);
     this.pulsar = new Pulsar(store, () => this.capacity.status().machine);
     this.quark = new Quark(store, this.pulsar);
-    this.pulsar.allowanceDecision = (run) =>
-      run.status === 'queued' &&
-      this.providerMaintenance?.blocks(this.store.agent(run.agentId).provider)
-        ? 'Waiting for the requested provider update.'
-        : this.quark.reason(run, run.status === 'queued');
+    this.pulsar.allowanceDecision = (run) => {
+      const agent = this.store.agent(run.agentId);
+      if (run.status === 'queued' && this.providerMaintenance?.blocks(agent.provider))
+        return 'Waiting for the requested provider update.';
+      const block = this.quark.block(run, run.status === 'queued');
+      if (!block || block.cause !== 'budget' || run.status !== 'queued')
+        return block ? { reason: block.reason } : null;
+      return {
+        reason: block.reason,
+        budgetBlock: {
+          kind: 'allowance' as const,
+          targetId: block.budgetTargetId ?? this.quark.taskIds(run)[0] ?? agent.projectId,
+        },
+      };
+    };
     this.localJobs = new LocalJobs(store, dataDir);
     this.pulsar.localResources = () => this.localJobs.reservations();
     this.pulsar.hasForegroundLocal = () =>
@@ -2972,6 +2983,21 @@ export class Runtime {
     if (imageBytes) this.store.imageEntry(entry, imageBytes);
     else this.store.entry(entry);
   }
+  private settleStoppedTools(run: PrivateRun) {
+    const rows = this.store.db
+      .prepare(
+        "SELECT body FROM entries WHERE agent_id=? AND json_extract(body,'$.runId')=? AND json_extract(body,'$.kind')='tool' AND json_extract(body,'$.status')='running'",
+      )
+      .all(run.agentId, run.id);
+    for (const row of rows) {
+      const entry = entrySchema.parse(JSON.parse(String(row.body)));
+      this.store.entry({
+        ...entry,
+        status: 'interrupted',
+        text: `${entry.text}${entry.text ? '\n\n' : ''}Stopped with this turn. No final result was received; inspect saved progress before retrying.`,
+      });
+    }
+  }
   private async finish(agentId: string, turnId: string, status: string, error?: unknown) {
     const run = this.activeRun(agentId);
     if (!run || (run.turnId && run.turnId !== turnId)) return;
@@ -2989,6 +3015,25 @@ export class Runtime {
       return;
     }
     this.pendingCompletions.delete(agentId);
+    if (
+      !agent.nativeRootId &&
+      (status === 'interrupted' || this.quark.holds().some((hold) => hold.runId === run.id))
+    ) {
+      // A native turn/completed notification does not stop its terminal children.
+      // Retain the running reservation until our owned provider group has closed.
+      await this.claude.forget(agentId);
+      const client = this.clients.get(agentId);
+      await client?.close();
+      for (const member of this.nativeChildren.family(agentId))
+        if (this.clients.get(member.id) === client) this.clients.delete(member.id);
+      this.mcpConfigs.delete(agentId);
+      this.nativeConfigs.delete(agentId);
+      this.pluginPolicies.delete(agentId);
+      this.pluginsChanged.delete(agentId);
+      status = 'interrupted';
+      this.settleStoppedTools(run);
+    }
+
     if (
       !agent.nativeRootId &&
       agent.role === 'implementer' &&
@@ -4312,7 +4357,10 @@ export class Runtime {
       this.pluginsChanged.delete(rootId);
       for (const member of this.nativeChildren.family(rootId)) {
         const run = this.activeRun(member.id);
-        if (run) this.store.updateRun(run.id, { status: 'interrupted' });
+        if (run) {
+          this.settleStoppedTools(run);
+          this.store.updateRun(run.id, { status: 'interrupted' });
+        }
         if (run || ['running', 'waiting'].includes(member.status))
           this.store.updateAgent(member.id, { status: 'interrupted', turnId: null });
         for (const approval of this.store

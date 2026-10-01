@@ -1,7 +1,7 @@
 # Browser checks
 
 - `home/` tests the current interface and connected workflows, including phone touch
-  layouts, WebKit, offline recovery, empty/stale readings and the phone lock.
+  layouts, WebKit, offline recovery, empty/stale readings and secure phone pairing.
 - `classic/` retains regression coverage for the previous workspace while its screens
   are rebuilt. Its fixture deliberately selects that interface; authentication remains.
 

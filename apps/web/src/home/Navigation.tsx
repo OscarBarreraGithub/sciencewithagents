@@ -34,15 +34,25 @@ export function useNavigation(current: string, main: RefObject<HTMLElement | nul
         /* In-memory navigation remains available. */
       }
     };
-    const visit = () => {
-      const next = location.hash.startsWith('#/') ? location.hash.slice(2) || 'home' : 'home';
+    const record = (hash: string) => {
+      const next = hash.startsWith('#/') ? hash.slice(2) || 'home' : 'home';
       const previous = trail.current.indexOf(next);
       trail.current =
         next === 'home'
           ? ['home']
           : previous >= 0
             ? trail.current.slice(0, previous + 1)
-            : [...trail.current, next].slice(-12);
+            : // Leaving a sub-view (a minimized notepad) for its page replaces it, so Back
+              // does not reopen what the person just closed.
+              trail.current.at(-1)?.startsWith(`${next}/`)
+              ? [...trail.current.slice(0, -1), next]
+              : [...trail.current, next].slice(-12);
+    };
+    const visit = (event: Event) => {
+      // A screen may leave a sub-view with replaceState, which fires no hashchange.
+      const old = event instanceof HashChangeEvent ? event.oldURL.split('#')[1] : undefined;
+      if (old?.startsWith('/')) record(`#${old}`);
+      record(location.hash);
       // Save at the navigation event, before rendering; a fast reload must retain the return route.
       save();
     };

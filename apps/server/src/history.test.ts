@@ -41,6 +41,82 @@ function entry(agentId: string, index: number, text = `Saved message ${index}`) 
 }
 
 describe('project-scoped durable history', () => {
+  it('applies host agent selection before paging without restricting ordinary worker history', () => {
+    const project = store.register(root, 'Finder selection', '');
+    const second = store.addAgent({
+      projectId: project.id,
+      parentId: null,
+      taskId: null,
+      role: 'researcher',
+      name: 'Second human chat',
+      cwd: root,
+    });
+    const firstEntry = entry(project.managerId, 0, 'literal café 🦊 20%_');
+    entry(second.id, 1, 'literal café 🦊 20%_');
+    const worker = store.addAgent({
+      projectId: project.id,
+      parentId: project.managerId,
+      taskId: null,
+      role: 'researcher',
+      name: 'Newer helper',
+      cwd: root,
+    });
+    const workerEntry = entry(worker.id, 2, 'literal café 🦊 20%_');
+    const ids = [project.managerId, second.id];
+    const catalog = projectCatalog(store, project.id, { kind: 'agents', limit: 1 }, ids);
+    expect(catalog.total).toBe(2);
+    expect(catalog.items[0]?.id).toBe(second.id);
+    expect(
+      projectCatalog(
+        store,
+        project.id,
+        {
+          kind: 'agents',
+          limit: 1,
+          cursor: catalog.nextCursor,
+        },
+        ids.toReversed(),
+      ).items[0]?.id,
+    ).toBe(project.managerId);
+    expect(() =>
+      projectCatalog(store, project.id, {
+        kind: 'agents',
+        cursor: catalog.nextCursor,
+      }),
+    ).toThrow('different project or search');
+    const query = { query: 'café 🦊 20%_', source: 'conversations', limit: 1 };
+    const page = historyPage(store, project.id, query, ids);
+    expect(page.items[0]?.agentId).toBe(second.id);
+    expect(
+      historyPage(
+        store,
+        project.id,
+        {
+          ...query,
+          cursor: page.nextCursor,
+        },
+        ids.toReversed(),
+      ).items[0]?.id,
+    ).toBe(firstEntry.id);
+    expect(() =>
+      historyPage(
+        store,
+        project.id,
+        {
+          ...query,
+          cursor: page.nextCursor,
+        },
+        [project.managerId],
+      ),
+    ).toThrow('different project or search');
+    expect(historyPage(store, project.id, query).items[0]?.id).toBe(workerEntry.id);
+    expect(projectCatalog(store, project.id, { kind: 'agents', limit: 1 }).items[0]?.id).toBe(
+      worker.id,
+    );
+    expect(historyPage(store, project.id, query, []).items).toEqual([]);
+    expect(projectCatalog(store, project.id, { kind: 'agents' }, []).total).toBe(0);
+  });
+
   it('catalogs old agents and tasks even without conversations, with isolated bounded filters and cursors', () => {
     const project = store.register(root, 'Catalog', '');
     const other = store.register(join(root, 'other'), 'Other', '');

@@ -142,8 +142,10 @@
 }
 .quark-settings .quark-check {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  min-height: 42px;
+  gap: 8px;
+  min-height: 44px;
 }
 .quark-settings small {
   flex-basis: 100%;
@@ -535,4 +537,23 @@
   .quark-overview .quark-account {
     grid-column: 1 / -1;
   }
+}
+/* A budget or task link's destination card stays marked while its link is open. */
+.quark-ticket.is-target,
+.quark-project-card.is-target {
+  scroll-margin-top: 8px;
+  border-color: #426d5d;
+  box-shadow: 0 0 0 2px #426d5d33;
+}
+.quark-ticket.is-target:focus,
+.quark-project-card.is-target:focus {
+  outline: 2px solid #426d5d;
+  outline-offset: 2px;
+}
+.quark-more-projects {
+  justify-self: start;
+}
+.quark-budget-slider input[type='range'][aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

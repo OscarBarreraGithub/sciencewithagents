@@ -320,9 +320,9 @@ test('QUARK excludes completed tasks, runs and local jobs from Active and search
   await expect(completed.locator('h3 b')).toHaveText('25');
   await completed.getByRole('button', { name: 'Show 10 more', exact: true }).click();
   await expect(cards).toHaveCount(20);
-  await completed.getByRole('button', { name: 'Show 10 more', exact: true }).click();
+  await completed.getByRole('button', { name: 'Show 5 more', exact: true }).click();
   await expect(cards).toHaveCount(25);
-  await expect(completed.getByRole('button', { name: 'Show 10 more' })).toHaveCount(0);
+  await expect(completed.getByRole('button', { name: /^Show \d+ more$/ })).toHaveCount(0);
   const search = page.getByRole('searchbox', { name: 'Find completed work', exact: true });
   await search.fill('ARCHIVE ITEM 22');
   await expect(cards).toHaveCount(1);

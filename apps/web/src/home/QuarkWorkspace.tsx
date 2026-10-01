@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Layers3, MessageCircle, Settings2, Clock3, Users } from 'lucide-react';
 import {
+  latestFamily,
   quarkCoordinatorStatusSchema,
   quarkDefaultFamilies,
   type Model,
@@ -40,6 +41,10 @@ type Card = {
 };
 const live = (j: Job) => j.status === 'queued' || j.status === 'running';
 const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const familyName = (family: string) => family.charAt(0).toUpperCase() + family.slice(1);
+// Bounded lists keep the board reachable on a phone; nothing is dropped without a control.
+const pageSize = (column: Column) => (column === 'Completed' ? 10 : 30);
+const projectPage = 6;
 
 /** The task's own status decides completion; a finished turn only says that turn ended.
  *  Turns are ordered active first, then newest finished first. */
@@ -49,11 +54,13 @@ function placeTask(
   asking: string | undefined,
   projectPaused: boolean,
   quotaReason?: string,
+  budgetReason?: string,
 ): [Column, string] {
   const active = turns.filter(live);
   const lead = active.find((j) => j.status === 'running') ?? active[0];
-  const held = active.find((j) => j.held);
+  const held = active.find((j) => j.held || (!j.eligible && j.budgetBlock));
   const latest = turns.find((j) => !live(j));
+  if (budgetReason) return [columns[2], budgetReason];
   if (!active.length && task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status))
     return [columns[3], task.closure?.reason ?? ''];
   if (task?.status === 'needs_decision') return [columns[2], 'Your manager needs input.'];
@@ -85,12 +92,18 @@ function QuarkAllowance({ provider, forecast }: { provider: ProviderCapacity; fo
         provider.windows.map((window) => (
           <div className="quark-account-window" key={window.id}>
             <span>{window.label}</span>
-            <strong>{Math.round(100 - window.usedPercent)}% left</strong>
+            <strong>
+              {Math.round(100 - window.usedPercent)}% left{stale && ' · old'}
+            </strong>
             <small>{resetLabel(window.resetsAt, now)}</small>
           </div>
         ))
       ) : (
-        <p>Allowance hasn’t been reported yet.</p>
+        <p>
+          {provider.observedAt
+            ? 'The last reading has no allowance windows.'
+            : 'Allowance hasn’t been reported yet.'}
+        </p>
       )}
       <small>
         {stale ? 'Last reading' : 'Updated'} {ago(provider.observedAt, now) ?? 'not available'}
@@ -123,7 +136,9 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
   const [chatOpen, setChatOpen] = useState(false);
   const [filter, setFilter] = useState('all');
   const [completedSearch, setCompletedSearch] = useState('');
-  const [completedLimit, setCompletedLimit] = useState(10);
+  const [limits, setLimits] = useState<Partial<Record<Column, number>>>({});
+  const [projectLimit, setProjectLimit] = useState(projectPage);
+  const limit = (column: Column) => limits[column] ?? pageSize(column);
   const budgetEdits = useRef<BudgetEdits>(new Map());
   const [, renderBudgets] = useState(0);
   const startKey = useRef(crypto.randomUUID());
@@ -186,14 +201,6 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
   );
   const state = data.snapshot.data;
   const focusedTask = useRef<string | null>(null);
-  useEffect(() => {
-    if (!taskId || focusedTask.current === taskId || !s || !state) return;
-    const card = document.getElementById(`quark-task-${taskId}`);
-    if (card) {
-      card.scrollIntoView({ block: 'center' });
-      focusedTask.current = taskId;
-    }
-  }, [taskId, s, state]);
   const runs = s
     ? [...s.queue.jobs, ...s.queue.history].filter((j) => j.agentId !== s.agentId)
     : [];
@@ -205,6 +212,7 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
     const project = projectOf(agent?.projectId);
     const paused =
       j.held ||
+      (!j.eligible && !!j.budgetBlock) ||
       project?.policy.paused ||
       ['failed', 'interrupted'].includes(j.status) ||
       agent?.status === 'waiting';
@@ -262,6 +270,8 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
       asking?.name,
       !!project?.policy.paused,
       quotaHolds?.[0]?.reason,
+      runs.find((j) => j.status === 'queued' && !j.eligible && j.budgetBlock?.targetId === taskId)
+        ?.reason,
     );
     const plan = lead?.estimate ?? task?.scheduling;
     return [
@@ -350,6 +360,35 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
       c.column !== 'Completed' ||
       `${c.project} ${c.title} ${c.model}`.toLowerCase().includes(completedSearch.toLowerCase()),
   );
+  const boardProjects = (s?.projects ?? []).filter((p) =>
+    state?.projects.some((project) => project.id === p.id && !project.internal),
+  );
+  // Budget and task links land on their card: reveal it behind a filter, search or bounded
+  // list, then move focus there so keyboard and screen-reader users arrive with the view.
+  useEffect(() => {
+    if (!taskId || focusedTask.current === taskId || !s || !state) return;
+    const card =
+      document.getElementById(`quark-task-${taskId}`) ??
+      document.getElementById(`quark-project-${taskId}`);
+    if (card) {
+      // A card taller than a landscape phone would lose its title when centred.
+      const tall = card.offsetHeight > (card.closest('.home-content')?.clientHeight ?? innerHeight);
+      card.scrollIntoView({ block: tall ? 'start' : 'center' });
+      card.focus({ preventScroll: true });
+      focusedTask.current = taskId;
+      return;
+    }
+    if (boardProjects.findIndex((p) => p.id === taskId) >= projectLimit)
+      return setProjectLimit(boardProjects.length);
+    const target = cards.find((c) => c.id === taskId);
+    if (!target) return;
+    const shown = target.column === 'Completed' ? 'Completed' : 'all';
+    if (filter !== shown && filter !== target.column) return setFilter(shown);
+    if (target.column === 'Completed' && !visibleCards.includes(target))
+      return setCompletedSearch('');
+    const index = visibleCards.filter((c) => c.column === target.column).indexOf(target);
+    if (index >= limit(target.column)) setLimits({ ...limits, [target.column]: index + 1 });
+  });
   return (
     <section className="flow-page activity-page quark-workspace">
       <FlowHeading label="QUARK" title="QUARK">
@@ -429,7 +468,8 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                   <p>
                     {s.modelLabel ??
                       state?.agents.find((a) => a.id === s.agentId)?.model ??
-                      (s.settings.model.model || `Latest ${s.settings.model.family}`)}{' '}
+                      (s.settings.model.model ||
+                        `Latest ${familyName(s.settings.model.family)}`)}{' '}
                     · decisions saved across conversations
                   </p>
                 </div>
@@ -537,26 +577,39 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
             </a>
           </div>
           <div className="quark-projects">
-            {s.projects
-              .filter((p) =>
-                state?.projects.some((project) => project.id === p.id && !project.internal),
-              )
-              .map((p) => (
-                <article key={p.id} className="quark-project-card">
-                  <a href={`#/project/${p.id}`}>
-                    <strong>{p.name}</strong>
-                    <ArrowUpRight size={15} />
-                  </a>
-                  <span>{p.policy.paused ? 'Paused' : `Priority weight ${p.policy.weight}`}</span>
-                  {p.policy.instruction && <small>{p.policy.instruction}</small>}
-                  {s.accounting.budgets
-                    .filter((b) => b.projectId === p.id && !b.taskId)
-                    .map(budgetSlider)}
-                  {!s.accounting.budgets.some((b) => b.projectId === p.id && !b.taskId) && (
-                    <small>Task budgets are on the cards below.</small>
-                  )}
-                </article>
-              ))}
+            {boardProjects.slice(0, projectLimit).map((p) => (
+              <article
+                key={p.id}
+                id={`quark-project-${p.id}`}
+                className={`quark-project-card${p.id === taskId ? ' is-target' : ''}`}
+                tabIndex={p.id === taskId ? -1 : undefined}
+              >
+                <a href={`#/project/${p.id}`}>
+                  <strong>{p.name}</strong>
+                  <ArrowUpRight size={15} />
+                </a>
+                <span>{p.policy.paused ? 'Paused' : `Priority weight ${p.policy.weight}`}</span>
+                {p.policy.instruction && <small>{p.policy.instruction}</small>}
+                {s.accounting.budgets
+                  .filter((b) => b.projectId === p.id && !b.taskId)
+                  .map(budgetSlider)}
+                {!s.accounting.budgets.some((b) => b.projectId === p.id && !b.taskId) && (
+                  <small>
+                    {s.accounting.budgets.some((b) => b.projectId === p.id)
+                      ? 'No project cap. Task budgets are on the cards below.'
+                      : 'No allowance cap set. The shared reserve still applies.'}
+                  </small>
+                )}
+              </article>
+            ))}
+            {boardProjects.length > projectLimit && (
+              <button
+                className="flow-button quark-more-projects"
+                onClick={() => setProjectLimit(boardProjects.length)}
+              >
+                Show all {boardProjects.length} projects
+              </button>
+            )}
           </div>
           <div className="flow-filters quark-filters" aria-label="Board status">
             {['all', ...columns].map((c) => (
@@ -579,7 +632,7 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                 placeholder="Project, task or model"
                 onChange={(event) => {
                   setCompletedSearch(event.target.value);
-                  setCompletedLimit(10);
+                  setLimits({ ...limits, Completed: undefined });
                 }}
               />
             </label>
@@ -601,9 +654,14 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                   <div className="quark-cards">
                     {visibleCards
                       .filter((c) => c.column === column)
-                      .slice(0, column === 'Completed' ? completedLimit : 30)
+                      .slice(0, limit(column))
                       .map((c) => (
-                        <article key={c.id} id={`quark-task-${c.id}`} className="quark-ticket">
+                        <article
+                          key={c.id}
+                          id={`quark-task-${c.id}`}
+                          className={`quark-ticket${c.id === taskId ? ' is-target' : ''}`}
+                          tabIndex={c.id === taskId ? -1 : undefined}
+                        >
                           <span className="quark-ticket-project">{c.project}</span>
                           <h4>
                             <a href={c.href}>{c.title}</a>
@@ -657,15 +715,21 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                           : 'Nothing here right now.'}
                       </p>
                     )}
-                    {column === 'Completed' &&
-                      visibleCards.filter((c) => c.column === column).length > completedLimit && (
-                        <button
-                          className="flow-button"
-                          onClick={() => setCompletedLimit((n) => n + 10)}
-                        >
-                          Show 10 more
-                        </button>
-                      )}
+                    {visibleCards.filter((c) => c.column === column).length > limit(column) && (
+                      <button
+                        className="flow-button"
+                        onClick={() =>
+                          setLimits({ ...limits, [column]: limit(column) + pageSize(column) })
+                        }
+                      >
+                        Show{' '}
+                        {Math.min(
+                          pageSize(column),
+                          visibleCards.filter((c) => c.column === column).length - limit(column),
+                        )}{' '}
+                        more
+                      </button>
+                    )}
                   </div>
                 </section>
               ))}
@@ -708,7 +772,7 @@ function CoordinatorSettings({ state, done }: { state: QuarkCoordinatorStatus; d
         if (alive) setCatalog(m);
       })
       .catch((e) => {
-        if (alive) setError(String(e));
+        if (alive) setError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       alive = false;
@@ -763,7 +827,14 @@ function CoordinatorSettings({ state, done }: { state: QuarkCoordinatorStatus; d
             })
           }
         >
-          <option value="">Latest {draft.model.family} (default)</option>
+          <option value="">
+            {latestFamily(catalog, draft.model.family)
+              ? `${latestFamily(catalog, draft.model.family)!.label} · latest available (default)`
+              : `Latest ${familyName(draft.model.family)} (default)`}
+          </option>
+          {draft.model.model && !catalog.some((m) => m.id === draft.model.model) && (
+            <option value={draft.model.model}>{draft.model.model} · saved choice</option>
+          )}
           {catalog.map((m) => (
             <option value={m.id} key={m.id}>
               {m.label}

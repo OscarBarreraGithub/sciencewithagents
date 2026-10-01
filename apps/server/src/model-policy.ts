@@ -269,6 +269,15 @@ export class ModelPolicy {
     request?: ExecutionRequest,
   ): Promise<Assignment> {
     const task = request?.taskClass ?? 'reasoning';
+    const minimum = taskTiers[task];
+    if (
+      request?.tier &&
+      (levels.indexOf(request.tier) < levels.indexOf(minimum) ||
+        (request.tier === 'uncle' && task !== 'bulk'))
+    )
+      throw new Conflict(
+        `${task} work requires ${tierLabels[minimum]} or above. Uncles are reserved for explicit simple bulk work.`,
+      );
     // Existing installations keep their saved central routing until a project preset is chosen.
     if (!this.store.getSetting(`project-workflow:${projectId}`)) return this.resolve(task, request);
     const workflow = projectWorkflow(this.store, projectId);
@@ -320,21 +329,42 @@ export class ModelPolicy {
         ...this.policy().models[provider][tier],
       };
     }
-    const family = choice.family;
     const catalog = await this.catalog(provider);
-    const pin = request?.model ?? choice.model;
-    const selected = pin
-      ? catalog.find((model) => model.id === pin)
-      : latestFamily(catalog, family);
-    if (!selected)
-      throw new Conflict(
-        `No available ${pin ?? family} model. Refresh models or change this project's model selection; no substitute was started.`,
-      );
-    const detected = Object.entries(modelFamilies).find(
-      ([name, value]) => value.provider === provider && latestFamily([selected], name),
-    );
+    const select = (candidate: typeof choice, exact?: string) => {
+      const pin = exact ?? candidate.model;
+      const selected = pin
+        ? catalog.find((model) => model.id === pin)
+        : latestFamily(catalog, candidate.family);
+      if (!selected)
+        throw new Conflict(
+          `No available ${pin ?? candidate.family} model. Refresh models or change this project's model selection; no substitute was started.`,
+        );
+      return selected;
+    };
+    const detectedTier = (model: Model) =>
+      Object.entries(modelFamilies).find(
+        ([name, value]) => value.provider === provider && latestFamily([model], name),
+      )?.[1].tier;
+    let selected = select(choice, request?.model ?? undefined);
+    let knownTier = detectedTier(selected);
+    if (request?.tier && knownTier && levels.indexOf(knownTier) < levels.indexOf(request.tier)) {
+      if (request.model)
+        throw new Conflict(
+          `The selected model is below the requested ${tierLabels[request.tier]} tier. Choose a stronger model or lower the requested tier.`,
+        );
+      choice = projectFamilyDefault(workflow, provider, request.tier) ?? {
+        provider,
+        ...this.policy().models[provider][request.tier],
+      };
+      selected = select(choice);
+      knownTier = detectedTier(selected);
+      if (knownTier && levels.indexOf(knownTier) < levels.indexOf(request.tier))
+        throw new Conflict(
+          `The selected model is below the requested ${tierLabels[request.tier]} tier. Choose a stronger model or lower the requested tier.`,
+        );
+    }
     // A caller's requested tier cannot promote a known lightweight model.
-    const tier = detected?.[1].tier ?? request?.tier ?? 'grad';
+    const tier = knownTier ?? request?.tier ?? 'grad';
     if (
       (purpose !== 'bulk' && tier === 'uncle') ||
       (purpose === 'review' && levels.indexOf(tier) < levels.indexOf('grad')) ||
@@ -353,10 +383,10 @@ export class ModelPolicy {
       tier,
       taskClass: task,
       difficulty: request?.difficulty ?? 'unspecified',
-      source: pin || request?.effort ? 'manager_selection' : 'model_policy',
+      source: request?.model || request?.effort ? 'manager_selection' : 'model_policy',
       reason:
         request?.reason ??
-        `${workflow.providerMix}, ${workflow.spending}: ${purpose}, latest available ${family}.`,
+        `${workflow.providerMix}, ${workflow.spending}: ${purpose}, latest available ${choice.family}.`,
       policyRevision: `${this.policy().revision}:${workflow.revision}`,
     });
   }

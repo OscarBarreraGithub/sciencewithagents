@@ -651,3 +651,230 @@ test('full-screen automatic snapshot keeps the fresh-reading guard and Stop retr
   await expect(chat.locator('.health-running')).toHaveCount(0);
   await expect(chat.getByRole('button', { name: 'Send message' })).toBeDisabled();
 });
+
+test('crowded readings keep long names, large groups and whole-computer CPU inside their panels', async ({
+  page,
+}) => {
+  const status = reading();
+  const latest = status.latest!;
+  // Schema maxima: 20 app groups of 100-character names and 100 jobs with 200-character projects.
+  latest.processCount = 4812;
+  latest.groups = Array.from({ length: 20 }, (_, i) => ({
+    name:
+      i % 2
+        ? `com.example.UnbrokenHelperProcessName${i}`.padEnd(100, 'X')
+        : `Very long app family ${i} with many words that should wrap neatly`.padEnd(100, ' w'),
+    processes: 2400 - i,
+    cpuPercent: i === 0 ? 12.5 : i === 1 ? null : 10 / (i + 2),
+    memoryBytes: (1200 - i * 40) * 1024 ** 3,
+    memoryChangeBytes: i % 3 ? -2048 * 1024 ** 2 : 9999 * 1024 ** 2,
+  }));
+  latest.jobs = Array.from({ length: 100 }, (_, i) => ({
+    id: randomUUID(),
+    projectId: i % 25 === 24 ? null : `20000000-0000-4000-8000-${String(i % 25).padStart(12, '0')}`,
+    projectName:
+      i % 25 === 24
+        ? null
+        : `Project ${i % 25} ${'with an extremely long title '.repeat(7)}`.slice(0, 200),
+    name: `Worker ${i} ${'Z'.repeat(90)}`.slice(0, 100),
+    kind: i % 2 ? 'local' : 'agent',
+    status: 'running',
+    processes: 1 + (i % 7),
+    cpuPercent: i % 10 === 0 ? null : 0.4 * (i % 9),
+    memoryBytes: (i + 1) * 64 * 1024 ** 2,
+    memoryChangeBytes: null,
+  }));
+  const { writes } = await fixture(page, status);
+  await page.goto('/#/resources');
+  const apps = page.getByRole('region', { name: 'Apps and processes' });
+  const projects = page.getByRole('region', { name: 'Projects and jobs' });
+  await expect(apps.locator('.health-row')).toHaveCount(20);
+  await expect(projects.locator('details.health-project')).toHaveCount(25);
+  // App CPU is already divided by all cores; one saturated core on 8 cores reads 12.5%.
+  await expect(
+    apps.getByText('4812 processes, grouped by app · CPU is a share of all 8 cores together'),
+  ).toBeVisible();
+  await expect(
+    projects.getByText('CPU is a share of all 8 cores together', { exact: false }),
+  ).toBeVisible();
+  await expect(apps.locator('.health-row').first().locator('> span').first()).toHaveText('13%');
+  await expect(
+    apps.getByText('+9999 MB since the last reading', { exact: false }).first(),
+  ).toBeVisible();
+  await expect(projects.getByText('Not in a project', { exact: true })).toBeVisible();
+  const projectBounds = (await projects.boundingBox())!;
+  expect(projectBounds.y + projectBounds.height).toBeLessThanOrEqual((await apps.boundingBox())!.y);
+  await projects.locator('details.health-project > summary').first().click();
+  await projects.locator('details.health-project > summary').last().click();
+  const escapes = await page.evaluate(() =>
+    [...document.querySelectorAll('.health-panel')].flatMap((panel) => {
+      const box = panel.getBoundingClientRect();
+      const scroll = panel.querySelector('.health-scroll')!;
+      return [...panel.querySelectorAll('.health-row')].flatMap((row) => {
+        const [name, cpu, memory] = [...row.children].map((c) => c.getBoundingClientRect());
+        const problems: string[] = [];
+        if (row.getBoundingClientRect().right > box.right + 0.5) problems.push('row');
+        if (name!.right > cpu!.left + 0.5 || cpu!.right > memory!.left + 0.5)
+          problems.push('overlap');
+        if ((row.lastElementChild as HTMLElement).scrollWidth > memory!.width + 1)
+          problems.push('memory');
+        if (scroll.scrollHeight <= scroll.clientHeight) problems.push('unbounded');
+        return problems.length ? [`${row.textContent?.slice(0, 40)}: ${problems}`] : [];
+      });
+    }),
+  );
+  expect(escapes).toEqual([]);
+  for (const panel of [apps, projects]) {
+    const height = await panel.locator('.health-scroll').evaluate((e) => e.clientHeight);
+    expect(height).toBeLessThanOrEqual(320);
+    await expect(panel.locator('.health-panel-hint')).not.toBeEmpty();
+  }
+  await apps.getByRole('button', { name: 'Memory', exact: true }).click();
+  await expect(apps.locator('.health-row').first()).toContainText('1200 GB');
+  expect(writes).toEqual([]);
+  await noHorizontalOverflow(page);
+  await mkdir('../../data/screenshots/resources', { recursive: true });
+  await page.screenshot({
+    path: `../../data/screenshots/resources/crowded-${test.info().project.name}.png`,
+    fullPage: true,
+    scale: 'css',
+  });
+});
+
+test('partial and out-of-range readings stay explicit instead of looking healthy', async ({
+  page,
+}) => {
+  const now = Date.now();
+  const status = reading(now);
+  status.findings = [];
+  // The QUARK machine reading went stale (null) while the process probe still answered.
+  status.latest = {
+    ...status.latest!,
+    machine: null,
+    hottestCorePercent: null,
+    memoryPressure: 'normal',
+  };
+  // Only readings from before a three-hour sleep remain.
+  status.history = Array.from({ length: 30 }, (_, i) =>
+    sample(now - 3 * 3600_000 - (29 - i) * 60_000),
+  );
+  const { writes } = await fixture(page, status);
+  await page.goto('/#/resources');
+  const snapshot = page.getByRole('region', { name: 'Right now' });
+  await expect(
+    snapshot.getByText('No detected pressure · some readings unavailable'),
+  ).toBeVisible();
+  await expect(snapshot.getByText('No resource pressure detected', { exact: true })).toHaveCount(0);
+  for (const label of ['CPU', 'Busiest core', 'Storage headroom'])
+    await expect(
+      snapshot.locator('.health-metric').filter({ hasText: label }).first().locator('strong'),
+    ).toHaveText('Not measured');
+  await expect(
+    page
+      .getByRole('region', { name: 'Apps and processes' })
+      .getByText('CPU is a share of the whole computer', {
+        exact: false,
+      }),
+  ).toBeVisible();
+  const trends = page.getByRole('region', { name: 'Trends', exact: true });
+  await expect(trends.locator('.health-plot')).toHaveCount(4);
+  await trends.getByRole('button', { name: '1 hour', exact: true }).click();
+  await expect(
+    trends.getByText('Fewer than two saved readings in the last 1 hour.', { exact: false }),
+  ).toBeVisible();
+  await trends.getByRole('button', { name: '24 hours', exact: true }).click();
+  await expect(trends.locator('.health-plot')).toHaveCount(4);
+  await expect(trends.getByText('30 saved readings over 29 minutes')).toBeVisible();
+  expect(writes).toEqual([]);
+  await noHorizontalOverflow(page);
+});
+
+test('a lost refresh keeps the saved reading labelled, retries, and never blocks a reachable assistant', async ({
+  page,
+}) => {
+  const status = reading();
+  const { writes } = await fixture(page, status);
+  let fail: 'none' | 'reset' | 'error' = 'none';
+  await page.route('**/api/resources', (route) =>
+    fail === 'reset'
+      ? route.abort('connectionreset')
+      : fail === 'error'
+        ? route.fulfill({ status: 502, json: { error: 'Bad gateway' } })
+        : route.fulfill({ json: status }),
+  );
+  await page.goto('/#/resources');
+  const snapshot = page.getByRole('region', { name: 'Right now' });
+  await expect(snapshot.getByRole('status')).toContainText('Memory is under pressure');
+  fail = 'reset';
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(
+    snapshot.getByText('Not current: this page could not reach the watcher', { exact: false }),
+  ).toBeVisible();
+  await expect(
+    snapshot.getByText('The figures below are the saved reading, not the present.'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Apps and processes' }).getByText('Google Chrome'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Open Resource assistant' }).click();
+  const chat = page.getByRole('dialog', { name: 'Resource assistant conversation' });
+  await chat.getByRole('textbox', { name: 'Message Resource assistant' }).fill('Is it still slow?');
+  // Owner questions may inspect current conditions even when cached readings are old.
+  await expect(chat.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  await expect(chat.getByText('The saved readings may be old.', { exact: false })).toBeVisible();
+  await chat.getByRole('button', { name: 'Computer health', exact: true }).click();
+  fail = 'error';
+  await snapshot.getByRole('button', { name: 'Retry reading' }).click();
+  await expect(snapshot.getByRole('button', { name: 'Retry reading' })).toBeVisible();
+  fail = 'none';
+  await snapshot.getByRole('button', { name: 'Retry reading' }).click();
+  await expect(snapshot.getByRole('button', { name: 'Retry reading' })).toHaveCount(0);
+  await expect(snapshot.getByText('Updated', { exact: false })).toBeVisible();
+  expect(writes).toEqual([]);
+});
+
+test('first-run failures explain the blocked assistant and keep provider choice usable', async ({
+  page,
+}) => {
+  const status = reading();
+  const { writes } = await fixture(page, status);
+  let reachable = false;
+  await page.route('**/api/resources', (route) =>
+    reachable ? route.fulfill({ json: status }) : route.abort('connectionrefused'),
+  );
+  await page.route('**/api/model-policy', (route) =>
+    route.fulfill({ status: 500, json: { error: 'Model settings unavailable.' } }),
+  );
+  await page.goto('/#/resources/chat');
+  const chat = page.getByRole('dialog', { name: 'Resource assistant conversation' });
+  await expect(
+    chat.getByText('Computer health on this computer could not be reached.', { exact: false }),
+  ).toBeVisible();
+  await expect(chat.getByText('Connecting to computer health…')).toHaveCount(0);
+  await chat.getByRole('button', { name: 'Computer health', exact: true }).click();
+  await expect(page.getByText('Could not reach the watcher on this computer.')).toBeVisible();
+  reachable = true;
+  await page.getByRole('button', { name: 'Retry reading' }).click();
+  await expect(page.getByRole('region', { name: 'Right now' }).getByRole('status')).toContainText(
+    'Memory is under pressure',
+  );
+  await page.getByRole('button', { name: 'Open Resource assistant' }).click();
+  await expect(
+    chat.getByText('Model settings could not be loaded. Choose Ask Codex or Ask Claude above.'),
+  ).toBeVisible();
+  await expect(chat.getByRole('radio', { name: 'Ask Codex', exact: true })).not.toBeChecked();
+  await chat.getByRole('radio', { name: 'Ask Claude', exact: true }).click();
+  await expect(chat.getByRole('combobox', { name: 'Model', exact: true })).toBeEnabled();
+  await expect(
+    chat
+      .getByRole('combobox', { name: 'Model', exact: true })
+      .locator('option', { hasText: 'Opus example' }),
+  ).toHaveCount(1);
+  await chat.getByRole('textbox', { name: 'Message Resource assistant' }).fill('Why is it slow?');
+  await expect(chat.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  await expect(
+    chat.getByText('Model settings are unavailable; the central default will be used.'),
+  ).toBeVisible();
+  expect(writes).toEqual([]);
+  await noHorizontalOverflow(page);
+});

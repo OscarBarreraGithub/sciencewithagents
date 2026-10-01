@@ -476,6 +476,12 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
                 failIfUnavailable: true,
                 autoAllowBashIfSandboxed: true,
                 allowUnsandboxedCommands: false,
+                filesystem: {
+                  disabled: false,
+                  // Plan mode blocks file-edit tools, but sandboxed Bash still
+                  // inherits a writable cwd unless the OS sandbox denies it.
+                  ...(options.role === 'read-only' ? { denyWrite: [options.cwd] } : {}),
+                },
                 network: { allowedDomains: ['*'] },
               },
             }),
@@ -485,7 +491,14 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
     options.model,
     ...(options.effort === providerDefaultEffort ? [] : ['--effort', options.effort]),
     options.inheritNative ? '--append-system-prompt' : '--system-prompt',
-    options.charter,
+    [
+      options.charter,
+      ...(options.inheritNative && options.unattended && options.role === 'read-only'
+        ? [
+            'Use the registered Dock coordination tools directly without exiting plan mode or asking for routine approval. They enforce your host assignment scope; recording an assigned review verdict is authorized coordination even in plan mode.',
+          ]
+        : []),
+    ].join('\n\n'),
     ...(options.forkFrom
       ? [
           `--resume=${options.forkFrom.sessionId}`,
@@ -891,6 +904,25 @@ export class ClaudeSession extends EventEmitter {
               ? request.description.slice(0, 2000)
               : `Claude requests ${name}`,
         };
+        // Native plan mode asks before non-read-only MCP calls, ahead of
+        // --allowedTools. Resolve only that mode floor for our registered SDK
+        // tools; their invocation still goes through the scoped host handler.
+        // Native ask rules/user interaction and all other servers stay denied.
+        if (
+          this.options.inheritNative &&
+          this.options.unattended &&
+          request.decision_reason_type === 'mode' &&
+          request.matched_ask_rule === undefined &&
+          (request.requires_user_interaction === undefined ||
+            request.requires_user_interaction === false) &&
+          z
+            .object({ name: z.literal('dock'), source: z.literal('sdk') })
+            .safeParse(request.mcp_server).success &&
+          this.options.tools.some((tool) => name === `mcp__dock__${tool.name}`)
+        ) {
+          this.reply(key, { behavior: 'allow', updatedInput: permission.input });
+          return;
+        }
         if (name === 'AskUserQuestion') {
           try {
             claudeQuestions(permission.input);

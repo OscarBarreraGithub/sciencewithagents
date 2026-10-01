@@ -47,6 +47,7 @@ const intervalSchema = z.object({
   label: z.string(),
   resetsAt: z.string().nullable(),
   observedAt: z.string(),
+  baseline: z.boolean().optional(),
   delta: z.number(),
   unattributed: z.number(),
   allocations: z.array(allocation),
@@ -196,14 +197,14 @@ export class Quark {
       return next;
     });
   }
-  runs(recent = false) {
+  runs(recent = false, since = this.clock() - 120_000) {
     return this.store.db
       .prepare(
         recent
           ? "SELECT body FROM quark_runs WHERE json_extract(body,'$.finishedAt') IS NULL OR json_extract(body,'$.finishedAt')>?"
           : 'SELECT body FROM quark_runs',
       )
-      .all(...(recent ? [stamp(this.clock() - 120_000)] : []))
+      .all(...(recent ? [stamp(since)] : []))
       .map((r) => quarkRunSchema.parse(JSON.parse(String(r.body))));
   }
   private saveRun(run: QuarkRun) {
@@ -398,25 +399,33 @@ export class Quark {
   private reconcileAllowance(provider: 'codex' | 'claude') {
     const capacity = readCapacity(this.store, provider, this.clock());
     if (capacity.stale || !capacity.observedAt || capacity.state !== 'ready') return;
-    const runs = this.runs(true).filter((r) => r.provider === provider && !r.nativeRootId);
     for (const w of capacity.windows) {
       if (w.scope === 'other') continue;
       const key = `quark:meter:${provider}:${w.id}`,
         parsed = meterSchema.safeParse(this.store.getSetting(key));
       const previous = parsed.success ? parsed.data : null;
       if (previous && Date.parse(previous.observedAt) >= Date.parse(capacity.observedAt)) continue;
+      const gap =
+        !!previous &&
+        Date.parse(capacity.observedAt) - Date.parse(previous.observedAt) >
+          capacityMaxAge(provider);
+      // A completed turn can precede the collector's next report by more than
+      // two minutes (Claude normally polls every five). Retain that interval's
+      // work, including across restart, without reopening old history on gaps.
+      const runs = this.runs(
+        true,
+        previous && !gap ? Date.parse(previous.observedAt) - 120_000 : this.clock() - 120_000,
+      ).filter((r) => r.provider === provider);
       const matching = runs.filter(
-        (r) => w.scope !== 'model' || (!!w.model && r.model?.toLowerCase().includes(w.model)),
+        (r) =>
+          !r.nativeRootId &&
+          (w.scope !== 'model' || (!!w.model && r.model?.toLowerCase().includes(w.model))),
       );
       const scores = Object.fromEntries(matching.map((r) => [r.runId, this.score(r)]));
       const same =
         previous &&
         sameAllowanceReset(previous.resetsAt, w.resetsAt) &&
         w.usedPercent >= previous.usedPercent;
-      const gap =
-        !!previous &&
-        Date.parse(capacity.observedAt) - Date.parse(previous.observedAt) >
-          capacityMaxAge(provider);
       const pending: Record<string, number> = same && !gap ? { ...previous.pending } : {};
       for (const id of Object.keys(pending)) if (!(id in scores)) delete pending[id];
       if (same && !gap)
@@ -466,6 +475,7 @@ export class Quark {
                 label: w.label,
                 resetsAt: w.resetsAt,
                 observedAt: capacity.observedAt,
+                baseline: !same,
                 delta,
                 unattributed: allocations.length ? 0 : delta,
                 allocations,
@@ -524,7 +534,7 @@ export class Quark {
               !r.observedModels ||
               (r.observedModels.length === 1 && r.observedModels[0] === r.model),
           ) &&
-          !this.runs(true).some(
+          !runs.some(
             (r) => r.nativeRootId && contributors.some((c) => c.agentId === r.nativeRootId),
           )
         ) {
@@ -747,12 +757,30 @@ export class Quark {
     admitting = false,
     ignoreHold = false,
     ignoreBudgetPause = ignoreHold,
-  ): { cause: QuotaHold['cause']; reason: string } | null {
+  ): { cause: QuotaHold['cause']; reason: string; budgetTargetId?: string } | null {
     const a = this.store.agent(run.agentId),
       rootId = a.nativeRootId ?? a.id;
     if (!ignoreHold) {
       const hold = this.holds().find((h) => h.agentId === rootId);
-      if (hold) return { cause: hold.cause, reason: `Paused by QUARK: ${hold.reason}` };
+      if (hold) {
+        const budget =
+          hold.cause === 'budget'
+            ? this.budgets().find(
+                (b) =>
+                  this.applies(b, {
+                    projectId: a.projectId,
+                    provider: a.provider,
+                    model: a.model,
+                    taskAncestors: this.taskIds(run),
+                  }) && this.budgetStatus(b).cause === 'budget',
+              )
+            : undefined;
+        return {
+          cause: hold.cause,
+          reason: `Paused by QUARK: ${hold.reason}`,
+          ...(budget ? { budgetTargetId: budget.taskId ?? a.projectId } : {}),
+        };
+      }
     }
     if (
       (this.store.getSetting(`quark:project:${a.projectId}`) as { paused?: boolean } | null)?.paused
@@ -775,7 +803,12 @@ export class Quark {
     // A known exhausted grant outranks a telemetry outage. It must never become
     // an automatically recoverable hold when the collector fails at the same time.
     const exhausted = budgets.find((b) => b.cause === 'budget');
-    if (exhausted) return { cause: 'budget', reason: exhausted.reason! };
+    if (exhausted)
+      return {
+        cause: 'budget',
+        reason: exhausted.reason!,
+        budgetTargetId: exhausted.taskId ?? a.projectId,
+      };
     const cap = readCapacity(this.store, a.provider, this.clock());
     const windows = cap.windows.filter(
       (w) => w.scope === 'general' || (w.model && a.model?.toLowerCase().includes(w.model)),
@@ -820,6 +853,7 @@ export class Quark {
         return {
           cause: 'budget',
           reason: 'This turn would exceed the remaining allowance budget and stopping buffer.',
+          budgetTargetId: b.taskId ?? a.projectId,
         };
     }
     return null;
@@ -1037,12 +1071,16 @@ export class Quark {
     for (const provider of ['codex', 'claude'] as const) {
       const capacity = readCapacity(this.store, provider, this.clock());
       for (const window of capacity.windows) {
-        const samples = intervals.filter(
+        const matching = intervals.filter(
           (row) =>
             row.provider === provider &&
             row.windowId === window.id &&
             sameAllowanceReset(row.resetsAt, window.resetsAt),
         );
+        // A regressing reading also starts a new baseline, even if the provider
+        // omits a reset time or reports the same one. Never reuse its old chart.
+        const baseline = matching.findLastIndex((row) => row.baseline);
+        const samples = baseline >= 0 ? matching.slice(baseline) : matching;
         const from = samples[0]?.observedAt ?? null,
           to = samples.at(-1)?.observedAt ?? null;
         const hours = from && to ? (Date.parse(to) - Date.parse(from)) / 3600_000 : 0;

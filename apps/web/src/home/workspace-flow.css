@@ -1777,6 +1777,11 @@ button.chat-folder:disabled {
 .chat-pane .flow-chat-main .composer-toolbar {
   padding: 6px 0 0;
 }
+/* If the tool row wraps on a phone, Send stays on the trailing edge. */
+.flow-chat-main .composer-toolbar > div:last-child {
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}
 .chat-pane .flow-chat-main .send-button {
   border-radius: 50%;
 }
@@ -1968,4 +1973,59 @@ button.chat-folder:disabled {
   .main-chat.has-selection .chat-editor .mirror-header {
     padding-left: 52px;
   }
+}
+/* A landscape phone keyboard leaves under 300px: the header, the 48px message floor and the
+   toolbar take most of it, so a 30% textarea would push Send below the visible viewport. */
+@media (max-height: 500px) and (pointer: coarse) {
+  .main-chat.has-selection .chat-pane .flow-chat-main .composer textarea {
+    max-height: min(calc(var(--home-visible-height, 100dvh) * 0.24), 80px);
+  }
+}
+/* Conversation sets data-fit when Send would still sit below a short clipping pane with the
+   textarea at its floor (zoomed text with an open keyboard). The tools stay on one row that
+   scrolls sideways with Stop and Send pinned at the end; next the message floor gives way. */
+.flow-chat-main .composer[data-fit] .composer-toolbar {
+  position: relative;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding-top: 4px;
+}
+.flow-chat-main .composer[data-fit] .composer-toolbar > div {
+  flex-wrap: nowrap;
+}
+.flow-chat-main .composer[data-fit] .composer-toolbar > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.flow-chat-main .composer[data-fit] .composer-toolbar > div > * {
+  flex: none;
+}
+.flow-chat-main .composer[data-fit] .composer-priority {
+  height: 44px;
+}
+.flow-chat-main .composer[data-fit] .composer-notepad > span {
+  display: none;
+}
+/* The note opens above the toolbar instead of being clipped by the scrolling row. */
+.main-chat.has-selection .chat-pane .composer.draft-steady[data-fit] .draft-saved {
+  position: static;
+}
+.flow-chat-main:has(> .composer[data-fit='tight']) > .conversation.conversation {
+  min-height: 0;
+}
+.chat-pane:has(.composer[data-fit='tight']) .chat-pane-meta {
+  display: none;
+}
+.main-chat.has-selection .chat-pane .flow-chat-main .composer[data-fit='tight'],
+.assistant-fullscreen .flow-chat-main .composer[data-fit='tight'] {
+  padding-top: 2px;
+  padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px));
+}
+.flow-chat-main .composer[data-fit='tight'] .composer-toolbar {
+  padding-top: 2px;
+}
+.flow-chat-main .composer[data-fit='tight'] > .draft-handoff > p.muted:first-child {
+  display: none;
 }

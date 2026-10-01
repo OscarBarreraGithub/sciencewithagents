@@ -201,8 +201,9 @@ export function Conversation({
   const pinned = useRef(true);
   const lastTop = useRef(0);
   const shownApproval = useRef<string | null>(null);
-  const [older, setOlder] = useState<Entry[]>([]);
-  const [hasMore, setHasMore] = useState(true);
+  const [older, setOlder] = useState<AgentDetail | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const historyRequest = useRef(0);
   useEffect(() => {
     const container = scroll.current;
     if (!container) return;
@@ -214,9 +215,16 @@ export function Conversation({
           container.scrollTop +=
             card.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
       }
-    } else if (pinned.current) container.scrollTop = container.scrollHeight;
+    } else if (!older && pinned.current) container.scrollTop = container.scrollHeight;
     shownApproval.current = first;
-  }, [data, approvals]);
+  }, [data, approvals, older]);
+  useLayoutEffect(() => {
+    const container = scroll.current;
+    if (!container) return;
+    pinned.current = !older;
+    container.scrollTop = older ? 0 : container.scrollHeight;
+    lastTop.current = container.scrollTop;
+  }, [older]);
   useEffect(() => {
     const container = scroll.current;
     if (!container) return;
@@ -230,13 +238,19 @@ export function Conversation({
     if (container.firstElementChild) observer.observe(container.firstElementChild);
     return () => observer.disconnect();
   }, []);
-  const entries = [...older, ...(data?.entries ?? [])]
+  const entries = (older?.entries ?? data?.entries ?? [])
     .map((e) => (formatEntry ? formatEntry(e) : e))
     .filter((e, i, all) => all.findIndex((v) => v.id === e.id) === i);
   const load = async () => {
-    const result = await detail(agent.id, entries[0]?.id);
-    setOlder((old) => [...result.entries, ...old]);
-    setHasMore(result.hasMore);
+    if (loadingHistory) return;
+    const request = ++historyRequest.current;
+    setLoadingHistory(true);
+    try {
+      const result = await detail(agent.id, entries[0]?.id);
+      if (request === historyRequest.current) setOlder(result);
+    } finally {
+      if (request === historyRequest.current) setLoadingHistory(false);
+    }
   };
   return (
     <div
@@ -262,8 +276,20 @@ export function Conversation({
           {new Date(agent.createdAt).toLocaleDateString([], { month: 'long', day: 'numeric' })}
           <span />
         </div>
-        {data?.hasMore && hasMore && (
-          <button className="load-history" onClick={() => void act(load)}>
+        {older && (
+          <button
+            className="load-history"
+            onClick={() => {
+              historyRequest.current++;
+              setLoadingHistory(false);
+              setOlder(null);
+            }}
+          >
+            Latest messages
+          </button>
+        )}
+        {(older?.hasMore ?? data?.hasMore) && (
+          <button className="load-history" disabled={loadingHistory} onClick={() => void act(load)}>
             Load earlier messages
           </button>
         )}
@@ -294,7 +320,7 @@ export function Conversation({
               <ToolGroup
                 key={row[0]!.id}
                 entries={row}
-                working={agent.status === 'running' && index === rows.length - 1}
+                working={!older && agent.status === 'running' && index === rows.length - 1}
               />
             );
           const entry = row;
@@ -527,7 +553,7 @@ export function Composer({
         submitted?: { text: string; steer: boolean } | null;
       }>(`/agents/${agent.id}/receipts/${pending.key}`)
         .then(async (value) => {
-          if (!active) return;
+          if (!active || retry.current?.key !== pending.key) return;
           const acknowledged =
             value.submitted ?? (value.run ? { text: value.run.text, steer: false } : null);
           if (
@@ -540,6 +566,9 @@ export function Composer({
             setText('');
             await draft.flush();
           }
+          if (!active || retry.current?.key !== pending.key) return;
+          const saved = receiptStorage.getItem(`${storageKey}:pending`);
+          if (saved && (JSON.parse(saved) as PendingMessage).key !== pending.key) return;
           receiptStorage.removeItem(`${storageKey}:pending`);
           retry.current = null;
           setUnknownLegacyMode(false);
@@ -685,8 +714,35 @@ export function Composer({
     const area = textarea.current;
     if (!area) return;
     area.style.height = 'auto';
-    const limit = Number.parseFloat(getComputedStyle(area).maxHeight);
+    const style = getComputedStyle(area);
+    let limit = Number.parseFloat(style.maxHeight);
     const wanted = area.scrollHeight + 2;
+    // A short keyboard or zoomed phone can leave less room than the percentage cap.
+    // In a clipping chat pane, stop where Send would pass the pane's bottom edge.
+    const composer = area.parentElement;
+    const pane = composer?.parentElement;
+    const paneStyle = pane && getComputedStyle(pane);
+    if (composer && pane && paneStyle && /hidden|clip/.test(paneStyle.overflowY)) {
+      const floor = Number.parseFloat(style.minHeight) || 0;
+      const tried = Number.isFinite(limit) ? Math.min(wanted, limit) : wanted;
+      const bottom =
+        pane.getBoundingClientRect().bottom - Number.parseFloat(paneStyle.borderBottomWidth);
+      const over = (height: number) => {
+        area.style.height = `${height}px`;
+        return composer.getBoundingClientRect().bottom - bottom;
+      };
+      // Zoomed text with an open keyboard can hide Send even at the smallest textarea.
+      // Then fold the toolbar into one row, and next give up the message floor.
+      // Start from the ordinary layout each time so a closing keyboard restores it.
+      delete composer.dataset.fit;
+      if (over(tried) > 0.5)
+        for (const fit of ['compact', 'tight']) {
+          if (over(floor) <= 0.5) break;
+          composer.dataset.fit = fit;
+        }
+      const excess = over(tried);
+      if (excess > 0.5) limit = Math.max(floor, Math.floor(tried - excess));
+    }
     const capped = Number.isFinite(limit) && wanted > limit;
     area.style.height = `${capped ? limit : wanted}px`;
     area.style.overflowY = capped ? 'auto' : 'hidden';

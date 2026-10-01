@@ -145,6 +145,7 @@ function restore(): Saved {
 export function HealthAssistant({
   status,
   stale,
+  unreachable,
   modelsState,
   refresh,
   agentId,
@@ -154,6 +155,7 @@ export function HealthAssistant({
 }: {
   status: ResourceStatus | null;
   stale: boolean;
+  unreachable: boolean;
   modelsState: HealthModels;
   refresh: () => void;
   agentId?: string;
@@ -257,13 +259,17 @@ export function HealthAssistant({
     ? identity.mode === 'snapshot' && identity.reason !== 'asked'
     : !!primaryCheck && primaryCheck.reason !== 'asked';
   const blocked = !status
-    ? 'Connecting to computer health…'
+    ? unreachable
+      ? 'Computer health on this computer could not be reached. Retry reading on Computer health.'
+      : 'Connecting to computer health…'
     : stale && snapshotOnly
       ? 'Waiting for a fresh health reading for this automatic check.'
       : running
         ? 'One check at a time. A check is queued or running.'
         : !provider
-          ? 'Loading the assistant’s provider…'
+          ? modelsState.error
+            ? 'Model settings could not be loaded. Choose Ask Codex or Ask Claude above.'
+            : 'Loading the assistant’s provider…'
           : '';
   const send = async (question: string, key: string) => {
     const known = new Set(checks.map((c) => c.id));

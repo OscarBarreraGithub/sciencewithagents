@@ -1084,7 +1084,7 @@ describe('Claude uses the shared runtime without Codex protocol substitution', (
     ).resolves.toMatchObject({
       provider: 'codex',
       model: 'demo',
-      assignment: { tier: 'grad', policyRevision: '0' },
+      assignment: { tier: 'grad', policyRevision: '0:0' },
     });
     expect(store.agents()).toHaveLength(2);
     expect(store.runs().filter((r) => r.agentId !== manager)).toHaveLength(1);

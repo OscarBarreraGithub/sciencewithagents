@@ -290,6 +290,14 @@ export class MirrorConnection {
           object(await this.request('thread/read', { threadId, includeTurns: true })).thread,
         );
         if (this.threadId !== threadId) return this.state;
+        // Native metadata can change after the picker ran. Provenance must also
+        // win at the read/write boundary, including a restored shared selection.
+        if (isBackgroundCodexThread(thread)) {
+          await this.select(null);
+          throw new Error(
+            'This is a background helper. Choose a personal conversation in VS Code to share it.',
+          );
+        }
         if (thread.id !== threadId || !Array.isArray(thread.turns))
           throw new Error(
             'Codex did not return the complete saved transcript. Use VS Code; no partial history is presented as complete.',

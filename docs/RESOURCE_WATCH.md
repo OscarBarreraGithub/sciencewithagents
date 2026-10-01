@@ -17,7 +17,7 @@ Model settings and the other core workspace destinations are connected; see FEAT
 - **Swapping now, allocated swap and compression:** sustained movement to disk is a useful
   warning; existing swap and compression alone are not proof of a problem.
 - **Apps as groups:** Chrome and editor helpers roll up under their enclosing app. Show
-  measured interval CPU, summed resident memory, process count and change since the last
+  measured interval CPU (a share of all cores together), summed resident memory, process count and change since the last
   sample. Many helpers are normal. RSS can double-count shared pages and omit compression;
   it is not exact physical memory attribution or proof of a leak.
 - **Storage headroom and QUARK context:** free space on the workspace volume, running/waiting

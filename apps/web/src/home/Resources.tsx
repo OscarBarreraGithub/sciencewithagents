@@ -50,6 +50,9 @@ export function ResourceSummary({ reading }: { reading: HomeData['resources'] })
   );
 }
 
+// Without the machine reading, CPU, memory and storage pressure cannot have been checked.
+const partial = (sample: ResourceSample) => sample.memoryPressure === 'unknown' || !sample.machine;
+
 function Metric({
   label,
   value,
@@ -117,7 +120,7 @@ function Snapshot({ reading, now }: { reading: HomeData['resources']; now: numbe
               ? 'Waiting for fresh readings'
               : pressure
                 ? findings[0]!.title
-                : sample?.memoryPressure === 'unknown'
+                : sample && partial(sample)
                   ? 'No detected pressure · some readings unavailable'
                   : 'No resource pressure detected'}
           </strong>
@@ -191,6 +194,11 @@ function Snapshot({ reading, now }: { reading: HomeData['resources']; now: numbe
   );
 }
 
+const cpuBasis = (sample: ResourceSample | null) =>
+  sample?.machine
+    ? `CPU is a share of all ${sample.machine.cpuCount} cores together`
+    : 'CPU is a share of the whole computer';
+
 function Apps({ sample }: { sample: ResourceSample | null }) {
   const [order, setOrder] = useState<'cpu' | 'memory'>('cpu');
   const scroll = useRef<HTMLDivElement>(null);
@@ -207,7 +215,7 @@ function Apps({ sample }: { sample: ResourceSample | null }) {
           <p>
             {sample?.processCount == null
               ? 'App readings unavailable'
-              : `${sample.processCount} processes, grouped by app`}
+              : `${sample.processCount} processes, grouped by app · ${cpuBasis(sample)}`}
           </p>
         </div>
         <div className="health-segmented" role="group" aria-label="Sort apps by">
@@ -301,7 +309,7 @@ function Projects({ sample }: { sample: ResourceSample | null }) {
       <div className="health-section-heading">
         <div>
           <h2 id="health-projects">Projects and jobs</h2>
-          <p>Measured use by app-managed agents and local jobs</p>
+          <p>Measured use by app-managed agents and local jobs · {cpuBasis(sample)}</p>
         </div>
         <a className="health-link" href="#/work">
           Compare in QUARK <ArrowUpRight size={15} />
@@ -539,6 +547,7 @@ export function Resources({ reading }: { reading: HomeData['resources'] }) {
           <HealthAssistant
             status={status}
             stale={!!stale}
+            unreachable={reading.error && !status}
             modelsState={modelsState}
             refresh={reading.retry}
             agentId={chatTarget === 'chat' ? undefined : chatTarget}

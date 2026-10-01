@@ -19,6 +19,24 @@ export const standardToolDirectories = () =>
 export const pathDirectories = (value = process.env.PATH ?? '') => [
   ...new Set(value.split(delimiter).filter((path) => isAbsolute(path) && !path.includes('\0'))),
 ];
+async function stableInstalledEntry(path) {
+  const entry = resolve(path);
+  const brew = /^(.*)\/Cellar\/([^/]+)\/[^/]+\/bin\/([^/]+)$/.exec(entry);
+  if (!brew) return entry;
+  const target = await realpath(entry);
+  for (const alias of [
+    join(brew[1], 'bin', brew[3]),
+    join(brew[1], 'opt', brew[2], 'bin', brew[3]),
+  ]) {
+    try {
+      await access(alias, constants.X_OK);
+      if ((await stat(alias)).isFile() && (await realpath(alias)) === target) return alias;
+    } catch {
+      /* A missing or different alias does not authorize selecting another runtime. */
+    }
+  }
+  return entry;
+}
 export async function executableEntry(
   command,
   { label = 'executable', required = false, directories = pathDirectories() } = {},
@@ -37,7 +55,8 @@ export async function executableEntry(
   for (const candidate of candidates) {
     try {
       await access(candidate, constants.X_OK);
-      if ((await stat(candidate)).isFile()) return resolve(candidate);
+      if ((await stat(candidate)).isFile())
+        return isAbsolute(command) ? resolve(candidate) : await stableInstalledEntry(candidate);
     } catch {
       /* Try another installed entry. No environment or credentials are printed. */
     }
@@ -52,9 +71,10 @@ export async function nodeEntry(explicit) {
   // Prefer an installed stable alias only when it resolves to this exact runtime.
   for (const directory of [...pathDirectories(), ...standardToolDirectories()]) {
     const candidate = await executableEntry(join(directory, 'node'));
-    if (candidate && (await realpath(candidate)) === running) return candidate;
+    if (candidate && (await realpath(candidate)) === running)
+      return stableInstalledEntry(candidate);
   }
-  return resolve(process.execPath);
+  return stableInstalledEntry(process.execPath);
 }
 
 export async function selectedTool(args, flag, environment, fallback, label) {

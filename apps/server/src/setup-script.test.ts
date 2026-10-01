@@ -15,6 +15,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { repoRoot } from './paths.js';
 const exec = promisify(execFile);
+it('verifies stable Homebrew discovery and preservation of explicit executable choices', async () => {
+  await exec(process.execPath, ['--test', join(repoRoot, 'scripts/executables.test.mjs')], {
+    timeout: 10_000,
+  });
+});
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });

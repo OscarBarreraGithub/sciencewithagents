@@ -167,20 +167,211 @@ const mcp = (method: string, params: unknown = {}, requestId = randomUUID()) => 
 });
 
 describe('Claude native launch policy', () => {
+  it.each(['manager', 'read-only', 'implementer'] as const)(
+    'lets a native %s use registered Dock coordination in plan mode without exiting it',
+    async (role) => {
+      const inspect = vi.fn(async () => ({
+        content: [{ type: 'text' as const, text: 'Task diff' }],
+      }));
+      const review = vi.fn(async () => ({
+        content: [{ type: 'text' as const, text: 'Verdict saved' }],
+      }));
+      const f = fixture(
+        options({
+          inheritNative: true,
+          unattended: true,
+          role,
+          tools: [
+            {
+              name: 'dock_inspect',
+              description: 'Inspect',
+              inputSchema: { type: 'object' },
+              invoke: inspect,
+            },
+            {
+              name: 'dock_review',
+              description: 'Review',
+              inputSchema: { type: 'object' },
+              invoke: review,
+            },
+          ],
+        }),
+      );
+      await f.submit();
+      for (const [name, input, invoke] of [
+        ['dock_inspect', { taskId: 'assigned-task', changes: true }, inspect],
+        [
+          'dock_review',
+          {
+            verdict: 'changes_requested',
+            findings: 'Exactness issue',
+            evidence: 'Decimal counterexample',
+          },
+          review,
+        ],
+      ] as const) {
+        const original = permission();
+        f.emit({
+          ...original,
+          request: {
+            ...original.request,
+            tool_name: `mcp__dock__${name}`,
+            input,
+            mcp_server: { name: 'dock', source: 'sdk' },
+            decision_reason_type: 'mode',
+            decision_reason: `Cannot call mcp__dock__${name} while in plan mode.`,
+          },
+        });
+        expect(f.writes.at(-1)?.response.response).toEqual({
+          behavior: 'allow',
+          updatedInput: input,
+        });
+        expect(invoke).not.toHaveBeenCalled(); // Approval is separate from the scoped host call.
+        f.emit(mcp('tools/call', { name, arguments: input }));
+        await tick();
+        expect(invoke).toHaveBeenCalledWith(
+          input,
+          expect.objectContaining({ sessionId: f.config.sessionId }),
+        );
+      }
+      expect(f.events.some((event) => event.type === 'permission')).toBe(false);
+      if (role === 'read-only') {
+        const args = claudeArguments(f.config);
+        expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan');
+        expect(args[args.indexOf('--append-system-prompt') + 1]).toContain(
+          'without exiting plan mode',
+        );
+      }
+    },
+  );
+  it('keeps explicit native asks, other MCP identities, filesystem writes and plan exits denied', async () => {
+    const f = fixture(
+      options({
+        inheritNative: true,
+        unattended: true,
+        role: 'read-only',
+        tools: [
+          {
+            name: 'dock_review',
+            description: 'Review',
+            inputSchema: { type: 'object' },
+            invoke: vi.fn(),
+          },
+        ],
+      }),
+    );
+    await f.submit();
+    const trusted = {
+      tool_name: 'mcp__dock__dock_review',
+      input: { taskId: 'task' },
+      mcp_server: { name: 'dock', source: 'sdk' },
+      decision_reason_type: 'mode',
+    };
+    for (const change of [
+      { decision_reason_type: 'rule' },
+      { matched_ask_rule: { source: 'userSettings', tool_name: 'mcp__dock__dock_review' } },
+      { requires_user_interaction: true },
+      { decision_reason_type: undefined },
+      { mcp_server: undefined },
+      { mcp_server: { name: 'dock', source: 'project' } },
+      { mcp_server: { name: 'external', source: 'sdk' } },
+      { tool_name: 'mcp__external__dock_review' },
+      { tool_name: 'mcp__dock__dock_apply' },
+      { tool_name: 'Write', input: { file_path: '/tmp/source.py', content: 'changed' } },
+      {
+        tool_name: 'Edit',
+        input: { file_path: '/tmp/source.py', old_string: 'old', new_string: 'new' },
+      },
+      { tool_name: 'Bash', input: { command: 'touch /tmp/source.py' } },
+      {
+        tool_name: 'ExitPlanMode',
+        input: { allowedPrompts: [{ tool: 'Bash', prompt: 'write files' }] },
+      },
+    ]) {
+      const original = permission();
+      f.emit({ ...original, request: { ...original.request, ...trusted, ...change } });
+      expect(f.writes.at(-1)?.response.response.behavior).toBe('deny');
+      expect(f.session.canAnswer(original.request_id)).toBe(false);
+    }
+    expect(f.events.some((event) => event.type === 'permission')).toBe(false);
+  });
+  it('keeps Dock plan-mode permission scoped to an active unattended native turn and the host handler', async () => {
+    const invoke = vi.fn(async () => {
+      throw new Error('Outside the assigned task');
+    });
+    const tools = [
+      { name: 'dock_inspect', description: 'Inspect', inputSchema: { type: 'object' }, invoke },
+    ];
+    const planRequest = () => {
+      const original = permission();
+      return {
+        ...original,
+        request: {
+          ...original.request,
+          tool_name: 'mcp__dock__dock_inspect',
+          input: { taskId: 'other-task' },
+          mcp_server: { name: 'dock', source: 'sdk' },
+          decision_reason_type: 'mode',
+        },
+      };
+    };
+    const f = fixture(options({ inheritNative: true, unattended: true, role: 'read-only', tools }));
+    await f.session.inspectFreshModels();
+    f.emit(planRequest());
+    expect(f.writes.at(-1)?.response.response.behavior).toBe('deny');
+    await f.submit();
+    f.emit(planRequest());
+    expect(f.writes.at(-1)?.response.response.behavior).toBe('allow');
+    f.emit(mcp('tools/call', { name: 'dock_inspect', arguments: { taskId: 'other-task' } }));
+    await tick();
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(f.writes.at(-1)?.response.response.mcp_response.result.isError).toBe(true);
+    f.emit({
+      type: 'result',
+      uuid: randomUUID(),
+      session_id: f.config.sessionId,
+      subtype: 'success',
+      is_error: false,
+    });
+    f.emit(planRequest());
+    expect(f.writes.at(-1)?.response.response.behavior).toBe('deny');
+
+    const restricted = fixture(options({ unattended: true, role: 'read-only', tools }));
+    await restricted.submit();
+    restricted.emit(planRequest());
+    expect(restricted.writes.at(-1)?.response.response.behavior).toBe('deny');
+    const interactive = fixture(options({ inheritNative: true, role: 'read-only', tools }));
+    await interactive.submit();
+    const original = planRequest();
+    interactive.emit(original);
+    expect(interactive.session.canAnswer(original.request_id)).toBe(true);
+  });
   it('uses the native sandbox and denies unattended permission requests while retaining human questions', async () => {
     const f = fixture(options({ inheritNative: true, unattended: true, role: 'implementer' }));
     const args = claudeArguments(f.config);
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits');
     expect(JSON.parse(args[args.indexOf('--settings') + 1]!)).toMatchObject({
       permissions: { allow: ['Read(//**)', 'Bash', 'WebFetch', 'WebSearch'] },
-      sandbox: { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false },
+      sandbox: {
+        enabled: true,
+        failIfUnavailable: true,
+        allowUnsandboxedCommands: false,
+        filesystem: { disabled: false },
+      },
     });
+    expect(JSON.parse(args[args.indexOf('--settings') + 1]!).sandbox.filesystem).not.toHaveProperty(
+      'denyWrite',
+    );
     expect(args).not.toContain('--tools');
     const readOnly = claudeArguments({ ...f.config, role: 'read-only' });
     expect(readOnly[readOnly.indexOf('--permission-mode') + 1]).toBe('plan');
     expect(
       JSON.parse(readOnly[readOnly.indexOf('--settings') + 1]!).permissions.allow,
     ).not.toContain('Bash');
+    expect(JSON.parse(readOnly[readOnly.indexOf('--settings') + 1]!).sandbox.filesystem).toEqual({
+      disabled: false,
+      denyWrite: [f.config.cwd],
+    });
     await f.submit();
     const request = permission();
     f.emit(request);

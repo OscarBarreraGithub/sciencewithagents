@@ -329,8 +329,9 @@ export function HealthPlots({ samples: all, now }: { samples: ResourceSample[]; 
         </>
       ) : (
         <p className="health-empty">
-          The watcher saves one reading a minute while this computer is awake. Nothing before it
-          started is shown.
+          {all.length > samples.length
+            ? `Fewer than two saved readings in the last ${ranges.find((r) => r.hours === hours)!.label}. Choose a longer range to see older readings.`
+            : 'The watcher saves one reading a minute while this computer is awake. Nothing before it started is shown.'}
         </p>
       )}
       <p className="health-footnote">

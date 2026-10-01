@@ -68,7 +68,7 @@ type ArchiveRow = {
   created_at: string;
 };
 
-function scopeFor(projectId: string, query: HistoryQuery) {
+function scopeFor(projectId: string, query: HistoryQuery, eligibleAgentIds?: readonly string[]) {
   return createHash('sha256')
     .update(
       JSON.stringify([
@@ -77,6 +77,7 @@ function scopeFor(projectId: string, query: HistoryQuery) {
         query.taskId ?? null,
         query.source,
         query.query,
+        ...(eligibleAgentIds ? [eligibleAgentIds.toSorted()] : []),
       ]),
     )
     .digest('hex');
@@ -111,10 +112,16 @@ function projectItem(row: ArchiveRow, offset: number, limit: number): HistoryIte
 }
 
 /** Newest-first, project-bound keyset pagination. Refresh to include newly recorded items. */
-export function historyPage(store: Store, projectId: string, raw: unknown) {
+export function historyPage(
+  store: Store,
+  projectId: string,
+  raw: unknown,
+  // Host-only finder selection; ordinary project history includes all workers.
+  eligibleAgentIds?: readonly string[],
+) {
   const query = historyQuerySchema.parse(raw);
   projectScope(store, projectId, query.agentId, query.taskId);
-  const scope = scopeFor(projectId, query);
+  const scope = scopeFor(projectId, query, eligibleAgentIds);
   let cursor: z.infer<typeof cursorSchema> | undefined;
   if (query.cursor) {
     try {
@@ -139,6 +146,10 @@ export function historyPage(store: Store, projectId: string, raw: unknown) {
     "((source='entry' AND ordinal<=?) OR (source='decision' AND ordinal<=?))",
   ];
   const args: SQLInputValue[] = [projectId, entries, decisions];
+  if (eligibleAgentIds) {
+    where.push('agent_id IN (SELECT value FROM json_each(?))');
+    args.push(JSON.stringify(eligibleAgentIds));
+  }
   if (query.agentId) {
     where.push('agent_id=?');
     args.push(query.agentId);
@@ -216,9 +227,17 @@ const catalogCursorSchema = z
   .strict();
 
 /** Discover every recorded identity, including idle agents without conversation entries. */
-export function projectCatalog(store: Store, projectId: string, raw: unknown) {
+export function projectCatalog(
+  store: Store,
+  projectId: string,
+  raw: unknown,
+  // Host-only finder selection, applied before the title/recent page limit.
+  eligibleAgentIds?: readonly string[],
+) {
   const query = catalogQuerySchema.parse(raw);
   projectScope(store, projectId);
+  if (eligibleAgentIds && query.kind !== 'agents')
+    throw new Conflict('Agent selection only applies to the agent catalog.');
   const agentStatuses = ['idle', 'queued', 'running', 'waiting', 'interrupted', 'failed'];
   const taskStatuses = [
     'open',
@@ -237,7 +256,15 @@ export function projectCatalog(store: Store, projectId: string, raw: unknown) {
   )
     throw new Conflict('This status does not apply to the selected catalog.');
   const scope = createHash('sha256')
-    .update(JSON.stringify([projectId, query.kind, query.query, query.status]))
+    .update(
+      JSON.stringify([
+        projectId,
+        query.kind,
+        query.query,
+        query.status,
+        ...(eligibleAgentIds ? [eligibleAgentIds.toSorted()] : []),
+      ]),
+    )
     .digest('hex');
   let cursor: z.infer<typeof catalogCursorSchema> | undefined;
   if (query.cursor) {
@@ -258,6 +285,10 @@ export function projectCatalog(store: Store, projectId: string, raw: unknown) {
     Number(store.db.prepare(`SELECT COALESCE(MAX(rowid),0) AS value FROM ${table}`).get()!.value);
   const where = ['project_id=?', 'rowid<=?'];
   const args: SQLInputValue[] = [projectId, maximum];
+  if (eligibleAgentIds) {
+    where.push('id IN (SELECT value FROM json_each(?))');
+    args.push(JSON.stringify(eligibleAgentIds));
+  }
   const title =
     query.kind === 'agents' ? "json_extract(body, '$.name')" : "json_extract(body, '$.title')";
   const summary =

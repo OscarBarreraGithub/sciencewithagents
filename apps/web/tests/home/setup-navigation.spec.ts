@@ -47,6 +47,32 @@ test('revisiting a page trims the Back trail instead of replaying a navigation l
   await expect(page).toHaveURL(/#\/home$/);
 });
 
+test('Back does not reopen a minimized brief, and closing Help returns keyboard focus', async ({
+  page,
+}) => {
+  const snapshot = await (await page.request.get('/api/snapshot')).json();
+  const manager = snapshot.projects.find((p: { internal?: boolean }) => !p.internal).managerId;
+  await page.goto('/#/home');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
+  await page.evaluate((id) => (location.hash = `#/chat/${id}/brief`), manager);
+  const minimize = page.getByRole('button', { name: /Minimize/ });
+  await minimize.click();
+  await expect(page).toHaveURL(new RegExp(`#/chat/${manager}$`));
+  // Phone chats are full-screen without the app header.
+  await page.evaluate(() => (location.hash = '#/settings'));
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+  const help = page.getByRole('button', { name: 'Help and setup' });
+  // A keyboard user returns to the control that opened the dialog.
+  await help.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Help and setup' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(help).toBeFocused();
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/chat/${manager}$`));
+  await expect(minimize).toHaveCount(0);
+});
+
 test('project setup shows real defaults, comfortable controls and retained choices after a QUARK detour', async ({
   page,
 }, info) => {

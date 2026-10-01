@@ -12,6 +12,7 @@ import {
 } from '@dock/shared';
 import { ConversationSearch, registerConversationSearchRoutes } from './conversation-search.js';
 import { ModelPolicy } from './model-policy.js';
+import { historyPage, projectCatalog } from './history.js';
 import { Conflict, Missing, Store } from './store.js';
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -166,6 +167,179 @@ it('uses central bulk defaults, saved evidence and one normal queued turn withou
   expect(() => f.search.context(project.managerId)).toThrow('not a conversation search helper');
 });
 
+it('excludes helper provenance after restart while retaining same-named personal and editor chats', async () => {
+  const f = fixture();
+  const project = seed(f.store, f.root, 'Computer health');
+  f.store.updateAgent(project.managerId, { name: 'Computer health' });
+  const helper = f.store.addAgent({
+    projectId: project.id,
+    parentId: project.managerId,
+    taskId: null,
+    role: 'manager',
+    name: 'Computer health',
+    cwd: f.root,
+  });
+  f.store.updateAgent(helper.id, { nativeRootId: project.managerId, surface: 'misc' });
+  const resource = seed(f.store, f.root, 'Computer health');
+  f.store.updateAgent(resource.managerId, {
+    name: 'Computer health',
+    resourceAssistant: { mode: 'snapshot' },
+    surface: 'misc',
+  });
+  // The old resource project setting can be gone; durable agent identity still wins.
+  f.store.setSetting('resources:project', null);
+  const worker = f.store.addAgent({
+    projectId: project.id,
+    parentId: project.managerId,
+    taskId: null,
+    role: 'researcher',
+    name: 'Computer health',
+    cwd: f.root,
+  });
+  await f.reopen();
+  const editorId = randomUUID();
+  f.mirrors.mockReturnValue([
+    {
+      windowId: editorId,
+      provider: 'codex',
+      threadId: 'personal-editor',
+      title: 'Computer health',
+      label: 'Editor',
+      status: 'idle',
+      message: '',
+    },
+  ]);
+  const result = await f.search.ask({
+    key: randomUUID(),
+    query: 'Computer health',
+    provider: 'codex',
+  });
+  expect(result.candidates.map((candidate) => candidate.id).sort()).toEqual(
+    [project.managerId, editorId].sort(),
+  );
+  expect(result.candidates.find((candidate) => candidate.id === editorId)?.kind).toBe('editor');
+  expect(f.store.agent(helper.id).nativeRootId).toBe(project.managerId);
+  expect(f.store.agent(worker.id)).toBeDefined();
+  expect(f.store.entries(resource.managerId)).toHaveLength(1);
+});
+
+it.each(['title', 'history', 'recent'] as const)(
+  'keeps an older human chat in the %s selection after forty newer helpers and restart',
+  async (selection) => {
+    const f = fixture();
+    const query = selection === 'recent' ? 'unmatched literal' : 'Computer health';
+    const project = seed(f.store, f.root, 'Personal project');
+    f.store.updateAgent(project.managerId, {
+      name: selection === 'title' ? query : 'Human conversation',
+    });
+    f.store.entry({
+      id: randomUUID(),
+      agentId: project.managerId,
+      runId: null,
+      kind: 'assistant',
+      title: 'Older evidence',
+      text: selection === 'history' ? `Original ${query} evidence` : 'Original reply',
+      status: 'complete',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    // The matching source must survive even when it is outside the four-entry fallback.
+    for (let index = 0; index < 6; index++)
+      f.store.entry({
+        id: randomUUID(),
+        agentId: project.managerId,
+        runId: null,
+        kind: 'assistant',
+        title: 'Later reply',
+        text: 'Recent unrelated evidence',
+        status: 'complete',
+        createdAt: `2026-09-0${index + 1}T00:00:00.000Z`,
+      });
+    const workers: string[] = [];
+    for (let index = 0; index < 40; index++) {
+      const helper = f.store.addAgent({
+        projectId: project.id,
+        parentId: project.managerId,
+        taskId: null,
+        role: index % 2 ? 'manager' : 'researcher',
+        name: 'Computer health',
+        cwd: f.root,
+      });
+      if (index % 2) f.store.updateAgent(helper.id, { nativeRootId: project.managerId });
+      workers.push(helper.id);
+      f.store.entry({
+        id: randomUUID(),
+        agentId: helper.id,
+        runId: null,
+        kind: 'assistant',
+        title: 'Helper reply',
+        text: selection === 'history' ? query : 'Helper evidence',
+        status: 'complete',
+        createdAt: '2026-10-01T00:00:00.000Z',
+      });
+    }
+    await f.reopen();
+    const result = await f.search.ask({ key: randomUUID(), query, provider: 'codex' });
+    expect(result.candidates.map((candidate) => candidate.id)).toEqual([project.managerId]);
+    if (selection === 'history')
+      expect(result.candidates[0]?.excerpt).toContain(`Original ${query} evidence`);
+    expect(result.coverage).toMatchObject({
+      projectsAvailable: 1,
+      projectsConsidered: 1,
+      managedCandidates: 1,
+      bounded: true,
+      editorTranscripts: false,
+    });
+    // Finder eligibility must not remove worker evidence from normal project history.
+    expect(projectCatalog(f.store, project.id, { kind: 'agents', limit: 50 }).items).toHaveLength(
+      41,
+    );
+    expect(
+      historyPage(f.store, project.id, { agentId: workers[0], source: 'conversations' }).items,
+    ).toHaveLength(1);
+  },
+);
+
+it('retries literal Unicode and markup evidence after discovery failure without changing its receipt', async () => {
+  const f = fixture();
+  const literal = `café 東京 🦊 20%_ \\ "' OR 1=1 -- <img src=x onerror=alert(1)>`;
+  const project = seed(f.store, f.root, 'Literal evidence');
+  f.store.updateAgent(project.managerId, { name: literal });
+  f.store.entry({
+    id: randomUUID(),
+    agentId: project.managerId,
+    runId: null,
+    kind: 'assistant',
+    title: 'Literal reply',
+    text: 'x'.repeat(2000) + literal,
+    status: 'complete',
+    createdAt: '2026-10-01T00:00:00.000Z',
+  });
+  const input = { key: randomUUID(), query: literal, provider: 'codex' };
+  f.models.mockRejectedValueOnce(new Error('Temporary discovery failure'));
+  await expect(f.search.ask(input)).rejects.toThrow(
+    'Codex model discovery failed. Refresh available models to retry.',
+  );
+  expect(f.store.runs()).toHaveLength(0);
+  const result = await f.search.ask(input);
+  expect(result.query).toBe(literal);
+  expect(result.candidates).toEqual([
+    expect.objectContaining({
+      id: project.managerId,
+      title: literal,
+      excerpt: expect.stringContaining(literal),
+      href: `#/chat/${project.managerId}`,
+    }),
+  ]);
+  complete(f.store, result);
+  await f.reopen();
+  expect(await f.search.ask(input)).toEqual(f.search.get(result.id));
+  expect(f.store.runs()).toHaveLength(1);
+  expect(f.models).toHaveBeenCalledTimes(2);
+  expect(historyPage(f.store, project.id, { query: '20%_' }).items).toHaveLength(1);
+  expect(historyPage(f.store, project.id, { query: '20%Z' }).items).toEqual([]);
+  expect(historyPage(f.store, project.id, { query: "' OR 1=1 -- missing" }).items).toEqual([]);
+});
+
 it('resolves Claude bulk to central Sonnet and preserves an explicit future native model and effort', async () => {
   const f = fixture();
   seed(f.store, f.root);
@@ -236,7 +410,7 @@ it('truthfully caps saved evidence and includes only connected editor title meta
   const f = fixture();
   for (let index = 0; index < 24; index++) {
     const project = seed(f.store, f.root, `Galaxy ${index}`);
-    f.store.addAgent({
+    const chat = f.store.addAgent({
       projectId: project.id,
       parentId: null,
       taskId: null,
@@ -245,6 +419,7 @@ it('truthfully caps saved evidence and includes only connected editor title meta
       cwd: join(f.root, 'unused'),
       provider: 'codex',
     });
+    f.store.updateAgent(chat.id, { surface: 'misc' });
     f.store.entry({
       id: randomUUID(),
       agentId: project.managerId,

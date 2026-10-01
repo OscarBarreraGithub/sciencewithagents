@@ -293,6 +293,50 @@ it('rolls back the reply, queue, entries, events and receipt together if enqueue
   expect(store.runs()).toHaveLength(1);
 });
 
+it('rolls back an assignment enqueue failure and retries exactly once across later edits and restart', () => {
+  const personal = items.save({
+    key: randomUUID(),
+    title: 'Send this once',
+    detail: 'Keep every line.\nMore detail.',
+  });
+  const input = { key: randomUUID(), id: personal.id, expectedRevision: 1, managerId };
+  const head = store.head;
+  const enqueue = store.enqueue.bind(store);
+  const failure = vi.spyOn(store, 'enqueue').mockImplementationOnce((...args) => {
+    enqueue(...args);
+    throw new Error('Assignment response failure');
+  });
+  expect(() => items.save(input)).toThrow('Assignment response failure');
+  expect(items.get(personal.id)).toEqual(personal);
+  expect(store.head).toBe(head);
+  expect(store.runs()).toHaveLength(0);
+  expect(store.entries(managerId)).toHaveLength(0);
+  failure.mockRestore();
+  restart();
+  const assigned = items.save(input);
+  const completed = items.saveForManager(managerId, {
+    key: randomUUID(),
+    id: personal.id,
+    expectedRevision: assigned.revision,
+    status: 'done',
+  });
+  const reopened = items.save({
+    key: randomUUID(),
+    id: personal.id,
+    expectedRevision: completed.revision,
+    status: 'open',
+  });
+  restart();
+  expect(items.save(input)).toEqual(assigned);
+  expect(items.get(personal.id)).toEqual(reopened);
+  expect(reopened.assignmentRunId).toBe(assigned.assignmentRunId);
+  expect(store.runs()).toHaveLength(1);
+  expect(store.run(assigned.assignmentRunId!).text).toContain(personal.detail);
+  expect(
+    store.entries(managerId).filter((entry) => entry.id === assigned.assignmentRunId),
+  ).toHaveLength(1);
+});
+
 it('versions project notes with durable receipts, manager authorship and preserved prior text', () => {
   expect(items.notes(projectId)).toEqual({
     projectId,

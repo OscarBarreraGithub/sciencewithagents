@@ -64,6 +64,11 @@ export const pulsarJobSchema = z
     override: z.boolean(),
     reason: z.string(),
     eligible: z.boolean(),
+    // Optional for compatibility with hosts awaiting a safe restart.
+    budgetBlock: z
+      .object({ kind: z.enum(['tokens', 'allowance']), targetId: z.string().uuid() })
+      .strict()
+      .optional(),
     expectedFinishAt: z.string().datetime().nullable(),
     tokensCharged: z.number().nonnegative(),
     tokenBasis: z.enum(['measured', 'estimated', 'reserved', 'none']),

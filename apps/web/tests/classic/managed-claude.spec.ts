@@ -46,7 +46,9 @@ test('a fresh Claude project keeps provider and one retry receipt after lost res
   await expect(dialog.getByLabel('Project name', { exact: true })).toHaveValue(name);
   await dialog.getByRole('button', { name: 'Create project', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: `${name} manager`, exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: `${name} manager`, level: 1, exact: true }),
+  ).toBeVisible();
   expect(submissions).toHaveLength(2);
   expect(submissions[0]).toEqual(submissions[1]);
   expect(submissions[0].provider).toBe('claude');
@@ -103,7 +105,7 @@ test('mixed-provider module manager creation preserves the provider and receipt 
   await open();
   await expect(dialog.getByLabel('Manager provider')).toHaveValue('claude');
   await expect(dialog.getByLabel('Manager name', { exact: true })).toHaveValue(name);
-  await dialog.getByRole('button', { name: 'Create manager', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Check manager request', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(submissions).toHaveLength(2);
   expect(submissions[0]).toEqual(submissions[1]);
@@ -147,7 +149,7 @@ test('existing-folder setup keeps the chosen provider and pending request across
   await dialog.getByLabel('Manager provider').selectOption('codex');
   await dialog.getByRole('button', { name: 'Use an existing project folder' }).click();
   await expect.poll(() => submitted.length).toBe(3);
-  expect(submitted[2].provider).toBeUndefined();
+  expect(submitted[2].provider).toBe('codex');
   expect(submitted[2].key).not.toBe(submitted[0].key);
 });
 
@@ -285,7 +287,12 @@ test('Claude settings use its installed model scope, explain native-only control
   await page.getByRole('button', { name: 'Save settings', exact: true }).click();
   await expect(page.locator('.settings-card')).toHaveCount(0);
   expect(savedSettings).toEqual([
-    { model: 'claude-fixture', effort: 'medium', permission: agent.permission },
+    {
+      model: 'claude-fixture',
+      effort: 'medium',
+      permission: agent.permission,
+      toolPolicy: 'native',
+    },
   ]);
   const composer = page.getByRole('textbox', { name: `Message ${agent.name}`, exact: true });
   await composer.fill('/compact');

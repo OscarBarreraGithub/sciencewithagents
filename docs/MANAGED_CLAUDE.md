@@ -3,8 +3,18 @@
 **Unattended native execution (2026-09-30):** new inherited launches use native scoped
 execution and do not queue routine permission prompts. Managers/write-enabled workers
 approve Bash through Claude's own permissions while its strict sandbox enforces command
-writes; file edits use native edit acceptance. Read-only roles retain plan permissions.
+writes; file edits use native edit acceptance. Read-only roles retain plan permissions and
+explicitly deny command writes inside their assigned workspace through the native sandbox.
 Residual permission requests are denied, and actual human questions remain answerable.
+Native plan mode can ask before Dock MCP coordination even with a CLI allow rule. The host
+accepts only mode-based requests for its exact registered private SDK tools during an active
+unattended native turn; their existing role/task checks still govern execution. Reviewers call
+`dock_review` directly while staying in plan mode. Explicit native ask rules, interaction
+requirements, external MCP requests, source-write requests and `ExitPlanMode` are not granted
+by this exception. The beta check resumed an actual Opus reviewer, read the assignment and recorded its
+`changes_requested` verdict through the scoped tool while remaining in plan mode. A separate
+live probe verified file reads and a Bash calculation, while both file-tool and Bash writes to
+disposable source sentinels were denied. This boundary does not sandbox external MCP services.
 The older pending-approval descriptions below apply to saved restricted contexts. See
 [current controls and live evidence](WORKER_TOOLS.md).
 
@@ -97,9 +107,9 @@ permission path; tool names are evidence, not a separate app capability catalog.
 
 Native administrative policy remains in effect. QUARK callbacks use the private SDK control
 connection and compose with native hooks; no global hook file is installed. If a parent reports
-completion while helpers are active, the run remains open until their stop events. Stop closes
-the owned group when helpers are active. QUARK also closes an owned group that remains active
-after its interruption grace period. Files, queued input and original session IDs are retained.
+completion while helpers are active, the run remains open until their stop events. Stopping an
+active turn closes its owned group before releasing its reservation. QUARK also closes an owned
+group that remains active after its interruption grace period. Files, queued input and original session IDs are retained.
 Native hook IDs now retain separate helper identities and runs, tool evidence and reported
 closing text across resume. A helper ID is not a standalone session UUID; the owning session
 controls it. Registered native transcripts now retain helper replies, deduplicated input/cache

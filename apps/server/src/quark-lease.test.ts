@@ -13,8 +13,10 @@ class Controlled extends DemoProvider {
   starts = 0;
   compactions = 0;
   stops: { threadId: string; turnId: string }[] = [];
+  requests: { method: string; params: unknown }[] = [];
   responses: { id: string | number; result: unknown }[] = [];
   override async request(method: string, raw?: unknown): Promise<unknown> {
+    this.requests.push({ method, params: raw });
     if (method === 'thread/compact/start') {
       this.compactions++;
       this.emit('notification', 'turn/started', {
@@ -44,6 +46,7 @@ class Controlled extends DemoProvider {
 }
 let root: string, store: Store, runtime: Runtime, manager: string, project: string;
 let providers: Map<string, Controlled>;
+let providerSessions: Map<string, Controlled[]>;
 beforeEach(() => {
   mkdirSync(join(repoRoot, 'data/tests'), { recursive: true });
   root = mkdtempSync(join(repoRoot, 'data/tests/quark-lease-'));
@@ -53,9 +56,13 @@ beforeEach(() => {
   manager = p.managerId;
   project = p.id;
   providers = new Map();
+  providerSessions = new Map();
   runtime = new Runtime(store, root, 'never-launch-real-provider', async (a) => {
     const p = new Controlled();
     providers.set(a.id, p);
+    const sessions = providerSessions.get(a.id) ?? [];
+    sessions.push(p);
+    providerSessions.set(a.id, sessions);
     return p;
   });
 });
@@ -178,13 +185,13 @@ it('requires a signed active lease for orchestration and rejects stale native ma
 it('rechecks the original lease after asynchronous model selection, before creating a worker', async () => {
   const run = await start();
   const task = store.addTask(project, { ...taskInput, parentId: null });
-  const resolve = runtime.modelPolicy.resolve.bind(runtime.modelPolicy);
-  const assignment = await resolve('reasoning');
+  const resolve = runtime.modelPolicy.resolveWorker.bind(runtime.modelPolicy);
+  const assignment = await resolve(project, 'researcher');
   let release!: () => void;
   const gate = new Promise<void>((r) => {
     release = r;
   });
-  const selection = vi.spyOn(runtime.modelPolicy, 'resolve').mockImplementation(async () => {
+  const selection = vi.spyOn(runtime.modelPolicy, 'resolveWorker').mockImplementation(async () => {
     await gate;
     return assignment;
   });
@@ -194,17 +201,68 @@ it('rechecks the original lease after asynchronous model selection, before creat
     name: 'Late worker',
     instruction: 'Read',
   });
-  const rejected = expect(dispatch).rejects.toThrow('signed');
-  await vi.waitFor(() => expect(selection).toHaveBeenCalled());
-  store.setSetting(`quark:manager-lease:${run.id}`, null);
-  release();
-  await rejected;
+  try {
+    await vi.waitFor(() => expect(selection).toHaveBeenCalled());
+    store.setSetting(`quark:manager-lease:${run.id}`, null);
+  } finally {
+    release();
+  }
+  await expect(dispatch).rejects.toThrow('signed');
   expect(store.agents()).toHaveLength(1);
   expect(store.task(task.id).worktree).toBeNull();
+});
+it('refuses a delegation paused during model selection and retains the manager conversation', async () => {
+  const run = await start();
+  const task = store.addTask(project, { ...taskInput, parentId: null });
+  const pending = store.enqueue(manager, randomUUID(), 'Keep this follow-up');
+  const resolve = runtime.modelPolicy.resolveWorker.bind(runtime.modelPolicy);
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  const selection = vi
+    .spyOn(runtime.modelPolicy, 'resolveWorker')
+    .mockImplementation(async (...args) => {
+      await gate;
+      return resolve(...args);
+    });
+  const dispatch = runtime.tool(manager, randomUUID(), 'dock_delegate', {
+    taskId: task.id,
+    role: 'researcher',
+    name: 'After pause',
+    instruction: 'Read',
+  });
+  try {
+    await vi.waitFor(() => expect(selection).toHaveBeenCalled());
+    runtime.coordinator.updateProjectPolicy(
+      {
+        action: 'project',
+        projectId: project,
+        expectedRevision: 0,
+        paused: true,
+        reason: 'Owner paused the project',
+      },
+      true,
+    );
+  } finally {
+    release();
+  }
+  await expect(dispatch).rejects.toThrow('project is paused');
+  expect(store.agents()).toHaveLength(1);
+  expect(store.task(task.id).worktree).toBeNull();
+  runtime.kick();
+  await vi.waitFor(() => expect(store.run(run.id).status).toBe('interrupted'));
+  expect(store.run(pending.id).status).toBe('queued');
+  expect(store.agent(manager).threadId).toBeTruthy();
+  expect(store.task(task.id).title).toBe(taskInput.title);
 });
 it('lets a manager pause only its owned worker, preserves pending input, and makes retries harmless', async () => {
   const w = worker(),
     run = await start(w.id);
+  const originalProvider = providers.get(w.id)!,
+    sessions = providerSessions.get(w.id)!,
+    threadId = store.agent(w.id).threadId,
+    stoppedTurn = { threadId, turnId: run.turnId };
   const queued = store.enqueue(w.id, randomUUID(), 'Unsent follow-up');
   const other = store.addAgent({
     projectId: project,
@@ -226,17 +284,50 @@ it('lets a manager pause only its owned worker, preserves pending input, and mak
     input = { agentId: w.id, reason: 'Forecast exceeds the approved work' };
   const response = await runtime.tool(manager, key, 'dock_pause_worker', input);
   await vi.waitFor(() => expect(store.run(run.id).status).toBe('interrupted'));
-  expect(store.run(queued.id).status).toBe('queued');
-  expect(store.agent(w.id).threadId).toBeTruthy();
+  expect(store.run(queued.id)).toMatchObject(queued);
+  expect(store.agent(w.id).threadId).toBe(threadId);
+  expect(originalProvider.ready).toBe(false);
+  expect(sessions.flatMap((p) => p.stops)).toEqual([stoppedTurn]);
   expect(runtime.quark.holds().find((h) => h.runId === run.id)?.reason).toContain('Forecast');
-  const stops = providers.get(w.id)!.stops.length;
   expect(await runtime.tool(manager, key, 'dock_pause_worker', input)).toEqual(response);
-  expect(providers.get(w.id)!.stops).toHaveLength(stops);
+  expect(sessions).toEqual([originalProvider]);
+  expect(sessions.flatMap((p) => p.stops)).toEqual([stoppedTurn]);
   runtime.quark.release(run.id);
   runtime.kick();
-  await vi.waitFor(() => expect(store.run(queued.id).status).toBe('running'));
+  await vi.waitFor(() =>
+    expect(store.run(queued.id)).toMatchObject({ status: 'running', turnId: expect.any(String) }),
+  );
   expect(await runtime.tool(manager, key, 'dock_pause_worker', input)).toEqual(response);
-  expect(providers.get(w.id)!.stops).toHaveLength(stops);
+  const resumedProvider = providers.get(w.id)!;
+  expect(resumedProvider).not.toBe(originalProvider);
+  expect(resumedProvider.ready).toBe(true);
+  expect(sessions).toEqual([originalProvider, resumedProvider]);
+  expect(sessions.flatMap((p) => p.stops)).toEqual([stoppedTurn]);
+  expect(sessions.reduce((total, p) => total + p.starts, 0)).toBe(2);
+  expect(resumedProvider.requests.filter((r) => r.method === 'thread/resume')).toMatchObject([
+    { params: { threadId } },
+  ]);
+  expect(
+    sessions.flatMap((p) => p.requests.filter((r) => r.method === 'turn/start')),
+  ).toMatchObject([
+    {
+      params: {
+        threadId,
+        clientUserMessageId: run.id,
+        input: [{ type: 'text', text: run.text }],
+      },
+    },
+    {
+      params: {
+        threadId,
+        clientUserMessageId: queued.id,
+        input: [{ type: 'text', text: queued.text }],
+      },
+    },
+  ]);
+  expect(store.runs().filter((r) => r.agentId === w.id)).toHaveLength(2);
+  expect(store.run(run.id)).toEqual({ ...run, status: 'interrupted' });
+  expect(store.agent(w.id).threadId).toBe(threadId);
   expect(store.run(queued.id).status).toBe('running');
 });
 it('the host stops a budgeted worker while its manager is idle and leaves other projects alone', async () => {
@@ -556,6 +647,10 @@ it('recovers a confirmed telemetry pause automatically without replaying the wor
     limitPercent: 20,
   });
   const run = await start(w.id);
+  const originalProvider = providers.get(w.id)!,
+    sessions = providerSessions.get(w.id)!,
+    threadId = store.agent(w.id).threadId,
+    stoppedTurn = { threadId, turnId: run.turnId };
   store.setSetting('capacity:v1:codex', {
     ...(store.getSetting('capacity:v1:codex') as object),
     state: 'error',
@@ -567,14 +662,45 @@ it('recovers a confirmed telemetry pause automatically without replaying the wor
     cause: 'monitoring',
     stopAcknowledgedAt: expect.any(String),
   });
+  expect(originalProvider.ready).toBe(false);
+  expect(sessions.flatMap((p) => p.stops)).toEqual([stoppedTurn]);
   fresh();
   runtime.kick();
-  await vi.waitFor(() =>
-    expect(
-      store.runs().some((r) => r.agentId === w.id && r.kind === 'resume' && r.status === 'running'),
-    ).toBe(true),
-  );
-  expect(store.run(run.id).status).toBe('interrupted');
+  await vi.waitFor(() => {
+    const recovery = store.runs().find((r) => r.agentId === w.id && r.kind === 'resume');
+    expect(recovery).toMatchObject({ status: 'running', turnId: expect.any(String) });
+  });
+  const recovery = store.runs().find((r) => r.agentId === w.id && r.kind === 'resume')!,
+    resumedProvider = providers.get(w.id)!;
+  expect(store.run(run.id)).toEqual({ ...run, status: 'interrupted' });
+  expect(recovery.key).toBe(`quark:resume:${run.id}`);
+  expect(store.runs().filter((r) => r.agentId === w.id)).toHaveLength(2);
   expect(runtime.quark.holds()).toHaveLength(0);
-  expect(providers.get(w.id)!.starts).toBe(2);
+  expect(store.agent(w.id).threadId).toBe(threadId);
+  expect(resumedProvider).not.toBe(originalProvider);
+  expect(resumedProvider.ready).toBe(true);
+  expect(sessions).toEqual([originalProvider, resumedProvider]);
+  expect(sessions.flatMap((p) => p.stops)).toEqual([stoppedTurn]);
+  expect(sessions.reduce((total, p) => total + p.starts, 0)).toBe(2);
+  expect(resumedProvider.requests.filter((r) => r.method === 'thread/resume')).toMatchObject([
+    { params: { threadId } },
+  ]);
+  expect(
+    sessions.flatMap((p) => p.requests.filter((r) => r.method === 'turn/start')),
+  ).toMatchObject([
+    {
+      params: {
+        threadId,
+        clientUserMessageId: run.id,
+        input: [{ type: 'text', text: run.text }],
+      },
+    },
+    {
+      params: {
+        threadId,
+        clientUserMessageId: recovery.id,
+        input: [{ type: 'text', text: `Recorded input:\n${recovery.text}` }],
+      },
+    },
+  ]);
 });

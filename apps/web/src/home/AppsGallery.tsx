@@ -69,7 +69,7 @@ export function AppsGallery() {
         <h1 id="apps-heading" tabIndex={-1}>
           Apps
         </h1>
-        <p>Apps built in your projects open from here.</p>
+        <p>Apps built in your projects will open from here.</p>
       </header>
       <div className="apps-empty">
         <div className="apps-empty-grid" aria-hidden="true">
@@ -79,8 +79,8 @@ export function AppsGallery() {
         </div>
         <h2>No apps yet</h2>
         <p>
-          No apps have been added to this workspace. When a project adds an app, its icon and title
-          appear here.
+          Adding project apps here is not available yet in this beta. Once it is, each app appears
+          with its icon and title.
         </p>
       </div>
       <section className="apps-setup" aria-labelledby="apps-setup-heading">

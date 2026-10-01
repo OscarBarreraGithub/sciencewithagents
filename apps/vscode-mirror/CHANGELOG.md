@@ -1,5 +1,11 @@
 # Changes
 
+## 0.2.9
+
+Recheck helper provenance before sharing history or sending a message, and clear a saved
+selection if it now resolves to a background helper. Personal chats with matching names
+remain available.
+
 ## 0.2.8
 
 - Use the original hand-drawn alien for the extension icon.

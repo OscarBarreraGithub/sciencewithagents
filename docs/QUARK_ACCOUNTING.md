@@ -39,13 +39,15 @@ or reset one. A percentage reservation in `dock_schedule` remains a planning est
 cannot override these caps. Only owner-facing controls can increase an existing cap.
 
 The host checks admission and running work about once a second, using the existing shared
-provider collector (normally one report per minute). It protects a default two-percentage-
+provider collector (normally once a minute for Codex and every five minutes for Claude).
+It protects a default two-percentage-
 point stopping buffer, limited to 20% of a small cap. Current and recently finished turns
 keep conservative reservations while reports catch up. A cap can therefore pause work
 early. Ordinary scheduling overrides and turning pacing off do not bypass explicit caps.
 When QUARK pacing is enabled, its shared headroom limit also stops active managed work;
 interactive work no longer bypasses that protection. New admission waits immediately when usage fails. Already admitted guarded work may use its
-last verified reading for at most three minutes from that reading; an expired reset, exhausted
+last verified reading for at most three minutes for Codex or six minutes for Claude;
+an expired reset, exhausted
 grant or known headroom limit still stops it. After that bound, monitoring failure pauses work.
 
 The guard records its hold before requesting interruption of the original provider turn
@@ -140,10 +142,15 @@ single-model intervals with complete counters; mixed-model intervals cannot iden
 independent rates. Calibration is centrally stored, expires after 30 days and is keyed by
 the reported model/window, without embedding model versions in individual features.
 
-No activity to explain a delta, or a sampling gap over three minutes, leaves that delta
-unattributed. Simultaneous external usage can still be assigned to active projects; the
+Completed turns remain eligible through the next valid provider report, including after
+restart. No activity to explain a delta, or a sampling gap over three minutes for Codex
+or six minutes for Claude, leaves that delta unattributed.
+Simultaneous external usage can still be assigned to active projects; the
 account signal cannot distinguish it. Changes across reset boundaries are not fabricated
-as negative spending. Window charts restart, while task/project spending grants do not.
+as negative spending. Window charts restart on a changed reset or regressing meter,
+while task/project spending grants do not. Hourly rates divide attributed percentage points
+of the full named allowance by elapsed sample hours (up to one hour, at least five minutes),
+without dividing by the remaining balance or the allowance window's duration.
 Append-only interval evidence, durable observations, bounded display results and incremental
 budget totals support inspection and restart recovery without a monitoring model loop.
 

@@ -686,5 +686,42 @@ it('uses independent project spending/provider presets and preserves explicit li
       mode: 'manual',
       difficulty: 'unspecified',
     }),
-  ).rejects.toThrow('reasoning model');
+  ).rejects.toThrow('below the requested Postdoc tier');
+});
+it('honors a stronger requested tier over a Light project default and rejects weaker exact pins', async () => {
+  await policy.refresh();
+  save((settings) => {
+    settings.projectDefaults = {
+      providerMix: 'codex-only',
+      spending: 'light',
+      overrides: {},
+    };
+    settings.models.codex.grad.model = 'gpt-5.6-sol';
+  });
+  const project = store.register(root, 'Light project', '');
+  save((settings) => {
+    settings.models.codex.grad.model = 'gpt-6-sol';
+  });
+  expect(await policy.resolveWorker(project.id, 'researcher')).toMatchObject({
+    model: 'gpt-5.6-terra',
+    tier: 'undergrad',
+  });
+  expect(await policy.resolveWorker(project.id, 'researcher', { tier: 'grad' })).toMatchObject({
+    model: 'gpt-5.6-sol',
+    tier: 'grad',
+    source: 'model_policy',
+  });
+  expect(await policy.resolveWorker(project.id, 'researcher', { tier: 'postdoc' })).toMatchObject({
+    model: 'gpt-6-astra',
+    tier: 'postdoc',
+  });
+  await expect(
+    policy.resolveWorker(project.id, 'researcher', {
+      tier: 'postdoc',
+      model: 'gpt-6-sol',
+    }),
+  ).rejects.toThrow('below the requested Postdoc tier');
+  await expect(policy.resolveWorker(project.id, 'reviewer', { tier: 'undergrad' })).rejects.toThrow(
+    'reasoning work requires Grad student',
+  );
 });

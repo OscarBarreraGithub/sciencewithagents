@@ -142,6 +142,8 @@ describe('manual app launcher ownership', () => {
       builder,
       '--root',
       value.root,
+      '--data',
+      realpathSync(join(value.root, 'data')),
       '--port',
       String(value.port),
       '--skip-compile',
@@ -187,7 +189,14 @@ describe('manual app launcher ownership', () => {
       const marker = readFileSync(join(state, 'generated.json'), 'utf8');
       try {
         await expect(
-          exec(process.execPath, [builder, '--root', value.root, '--skip-compile']),
+          exec(process.execPath, [
+            builder,
+            '--root',
+            value.root,
+            '--data',
+            realpathSync(join(value.root, 'data')),
+            '--skip-compile',
+          ]),
         ).rejects.toThrow('Nothing was replaced');
         expect(readFileSync(value.config, 'utf8')).toBe(config);
         expect(readFileSync(join(state, 'generated.json'), 'utf8')).toBe(marker);
