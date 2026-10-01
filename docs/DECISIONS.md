@@ -1,5 +1,12 @@
 # Design decisions
 
+## 2026-10-01 — use the GitHub README as the public landing
+
+The owner deferred website design. The apex and www public roots redirect straight to
+the public GitHub repository with a temporary redirect. The README is the presentation
+surface for now. Retain the landing source for later and direct graph routes for existing
+links; do not affect the app or phone hostname. This supersedes the landing-design plan below.
+
 ## 2026-10-01 — dedicate the public landing to sciencewithagents
 
 The owner removed the SyllabusGraph navigation. Remove sibling-project links from the header,

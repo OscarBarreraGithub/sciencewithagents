@@ -1,5 +1,14 @@
 # Verification
 
+## 2026-10-01 — public root redirects to GitHub
+
+The apex and www roots, including `/index.html`, now return a temporary 302 to the public
+repository. Local checks pass for the redirect, query handling and retained graph/assets/404
+routes. Production desktop Chromium and iPhone WebKit both followed each domain to GitHub
+and verified the README loaded. No app runtime changed. Production version:
+`10e91641-0d5e-432d-a3de-71833503ff93`. Evidence: ignored `data/site-github-*`.
+The owned preview and browsers are closed. The dedicated website design is deferred.
+
 ## 2026-10-01 — additional-computer prompts and app-only public landing
 
 Connect another computer now provides a copyable prompt for installation on the new computer,

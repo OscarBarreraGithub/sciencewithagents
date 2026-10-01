@@ -6,8 +6,14 @@ provider credentials, private graph source, phone connection or local server is
 published. The owner must authorize a production release; preparing a build or
 running the dry run below does not publish anything.
 
-The combined artifact contains the landing at `/` and the supplied public graph
-export at `/syllabusgraph/`. Its build script preserves old `#graph=...` links,
+The public root currently redirects to the GitHub repository: the README is the landing
+page while website design is deferred. `site/_redirects` uses temporary 302 responses for
+`/` and `/index.html`, so a later website can replace them. Do not add a catch-all redirect:
+direct `/syllabusgraph/` links and datasets remain available. Root `#graph=...` bookmarks
+now go to GitHub as well; fragments do not reach the redirect service.
+
+The combined artifact retains the landing source and supplied public graph
+export at `/syllabusgraph/`. Without the root redirect, its build script preserves old `#graph=...` links,
 redirects old graph assets, relocates the graph's headers and repairs its 404 page.
 Font licence notices are included under `/assets/fonts/`.
 
@@ -41,10 +47,10 @@ links to sibling projects; keeping their routes does not add them to its navigat
 sh scripts/pnpm dlx wrangler@4.132.0 dev --config deployment/public-site.wrangler.jsonc --ip 127.0.0.1 --port 8787 --persist-to data/site-preview-state
 ```
 
-Open that loopback address and verify the landing, GitHub destination, copyable setup
-prompt, `/syllabusgraph/` graph loading, an existing root `#graph=...` link, a graph
-404 and `/assets/fonts/NOTICE.txt`. Check the landing at desktop, 412×915, 360×800 and
-915×412. Stop this owned preview when done. A successful dry run checks packaging;
+Open that loopback address and verify the temporary GitHub redirect from `/` and
+`/index.html`, the destination repository/README, `/syllabusgraph/` graph loading, a graph
+404 and `/assets/fonts/NOTICE.txt`. If the landing is restored later, also check its copy
+prompt and desktop/phone layouts. Stop this owned preview when done. A successful dry run checks packaging;
 it does not establish these browser journeys or account access.
 
 ## Publish the reviewed artifact

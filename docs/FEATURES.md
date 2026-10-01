@@ -1,5 +1,9 @@
 # Feature map
 
+**Public entry (2026-10-01): implemented.** sciencewithagents.com and its www alias redirect
+to the public GitHub repository. The README is the landing page; dedicated website design
+is deferred. Direct SyllabusGraph links remain available.
+
 **Additional-computer prompts (2026-10-01): implemented.** Computers and accounts provides a
 copyable installation/preparation prompt to run on the new computer and a second prompt to
 finish linking from the main computer. Both follow the existing setup guides, preserve separate

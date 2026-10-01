@@ -1,5 +1,10 @@
 # sciencewithagents public site
 
+**Current public entry:** `/` and `/index.html` redirect to the GitHub repository through
+`_redirects`. The repository README is the landing page; website design is deferred.
+The HTML/CSS below is retained for later, not shown at the public entry. Direct
+`/syllabusgraph/` links remain available. Root `#graph=...` bookmarks now go to GitHub too.
+
 The public landing page for sciencewithagents. Static HTML, CSS and JavaScript, ported
 from the Sketchcoded site's layout and style. No build step, package, account or backend.
 It is not part of the pnpm workspace.
