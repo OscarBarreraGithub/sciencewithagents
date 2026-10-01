@@ -29,6 +29,7 @@ import type { HomeData } from './useHomeData';
 import './welcome.css';
 
 const names = { codex: 'Codex', claude: 'Claude' };
+const tiersHighToLow = modelTierSchema.options.slice().reverse();
 const accountLabels = {
   unchecked: 'Not checked yet',
   'signed-in': 'Native sign-in found',
@@ -338,7 +339,7 @@ export function Welcome({ data }: { data: HomeData }) {
                       </p>
                     )}
                     <ul className="welcome-model-list">
-                      {modelTierSchema.options.map((tier) => {
+                      {tiersHighToLow.map((tier) => {
                         const choice = state.policy.policy.models[provider][tier];
                         const model = choice.model
                           ? catalog?.models.find((item) => item.id === choice.model)

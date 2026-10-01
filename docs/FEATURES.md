@@ -10,7 +10,8 @@ cover control bounds, overlapping labels and enlarged text in addition to whole-
 Zoom and phone evidence is recorded in VERIFICATION.md.
 
 **General model preferences (2026-10-01): implemented.** Settings → Model preferences owns
-new-project manager/worker defaults, separate from per-project customization. The creator's
+new-project manager/worker defaults, separate from per-project customization. Model levels in
+preferences and Welcome read Postdoc → Grad student → Undergrad → Uncle. The creator's
 corrected matrix starts at Balanced + Tokenmax (the provider's Only preset for one-provider
 installs), follows live family versions and supports exact pins. Restore recommended defaults
 stages the original recommendations for saving while retaining subscriptions and existing
