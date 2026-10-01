@@ -169,3 +169,26 @@ describe('native connection mirror', () => {
     expect(() => patchedSource('', 'future')).toThrow('not supported');
   });
 });
+
+it('offers personal loaded chats without native subagents or app-created helpers', async () => {
+  const { connection, mirror } = fixture();
+  const threads: Record<string, Record<string, unknown>> = {
+    personal: { id: 'personal', name: 'My conversation', source: 'vscode' },
+    child: { id: 'child', source: { subAgent: { thread_spawn: {} } } },
+    linked: { id: 'linked', parentThreadId: 'personal' },
+    managed: { id: 'managed', threadSource: 'sciencewithagents' },
+    temporary: { id: 'temporary', ephemeral: true },
+  };
+  connection.sendRequest = (provider, id, method, params) => {
+    const result =
+      method === 'thread/loaded/list'
+        ? { data: Object.keys(threads) }
+        : { thread: threads[(params as { threadId: string }).threadId] };
+    queueMicrotask(() => connection.providers.get(provider)?.onResult?.({ id, result }));
+  };
+  try {
+    expect(await mirror.choices()).toEqual([{ id: 'personal', label: 'My conversation' }]);
+  } finally {
+    mirror.dispose();
+  }
+});

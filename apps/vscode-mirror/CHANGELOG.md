@@ -1,5 +1,12 @@
 # Changes
 
+## 0.2.7
+
+Loaded-chat sharing choices exclude native subagents, temporary sessions and
+sciencewithagents-owned helper sessions using provider provenance. Saved task history
+is retained. This changes the companion picker; the native Codex picker remains owned
+by Codex.
+
 ## 0.2.6
 
 Send instructions during active work: Codex steering targets the observed current reply,

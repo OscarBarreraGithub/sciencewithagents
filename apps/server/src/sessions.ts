@@ -4,6 +4,7 @@ import {
   sessionImportSchema,
   sessionListSchema,
   providerThreadId,
+  isBackgroundCodexThread,
 } from '@dock/shared';
 import { Conflict, type PrivateProject } from './store.js';
 import type { Provider } from './codex.js';
@@ -17,6 +18,9 @@ const metadata = z.object({
   updatedAt: z.number(),
   status: z.object({ type: z.string() }).optional(),
   ephemeral: z.boolean().optional(),
+  source: z.unknown().optional(),
+  threadSource: z.string().nullable().optional(),
+  parentThreadId: z.string().nullable().optional(),
 });
 
 /** A narrow history adapter. Listing/reading never resumes or executes a Codex thread. */
@@ -39,23 +43,12 @@ export class Sessions {
           limit: 50,
           cursor,
           sortKey: 'updated_at',
-          sourceKinds: [
-            'cli',
-            'vscode',
-            'appServer',
-            'exec',
-            'subAgent',
-            'subAgentReview',
-            'subAgentCompact',
-            'subAgentThreadSpawn',
-            'subAgentOther',
-            'unknown',
-          ],
+          sourceKinds: ['cli', 'vscode', 'appServer'],
         }),
       );
       return sessionListSchema.parse({
         data: page.data
-          .filter((t) => t.cwd === project.root && !t.ephemeral)
+          .filter((t) => t.cwd === project.root && !isBackgroundCodexThread(t))
           .map((t) => ({
             id: t.id,
             title: (t.name || t.preview || 'Untitled Codex session')

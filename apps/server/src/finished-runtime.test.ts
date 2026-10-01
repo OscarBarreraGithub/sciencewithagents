@@ -308,3 +308,33 @@ it('releases a finished Claude process through its existing session close withou
   await runtime.restoreSessions([worker.id]);
   expect(runtime.claude.get(worker.id)).toBeUndefined();
 });
+
+it('archives a proven app-owned finished session, without changing its saved work', async () => {
+  store.setSetting(`codex:owned:${worker.threadId}`, worker.id);
+  const client = await runtime.client(worker);
+  const request = vi.spyOn(client, 'request');
+  const saved = store.agent(worker.id);
+  await sweep();
+  expect(request).toHaveBeenCalledWith('thread/archive', { threadId: worker.threadId });
+  expect(store.agent(worker.id)).toEqual(saved);
+  expect(store.events(0, 1000).some((e) => e.type === 'session.archived')).toBe(true);
+});
+
+it('does not archive imported sessions or active workers; archive failure does not fail work', async () => {
+  const client = await runtime.client(worker);
+  const request = vi.spyOn(client, 'request');
+  await sweep();
+  expect(request).not.toHaveBeenCalledWith('thread/archive', expect.anything());
+  const replacement = await runtime.client(worker);
+  store.setSetting(`codex:owned:${worker.threadId}`, worker.id);
+  store.updateAgent(worker.id, { status: 'running', turnId: 'active' });
+  const again = vi.spyOn(replacement, 'request');
+  await sweep();
+  expect(again).not.toHaveBeenCalledWith('thread/archive', expect.anything());
+  store.updateAgent(worker.id, { status: 'idle', turnId: null });
+  again.mockRejectedValue(new Error('Archive unavailable'));
+  await sweep();
+  expect(store.task(worker.taskId!).status).toBe('done');
+  expect(runtime.clients.has(worker.id)).toBe(false);
+  expect(store.events(0, 1000).some((e) => e.type === 'session.archive_failed')).toBe(true);
+});

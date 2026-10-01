@@ -1,5 +1,25 @@
 # Verification
 
+## 2026-09-30 — manager classification and helper history
+
+Production builds passed. Focused checks passed: 116 backend and 8 companion cases.
+The new owner-list/browser regression passed desktop, 412×915, 360×800, 915×412 and
+iPhone WebKit after correcting an API-created fixture to refresh its snapshot. It verifies
+internal projects stay hidden, history remains reachable and a genuine new project appears.
+Native Safari confirmed live Managers is empty and All shows only the two shared user chats.
+The final assistant-release checks passed 26 cases. The preceding CI failure was an old
+Home test expecting a VS Code route link; it now checks the requested setup dialog and
+passes all five browser profiles. Companion 0.2.7 built, typechecked, packaged and installed;
+the current editor was not reloaded.
+
+Supported native archive/read calls verified 120 specifically identified app-created and
+verification sessions stay readable after removal from the ordinary native history list.
+The current owner conversation stayed unarchived. A no-inference native probe confirmed
+archived sessions require unarchiving before resume; app-owned restore and imported-session
+noninterference have focused regression coverage. All 47 app conversations and 2,046 entries
+remain. No inference, account change, editor reload or direct Codex DB write was used.
+Active standalone helpers may still appear in the native picker; this limit is documented.
+
 ## 2026-09-30 — requested VS Code status and obsolete QUARK assignments
 
 Production build passed. Focused server, history, host-proxy, closed-worker and task-review

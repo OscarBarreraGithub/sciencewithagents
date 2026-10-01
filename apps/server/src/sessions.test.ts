@@ -155,10 +155,26 @@ describe('saved session discovery and import', () => {
       params: {
         cwd: root,
         cursor: 'cursor',
-        sourceKinds: expect.arrayContaining(['appServer', 'cli', 'subAgentThreadSpawn']),
+        sourceKinds: ['cli', 'vscode', 'appServer'],
       },
     });
     expect(store.runs()).toHaveLength(0);
+  });
+  it('omits native helpers and app-created histories even if a provider returns them', async () => {
+    const original = handler;
+    handler = (method, params) =>
+      method === 'thread/list'
+        ? {
+            data: [
+              thread,
+              { ...thread, id: randomUUID(), source: { subAgent: { thread_spawn: {} } } },
+              { ...thread, id: randomUUID(), parentThreadId: thread.id },
+              { ...thread, id: randomUUID(), threadSource: 'sciencewithagents' },
+            ],
+            nextCursor: 'next-page',
+          }
+        : original(method, params);
+    expect((await sessions.list(projectId)).data.map((t) => t.id)).toEqual([thread.id]);
   });
   it('imports all visible pages atomically and idempotently without starting a provider turn', async () => {
     const request = input();

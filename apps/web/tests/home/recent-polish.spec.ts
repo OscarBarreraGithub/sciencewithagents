@@ -490,3 +490,51 @@ test('Shared chats retain multiline drafts on reload and expose their current lo
   expect(writes).toEqual([]);
   await noOverflow(page);
 });
+
+test('internal development managers stay out of owner lists, while a newly created project is visible', async ({
+  page,
+  baseURL,
+}) => {
+  const original = await snapshot(page);
+  const internalIds = new Set(original.projects.map((p) => p.id));
+  const originalManager = original.agents.find((a) => a.role === 'manager')!;
+  await page.route('**/api/snapshot', async (route) => {
+    const response = await route.fetch();
+    const state = snapshotSchema.parse(await response.json());
+    state.projects = state.projects.map((p) =>
+      internalIds.has(p.id) ? { ...p, internal: true } : p,
+    );
+    await route.fulfill({ json: state });
+  });
+  await page.goto('/#/managers');
+  await expect(page.getByRole('button', { name: 'Managers', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.locator('.chat-row')).toHaveCount(0);
+  await expect(
+    page.getByText('No conversations yet. Choose New to start a project.'),
+  ).toBeVisible();
+  await page.goto('/#/home');
+  await expect(page.locator('.overview-destinations')).toContainText('0 project managers');
+  await page.goto('/#/projects');
+  await expect(page.locator('.flow-project-grid > *')).toHaveCount(0);
+  await page.goto('/#/work');
+  await expect(page.locator('.quark-projects a')).toHaveCount(0);
+  await page.goto('/#/advanced');
+  await expect(page.locator(`a[href="#/advanced/${originalManager.id}"]`)).toBeVisible();
+  const response = await page.request.post('/api/projects', {
+    headers: { Origin: baseURL! },
+    data: { key: randomUUID(), name: 'My actual project', provider: 'codex' },
+  });
+  expect(response.ok()).toBe(true);
+  const project = await response.json();
+  await page.goto('/#/managers');
+  // The API fixture bypasses the creation UI's snapshot refresh.
+  await page.reload();
+  await expect(page.locator(`.chat-list a[href="#/chat/${project.managerId}"]`)).toBeVisible();
+  await expect(page.locator('.chat-row')).toHaveCount(1);
+  await page.reload();
+  await expect(page.locator('.chat-row')).toHaveCount(1);
+  await noOverflow(page);
+});

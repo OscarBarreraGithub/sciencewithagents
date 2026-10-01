@@ -28,6 +28,7 @@ import {
   managerAllowanceSchema,
   pauseWorkerSchema,
   workerDefault,
+  managedCodexSource,
 } from '@dock/shared';
 import { CodexRpc, threadResponse, toolCall, turnResponse, type Provider } from './codex.js';
 import { Conflict, Store, now, publicTask, type PrivateAgent, type PrivateRun } from './store.js';
@@ -305,27 +306,7 @@ export class Runtime {
         schedulerSettings(store).paused
           ? 'The work queue is paused.'
           : this.pulsar.decision(store.run(id)).reason,
-      release: async (id) => {
-        if (
-          this.executing.has(id) ||
-          this.starting.has(id) ||
-          this.activeChildren(id).length ||
-          this.externalControl.has(id) ||
-          this.providerReads.has(id) ||
-          this.store.approvals().some((a) => a.agentId === id && a.status === 'pending')
-        )
-          return false;
-        await this.claude.forget(id);
-        const client = this.clients.get(id);
-        await client?.close();
-        for (const member of this.nativeChildren.family(id))
-          if (this.clients.get(member.id) === client) this.clients.delete(member.id);
-        this.mcpConfigs.delete(id);
-        this.nativeConfigs.delete(id);
-        this.pluginPolicies.delete(id);
-        this.pluginsChanged.delete(id);
-        return true;
-      },
+      release: (id) => this.releaseAssistant(id),
       interrupt: (id, reason) =>
         this.runtimeFailure(
           id,
@@ -342,15 +323,7 @@ export class Runtime {
         schedulerSettings(store).paused
           ? 'The work queue is paused.'
           : this.pulsar.decision(store.run(id)).reason,
-      release: async (id) => {
-        if (this.executing.has(id) || this.starting.has(id)) return false;
-        await this.claude.forget(id);
-        await this.clients.get(id)?.close();
-        this.clients.delete(id);
-        this.mcpConfigs.delete(id);
-        this.nativeConfigs.delete(id);
-        return true;
-      },
+      release: (id) => this.releaseAssistant(id),
       interrupt: (id, reason) => this.runtimeFailure(id, new Error(reason)),
     });
   }
@@ -772,6 +745,7 @@ export class Runtime {
       // Publish the fence before closing so a concurrent history/catalog read waits.
       const closing = Promise.resolve().then(async () => {
         await this.claude.forget(agent.id);
+        await this.archiveOwnedCodexThread(agent, client);
         await client?.close();
         for (const member of family)
           if (this.clients.get(member.id) === client) this.clients.delete(member.id);
@@ -793,6 +767,65 @@ export class Runtime {
       } finally {
         this.releasing.delete(agent.id);
       }
+    }
+  }
+  private async releaseAssistant(id: string) {
+    if (
+      this.executing.has(id) ||
+      this.starting.has(id) ||
+      this.releasing.has(id) ||
+      this.activeChildren(id).length ||
+      this.externalControl.has(id) ||
+      this.providerReads.has(id) ||
+      ['running', 'waiting', 'queued'].includes(this.store.agent(id).status) ||
+      this.store.approvals().some((a) => a.agentId === id && a.status === 'pending')
+    )
+      return false;
+    // Reuse the normal release fence so a new message waits for native archiving.
+    const closing = Promise.resolve().then(async () => {
+      await this.claude.forget(id);
+      const client = this.clients.get(id);
+      await this.archiveOwnedCodexThread(this.store.agent(id), client);
+      await client?.close();
+      for (const member of this.nativeChildren.family(id))
+        if (this.clients.get(member.id) === client) this.clients.delete(member.id);
+      this.mcpConfigs.delete(id);
+      this.nativeConfigs.delete(id);
+      this.pluginPolicies.delete(id);
+      this.pluginsChanged.delete(id);
+    });
+    this.releasing.set(id, closing);
+    try {
+      await closing;
+      return true;
+    } finally {
+      this.releasing.delete(id);
+    }
+  }
+  /** Native archive hides finished helpers from editor history, retaining the rollout.
+   * Only sessions created here qualify; imported or shared user chats never do. */
+  private async archiveOwnedCodexThread(agent: PrivateAgent, client?: Provider) {
+    if (
+      agent.provider !== 'codex' ||
+      !client?.ready ||
+      !agent.threadId ||
+      agent.turnId ||
+      agent.status !== 'idle' ||
+      this.store.getSetting(`codex:owned:${agent.threadId}`) !== agent.id
+    )
+      return;
+    try {
+      await client.request('thread/archive', { threadId: agent.threadId });
+      this.store.event('session.archived', agent.projectId, agent.id, {
+        threadId: agent.threadId,
+        reason: 'finished_helper',
+      });
+    } catch {
+      // A picker cleanup failure must not turn completed work into failed work.
+      this.store.event('session.archive_failed', agent.projectId, agent.id, {
+        threadId: agent.threadId,
+        message: 'Native history cleanup failed. The saved conversation is retained.',
+      });
     }
   }
   private async readClient<T>(agent: PrivateAgent, read: (client: Provider) => Promise<T>) {
@@ -1126,6 +1159,7 @@ export class Runtime {
             const result = threadResponse.parse(
               await client.request('thread/fork', {
                 ...params,
+                threadSource: managedCodexSource,
                 threadId: sourceThreadId,
                 lastTurnId: sourceTurnId,
                 excludeTurns: true,
@@ -1149,6 +1183,7 @@ export class Runtime {
           );
         });
       agent = this.store.updateAgent(agent.id, { threadId });
+      this.store.setSetting(`codex:owned:${threadId}`, agent.id);
       this.store.observeContext(threadId, agent.provider);
       this.store.event('interview.forked', agent.projectId, agent.id, {
         sourceThreadId,
@@ -1158,15 +1193,29 @@ export class Runtime {
     }
     if (agent.threadId) {
       try {
-        const result = threadResponse.parse(
-          await client.request('thread/resume', {
-            threadId: agent.threadId,
-            ...params,
-            // Observed/imported history already lives in our archive. Avoid a
-            // full-history response on every turn, especially for paginated imports.
-            excludeTurns: this.store.observedContext(agent.threadId, agent.provider),
-          }),
-        );
+        const resumeParams = {
+          threadId: agent.threadId,
+          ...params,
+          // Observed/imported history already lives in our archive. Avoid a
+          // full-history response on every turn, especially for paginated imports.
+          excludeTurns: this.store.observedContext(agent.threadId, agent.provider),
+        };
+        let response;
+        try {
+          response = await client.request('thread/resume', resumeParams);
+        } catch (error) {
+          // Resume is read-only with respect to model execution. Restore only our
+          // own archived helper, including after a lost archive acknowledgement.
+          if (
+            this.store.getSetting(`codex:owned:${agent.threadId}`) !== agent.id ||
+            !(error instanceof Error) ||
+            !error.message.includes(`session ${agent.threadId} is archived`)
+          )
+            throw error;
+          await client.request('thread/unarchive', { threadId: agent.threadId });
+          response = await client.request('thread/resume', resumeParams);
+        }
+        const result = threadResponse.parse(response);
         if (agent.interview?.continuity === 'native-fork') {
           if (result.thread.id !== agent.threadId)
             throw new Conflict(
@@ -1195,6 +1244,7 @@ export class Runtime {
     const result = threadResponse.parse(
       await client.request('thread/start', {
         ...params,
+        threadSource: managedCodexSource,
         dynamicTools: this.tools(agent),
         historyMode: 'legacy',
       }),
@@ -1203,6 +1253,7 @@ export class Runtime {
       threadId: result.thread.id,
       model: agent.model ?? result.model ?? null,
     });
+    this.store.setSetting(`codex:owned:${result.thread.id}`, agent.id);
     await client.request('thread/name/set', { threadId: result.thread.id, name: agent.name });
     this.store.observeContext(result.thread.id, agent.provider);
     this.store.event('session.started', project.id, agent.id, {
@@ -2504,6 +2555,7 @@ export class Runtime {
     // The CLI rejoins its current context during initial attachment. The host is subscribed already.
     const nativeParams = {
       ...params,
+      ...(!resuming ? { threadSource: managedCodexSource } : {}),
       config: {
         ...(obj.safeParse(params.config).data ?? {}),
         ...this.pluginPolicies.get(agentId)?.config,
@@ -2532,6 +2584,7 @@ export class Runtime {
     const adopt = (threadId: string) => {
       this.store.transaction(() => {
         this.store.updateAgent(agentId, { threadId, turnId: null });
+        if (!resuming) this.store.setSetting(`codex:owned:${threadId}`, agentId);
         this.store.observeContext(threadId, agent.provider);
         const action = starting ? 'started' : resuming ? 'selected' : 'forked';
         this.system(

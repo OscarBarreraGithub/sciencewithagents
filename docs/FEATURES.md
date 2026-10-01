@@ -1,5 +1,15 @@
 # Feature map
 
+**Helper visibility (2026-09-30): implemented with a native-editor limit.** App-created
+Codex contexts now carry durable ownership/provenance; native helpers and managed contexts
+are excluded from our shared/saved-session pickers. Internal development projects no longer
+appear as owner-created managers or project counts. Finished app-owned task workers and
+released resource/finder sessions are natively archived, preserving history and allowing
+explicit reuse. Imported personal chats are unaffected. Codex's own VS Code picker has no
+verified supported hide-active-helper setting in the installed version; separately launched
+active helpers can remain visible there until archived. Companion 0.2.7 includes the picker
+filter and activates on the next normal editor restart.
+
 **Latest owner corrections:** Home’s VS Code control opens connection/setup status and
 extension instructions, without navigating to a chat list. Shared chats load their first
 history in background browsers and refresh on returning to the foreground. QUARK tasks
@@ -25,8 +35,8 @@ Standalone runs and local jobs retain their own entries.
 
 ## Chat navigation and phone refresh — implemented, 2026-09-30
 
-Home's VS Code button opens editor conversations directly, independent of filters saved in
-Chats. Native Codex sessions remain under Chats. Resource diagnoses, automatic checks,
+Home's VS Code button opens connection status and extension setup instructions.
+Shared native Codex sessions remain under Chats. Resource diagnoses, automatic checks,
 consultations and internal service contexts no longer become separate main-list rows;
 Computer health retains their history, including a searchable archive of older conversations.
 The unrequested phone bottom navigation is removed. Chat search uses one compact row with

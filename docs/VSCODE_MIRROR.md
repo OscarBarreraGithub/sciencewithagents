@@ -1,5 +1,17 @@
 # Shared native conversations
 
+## Helper visibility
+
+Companion 0.2.7 filters its loaded-chat choices by native subagent ancestry and
+sciencewithagents ownership tags. The app's native-daemon and saved-session pickers
+use the same rule. Task/subagent history remains accessible from its parent work.
+The installed native Codex picker already defaults to interactive sources, excluding
+native subagents. It still treats separately launched App Server helpers as VS Code
+sessions: our provenance tag does not hide an active helper there. Finished app-owned
+task/resource/finder cleanup uses native archive, keeping the rollout readable. Imported
+personal chats are never automatically archived. Restart the editor normally to activate
+an updated companion; no reload is needed for native archive cleanup or the app filters.
+
 ## Existing Codex terminal sessions
 
 **Chats → Shared** now also lists loaded conversations from an already-running Codex shared

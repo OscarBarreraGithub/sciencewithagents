@@ -410,6 +410,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
   // Saved chats and terminal sessions have private backing projects; they are not work projects.
   const listedProjects = state.projects.filter(
     (project) =>
+      !project.internal &&
       project.id !== data.resources.data?.projectId &&
       project.id !== data.frontdesk.data?.projectId &&
       !surfaceOf(state.agents.find((a) => a.id === project.managerId)),

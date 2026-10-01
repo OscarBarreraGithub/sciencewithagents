@@ -436,21 +436,25 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
             </a>
           </div>
           <div className="quark-projects">
-            {s.projects.map((p) => (
-              <a key={p.id} href={`#/project/${p.id}`}>
-                <strong>{p.name}</strong>
-                <span>{p.policy.paused ? 'Paused' : `Priority weight ${p.policy.weight}`}</span>
-                {p.policy.instruction && <small>{p.policy.instruction}</small>}
-                {s.accounting.budgets
-                  .filter((b) => b.projectId === p.id && !b.taskId)
-                  .map((b) => (
-                    <small key={b.id}>
-                      {b.provider}: {b.remainingPercent.toFixed(1)}% left of {b.limitPercent}%
-                      allocated{b.reason ? ' · waiting' : ''}
-                    </small>
-                  ))}
-              </a>
-            ))}
+            {s.projects
+              .filter((p) =>
+                state?.projects.some((project) => project.id === p.id && !project.internal),
+              )
+              .map((p) => (
+                <a key={p.id} href={`#/project/${p.id}`}>
+                  <strong>{p.name}</strong>
+                  <span>{p.policy.paused ? 'Paused' : `Priority weight ${p.policy.weight}`}</span>
+                  {p.policy.instruction && <small>{p.policy.instruction}</small>}
+                  {s.accounting.budgets
+                    .filter((b) => b.projectId === p.id && !b.taskId)
+                    .map((b) => (
+                      <small key={b.id}>
+                        {b.provider}: {b.remainingPercent.toFixed(1)}% left of {b.limitPercent}%
+                        allocated{b.reason ? ' · waiting' : ''}
+                      </small>
+                    ))}
+                </a>
+              ))}
           </div>
           <div className="flow-filters quark-filters" aria-label="Board status">
             {['all', ...columns].map((c) => (

@@ -1,5 +1,25 @@
 # Design decisions
 
+## 2026-09-30 — separate personal chats from app-created helpers
+
+Preserve explicit project `internal` metadata in snapshots. Development/service projects
+stay out of Managers, Projects, Home counts and QUARK project navigation; accounting and
+saved evidence remain available. Do not infer ownership from project names.
+
+New app-created Codex contexts carry `threadSource: sciencewithagents` plus a durable
+local ownership record. Native subagent ancestry and that provenance are excluded from
+our shared/history pickers. Imported and personal editor sessions retain native ownership.
+On existing finished-task/resource/finder cleanup, archive proven app-owned Codex sessions
+using native `thread/archive`, retaining transcripts. Explicit reuse restores an archived
+owned context before resuming; never automatically restore an imported personal chat.
+Archive failure records an event and does not fail finished work.
+
+The installed Codex App Server still reports custom-client contexts as `source: vscode`.
+Its analytics tag does not change native picker visibility. Native subagents are normally
+excluded by source filtering, but active standalone helpers can still appear in the native
+VS Code picker until archived. Do not claim an always-hidden native flag, use ephemeral
+history, patch vendor UI, or rewrite Codex's database to conceal that boundary.
+
 ## 2026-09-30 — setup status and obsolete task closure
 
 The owner clarified that Home’s VS Code button shows setup status and extension

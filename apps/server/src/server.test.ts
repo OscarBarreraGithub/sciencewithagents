@@ -32,6 +32,26 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 describe('local application boundary', () => {
+  it('preserves an explicitly internal development workspace without hiding a same-named owner project or deleting history', async () => {
+    const development = store.project(store.agent(manager).projectId);
+    store.db
+      .prepare('UPDATE projects SET body=? WHERE id=?')
+      .run(JSON.stringify({ ...development, internal: true }), development.id);
+    const owner = store.register(
+      join(root, 'owner-project'),
+      development.name,
+      'Chosen by the owner',
+    );
+    const run = store.enqueue(manager, randomUUID(), 'Saved development history');
+    store.updateRun(run.id, { status: 'completed' });
+    const state = (await app.inject({ url: '/api/snapshot', headers })).json();
+    expect(state.projects.find((p: { id: string }) => p.id === development.id).internal).toBe(true);
+    expect(state.projects.find((p: { id: string }) => p.id === owner.id).internal).toBe(false);
+    expect(state.agents.some((a: { id: string }) => a.id === manager)).toBe(true);
+    expect(store.entries(manager).some((e) => e.text === 'Saved development history')).toBe(true);
+    expect((await app.inject({ url: `/api/agents/${manager}`, headers })).statusCode).toBe(200);
+  });
+
   it('closes an obsolete task by receipt, retaining work and cancelling only its queued replies', async () => {
     const project = store.agent(manager).projectId;
     const task = store.addTask(project, {

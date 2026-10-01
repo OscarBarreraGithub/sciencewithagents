@@ -15,7 +15,7 @@ VS Code and sciencewithagents open. SSH/remote extension hosts are not certified
 ## Start mirroring
 
 1. Install the review VSIX using VS Code's **Extensions → … → Install from VSIX**.
-   Companion **0.2.6** connects directly to the app on this computer. No separate editor
+   Companion **0.2.7** connects directly to the app on this computer. No separate editor
    login, connection code or saved editor credential is required.
 2. Click **sciencewithagents** in VS Code's bottom status bar. Choose **Share a Codex conversation**
    or **Share a Claude Code conversation**. The same menu handles initial setup and sharing.

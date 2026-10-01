@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { codexTranscript as transcript } from '@dock/shared';
+import { codexTranscript as transcript, isBackgroundCodexThread } from '@dock/shared';
 export { codexTranscript as transcript } from '@dock/shared';
 import type { MirrorState, MirrorSend, MirrorResult, MirrorControl } from '@dock/shared';
 
@@ -245,7 +245,7 @@ export class MirrorConnection {
         const thread = object(
           object(await this.request('thread/read', { threadId: id, includeTurns: false })).thread,
         );
-        if (thread.ephemeral !== true)
+        if (!isBackgroundCodexThread(thread))
           choices.push({
             id,
             label: (str(thread.name) || str(thread.preview) || id).slice(0, 160),

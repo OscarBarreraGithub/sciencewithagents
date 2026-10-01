@@ -7,6 +7,7 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import {
   codexTranscript,
+  isBackgroundCodexThread,
   mirrorControlSchema,
   mirrorPage,
   mirrorPageQuerySchema,
@@ -232,7 +233,7 @@ export class CodexDaemonChats {
       await this.request('thread/read', { threadId, includeTurns }, includeTurns ? 15_000 : 2000),
     );
     const thread = threadSchema.parse(result.thread);
-    if (thread.id !== threadId || thread.ephemeral || thread.canAcceptDirectInput === false)
+    if (thread.id !== threadId || isBackgroundCodexThread(thread))
       throw new Error('This native conversation is no longer available for sharing.');
     if (includeTurns && !Array.isArray(thread.turns))
       throw new Error('Codex did not return complete history. Read this conversation in Codex.');

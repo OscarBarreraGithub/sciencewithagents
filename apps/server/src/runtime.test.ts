@@ -130,6 +130,8 @@ it('native Codex inheritance avoids capability probes and keeps original manager
     'sandbox_workspace_write.network_access': true,
   });
   expect(start).toHaveProperty('approvalPolicy', 'never');
+  expect(start).toHaveProperty('threadSource', 'sciencewithagents');
+  expect(store.getSetting(`codex:owned:${threadId}`)).toBe(manager);
   expect(
     request.mock.calls.some(([method]) => ['config/read', 'mcpServerStatus/list'].includes(method)),
   ).toBe(false);
@@ -1634,4 +1636,30 @@ it('lets the manager apply exact reviewed work by default and enforces the human
   ).toEqual(result);
   expect(store.task(t.id).status).toBe('integrated');
   expect(readFileSync(join(projectRoot, 'result.txt'), 'utf8')).toBe('Reviewed result\n');
+});
+
+it.each([true, false])('restores an archived session only when app-owned: %s', async (owned) => {
+  const threadId = randomUUID();
+  store.updateAgent(manager, { threadId, toolPolicy: 'native' });
+  if (owned) store.setSetting(`codex:owned:${threadId}`, manager);
+  const client = await runtime.client(store.agent(manager));
+  const original = client.request.bind(client);
+  let archived = true;
+  const request = vi.spyOn(client, 'request').mockImplementation(async (method, params) => {
+    if (method === 'thread/resume' && archived)
+      throw new Error(`session ${threadId} is archived. Run codex unarchive first.`);
+    if (method === 'thread/unarchive') {
+      archived = false;
+      return {};
+    }
+    return original(method, params);
+  });
+  if (owned) {
+    await expect(runtime.attach(manager)).resolves.toHaveProperty('threadId', threadId);
+    expect(request).toHaveBeenCalledWith('thread/unarchive', { threadId });
+  } else {
+    await expect(runtime.attach(manager)).rejects.toThrow('Could not resume');
+    expect(request).not.toHaveBeenCalledWith('thread/unarchive', expect.anything());
+  }
+  expect(request.mock.calls.some(([method]) => method === 'turn/start')).toBe(false);
 });

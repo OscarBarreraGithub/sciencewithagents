@@ -3,7 +3,7 @@
   "displayName": "sciencewithagents",
   "icon": "icon.png",
   "description": "Unofficial, reversible live Codex and Claude Code chats for your paired sciencewithagents phone.",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "publisher": "oscarphysics",
   "license": "MIT",
   "repository": {
@@ -110,7 +110,7 @@
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "package": "pnpm build && vsce package --no-dependencies --out ../../data/agent-dock-mirror-0.2.6.vsix"
+    "package": "pnpm build && vsce package --no-dependencies --out ../../data/agent-dock-mirror-0.2.7.vsix"
   },
   "dependencies": {
     "@dock/shared": "workspace:*",

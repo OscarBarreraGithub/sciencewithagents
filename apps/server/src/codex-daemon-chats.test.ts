@@ -13,6 +13,9 @@ type Thread = {
   id: string;
   ephemeral: boolean;
   canAcceptDirectInput?: boolean;
+  source?: unknown;
+  threadSource?: string;
+  parentThreadId?: string;
   name: string;
   status: { type: string; activeFlags?: string[] };
   turns: { id: string; status: string; items: unknown[] }[];
@@ -501,3 +504,15 @@ it.each([false, true])(
     }
   },
 );
+
+it.each([
+  { source: { subAgent: { thread_spawn: {} } } },
+  { parentThreadId: 'parent' },
+  { threadSource: 'sciencewithagents' },
+])('excludes helper provenance from shared chat discovery: %j', async (metadata) => {
+  const f = fixture();
+  Object.assign(f.thread, metadata);
+  await f.chats.discover();
+  expect(f.chats.windows()).toEqual([]);
+  expect(f.mutations()).toEqual([]);
+});

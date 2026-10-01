@@ -54,7 +54,8 @@ Make small Git checkpoints and preserve unrelated changes.
 
 During development, keep browsers and local servers running only while directly using
 them. Own each test process, close it on success/failure, and check for leftover listeners
-and browser children afterwards. Leave Agent Dock's background/login service off unless
+and browser children afterwards. Archive native sessions created by real-provider fixtures
+through the provider API so tests do not clutter the owner’s personal chat history. Leave Agent Dock's background/login service off unless
 the owner asks to use it. Never bulk-kill Chrome, Node, editor helpers or unrelated services.
 
 Normal user journeys must work inside the app for someone with no technical knowledge.

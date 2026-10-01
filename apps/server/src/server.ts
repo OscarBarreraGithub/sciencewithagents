@@ -672,6 +672,7 @@ export async function createServer(
         projectSchema.parse({
           ...p,
           internal:
+            p.internal === true ||
             runtime.resources.projectId() === p.id ||
             runtime.conversationSearch.projectId() === p.id ||
             runtime.frontdesk.status().projectId === p.id ||

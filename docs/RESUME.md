@@ -1,5 +1,16 @@
 # Resume here — current continuation only
 
+## Latest correction — helper/session clutter
+
+Development project classified internal in private data, with metadata honored by the API.
+Live Managers now has zero entries; All contains only the two shared user conversations.
+All 47 app conversations and 2,046 saved entries retained. Native archive cleanup verified
+120 exact app-created/development/fixture sessions remain readable; current owner editor thread
+was excluded. No model turns or editor reload. Ownership records cover known app contexts;
+new contexts are tagged automatically. Finished task/resource/finder cleanup uses native
+archive; owned archived contexts restore when explicitly reused. Native active standalone
+helpers can still appear in Codex's own picker; do not describe the analytics tag as a hide flag.
+
 Updated 2026-09-30. The drawn app, MIT repository and sciencewithagents.com landing are
 published. The earlier complete release check and newer focused corrections are recorded below. Simulated phone checks
 are available independently of native desktop computer-use; do not block routine workflow
@@ -90,7 +101,7 @@ and phone connector available; login service stays off. Stop only owned test pro
 
 ## Remaining device handoff
 
-Companion 0.2.6 is installed, now with the alien icon. A stale shared-chat list caused the
+Companion 0.2.7 is installed with the alien icon and helper filtering; it activates on the next normal editor restart. A stale shared-chat list caused the
 misleading offline status: list reads now refresh/coalesce the companion summary. The real
 active editor conversation was verified Working with steering available, without an editor
 reload. Do not reload an active conversation mid-turn. Separate real isolated editor checks passed Codex steering and Claude's acknowledged

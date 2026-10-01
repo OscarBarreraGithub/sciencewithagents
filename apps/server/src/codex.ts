@@ -162,11 +162,15 @@ export class CodexRpc extends EventEmitter implements Provider {
         import.meta.url,
       ),
     );
+    const env: NodeJS.ProcessEnv = { ...process.env, RUST_LOG: 'error' };
+    // A launch from VS Code must identify as this app, not inherit the editor's
+    // originator override. Native sign-in, settings and capabilities still inherit.
+    delete env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE;
     this.process = spawn(process.execPath, [host, this.binary, JSON.stringify(args)], {
       cwd: this.cwd,
       stdio: ['pipe', 'ignore', 'pipe'],
       detached: false,
-      env: { ...process.env, RUST_LOG: 'error' },
+      env,
     });
     this.process.stderr?.on('data', () => {
       /* Never copy credential-bearing diagnostics into server logs. */

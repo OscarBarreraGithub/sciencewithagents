@@ -7,6 +7,7 @@ export * from './browser-drafts.js';
 export * from './local-access.js';
 export * from './mirror-page.js';
 export * from './codex-transcript.js';
+export * from './codex-history.js';
 import { allowanceRequestSchema, allowanceSchema } from './quark.js';
 import { mcpFormSchema, mcpFormValuesSchema } from './mcp-forms.js';
 import { mcpUrlRequestSchema } from './mcp-urls.js';

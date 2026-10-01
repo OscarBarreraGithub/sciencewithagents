@@ -117,7 +117,7 @@ test('drawn Home is read-only, responsive, and opens real destinations', async (
     fullPage: true,
     scale: 'css',
   });
-  for (const target of ['chats', 'apps', 'work', 'resources', 'settings', 'computers', 'vscode']) {
+  for (const target of ['chats', 'apps', 'work', 'resources', 'settings', 'computers']) {
     const link = page.locator(`a[href="#/${target}"]:visible`).first();
     await link.click();
     await expect(page.locator('main h1').first()).toBeVisible();
@@ -126,6 +126,11 @@ test('drawn Home is read-only, responsive, and opens real destinations', async (
     await page.goBack();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
   }
+  await page.getByRole('button', { name: /VS Code on this computer:/ }).click();
+  const editorSetup = page.getByRole('dialog', { name: 'VS Code setup' });
+  await expect(editorSetup).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
+  await editorSetup.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('button', { name: 'Help and setup', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await noHorizontalOverflow(page);
