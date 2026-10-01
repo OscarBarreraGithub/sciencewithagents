@@ -327,7 +327,7 @@ test('Home shows window-specific rates and keeps a to-do after a lost save respo
   await noHorizontalOverflow(page);
 });
 
-test('the phone lock remains in front of private home data', async ({ page }) => {
+test('an unpaired phone cannot mount private home data', async ({ page }) => {
   let privateReads = 0;
   page.on('request', (request) => {
     if (
@@ -346,8 +346,7 @@ test('the phone lock remains in front of private home data', async ({ page }) =>
         connection: 'connected',
         paired: false,
         authentication: 'paired',
-        enrolled: true,
-        requireUnlock: true,
+        enrolled: false,
         setupComplete: true,
         enrollmentOpen: false,
         enrollmentInProgress: false,
@@ -359,16 +358,17 @@ test('the phone lock remains in front of private home data', async ({ page }) =>
   );
   await page.goto('/');
   await expect(
-    page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }),
+    page.getByRole('heading', { name: 'Enter pairing code', exact: true }),
   ).toBeVisible();
   await expect(page.locator('.home-shell')).toHaveCount(0);
   expect(privateReads).toBe(0);
 });
 
-test('a paired phone can lock the new home without opening a placeholder', async ({ page }) => {
+test('paired home stays open on return with no app lock and closes after removal', async ({
+  page,
+}) => {
   await readings(page);
   let paired = true;
-  let locks = 0;
   await page.route('**/api/phone/status', (route) =>
     route.fulfill({
       json: {
@@ -378,8 +378,7 @@ test('a paired phone can lock the new home without opening a placeholder', async
         connection: 'connected',
         paired,
         authentication: 'paired',
-        enrolled: true,
-        requireUnlock: false,
+        enrolled: paired,
         setupComplete: true,
         enrollmentOpen: false,
         enrollmentInProgress: false,
@@ -389,20 +388,22 @@ test('a paired phone can lock the new home without opening a placeholder', async
       },
     }),
   );
-  await page.route('**/api/phone/lock', (route) => {
-    locks++;
-    paired = false;
-    return route.fulfill({ json: { ok: true } });
-  });
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
   await noHorizontalOverflow(page);
-  await page.getByRole('button', { name: 'Lock app', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Lock app', exact: true })).toHaveCount(0);
+  await page.evaluate(() => {
+    localStorage.setItem('dock:phone-manually-locked', '1'); // Obsolete lock flag has no effect.
+    window.dispatchEvent(new Event('pagehide'));
+    window.dispatchEvent(new Event('pageshow'));
+  });
+  await expect(page.locator('.home-shell')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('.home-shell')).toBeVisible();
+  paired = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('dock:authentication-required')));
   await expect(page.locator('.home-shell')).toHaveCount(0);
-  await expect(
-    page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }),
-  ).toBeVisible();
-  expect(locks).toBe(1);
+  await expect(page.getByRole('heading', { name: 'Enter pairing code' })).toBeVisible();
   await page.reload();
   await expect(page.locator('.home-shell')).toHaveCount(0);
 });

@@ -16,7 +16,6 @@ import {
   CircleHelp,
   Layers3,
   LayoutGrid,
-  LockKeyhole,
   MessageCircle,
   Settings2,
   Smartphone,
@@ -29,7 +28,7 @@ import {
 } from '@dock/shared';
 import { apiScope } from '../api';
 import { Modal } from '../Modal';
-import { PhoneSettings, usePhoneLockAvailable } from '../PhoneAccess';
+import { PhoneSettings } from '../PhoneAccess';
 import { useHomeData, useReading, type HomeData } from './useHomeData';
 import './home.css';
 import { Resources } from './Resources';
@@ -345,7 +344,6 @@ export function Home() {
       viewport.removeEventListener('scroll', resize);
     };
   }, []);
-  const canLock = usePhoneLockAvailable();
   const data = useHomeData();
   const phone = useReading('/phone/status', phoneStatusSchema.parse);
   const [currentRoute, setPage] = useState(route);
@@ -475,16 +473,7 @@ export function Home() {
               >
                 <CircleHelp size={20} />
               </button>
-              {canLock && (
-                <button
-                  type="button"
-                  className="home-icon-button"
-                  aria-label="Lock app"
-                  onClick={() => window.dispatchEvent(new Event('dock:lock-phone'))}
-                >
-                  <LockKeyhole size={18} />
-                </button>
-              )}
+
               <a href={href('settings')} className="home-icon-button" aria-label="Settings">
                 <Settings2 size={19} />
               </a>

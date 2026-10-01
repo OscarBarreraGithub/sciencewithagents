@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LockKeyhole, Smartphone } from 'lucide-react';
+import { Smartphone } from 'lucide-react';
 import {
   startRegistration,
-  startAuthentication,
   type PublicKeyCredentialCreationOptionsJSON,
-  type PublicKeyCredentialRequestOptionsJSON,
 } from '@simplewebauthn/browser';
 import type { PhoneStatus } from '@dock/shared';
 import { api } from './api';
@@ -39,7 +37,7 @@ const unsupportedPasskeys =
   'This browser cannot save a passkey. Open this address in an up-to-date Safari or Chrome browser and check that your phone has a screen lock and a passkey provider enabled.';
 const uncertainFinish =
   'We could not confirm whether pairing finished. Check connection to look for the computer confirmation. Do not save another passkey for this attempt.';
-function verificationError(error: unknown, unlocking = false) {
+function verificationError(error: unknown) {
   // Only fixed diagnostic identifiers may leave the browser error. Never show its
   // message/cause/stack: extensions and authenticators can put private values there.
   const value =
@@ -64,28 +62,24 @@ function verificationError(error: unknown, unlocking = false) {
   if (name === 'ConstraintError' || name === 'NotSupportedError')
     return {
       detail,
-      message: unlocking
-        ? 'This browser could not use your saved passkey. Open the same phone address in the browser or home-screen app where you paired it, then try unlocking again. Pairing is unchanged.'
-        : unsupportedPasskeys,
+      message: unsupportedPasskeys,
     };
   if (name === 'InvalidStateError')
     return {
       detail,
-      message: unlocking
-        ? 'Your phone could not verify its saved passkey. Try unlocking again. Pairing is unchanged.'
-        : 'Your phone reports that this passkey already exists. Check connection first. If this phone is not paired, use a new code from your computer.',
+      message:
+        'Your phone reports that this passkey already exists. Check connection first. If this phone is not paired, use a new code from your computer.',
     };
   return {
     detail,
-    message: unlocking
-      ? 'Your phone could not be unlocked. Check connection, then try Unlock sciencewithagents again. Pairing is unchanged.'
-      : 'The phone could not save its passkey. Try again, or open this address in an up-to-date Safari or Chrome browser. If it keeps failing, share the verification detail below.',
+    message:
+      'The phone could not save its passkey. Try again, or open this address in an up-to-date Safari or Chrome browser. If it keeps failing, share the verification detail below.',
   };
 }
 const preparationMessages = new Set([
   'Pairing is closed. Create a new code on your computer.',
   'That code did not match. Check the code on your computer.',
-  'This browser is already paired. Unlock it instead.',
+  'This browser is already paired. Open your workspace.',
   'Phone access is turned off on your computer.',
   'Pairing was cancelled. Create a new code.',
   expiredPreparation,
@@ -97,25 +91,7 @@ const codeErrors = new Set([
   'Pairing was cancelled. Create a new code.',
   expiredPreparation,
 ]);
-const unlockMessages = new Set([
-  'This browser is not paired.',
-  'Unlock expired. Try Unlock sciencewithagents again.',
-  'Phone verification did not finish. Try Unlock sciencewithagents again.',
-  'Device access changed. Try unlocking again.',
-  'Phone access is turned off on your computer.',
-]);
 type PreparedRegistration = { options: PublicKeyCredentialCreationOptionsJSON; expiresAt: number };
-// Deny-only intent, never a credential or a grant of access. A failed/offline
-// manual lock must not be undone by reopening a remembered server session.
-const manualLockKey = 'dock:phone-manually-locked';
-function isManuallyLocked() {
-  try {
-    return localStorage.getItem(manualLockKey) === '1';
-  } catch {
-    return true;
-  }
-}
-
 export function PairedPhoneGate({
   status,
   refresh,
@@ -129,9 +105,6 @@ export function PairedPhoneGate({
   pairingScan?: { code: string };
   children: ReactNode;
 }) {
-  const [sealed, setSealed] = useState(
-    !(status.enrolled && status.paired && !status.requireUnlock && !isManuallyLocked()),
-  );
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState(pairingScan?.code ?? '');
   const [setupStep, setSetupStep] = useState<'code' | 'name'>(pairingScan?.code ? 'name' : 'code');
@@ -142,15 +115,9 @@ export function PairedPhoneGate({
   const preparedRef = useRef<PreparedRegistration | null>(null);
   const [finishUncertain, setFinishUncertain] = useState(false);
   const busyRef = useRef(false);
-  const locking = useRef<Promise<unknown>>(Promise.resolve());
-  const requireUnlock = useRef(status.requireUnlock);
-  const manuallyLocked = useRef(isManuallyLocked());
-  const lockEpoch = useRef(0);
   const wasEnrolled = useRef(status.enrolled);
-  requireUnlock.current = status.requireUnlock;
   useEffect(() => {
     if (wasEnrolled.current && !status.enrolled) {
-      setSealed(true);
       setCode('');
       setSetupStep('code');
       setError(
@@ -177,109 +144,6 @@ export function PairedPhoneGate({
     setDiagnostic('');
   }, [pairingScan]);
   useEffect(() => {
-    let active = true;
-    let revision = 0;
-    const lock = () => {
-      revision++;
-      lockEpoch.current++;
-      setSealed(true);
-      // Hiding the workspace is immediate. Server lock also terminates existing streams;
-      // keepalive is best-effort on suspension, backed by server-side unlock expiry.
-      locking.current = fetch('/api/phone/lock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-        credentials: 'same-origin',
-        keepalive: true,
-        redirect: 'error',
-      })
-        .then((response) => {
-          if (!response.ok) throw new Error('Lock not confirmed');
-        })
-        .catch(() => {
-          if (active && manuallyLocked.current)
-            setError(
-              'Your workspace is hidden, but the computer could not confirm the lock. Reconnect and check connection to retry. Until confirmed, the server session may still be active.',
-            );
-        });
-    };
-    const manualLock = () => {
-      manuallyLocked.current = true;
-      try {
-        localStorage.setItem(manualLockKey, '1');
-      } catch {
-        setError(
-          'Your workspace is hidden. This browser cannot remember a manual lock after closing. Keep this page open until the computer confirms the lock, or turn off phone access on your computer.',
-        );
-      }
-      lock();
-    };
-    const hidden = () => {
-      // Hide stale private UI even in remembered mode. Only the server's current
-      // session can reopen it, but leaving the page need not revoke that session.
-      revision++;
-      lockEpoch.current++;
-      setSealed(true);
-      if (requireUnlock.current) lock();
-    };
-    const recheck = async () => {
-      const attempt = ++revision;
-      if (manuallyLocked.current) lock();
-      await locking.current;
-      const value = await refresh();
-      if (
-        active &&
-        attempt === revision &&
-        document.visibilityState === 'visible' &&
-        !manuallyLocked.current &&
-        value?.paired &&
-        !value.requireUnlock
-      )
-        setSealed(false);
-    };
-    const visibility = () => {
-      if (document.visibilityState === 'hidden') hidden();
-      else void recheck();
-    };
-    const expired = () => {
-      revision++;
-      setSealed(true);
-    };
-    const preferences = () => {
-      void refresh();
-    };
-    const shown = () => {
-      if (!requireUnlock.current) void recheck();
-    };
-    const storage = (event: StorageEvent) => {
-      if (event.key !== manualLockKey && event.key !== null) return;
-      // Clearing storage cannot unlock a live view; only successful verification
-      // in this page can retire a manual lock it already observed.
-      if (isManuallyLocked()) {
-        manuallyLocked.current = true;
-        lock();
-      }
-    };
-    if (requireUnlock.current || manuallyLocked.current) lock();
-    document.addEventListener('visibilitychange', visibility);
-    window.addEventListener('pagehide', hidden);
-    window.addEventListener('pageshow', shown);
-    window.addEventListener('dock:lock-phone', manualLock);
-    window.addEventListener('storage', storage);
-    window.addEventListener('dock:authentication-required', expired);
-    window.addEventListener('dock:phone-preferences-changed', preferences);
-    return () => {
-      active = false;
-      document.removeEventListener('visibilitychange', visibility);
-      window.removeEventListener('pagehide', hidden);
-      window.removeEventListener('pageshow', shown);
-      window.removeEventListener('dock:lock-phone', manualLock);
-      window.removeEventListener('storage', storage);
-      window.removeEventListener('dock:authentication-required', expired);
-      window.removeEventListener('dock:phone-preferences-changed', preferences);
-    };
-  }, [refresh]);
-  useEffect(() => {
     if (status.enrolled || !status.pending) return;
     const timer = window.setInterval(() => void refresh(), 2000);
     return () => window.clearInterval(timer);
@@ -295,20 +159,12 @@ export function PairedPhoneGate({
     setDiagnostic('');
   }, [status.pending?.id, status.enrolled]);
   useEffect(() => {
-    if (sealed || !status.paired) return;
-    let active = true;
-    // An expired/revoked session closes streams on the server. Refresh the visible lock
-    // too, even if no new private request is made. Offline state never grants an unlock.
-    const timer = window.setInterval(() => {
-      void refresh().then((value) => {
-        if (active && !value?.paired) setSealed(true);
-      });
-    }, 15_000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [sealed, status.paired, refresh]);
+    if (!status.paired) return;
+    // Detect device removal even while idle. Transient outages do not revoke pairing
+    // or discard the mounted workspace; a real unauthorized response does.
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [status.paired, refresh]);
   useEffect(() => {
     if (!prepared) return;
     const timer = window.setTimeout(
@@ -323,33 +179,23 @@ export function PairedPhoneGate({
     );
     return () => window.clearTimeout(timer);
   }, [prepared]);
-  const act = async (operation: () => Promise<void>, preparing = false) => {
+  const act = async (operation: () => Promise<void>) => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     setError('');
     setDiagnostic('');
     try {
-      await locking.current;
       await operation();
     } catch (e) {
       // Inspect possible success instead of replaying registration or a signed assertion.
       await refresh();
-      if (preparing) {
-        if (e instanceof Error && codeErrors.has(e.message)) setSetupStep('code');
-        setError(
-          e instanceof Error && preparationMessages.has(e.message)
-            ? e.message
-            : 'The code could not be checked. Check connection, then try again. If the code was already accepted, create a new one on your computer.',
-        );
-      } else {
-        if (e instanceof Error && unlockMessages.has(e.message)) setError(e.message);
-        else {
-          const failure = verificationError(e, true);
-          setError(failure.message);
-          setDiagnostic(failure.detail);
-        }
-      }
+      if (e instanceof Error && codeErrors.has(e.message)) setSetupStep('code');
+      setError(
+        e instanceof Error && preparationMessages.has(e.message)
+          ? e.message
+          : 'The code could not be checked. Check connection, then try again. If the code was already accepted, create a new one on your computer.',
+      );
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -371,7 +217,7 @@ export function PairedPhoneGate({
     setError('');
     setDiagnostic('');
     // Invoke WebAuthn directly in this click handler. In particular, do not await
-    // locking.current or a network request before the browser sees the gesture.
+    // a network request before the browser sees the gesture.
     const ceremony = startRegistration({ optionsJSON: attempt.options });
     let finishing = false;
     void ceremony
@@ -403,23 +249,15 @@ export function PairedPhoneGate({
         setBusy(false);
       });
   };
-  if (status.enrolled && status.paired && !sealed)
-    return status.setupComplete ? (
-      children
-    ) : (
-      <PhoneDeviceSetup status={status} refresh={refresh} onboarding />
-    );
+  if (status.enrolled && status.paired)
+    return status.setupComplete ? children : <PhoneDeviceSetup refresh={refresh} onboarding />;
   return (
     <main className="phone-gate">
       <section className="phone-card">
-        {status.enrolled ? (
-          <LockKeyhole size={32} aria-hidden="true" />
-        ) : (
-          <Smartphone size={32} aria-hidden="true" />
-        )}
+        <Smartphone size={32} aria-hidden="true" />
         <h1>
           {status.enrolled
-            ? 'Unlock sciencewithagents'
+            ? 'Connect to your computer'
             : status.pending
               ? 'Confirm on your computer'
               : prepared
@@ -443,48 +281,9 @@ export function PairedPhoneGate({
           </details>
         )}
         {status.enrolled ? (
-          <>
-            <p>
-              This phone is paired with no scheduled expiry. Use your phone’s Face ID, fingerprint
-              or screen-lock verification to open your workspace.
-            </p>
-            <button
-              className="primary"
-              disabled={busy}
-              onClick={() =>
-                void act(async () => {
-                  const epoch = lockEpoch.current;
-                  const options = (await api(
-                    '/phone/unlock/options',
-                    {},
-                  )) as PublicKeyCredentialRequestOptionsJSON;
-                  const result = await startAuthentication({ optionsJSON: options });
-                  await api('/phone/unlock', result);
-                  const value = await refresh();
-                  if (
-                    value?.paired &&
-                    document.visibilityState === 'visible' &&
-                    epoch === lockEpoch.current
-                  ) {
-                    manuallyLocked.current = false;
-                    try {
-                      localStorage.removeItem(manualLockKey);
-                    } catch {
-                      /* No authority in storage. */
-                    }
-                    setSealed(false);
-                  }
-                })
-              }
-            >
-              {busy ? 'Unlocking…' : 'Unlock sciencewithagents'}
-            </button>
-            <p className="muted">
-              Locking or closing the app does not unpair this phone. No GitHub or Cloudflare sign-in
-              is needed. After unlocking, you can choose Stay signed in in Phone access to stop
-              routine verification prompts.
-            </p>
-          </>
+          <p>
+            This browser is paired. Check the connection to your computer to reopen your workspace.
+          </p>
         ) : status.pending ? (
           <>
             <p>
@@ -567,7 +366,7 @@ export function PairedPhoneGate({
                 if (next.expiresAt <= Date.now()) throw new Error(expiredPreparation);
                 preparedRef.current = next;
                 setPrepared(next);
-              }, true);
+              });
             }}
           >
             {setupStep === 'code' ? (
@@ -640,7 +439,6 @@ export function PairedPhoneGate({
             className="secondary"
             disabled={busy}
             onClick={() => {
-              if (manuallyLocked.current) window.dispatchEvent(new Event('dock:lock-phone'));
               void refresh();
             }}
           >

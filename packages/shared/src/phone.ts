@@ -20,7 +20,6 @@ export const phoneStatusSchema = z
     paired: z.boolean(),
     authentication: z.enum(['access', 'paired']).default('access'),
     enrolled: z.boolean().default(false),
-    requireUnlock: z.boolean().default(true),
     setupComplete: z.boolean().default(false),
     enrollmentOpen: z.boolean().default(false),
     enrollmentInProgress: z.boolean().default(false),
@@ -48,9 +47,7 @@ export const phonePairSchema = z
   })
   .strict();
 export const phoneEnabledSchema = z.object({ enabled: z.boolean() }).strict();
-export const phonePreferencesSchema = z
-  .object({ requireUnlock: z.boolean(), setupComplete: z.boolean().optional() })
-  .strict();
+export const phoneSetupCompleteSchema = z.object({ setupComplete: z.literal(true) }).strict();
 const encoded = z
   .string()
   .regex(/^[A-Za-z0-9_-]+$/)

@@ -56,7 +56,7 @@ try {
     for (const extra of [
       {},
       {
-        cookie: '__Host-dock_enrollment=forged; __Host-dock_unlock=forged',
+        cookie: '__Host-dock_enrollment=forged',
         'cf-access-jwt-assertion': 'forged',
       },
     ]) {
@@ -133,7 +133,7 @@ try {
         redirect: 'manual',
         signal: AbortSignal.timeout(8000),
         headers: {
-          cookie: '__Host-dock_enrollment=forged; __Host-dock_unlock=forged',
+          cookie: '__Host-dock_enrollment=forged',
           'cf-access-jwt-assertion': 'forged',
         },
       });
@@ -162,7 +162,7 @@ try {
             upgrade: 'websocket',
             'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==',
             'sec-websocket-version': '13',
-            cookie: '__Host-dock_enrollment=forged; __Host-dock_unlock=forged',
+            cookie: '__Host-dock_enrollment=forged',
           },
         },
         (response) => {
@@ -179,7 +179,11 @@ try {
       request.setTimeout(8000, () => request.destroy(new Error('Public socket check timed out.')));
       request.end();
     });
-    assert.equal(upgrade, 401, 'Real HTTPS terminal upgrade must be refused while locked.');
+    assert.equal(
+      upgrade,
+      401,
+      'Real HTTPS terminal upgrade must be refused without an approved device.',
+    );
     const http = await fetch(`${config.origin.replace('https:', 'http:')}/`, {
       redirect: 'manual',
       signal: AbortSignal.timeout(8000),

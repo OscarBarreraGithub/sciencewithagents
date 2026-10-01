@@ -36,8 +36,8 @@ Tailscale on the phone. Return to Phone access after setup for pairing.
 **Retry connection** repairs a failed phone listener without restarting the desktop.
 If its owned connector exits, the app retries three times with increasing waits before
 offering **Reconnect phone access**. A running connector handles ordinary network recovery.
-Retries keep pairing and unlock records; they do not replay messages. Turning phone access off closes
-the app's connector and remembered phone sessions while retaining paired devices. App exit
+Retries keep approved devices; they do not replay messages. Turning phone access off closes
+the app's connector and active connections while retaining paired devices for direct reconnection. App exit
 stops the owned connector; reopening restores saved enabled intent. The private route uses
 foreground Tailscale Serve, not public Funnel or a permanent background Serve configuration.
 Existing routes are never reset. Changing the node identity or private hostname requires

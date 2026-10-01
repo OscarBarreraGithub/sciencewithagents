@@ -212,7 +212,7 @@ not counted twice. Missing detail is labelled, rather than presented as zero spe
 - **Find the reason later:** search retained conversations, tool results, decisions and checkpoints; open the original evidence.
 - **Pick work back up:** restore saved conversation identities and views after opening the app again. Interrupted actions are shown for inspection, not automatically repeated.
 - **Phone and computer handoff:** keep separate drafts, explicitly copy a draft, reconnect and transfer native input control without duplicate sends.
-- **A private phone address:** pair with computer confirmation and a passkey; choose a repeat phone lock or stay signed in.
+- **A private phone address:** pair with computer confirmation and initial passkey verification, then open directly without recurring prompts. Remove a paired device from the computer to revoke access.
 - **Phone access can reconnect itself:** the app makes a few attempts after its connector stops, keeping pairing and the saved lock preference. Persistent problems ask for attention; reconnection never replays chat messages.
 - **A phone problem needn't stop desktop work:** invalid phone settings or a busy connection leave the desktop usable and keep saved pairing. The app explains that phone setup needs repair, with phone access closed until it is fixed.
 - **Your computers, your accounts:** switch between configured computers while each retains its own history, sign-ins and files.

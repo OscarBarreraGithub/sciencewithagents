@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Smartphone } from 'lucide-react';
-import { phoneStatusSchema, type PhoneStatus } from '@dock/shared';
+import { phoneStatusSchema } from '@dock/shared';
 import { api } from './api';
 
 export function HomeScreenGuide() {
@@ -57,89 +57,34 @@ export function HomeScreenGuide() {
   );
 }
 
-function LockChoice({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: boolean;
-  onChange: (value: boolean) => void;
-  disabled: boolean;
-}) {
-  return (
-    <fieldset className="phone-lock-choice" disabled={disabled}>
-      <legend>App lock</legend>
-      <label>
-        <input type="radio" name="phone-lock" checked={value} onChange={() => onChange(true)} />
-        <span>
-          Ask for Face ID or screen lock
-          <small>
-            Use your phone’s verification when reopening, returning to the app, or after 15 minutes.
-            Recommended on shared devices.
-          </small>
-        </span>
-      </label>
-      <label>
-        <input type="radio" name="phone-lock" checked={!value} onChange={() => onChange(false)} />
-        <span>
-          Stay signed in
-          <small>
-            No routine Face ID prompt. Anyone using your unlocked phone or browser can access your
-            agents and projects.
-          </small>
-        </span>
-      </label>
-    </fieldset>
-  );
-}
-
-/** Server-owned preference; neither local storage nor the install UI grants access. */
+/** Installation help after secure pairing; completion does not grant access. */
 export function PhoneDeviceSetup({
-  status,
   refresh,
   onboarding = false,
 }: {
-  status: PhoneStatus;
   refresh: () => Promise<unknown>;
   onboarding?: boolean;
 }) {
-  const [requireUnlock, setRequireUnlock] = useState(status.requireUnlock);
-  const [step, setStep] = useState<'lock' | 'install'>('lock');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (!onboarding) return;
     heading.current?.focus({ preventScroll: true });
     heading.current?.scrollIntoView({ block: 'start' });
-  }, [onboarding, step]);
-  const save = async (complete = false) => {
+  }, [onboarding]);
+  const complete = async () => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     setError('');
-    setSaved(false);
     try {
-      const next = phoneStatusSchema.parse(
-        await api('/phone/preferences', {
-          requireUnlock,
-          ...(complete ? { setupComplete: true } : {}),
-        }),
-      );
-      setRequireUnlock(next.requireUnlock);
-      window.dispatchEvent(new Event('dock:phone-preferences-changed'));
+      phoneStatusSchema.parse(await api('/phone/setup/complete', { setupComplete: true }));
       await refresh();
-      if (onboarding && !complete) setStep('install');
-      else setSaved(true);
     } catch {
-      // The reply may have been lost after saving. Reconcile server status; never
-      // silently repeat a security change or claim an install actually happened.
       await refresh().catch(() => {});
-      setError(
-        'We could not confirm the change. Check your connection and try saving again. If the app locks, unlock it first.',
-      );
+      setError('We could not confirm setup finished. Check your connection and try again.');
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -147,66 +92,34 @@ export function PhoneDeviceSetup({
   };
   const content = (
     <>
-      {onboarding && (
+      {onboarding ? (
         <>
           <Smartphone size={32} aria-hidden="true" />
-          <p className="muted">Phone setup · {step === 'lock' ? '1' : '2'} of 2</p>
           <h1 ref={heading} tabIndex={-1}>
-            {step === 'lock'
-              ? 'Make this phone yours'
-              : 'Add sciencewithagents to your Home Screen'}
+            Add sciencewithagents to your Home Screen
           </h1>
         </>
+      ) : (
+        <h3>Add sciencewithagents to your Home Screen</h3>
       )}
-      {(!onboarding || step === 'lock') && (
+      <p>Your phone is paired. It stays connected when you close and reopen the app.</p>
+      <HomeScreenGuide />
+      {onboarding && (
         <>
-          <p>Your phone is paired with no scheduled expiry. Choose how you want to open the app.</p>
-          <LockChoice
-            value={requireUnlock}
-            disabled={busy}
-            onChange={(value) => {
-              setRequireUnlock(value);
-              setSaved(false);
-            }}
-          />
-          <p className="muted">
-            Your saved passkey stays available. Lock app or turning phone access off requires
-            verification next time, even with Stay signed in. You can change this choice in Phone
-            access.
-          </p>
-          <button className="primary" disabled={busy} onClick={() => void save()}>
-            {busy ? 'Saving…' : onboarding ? 'Continue' : 'Save lock preference'}
+          <p>You can open your workspace now, whether you added an icon or prefer the browser.</p>
+          <button className="primary" disabled={busy} onClick={() => void complete()}>
+            {busy ? 'Saving…' : 'Open my workspace'}
           </button>
         </>
       )}
-      {(!onboarding || step === 'install') && (
-        <>
-          {!onboarding && <h3>Add sciencewithagents to your Home Screen</h3>}
-          <HomeScreenGuide />
-          {onboarding && (
-            <>
-              <p>
-                You can open your workspace now, whether you added an icon or prefer the browser.
-              </p>
-              <button className="primary" disabled={busy} onClick={() => void save(true)}>
-                {busy ? 'Saving…' : 'Open my workspace'}
-              </button>
-              <button className="secondary" disabled={busy} onClick={() => setStep('lock')}>
-                Back to app lock
-              </button>
-            </>
-          )}
-        </>
-      )}
-      {saved && <p role="status">Lock preference saved for this paired device.</p>}
       {error && (
         <p className="form-error" role="alert">
           {error}
         </p>
       )}
       <p className="muted">
-        Closing the app, restarting your computer, or an expired unlock does not unpair this phone.
-        Removing the device or losing browser data can require pairing again.
+        Remove this device from Phone access on your computer to revoke its connection. Losing
+        browser data can require pairing again.
       </p>
     </>
   );

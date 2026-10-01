@@ -2,7 +2,7 @@ import { modelFixture } from './model-policy.fixture.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { once } from 'node:events';
 import { get, type IncomingMessage } from 'node:http';
@@ -95,12 +95,11 @@ function cbor(value: string | number | Uint8Array | Map<unknown, unknown>): Buff
   ]);
 }
 function authenticator() {
-  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const jwk = publicKey.export({ format: 'jwk' }),
     id = randomBytes(32),
     credentialId = id.toString('base64url');
   const digest = (value: string | Buffer) => createHash('sha256').update(value).digest();
-  let counter = 0;
   return {
     register(challenge: string, targetOrigin = origin, uv = true) {
       const key = cbor(
@@ -145,37 +144,6 @@ function authenticator() {
         },
       };
     },
-    authenticate(challenge: string, targetOrigin = origin, uv = true) {
-      const count = Buffer.alloc(4);
-      count.writeUInt32BE(++counter);
-      const authData = Buffer.concat([
-        digest('dock.example.test'),
-        Buffer.from([uv ? 5 : 1]),
-        count,
-      ]);
-      const client = Buffer.from(
-        JSON.stringify({
-          type: 'webauthn.get',
-          challenge,
-          origin: targetOrigin,
-          crossOrigin: false,
-        }),
-      );
-      return {
-        id: credentialId,
-        rawId: credentialId,
-        type: 'public-key',
-        clientExtensionResults: {},
-        response: {
-          clientDataJSON: client.toString('base64url'),
-          authenticatorData: authData.toString('base64url'),
-          signature: sign('sha256', Buffer.concat([authData, digest(client)]), privateKey).toString(
-            'base64url',
-          ),
-          userHandle: null,
-        },
-      };
-    },
   };
 }
 async function begin() {
@@ -196,21 +164,12 @@ async function enroll() {
   ).toBe(200);
   return { auth, code, deviceId: pending.id as string };
 }
-async function unlock(auth: ReturnType<typeof authenticator>) {
-  const options = await request('unlock/options', {});
-  expect(options.statusCode).toBe(200);
-  const response = await request('unlock', auth.authenticate(options.json().challenge));
-  expect(response.statusCode, response.body).toBe(200);
-  return response;
-}
 
-describe('permanent device enrollment and separate unlock', () => {
-  it('retains enrolled phones and their unlocks through unavailable setup without allowing remote access', async () => {
-    const { auth, deviceId } = await enroll();
-    await unlock(auth);
-    await request('preferences', { requireUnlock: false, setupComplete: true });
+describe('secure enrollment and persistent paired access', () => {
+  it('retains enrolled phones through unavailable setup without allowing remote access', async () => {
+    const { deviceId } = await enroll();
+    await request('setup/complete', { setupComplete: true });
     const devices = store.db.prepare('SELECT * FROM paired_devices').all();
-    const unlocks = store.db.prepare('SELECT * FROM device_unlocks').all();
     const fingerprint = store.getSetting('phone:configuration');
     const broken = new PhoneAccess(store, null, undefined, 'configuration');
     expect(broken.enabled).toBe(false);
@@ -226,17 +185,14 @@ describe('permanent device enrollment and separate unlock', () => {
     repaired.unavailable('listener');
     expect(repaired.pairedDevices!.session(headers().cookie)).toBeNull();
     expect(store.db.prepare('SELECT * FROM paired_devices').all()).toEqual(devices);
-    expect(store.db.prepare('SELECT * FROM device_unlocks').all()).toEqual(unlocks);
     const restarted = new PhoneAccess(store, config);
     expect(restarted.pairedDevices!.session(headers().cookie)).toMatchObject({ deviceId });
   });
 
   it('migrates unchanged legacy configuration and retains verified phones across transport-only edits', async () => {
-    const { auth, deviceId } = await enroll();
-    await unlock(auth);
-    await request('preferences', { requireUnlock: false, setupComplete: true });
+    const { deviceId } = await enroll();
+    await request('setup/complete', { setupComplete: true });
     const devices = store.db.prepare('SELECT * FROM paired_devices').all();
-    const unlocks = store.db.prepare('SELECT * FROM device_unlocks').all();
     store.setSetting(
       'phone:configuration',
       createHash('sha256').update(JSON.stringify(config)).digest('hex'),
@@ -259,7 +215,6 @@ describe('permanent device enrollment and separate unlock', () => {
       expiresAt: null,
     });
     expect(store.db.prepare('SELECT * FROM paired_devices').all()).toEqual(devices);
-    expect(store.db.prepare('SELECT * FROM device_unlocks').all()).toEqual(unlocks);
     const trustChanged = new PhoneAccess(store, {
       ...config,
       origin: 'https://different.example.test',
@@ -358,27 +313,25 @@ describe('permanent device enrollment and separate unlock', () => {
     expect(restored.status(false).devices).toHaveLength(0);
     vi.useRealTimers();
   });
-  it('does not resurrect an unlock that was verifying when access was locked or paused', async () => {
-    const { auth } = await enroll();
-    for (const pause of [
-      () => access.pairedDevices!.lock(headers().cookie),
+  it('cannot finish an enrollment after access is disabled or pairing cancelled during verification', async () => {
+    for (const cancel of [
+      () => access.pairedDevices!.closeEnrollment(),
       () => {
         access.setEnabled(false);
         access.setEnabled(true);
       },
     ]) {
-      const options = (await request('unlock/options', {})).json();
-      const verification = access.pairedDevices!.unlock(
-        auth.authenticate(options.challenge),
+      const { options } = await begin();
+      const verification = access.pairedDevices!.finish(
+        authenticator().register(options.challenge),
         headers().cookie,
       );
-      pause();
-      await expect(verification).rejects.toThrow('access changed');
+      cancel();
+      await expect(verification).rejects.toThrow('cancelled');
       expect(access.pairedDevices!.session(headers().cookie)).toBeNull();
-      expect(access.pairedDevices!.status(true, headers().cookie).enrolled).toBe(true);
     }
   });
-  it('denies private APIs, cookies without an unlock, forged Access headers and all remote administration', async () => {
+  it('denies private APIs, unapproved cookies, forged Access headers and all remote administration', async () => {
     expect((await request('status')).json()).toMatchObject({
       authentication: 'paired',
       paired: false,
@@ -418,13 +371,10 @@ describe('permanent device enrollment and separate unlock', () => {
         ).statusCode,
       ).toBe(401);
     expect((await request('enroll/options', { code: 'WRONG', name: 'No' })).statusCode).toBe(409);
-    const { auth } = await enroll();
-    expect((await request('status')).json()).toMatchObject({ enrolled: true, paired: false });
-    expect((await remote.inject({ url: '/api/snapshot', headers: headers() })).statusCode).toBe(
-      401,
-    );
-    const result = await unlock(auth);
-    expect(String(result.headers['set-cookie'])).toContain('Secure; HttpOnly; SameSite=Strict');
+    await enroll();
+    const status = await request('status');
+    expect(status.json()).toMatchObject({ enrolled: true, paired: true });
+    expect(String(status.headers['set-cookie'])).toContain('Secure; HttpOnly; SameSite=Strict');
     expect((await remote.inject({ url: '/api/snapshot', headers: headers() })).statusCode).toBe(
       200,
     );
@@ -464,9 +414,11 @@ describe('permanent device enrollment and separate unlock', () => {
       devices: [],
     });
     expect((await request('enroll/options', { code, name: 'Another' })).statusCode).toBe(409);
-    expect((await request('unlock/options', {})).statusCode).toBe(409);
+    expect((await remote.inject({ url: '/api/snapshot', headers: headers() })).statusCode).toBe(
+      401,
+    );
   });
-  it('rejects wrong origin, missing user verification, signature tampering and assertion replay', async () => {
+  it('rejects wrong origin, missing verification, altered challenges and registration replay', async () => {
     for (const [target, uv] of [
       ['https://evil.test', true],
       [origin, false],
@@ -477,55 +429,52 @@ describe('permanent device enrollment and separate unlock', () => {
           .statusCode,
       ).toBe(409);
     }
-    const { auth } = await enroll();
-    for (const [target, uv] of [
-      ['https://evil.test', true],
-      [origin, false],
-    ] as const) {
-      const options = (await request('unlock/options', {})).json();
-      expect(
-        (await request('unlock', auth.authenticate(options.challenge, target, uv))).statusCode,
-      ).toBe(409);
-    }
-    let options = (await request('unlock/options', {})).json();
-    const forged = auth.authenticate(options.challenge);
-    forged.response.signature = randomBytes(64).toString('base64url');
-    expect((await request('unlock', forged)).statusCode).toBe(409);
-    options = (await request('unlock/options', {})).json();
-    const response = auth.authenticate(options.challenge);
-    expect((await request('unlock', response)).statusCode).toBe(200);
-    expect((await request('unlock', response)).statusCode).toBe(409);
+    const { options } = await begin(),
+      auth = authenticator();
+    expect(
+      (await request('enroll/finish', auth.register(randomBytes(32).toString('base64url'))))
+        .statusCode,
+    ).toBe(409);
+    expect((await request('enroll/finish', auth.register(options.challenge))).statusCode).toBe(409);
+    const next = await begin(),
+      response = auth.register(next.options.challenge);
+    expect((await request('enroll/finish', response)).statusCode).toBe(200);
+    expect((await request('enroll/finish', response)).statusCode).toBe(409);
+    expect(access.pairedDevices!.session(headers().cookie)).toBeNull(); // still needs the computer
   });
-  it('preserves enrollment through unlock expiry, lock, off/on and database restart without permanent secrets in the archive', async () => {
-    const { auth, code, deviceId } = await enroll();
-    await unlock(auth);
+  it('preserves approved access through time, off/on and database restart without permanent secrets in the archive', async () => {
+    const { code, deviceId } = await enroll();
     const enrollment = cookies.__Host_dock_enrollment ?? cookies['__Host-dock_enrollment'];
     const saved = JSON.stringify({
       settings: store.db.prepare('SELECT * FROM settings').all(),
       devices: store.db.prepare('SELECT * FROM paired_devices').all(),
-      unlocks: store.db.prepare('SELECT * FROM device_unlocks').all(),
       events: store.events(),
     });
     expect(saved).not.toContain(enrollment);
-    expect(saved).not.toContain(cookies['__Host-dock_unlock']);
     expect(saved).not.toContain(code.replaceAll('-', ''));
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.now() + 366 * 24 * 60 * 60 * 1000);
-    expect(access.pairedDevices!.status(true, headers().cookie).enrolled).toBe(true);
-    expect(access.pairedDevices!.session(headers().cookie)).toBeNull();
+    expect(access.pairedDevices!.session(headers().cookie)).toMatchObject({
+      deviceId,
+      expiresAt: null,
+    });
     vi.useRealTimers();
-    await request('lock', {});
-    expect((await request('status')).json()).toMatchObject({ enrolled: true, paired: false });
-    await unlock(auth);
     access.setEnabled(false);
+    expect(access.pairedDevices!.session(headers().cookie)).toBeNull();
+    expect((await remote.inject({ url: '/api/snapshot', headers: headers() })).statusCode).toBe(
+      503,
+    );
     access.setEnabled(true);
-    expect((await request('status')).json()).toMatchObject({ enrolled: true, paired: false });
+    expect((await request('status')).json()).toMatchObject({ enrolled: true, paired: true });
     await remote.close();
     await local.close();
     store = new Store(join(root, 'dock.sqlite'));
     modelFixture(store);
     const restored = new PhoneAccess(store, config);
-    expect(restored.pairedDevices!.status(true, headers().cookie).enrolled).toBe(true);
+    expect(restored.pairedDevices!.session(headers().cookie)).toMatchObject({
+      deviceId,
+      expiresAt: null,
+    });
     expect(restored.status(false).devices[0]).toMatchObject({ id: deviceId, expiresAt: null });
     restored.revoke(deviceId);
     expect(restored.pairedDevices!.status(true, headers().cookie).enrolled).toBe(false);
@@ -551,8 +500,7 @@ describe('permanent device enrollment and separate unlock', () => {
     expect(access.status(false).devices).toHaveLength(0);
   });
   it('checks exact origin, JSON and duplicate browser cookies, never a browser fingerprint or IP allowlist', async () => {
-    const { auth } = await enroll();
-    await unlock(auth);
+    await enroll();
     for (const changes of [
       { origin: 'https://evil.test' },
       { 'content-type': 'text/plain' },
@@ -562,7 +510,7 @@ describe('permanent device enrollment and separate unlock', () => {
         (
           await remote.inject({
             method: 'POST',
-            url: '/api/phone/lock',
+            url: '/api/phone/setup/complete',
             headers: { ...headers(), ...changes },
             payload: '{}',
           })
@@ -588,13 +536,10 @@ describe('permanent device enrollment and separate unlock', () => {
       ).statusCode,
     ).toBe(403);
   });
-  it.each(['lock', 'remember', 'requireUnlock'] as const)(
-    '%s closes existing event and terminal sockets without revoking the phone or stopping the agent',
+  it.each(['disabled', 'removed'] as const)(
+    '%s closes event and terminal sockets while retaining projects and conversations',
     async (action) => {
-      const { auth, deviceId } = await enroll();
-      await unlock(auth);
-      if (action === 'requireUnlock')
-        expect((await request('preferences', { requireUnlock: false })).statusCode).toBe(200);
+      const { deviceId } = await enroll();
       vi.spyOn(terminals, 'connect').mockImplementation(async (_id, socket) => {
         socket.on('message', () => {});
       });
@@ -617,395 +562,95 @@ describe('permanent device enrollment and separate unlock', () => {
         response.resume();
         const ended = once(response, 'end'),
           closed = once(socket, 'close');
-        if (action === 'lock') await request('lock', {});
-        else
-          expect(
-            (await request('preferences', { requireUnlock: action === 'requireUnlock' }))
-              .statusCode,
-          ).toBe(200);
+        if (action === 'disabled') access.setEnabled(false);
+        else access.revoke(deviceId);
         await Promise.all([ended, closed]);
-        expect(access.status(false).devices[0]).toMatchObject({ id: deviceId, revokedAt: null });
-        expect((await request('status')).json()).toMatchObject({
-          enrolled: true,
-          paired: action !== 'lock',
-        });
+        expect(access.pairedDevices!.session(headers().cookie)).toBeNull();
+        expect(store.projects()).toHaveLength(1);
+        if (action === 'disabled') {
+          access.setEnabled(true);
+          expect(access.pairedDevices!.session(headers().cookie)).not.toBeNull();
+        } else expect((await request('status')).json().enrolled).toBe(false);
       } finally {
         response?.destroy();
         socket.terminate();
       }
     },
   );
-});
-
-describe('device-local repeat verification preferences', () => {
-  it('rejects an HTTP preference update when its previously admitted session changed during body parsing', async () => {
-    let changeDuringRequest: (() => void) | undefined;
-    remote.addHook('preValidation', async (incoming) => {
-      if (incoming.url === '/api/phone/preferences') {
-        const change = changeDuringRequest;
-        changeDuringRequest = undefined;
-        change?.();
-      }
-    });
-    const { auth } = await enroll();
-    await unlock(auth);
-    changeDuringRequest = () => {
-      access.pairedDevices!.preferences({ requireUnlock: false }, headers().cookie);
-    };
-    expect((await request('preferences', { requireUnlock: true })).statusCode).toBe(409);
-    expect((await request('status')).json()).toMatchObject({ paired: true, requireUnlock: false });
-    expect((await request('preferences', { requireUnlock: true })).statusCode).toBe(200);
-    changeDuringRequest = () => {
-      access.pairedDevices!.lock(headers().cookie);
-    };
-    expect((await request('preferences', { requireUnlock: false })).statusCode).toBe(409);
-    expect((await request('status')).json()).toMatchObject({ paired: false, requireUnlock: true });
-    expect(store.db.prepare('SELECT * FROM device_unlocks').all()).toHaveLength(0);
-  });
-  it('defaults safely and requires this approved phone to be currently unlocked with same-origin JSON', async () => {
-    expect((await request('status')).json()).toMatchObject({
-      requireUnlock: true,
-      setupComplete: false,
-    });
-    expect((await request('preferences', { requireUnlock: false })).statusCode).toBe(401);
-    const { auth } = await enroll();
-    expect((await request('status')).json()).toMatchObject({
-      enrolled: true,
-      paired: false,
-      requireUnlock: true,
-      setupComplete: false,
-    });
-    expect(
-      (await request('preferences', { requireUnlock: false, setupComplete: true })).statusCode,
-    ).toBe(401);
-    expect((await request('preferences', { requireUnlock: false }, local)).statusCode).toBe(403);
-    await unlock(auth);
-    for (const body of [
-      { requireUnlock: 'false' },
-      { requireUnlock: false, deviceId: randomUUID() },
-      { setupComplete: true },
+  it('requires approval before setup completion and revalidates revocation after request admission', async () => {
+    expect((await request('setup/complete', { setupComplete: true })).statusCode).toBe(401);
+    await begin();
+    expect((await request('setup/complete', { setupComplete: true })).statusCode).toBe(401);
+    access.pairedDevices!.closeEnrollment();
+    const { deviceId } = await enroll();
+    for (const input of [
+      {},
+      { setupComplete: false },
+      { setupComplete: true, requireUnlock: false },
     ])
-      expect((await request('preferences', body)).statusCode).toBe(400);
-    for (const changes of [
-      { origin: 'https://evil.test' },
-      { 'content-type': 'text/plain' },
-      { 'sec-fetch-site': 'cross-site' },
-    ])
-      expect(
-        (
-          await remote.inject({
-            method: 'POST',
-            url: '/api/phone/preferences',
-            headers: { ...headers(), ...changes },
-            payload: JSON.stringify({ requireUnlock: false }),
-          })
-        ).statusCode,
-      ).toBe(403);
-    expect((await request('status')).json()).toMatchObject({
+      expect((await request('setup/complete', input)).statusCode).toBe(400);
+    expect((await request('setup/complete', { setupComplete: true }, local)).statusCode).toBe(403);
+    expect((await request('setup/complete', { setupComplete: true })).json()).toMatchObject({
       paired: true,
-      requireUnlock: true,
-      setupComplete: false,
-    });
-  });
-
-  it('remembers a verified phone across time and database restart and renews only its browser retention', async () => {
-    const { auth, code, deviceId } = await enroll();
-    await unlock(auth);
-    const originalToken = cookies['__Host-dock_unlock'];
-    const saved = await request('preferences', { requireUnlock: false, setupComplete: true });
-    expect(saved.statusCode, saved.body).toBe(200);
-    expect(saved.json()).toMatchObject({
-      paired: true,
-      requireUnlock: false,
       setupComplete: true,
-      devices: [],
     });
-    expect(cookies['__Host-dock_unlock']).toBe(originalToken);
-    expect(String(saved.headers['set-cookie'])).toContain(
-      'Secure; HttpOnly; SameSite=Strict; Max-Age=34560000',
-    );
+    expect((await request('setup/complete', { setupComplete: true })).statusCode).toBe(200);
+    const session = access.pairedDevices!.session(headers().cookie)!;
+    access.revoke(deviceId);
+    expect(() =>
+      access.pairedDevices!.completeSetup({ setupComplete: true }, headers().cookie, session),
+    ).toThrow('Pair this browser');
+    expect((await request('setup/complete', { setupComplete: true })).statusCode).toBe(401);
+  });
+  it('does not let removed lock endpoints change access or reveal private data', async () => {
+    await enroll();
+    for (const path of ['lock', 'unlock/options', 'unlock', 'preferences'])
+      expect((await request(path, {})).statusCode).toBe(404);
+    expect((await request('status')).json()).toMatchObject({ paired: true });
+    expect((await request('status')).json()).not.toHaveProperty('requireUnlock');
+  });
+  it('keeps different approved browsers independent and rejects missing or forged tokens', async () => {
+    const first = await enroll(),
+      firstCookies = { ...cookies };
+    cookies = {};
+    const second = await enroll();
+    access.revoke(first.deviceId);
     expect(access.pairedDevices!.session(headers().cookie)).toMatchObject({
+      deviceId: second.deviceId,
+    });
+    cookies = firstCookies;
+    expect((await remote.inject({ url: '/api/snapshot', headers: headers() })).statusCode).toBe(
+      401,
+    );
+    cookies = { '__Host-dock_enrollment': randomBytes(32).toString('base64url') };
+    expect((await remote.inject({ url: '/api/snapshot', headers: headers() })).statusCode).toBe(
+      401,
+    );
+    expect((await request('status')).headers['set-cookie']).toBeUndefined();
+  });
+  it('migrates existing locked and revoked devices without requiring a fresh pairing', async () => {
+    const { deviceId } = await enroll();
+    const before = store.db.prepare('SELECT * FROM paired_devices').all();
+    store.db.exec(`ALTER TABLE paired_devices ADD COLUMN require_unlock INTEGER NOT NULL DEFAULT 1;
+      CREATE TABLE device_unlocks(id TEXT PRIMARY KEY,device_id TEXT REFERENCES paired_devices(id),expires_at INTEGER);
+      CREATE TABLE device_challenges(device_id TEXT PRIMARY KEY REFERENCES paired_devices(id),challenge TEXT);`);
+    store.db.prepare('INSERT INTO device_unlocks VALUES(?,?,?)').run('expired', deviceId, 1);
+    store.setSetting('phone:unlock-revision', 7);
+    const restored = new PhoneAccess(store, config);
+    expect(restored.pairedDevices!.session(headers().cookie)).toMatchObject({
       deviceId,
       expiresAt: null,
     });
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(Date.now() + 366 * 24 * 60 * 60_000);
-    const status = await request('status');
-    expect(status.json()).toMatchObject({
-      paired: true,
-      enrolled: true,
-      requireUnlock: false,
-      setupComplete: true,
-    });
-    expect(String(status.headers['set-cookie'])).toContain(`__Host-dock_unlock=${originalToken};`);
-    expect((await request('status', undefined, local)).json()).toMatchObject({
-      requireUnlock: true,
-      setupComplete: false,
-    });
-    expect(Object.keys(access.status(false).devices[0])).not.toContain('requireUnlock');
-    const persisted = JSON.stringify({
-      devices: store.db.prepare('SELECT * FROM paired_devices').all(),
-      unlocks: store.db.prepare('SELECT * FROM device_unlocks').all(),
-      events: store.events(),
-    });
-    expect(persisted).not.toContain(originalToken);
-    expect(persisted).not.toContain(cookies['__Host-dock_enrollment']);
-    expect(persisted).not.toContain(code.replaceAll('-', ''));
-    await remote.close();
-    await local.close();
-    store = new Store(join(root, 'dock.sqlite'));
-    modelFixture(store);
-    const restored = new PhoneAccess(store, config);
-    expect(restored.pairedDevices!.status(true, headers().cookie)).toMatchObject({
-      requireUnlock: false,
-      setupComplete: true,
-    });
-    const session = restored.pairedDevices!.session(headers().cookie)!;
-    expect(session).toMatchObject({ deviceId, expiresAt: null });
-    expect(restored.valid(session)).toBe(true);
-  });
-
-  it('never promotes an expired short unlock, including revalidation after earlier request admission', async () => {
-    const { auth } = await enroll();
-    await unlock(auth);
-    const session = access.pairedDevices!.session(headers().cookie)!;
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(session.expiresAt!);
-    expect((await request('preferences', { requireUnlock: false })).statusCode).toBe(401);
-    expect(() =>
-      access.pairedDevices!.preferences({ requireUnlock: false }, headers().cookie, session),
-    ).toThrow('Unlock sciencewithagents');
-    const status = await request('status');
-    expect(status.json()).toMatchObject({
-      paired: false,
-      enrolled: true,
-      requireUnlock: true,
-      setupComplete: false,
-    });
-    expect(String(status.headers['set-cookie'])).not.toContain('__Host-dock_unlock=');
-    expect(store.db.prepare('SELECT remembered FROM device_unlocks').get()).toMatchObject({
-      remembered: 0,
-    });
-  });
-
-  it('closes stale session watchers in both directions without giving remembered sessions an expiry timer', async () => {
-    const { auth } = await enroll();
-    await unlock(auth);
-    vi.useFakeTimers();
-    const phone = access.pairedDevices!;
-    const short = phone.session(headers().cookie)!;
-    const shortClosed = vi.fn();
-    const stopShort = access.watch(short, shortClosed);
-    phone.preferences({ requireUnlock: false }, headers().cookie, short);
-    expect(shortClosed).toHaveBeenCalledTimes(1);
-    stopShort();
-    const remembered = phone.session(headers().cookie)!;
-    const rememberedClosed = vi.fn();
-    const stopRemembered = access.watch(remembered, rememberedClosed);
-    vi.advanceTimersByTime(30 * 24 * 60 * 60_000);
-    expect(rememberedClosed).not.toHaveBeenCalled();
-    expect(phone.valid(remembered)).toBe(true);
-    phone.preferences({ requireUnlock: true }, headers().cookie, remembered);
-    expect(rememberedClosed).toHaveBeenCalledTimes(1);
-    stopRemembered();
-    const bounded = phone.session(headers().cookie)!;
-    expect(bounded.expiresAt).toBe(Date.now() + 15 * 60_000);
-    const boundedClosed = vi.fn();
-    const stopBounded = access.watch(bounded, boundedClosed);
-    vi.advanceTimersByTime(60_000);
-    phone.preferences({ requireUnlock: true, setupComplete: true }, headers().cookie, bounded);
-    expect(phone.session(headers().cookie)!.expiresAt).toBe(bounded.expiresAt);
-    expect(boundedClosed).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(14 * 60_000);
-    expect(boundedClosed).toHaveBeenCalledTimes(1);
-    expect(phone.session(headers().cookie)).toBeNull();
-    stopBounded();
-  });
-
-  it('keeps lost-ack retries valid but rejects an older admitted request after an intervening preference change', async () => {
-    const { auth } = await enroll();
-    await unlock(auth);
-    vi.useFakeTimers({ toFake: ['Date'] });
-    const phone = access.pairedDevices!;
-    const originalCookies = headers().cookie;
-    const admitted = phone.session(originalCookies)!;
-    vi.setSystemTime(admitted.expiresAt! - 15 * 60_000);
-    phone.preferences({ requireUnlock: false }, originalCookies, admitted); // Ignore Set-Cookie / lost response.
-    const first = phone.session(originalCookies)!;
-    phone.preferences({ requireUnlock: false }, originalCookies, first);
-    expect(phone.session(originalCookies)).toEqual(first);
-    phone.preferences({ requireUnlock: true }, originalCookies, first);
-    const changedBack = phone.session(originalCookies)!;
-    expect(changedBack.expiresAt).toBe(admitted.expiresAt);
-    expect(changedBack.unlockRevision).not.toBe(admitted.unlockRevision);
-    expect(() => phone.preferences({ requireUnlock: false }, originalCookies, admitted)).toThrow(
-      'Unlock sciencewithagents',
-    );
-    expect(phone.session(originalCookies)).toEqual(changedBack);
-    vi.setSystemTime(Date.now() + 60_000);
-    phone.preferences({ requireUnlock: true }, originalCookies, changedBack);
-    expect(phone.session(originalCookies)).toEqual(changedBack);
-  });
-
-  it('manual lock, off/on and revocation end remembered access without status or old cookies recreating it', async () => {
-    const { auth, deviceId } = await enroll();
-    await unlock(auth);
-    await request('preferences', { requireUnlock: false, setupComplete: true });
-    const replay = { ...cookies };
-    const admitted = access.pairedDevices!.session(headers().cookie)!;
-    await request('lock', {});
-    cookies = replay;
-    expect(() =>
-      access.pairedDevices!.preferences({ requireUnlock: false }, headers().cookie, admitted),
-    ).toThrow('Unlock sciencewithagents');
-    let status = await request('status');
-    expect(status.json()).toMatchObject({
-      paired: false,
-      enrolled: true,
-      requireUnlock: false,
-      setupComplete: true,
-    });
-    expect(String(status.headers['set-cookie'])).not.toContain('__Host-dock_unlock=');
-    expect((await request('preferences', { requireUnlock: false })).statusCode).toBe(401);
-    await unlock(auth);
-    expect(access.pairedDevices!.session(headers().cookie)!.expiresAt).toBeNull();
-    access.setEnabled(false);
-    expect((await request('preferences', { requireUnlock: false })).statusCode).toBe(503);
-    access.setEnabled(true);
-    expect((await request('status')).json()).toMatchObject({
-      paired: false,
-      enrolled: true,
-      requireUnlock: false,
-      setupComplete: true,
-    });
-    await unlock(auth);
-    access.revoke(deviceId);
-    status = await request('status');
-    expect(status.json()).toMatchObject({
-      paired: false,
-      enrolled: false,
-      requireUnlock: true,
-      setupComplete: false,
-    });
-    expect(status.headers['set-cookie']).toBeUndefined();
-    expect((await request('preferences', { requireUnlock: false })).statusCode).toBe(401);
-    expect(store.db.prepare('SELECT * FROM device_unlocks').all()).toHaveLength(0);
-  });
-
-  it('fences in-flight passkey verification when preferences change', async () => {
-    const { auth } = await enroll();
-    await unlock(auth);
-    const options = (await request('unlock/options', {})).json();
-    const unlocking = access.pairedDevices!.unlock(
-      auth.authenticate(options.challenge),
-      headers().cookie,
-    );
-    access.pairedDevices!.preferences({ requireUnlock: false }, headers().cookie);
-    await expect(unlocking).rejects.toThrow('Device access changed');
-    expect(access.pairedDevices!.session(headers().cookie)!.expiresAt).toBeNull();
-  });
-
-  it('isolates another approved device and never prunes its remembered session when this phone unlocks', async () => {
-    const first = await enroll();
-    await unlock(first.auth);
-    await request('preferences', { requireUnlock: false, setupComplete: true });
-    const firstCookies = { ...cookies };
-    const firstSession = access.pairedDevices!.session(headers().cookie)!;
-    cookies = {};
-    const second = await enroll();
-    await unlock(second.auth);
-    expect((await request('status')).json()).toMatchObject({
-      requireUnlock: true,
-      setupComplete: false,
-    });
-    expect(access.valid(firstSession)).toBe(true);
-    const secondToken = cookies['__Host-dock_unlock'];
-    cookies = { ...firstCookies, '__Host-dock_unlock': secondToken };
-    expect(access.pairedDevices!.session(headers().cookie)).toBeNull();
-    expect((await request('preferences', { requireUnlock: false })).statusCode).toBe(401);
-    cookies = firstCookies;
-    expect((await request('status')).json()).toMatchObject({
-      paired: true,
-      requireUnlock: false,
-      setupComplete: true,
-    });
-  });
-
-  it('migrates old enrollments and short unlock rows additively, without promoting expired or inconsistent rows', async () => {
-    const { auth } = await enroll();
-    await unlock(auth);
-    const device = store.db.prepare('SELECT * FROM paired_devices').get()!;
-    const session = store.db.prepare('SELECT * FROM device_unlocks').get()!;
-    const legacy = new Store(join(root, 'legacy.sqlite'));
-    modelFixture(legacy);
-    try {
-      legacy.db.exec(`CREATE TABLE paired_devices (
-        id TEXT PRIMARY KEY,name TEXT NOT NULL,browser_hash TEXT NOT NULL UNIQUE,
-        credential_id TEXT NOT NULL UNIQUE,public_key TEXT NOT NULL,counter INTEGER NOT NULL,
-        created_at INTEGER NOT NULL,revoked_at INTEGER);
-        CREATE TABLE device_unlocks (id TEXT PRIMARY KEY,device_id TEXT NOT NULL REFERENCES paired_devices(id),token_hash TEXT NOT NULL UNIQUE,expires_at INTEGER NOT NULL);`);
-      legacy.db
+    expect(store.db.prepare('SELECT * FROM paired_devices').all()).toEqual(before);
+    expect(
+      store.db
         .prepare(
-          'INSERT INTO paired_devices(id,name,browser_hash,credential_id,public_key,counter,created_at,revoked_at) VALUES(?,?,?,?,?,?,?,?)',
+          "SELECT name FROM sqlite_master WHERE name IN ('device_unlocks','device_challenges')",
         )
-        .run(
-          device.id,
-          device.name,
-          device.browser_hash,
-          device.credential_id,
-          device.public_key,
-          device.counter,
-          device.created_at,
-          device.revoked_at,
-        );
-      legacy.db
-        .prepare('INSERT INTO device_unlocks(id,device_id,token_hash,expires_at) VALUES(?,?,?,?)')
-        .run(session.id, session.device_id, session.token_hash, session.expires_at);
-      const migrated = new PairedDevices(
-        legacy,
-        origin,
-        () => true,
-        () => {},
-      );
-      expect(migrated.status(true, headers().cookie)).toMatchObject({
-        enrolled: true,
-        requireUnlock: true,
-        setupComplete: false,
-      });
-      expect(migrated.session(headers().cookie)).toMatchObject({
-        unlockId: session.id,
-        expiresAt: session.expires_at,
-        unlockRevision: 0,
-      });
-      expect(
-        legacy.db.prepare('SELECT credential_id,public_key,counter FROM paired_devices').get(),
-      ).toMatchObject({
-        credential_id: device.credential_id,
-        public_key: device.public_key,
-        counter: device.counter,
-      });
-      legacy.db.prepare('UPDATE device_unlocks SET expires_at=?').run(Date.now() - 1);
-      const restarted = new PairedDevices(
-        legacy,
-        origin,
-        () => true,
-        () => {},
-      );
-      expect(restarted.session(headers().cookie)).toBeNull();
-      legacy.db.exec('UPDATE paired_devices SET require_unlock=0');
-      expect(restarted.session(headers().cookie)).toBeNull();
-      expect(() => restarted.preferences({ requireUnlock: false }, headers().cookie)).toThrow(
-        'Unlock sciencewithagents',
-      );
-      legacy.db.exec(
-        'UPDATE device_unlocks SET remembered=1,expires_at=0; UPDATE paired_devices SET require_unlock=1',
-      );
-      expect(restarted.session(headers().cookie)).toBeNull();
-      expect(legacy.db.prepare('SELECT COUNT(*) AS count FROM paired_devices').get()!.count).toBe(
-        1,
-      );
-    } finally {
-      legacy.close();
-    }
+        .all(),
+    ).toHaveLength(0);
+    restored.revoke(deviceId);
+    const again = new PhoneAccess(store, config);
+    expect(again.pairedDevices!.session(headers().cookie)).toBeNull();
   });
 });

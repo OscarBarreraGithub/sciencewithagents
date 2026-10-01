@@ -1,5 +1,11 @@
 # Build status
 
+## Latest phone simplification
+
+The owner removed app locks, recurring verification and inactivity timeouts. Secure pairing
+and computer-controlled device removal remain. Existing enrolled phones migrate without
+re-pairing. Physical Home Screen/browser retention remains a separate device check.
+
 The Apple Silicon Mac setup path has passed the checks below. This does not mean every
 owner request is complete; the current follow-ups are listed explicitly below. The MIT
 source, website and installed app include the drawn Home, chat, project setup, notepad,

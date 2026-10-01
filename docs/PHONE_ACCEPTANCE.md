@@ -7,7 +7,7 @@ CLOUDFLARE_SETUP.md for setup/recovery and STATUS.md for actual evidence.
 
 **Observed 2026-09-14:** the owner connected successfully in Safari, completing physical
 enrollment. Do not create a fresh code or remove that working phone just to repeat it.
-Home Screen, cellular, restart and the new lock/setup preferences remain separate checks.
+Home Screen, cellular, restart and the new pairing-only return behavior remain separate checks.
 
 ## Owner journey
 
@@ -29,30 +29,19 @@ Home Screen, cellular, restart and the new lock/setup preferences remain separat
    While the phone saves its passkey, the computer should say to continue on the phone,
    not suggest another code. If the phone requests a fresh start, cancel pairing on the
    computer first. The QR disappears during that wait and computer confirmation.
-3. After unlocking the enrolled phone, verify **Make this phone yours** appears. Keep
-   **Ask for Face ID or screen lock** (default) or choose **Stay signed in**, then **Continue**
-   to **Add Agent Dock to your Home Screen**. Follow the guide after pairing; **Open my
-   workspace** must also work without installing. Reload and verify the saved choice and
-   completed setup remain. Installation is optional, not something this button proves.
-   Open a newly installed icon and verify the same enrolled device follows its selected
-   lock behavior, not another pairing request. An icon installed before
-   pairing may need adding again from the paired browser. Do not clear browser data or
-   remove a working paired installation as a first repair; inspect which context is open.
+3. After computer confirmation, verify **Add sciencewithagents to your Home Screen** appears
+   directly, without an unlock or lock preference screen. Follow the guide after pairing;
+   **Open my workspace** must also work without installing. Reload and verify setup stays
+   complete and the workspace opens directly. Open a newly installed icon and verify the
+   same enrolled browser is recognized. An icon installed before pairing may need adding
+   again. Keep the working icon/browser until the replacement connects; do not clear data.
 4. Confirm the same project and existing conversation are visible. Send a harmless message
    to the manager from the phone and see that exact message/reply on the computer. Do not
    start implementation solely to test connectivity.
-5. In **Phone access → App lock**, save and test both choices. With the default, reopen/
-   background and expiry require **Unlock Agent Dock**, never fresh enrollment; verify
-   cancelled passkey prompts and explicit retry. With **Stay signed in**, ordinary revisit
-   and backgrounding must not impose repeat passkey prompts while its session remains valid.
-   **Lock app** must still close private access and require a passkey next time in either
-   mode. Tightening back to default must not leave a remembered session valid indefinitely.
-   Also lock while offline: this view must hide and stay sealed after reload, with a warning
-   that server revocation is unconfirmed. On reconnection verify the server confirms the
-   lock and a passkey is needed; do not infer other contexts were revoked while offline.
-   If installation did not retain enrollment, record that physical compatibility failure
-   separately and inspect the paired browser before any fresh enrollment. Never promise
-   that deleted browser data is recoverable.
+5. Background and reopen the app; no Face ID or app-unlock prompt should appear. Keep an
+   unsent draft and confirm it remains on return. The Home header and Phone access must not
+   contain Lock app or repeat-verification settings. Record physical storage compatibility
+   failures separately; browser emulation does not prove this device's retention behavior.
 6. Switch the phone to cellular, close/reopen it, and confirm history returns without
    resending messages. Check team/child history and native terminal. After a terminal
    disconnect, **Reconnect terminal** restores its view; **Take control here** deliberately
@@ -60,12 +49,11 @@ Home Screen, cellular, restart and the new lock/setup preferences remain separat
 7. Once work is idle, have the setup agent restart only Agent Dock. Confirm the same
    conversation and enrollment return. Inspect interrupted work before resuming; neither
    command input nor approvals should replay automatically.
-8. Turn phone access off and back on from the computer: private connections stop,
-   enrollment/preferences remain and a passkey is needed next time, including in remembered
-   mode. When the owner is ready for a removal test, use **Remove device** while its view
-   is open; verify access stops and fresh pairing is required. Otherwise leave real removal
-   unverified rather than revoking a working phone. A synced passkey alone cannot enroll
-   another browser.
+8. Turn phone access off and back on from the computer: active connections stop and private
+   access is denied while off. Approved phones reconnect directly when it returns. When the
+   owner is ready for a removal test, use **Remove device** while its view is open; access
+   must stop and fresh pairing must be required. Otherwise leave real removal unverified
+   rather than revoking a working phone. A synced passkey alone cannot enroll a new browser.
 
 Manual fallback: open the bare address to **Enter pairing code**, which shows only
 **Connection code**. Enter it and choose **Continue** to reach **Name your phone**.
@@ -77,7 +65,7 @@ enrollment, start passkey creation or submit another request automatically.
 WebKit documents copying cookies when **creating a new home-screen web app** in iOS/iPadOS
 17.2, with no later browser/app data sharing and no copying of other local storage. That
 supports pairing before installation; it does not update an already-installed app or prove
-this phone's result. Verify the actual OS/browser, new installation and unlock separately.
+this phone's result. Verify the actual OS/browser, new installation and returning access separately.
 See [WebKit's login-cookie explanation](https://webkit.org/blog/14787/webkit-features-in-safari-17-2/#web-apps).
 
 ## Agent responsibilities
@@ -88,11 +76,8 @@ See [WebKit's login-cookie explanation](https://webkit.org/blog/14787/webkit-fea
   storage. It must not submit registration merely because the QR was opened. Browser or
   scanner history outside the app is not guaranteed erased; treat the QR as a temporary secret.
 - Record successful Safari enrollment as completed, without extending it to installation,
-  cellular, restart or the new settings. A server-persisted setup flag means the app's
+  cellular, restart or returning access. A server-persisted setup flag means the app's
   setup screens were completed, not that the browser installed or retained an icon.
-- A persisted offline-lock flag is denial intent only, not saved credentials or access.
-  If its storage is unavailable, retain the current hidden view and display the limited
-  guarantee after closing; never claim unreachable server sessions were already revoked.
 - If saving a passkey fails before submission, use the page's explicit retry while its
   prepared request is still valid; the accepted code need not be typed again. For expired,
   reloaded or uncertain-submission state, inspect status before creating a fresh code.

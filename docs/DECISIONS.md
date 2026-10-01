@@ -1,5 +1,19 @@
 # Design decisions
 
+## 2026-10-01 — remove app locking, retain secure pairing
+
+The owner explicitly removed physical-device security from the app. This supersedes all
+older repeat-lock, unlock-session and Stay signed in decisions below. Keep the temporary,
+attempt-limited code, passkey registration, exact computer confirmation and closed enrollment.
+Only an approved browser's random credential authorizes private routes. Keep HTTPS,
+host/origin checks, protected cookies, revocation and remote-admin restrictions.
+Remove unlock routes, UI, preferences, inactivity/background timers and obsolete session
+tables. Migrate approved devices without changing their credentials or setup/history; revoked
+devices remain revoked. Turning access off closes connections while off; turning it on
+restores approved access without verification. Remove device remains the explicit revocation.
+Passkey creation may ask for phone verification once during enrollment; ordinary app use does
+not. Browser storage loss can still require pairing again. Never promise an unhackable app.
+
 ## 2026-10-01 — general model preferences and project choices
 
 Extend the existing revisioned model policy rather than maintain competing task editors.

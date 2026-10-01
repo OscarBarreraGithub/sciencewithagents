@@ -376,7 +376,7 @@ test('transient JSON and tunnel failures do not request phone authentication, wh
       ? route.fulfill({ status: 503, json: { error: 'Temporarily unavailable.' } })
       : kind === 1
         ? route.fulfill({ status: 502, contentType: 'text/html', body: 'Tunnel unavailable' })
-        : route.fulfill({ status: 401, json: { error: 'Unlock this phone.' } }),
+        : route.fulfill({ status: 401, json: { error: 'Pair this phone.' } }),
   );
   await page.goto('/#/recovery');
   await expect(page.getByRole('alert')).toBeVisible();

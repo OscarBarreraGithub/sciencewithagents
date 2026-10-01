@@ -381,22 +381,13 @@ export async function createServer(
           ((path.startsWith('/api/') || request.routeOptions.url?.startsWith('/api/')) &&
             !(
               phone!.pairedDevices
-                ? [
-                    '/api/phone/status',
-                    '/api/phone/enroll/options',
-                    '/api/phone/enroll/finish',
-                    '/api/phone/unlock/options',
-                    '/api/phone/unlock',
-                    '/api/phone/lock',
-                  ]
+                ? ['/api/phone/status', '/api/phone/enroll/options', '/api/phone/enroll/finish']
                 : ['/api/phone/status', '/api/phone/pair']
             ).includes(path)))
       )
         return reply.code(401).send({
-          error: phone!.pairedDevices
-            ? 'Unlock sciencewithagents on this device to continue.'
-            : 'Connect this device using the code on your computer.',
-          code: phone!.pairedDevices ? 'UNLOCK_REQUIRED' : 'PAIRING_REQUIRED',
+          error: 'Connect this device using the code on your computer.',
+          code: 'PAIRING_REQUIRED',
         });
     }
   });
@@ -581,23 +572,17 @@ export async function createServer(
         if (!phone.pairedDevices) throw new Conflict('Finish passkey phone setup first.');
         return phone.pairedDevices;
       };
-      app.post('/api/phone/preferences', async (request, reply) => {
+      app.post('/api/phone/setup/complete', async (request, reply) => {
         if (!options.remote)
           return reply.code(403).send({ error: 'Change these settings on your paired phone.' });
         const devices = paired();
         const cookies = request.headers.cookie;
-        const renewed = devices.preferences(request.body, cookies, phoneSessions.get(request));
+        const renewed = devices.completeSetup(request.body, cookies, phoneSessions.get(request));
         return reply
           .header('Set-Cookie', renewed)
           .send(phone.status(true, !!devices.session(cookies), cookies));
       });
-      for (const action of [
-        'enroll/options',
-        'enroll/finish',
-        'unlock/options',
-        'unlock',
-        'lock',
-      ]) {
+      for (const action of ['enroll/options', 'enroll/finish']) {
         app.post(`/api/phone/${action}`, async (request, reply) => {
           if (!options.remote)
             return reply
@@ -609,14 +594,7 @@ export async function createServer(
             const result = await devices.begin(request.body, cookies);
             return reply.header('Set-Cookie', result.cookie).send(result.options);
           }
-          if (action === 'enroll/finish') return devices.finish(request.body, cookies);
-          if (action === 'unlock')
-            return reply
-              .header('Set-Cookie', await devices.unlock(request.body, cookies))
-              .send({ ok: true });
-          z.object({}).strict().parse(request.body);
-          if (action === 'unlock/options') return devices.unlockOptions(cookies);
-          return reply.header('Set-Cookie', devices.lock(cookies)).send({ ok: true });
+          return devices.finish(request.body, cookies);
         });
       }
       app.post('/api/phone/confirm', async (request, reply) => {

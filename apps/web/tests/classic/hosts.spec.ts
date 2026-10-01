@@ -165,7 +165,7 @@ test('computer selection keeps accounts, drafts and offline recovery separate', 
     );
     await expect(
       page.getByRole('heading', {
-        name: /Connect to sciencewithagents|Enter pairing code|Name your phone|Unlock sciencewithagents/,
+        name: /Connect to sciencewithagents|Enter pairing code|Name your phone|Connect to your computer/,
       }),
     ).toHaveCount(0);
     await expect(draft).toHaveCount(0);

@@ -1,5 +1,13 @@
 # Resume here — current continuation only
 
+## Latest phone simplification
+
+App locking is removed from UI, contracts and backend. Approved browsers authenticate
+with their existing enrollment cookie and reopen without another passkey prompt. Initial
+passkey registration, computer confirmation, closed enrollment, protected routes and device
+removal remain. Obsolete unlock sessions/tables are removed during migration; pairing and
+history are preserved. See PHONE_WORKFLOW.md. Do not restore the older lock choices.
+
 ## Latest readability correction
 
 Supporting text across the app uses shared rem-based sizes: captions 14px, labels 16px,

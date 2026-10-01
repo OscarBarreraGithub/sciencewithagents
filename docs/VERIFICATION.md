@@ -1,5 +1,33 @@
 # Verification
 
+## 2026-10-01 — remove phone app locks, preserve paired access
+
+Removed the lock UI, repeat-verification preference, unlock routes and short/remembered
+session tables. Approved browsers authenticate using their existing protected enrollment
+cookie. Kept initial passkey registration, exact computer confirmation, single-use bounded
+codes, private-route guards, origin/host restrictions, device removal and disabled-access
+connection closure. No real phone credential was copied or fabricated for these checks.
+
+- Shared/server/web builds pass. Focused pairing/access/setup/tunnel checks: 48 pass, including
+  real WebAuthn registration, migration, restart, revoked/forged cookies, wrong origin,
+  challenge replay, disabled access, remote-admin denial and closure of event/terminal streams.
+- Browser checks: all 16 phone pairing/retry cases pass. Three changed journeys pass on
+  desktop, 360×800 and 915×412 (9 cases); unpaired denial and persistent return/removal pass
+  on all five Home profiles, including 412×915 and iPhone WebKit (10 cases). Backgrounding
+  preserves an unsent draft; old local lock flags have no effect. No live model turns.
+- The disposable phone-entry probe passes anonymous/forged credential denials for private
+  APIs, images and terminal upgrades, plus encoded paths and HTTPS redirect behavior.
+- The owner app was backed up before its idle restart. Its 4 projects, 49 agents, 2,052
+  entries and one approved phone remained unchanged; every saved paired-device credential
+  and setup field matched the backup. Obsolete lock tables are gone. Native Safari refresh
+  reconnects and shows the existing paired phone. Screenshots of installation guidance at
+  small portrait/landscape sizes were inspected. Physical phone return is not claimed.
+- Phone setup/help, capability map and guide notes now describe direct return after pairing.
+  Older locking decisions in the decision history are explicitly superseded.
+
+Evidence stays under ignored `data/phone-no-lock-*.log`, `data/screenshots/`, and
+`data/release-2026-09-30/phone-no-lock-before.*`; temporary check servers/browsers were closed.
+
 ## 2026-10-01 — larger app text and zoom reflow
 
 Production frontend build and strict TypeScript passed. Thirty-six distinct focused browser

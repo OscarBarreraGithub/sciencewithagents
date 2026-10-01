@@ -101,8 +101,8 @@ it('automatically replaces an exited connector with backoff, leaving saved pairi
   store.db
     .prepare(
       `INSERT INTO paired_devices
-    (id,name,browser_hash,credential_id,public_key,counter,created_at,require_unlock,setup_complete)
-    VALUES(?,?,?,?,?,?,?,?,?)`,
+    (id,name,browser_hash,credential_id,public_key,counter,created_at,setup_complete)
+    VALUES(?,?,?,?,?,?,?,?)`,
     )
     .run(
       deviceId,
@@ -112,20 +112,12 @@ it('automatically replaces an exited connector with backoff, leaving saved pairi
       'fixture-public-key',
       0,
       Date.now(),
-      0,
       1,
     );
-  store.db
-    .prepare(
-      `INSERT INTO device_unlocks
-    (id,device_id,token_hash,expires_at,remembered) VALUES(?,?,?,?,?)`,
-    )
-    .run(randomUUID(), deviceId, 'fixture-unlock', Date.now() + 86_400_000, 1);
   const settings = store.db
     .prepare("SELECT * FROM settings WHERE key LIKE 'phone:%' ORDER BY key")
     .all();
   const pairing = store.db.prepare('SELECT * FROM paired_devices').all();
-  const unlocks = store.db.prepare('SELECT * FROM device_unlocks').all();
   const revoke = vi.spyOn(phone.pairedDevices!, 'pause');
   tunnel.start();
   await vi.advanceTimersByTimeAsync(0);
@@ -148,7 +140,6 @@ it('automatically replaces an exited connector with backoff, leaving saved pairi
     store.db.prepare("SELECT * FROM settings WHERE key LIKE 'phone:%' ORDER BY key").all(),
   ).toEqual(settings);
   expect(store.db.prepare('SELECT * FROM paired_devices').all()).toEqual(pairing);
-  expect(store.db.prepare('SELECT * FROM device_unlocks').all()).toEqual(unlocks);
 });
 
 it('bounds repeated failures, keeps manual retry, and renews automatic recovery only after sustained health', async () => {

@@ -71,8 +71,6 @@ export type PhoneConfig = z.infer<typeof phoneConfigSchema>;
 export type PhoneIdentity = { email: string; subject: string; expiresAt: number };
 export type PhoneSession = Omit<PhoneIdentity, 'expiresAt'> & {
   deviceId: string;
-  unlockId?: string;
-  unlockRevision?: number;
   expiresAt: number | null;
 };
 const deviceLifetime = 30 * 24 * 60 * 60 * 1000;
@@ -414,8 +412,8 @@ export class PhoneAccess extends EventEmitter {
     const check = () => {
       if (!this.valid(session)) close();
     };
-    // Remembered sessions have no timer, but still close on lock, revocation or
-    // preference changes. A capped long timeout would silently expire them.
+    // Paired browsers have no inactivity timer. Device removal, disabled access
+    // and trust changes still close their active connections.
     const timer =
       session.expiresAt === null
         ? null

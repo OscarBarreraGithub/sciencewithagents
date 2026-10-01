@@ -32,11 +32,10 @@ code**. Its **Continue** moves to the separate nickname screen without a pairing
 the nickname screen's **Continue** checks the code with the server. **Use a different code**
 returns to code entry, preserving the nickname. A rejected code also returns to that screen.
 
-After unlocking, **Make this phone yours** offers **Ask for Face ID or screen lock**
-(default) or **Stay signed in**. **Continue** opens the Home Screen guide; **Open my workspace**
-finishes setup even if you prefer the browser. The authenticated device's `requireUnlock`
-choice and `setupComplete` flag are saved on the server, not reset by reloading. Later use
-**Phone access → App lock → Save lock preference**; installation help remains available.
+After computer confirmation, the Home Screen guide opens. **Open my workspace** finishes
+setup even if the person prefers the browser. The server saves setup completion for this
+paired browser. Installation help remains available in Phone access. There is no app lock,
+inactivity timeout or repeat passkey prompt; existing paired phones are retained on upgrade.
 
 **After pairing**, add the paired browser page to the home screen if wanted and check access there.
 An icon installed before pairing may need adding again from the paired browser; an existing
@@ -46,7 +45,7 @@ The QR carries a temporary code in a URL fragment, scrubbed before app/API start
 only in page memory. Do not share or record the QR/link. A reload does not recover that
 code from browser storage; inspect pairing status before starting again.
 
-Initial phone-managed passkey verification remains required even with **Stay signed in**; no phone
+Initial phone-managed passkey registration and computer confirmation remain required; no phone
 GitHub/Cloudflare account login is needed. The real hostname's paired boundary is now
 verified. The owner confirmed successful physical Safari enrollment; Home Screen,
 cellular and restart checks remain. See [PHONE_WORKFLOW.md](PHONE_WORKFLOW.md) and OWNER_CHECK_IN.md.
@@ -56,29 +55,19 @@ waits of at least 5, 15 and 60 seconds. It shows Connecting while recovery is pe
 repeated failure, **Reconnect phone access** retries explicitly. Two minutes of continuous
 readiness renew automatic recovery. Running connectors handle ordinary network reconnection;
 their processes are not restarted merely because the address is temporarily unready. These
-retries preserve enrollment and unlock sessions and end when access is turned off or the app
-closes. A private-token setup error still needs repair. In paired mode, **Turn off phone
-access** stops it and invalidates all active/remembered phone sessions, retaining enrollment
-and the lock preference. **Lock app** also invalidates the device's active/remembered sessions;
-the next visit requires a passkey even with **Stay signed in** selected. **Remove device**
-explicitly revokes that device and closes its existing private streams. App restarts and
-expired unlock sessions do not unpair it. With the default lock, unlock lasts at most
-15 minutes; opening/backgrounding locks the view with best-effort server lock and expiry
-backstop. **Stay signed in** instead retains a verified server session without automatic
-expiry until explicit lock/off/removal. It trusts anyone using this browser profile.
-Enrollment has no server expiry; enrollment/remembered cookies request 400 days, renewed
-on visits. Browser retention is not guaranteed. A lost session needs unlock; lost enrollment
-storage, explicit removal or a trust/origin reset can need re-pairing. The phone controls
-biometric fallback. No separate terminal or Chrome process is needed. Legacy `access`
-mode is retained for rollback and
-still uses its original account sign-in/device-expiry/off-revokes behavior; do not confuse
-that old mode with the accepted new experience.
-
-If manual locking cannot reach the computer, the page hides immediately but must warn that
-the server session may still be active. A deny-only local flag keeps this view locked across
-reload while it retries confirmation; other browser/Home Screen contexts are not revoked
-until the server confirms. Successful passkey verification plus fresh status is needed to
-reopen. If local storage is unavailable, closing the page may lose that local intent.
+retries preserve approved devices and end when access is turned off or the app closes.
+A private-token setup error still needs repair. In paired mode, **Turn off phone access**
+closes active connections and pending pairing while retaining approved devices. Turning it
+back on lets those browsers reconnect without verification. **Remove device** explicitly
+revokes that device and closes its private streams; a removed device needs fresh pairing.
+App restarts and backgrounding do not unpair it. The approved browser credential is random,
+stored only as a hash on the computer, and sent in a Secure, HttpOnly, SameSite=Strict,
+host-only cookie. It requests 400 days of browser retention, renewed on visits; storage
+survival is not guaranteed. Browser data loss or a deliberate trust/origin reset can require
+re-pairing. There is no app-level physical-device security. Initial registration may use the
+phone's verification, but no recurring unlock is requested. A synced passkey alone cannot
+pair another browser. The older `access` authentication mode remains rollback-only and
+retains its provider sign-in; it is not the normal phone setup.
 
 The setup agent installs the scoped runtime token as a regular 0600 file at
 `data/cloudflare-tunnel.token`; no Cloudflare account-level setup credential enters the app.

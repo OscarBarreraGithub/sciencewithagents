@@ -21,14 +21,12 @@ The agent handles configuration. Once ready, open **Phone access** on the comput
 choose **Create a new code**. Scan the QR into Safari on iPhone or Chrome on Android; the
 phone opens **Name your phone** directly, without a code field. Enter a **Phone nickname**,
 choose **Continue**, then **Save passkey**, and confirm the matching number on the computer
-within 15 minutes. After unlocking, **Make this phone yours** lets you keep repeat phone
-unlock on or choose **Stay signed in**. Initial passkey creation remains required. Continue
-to the Home Screen guide; **Open my workspace** finishes setup with or without installing.
+within 15 minutes. The Home Screen guide opens directly after computer confirmation; **Open my workspace** finishes setup with or without installing.
 An icon added earlier may need adding again from that paired
 browser. Manual fallback opens **Enter pairing code**, then **Continue** to the separate
 nickname screen. No phone account sign-in is needed. Safari enrollment succeeded; the
 remaining device checks are in [the phone checklist](PHONE_ACCEPTANCE.md). The complete
-[phone workflow contract](PHONE_WORKFLOW.md) defines lock, storage and recovery behavior.
+[phone workflow contract](PHONE_WORKFLOW.md) defines pairing, storage and recovery behavior.
 
 No purchases, paid upgrades, payment entry or manual DNS/token checklist in the default
 workflow. No collaborator receives access to another owner's Mac or Cloudflare account.
@@ -37,11 +35,11 @@ workflow. No collaborator receives access to another owner's Mac or Cloudflare a
 
 The paired entry is the primary authentication boundary in this mode. Cloudflare provides
 HTTPS and named-tunnel routing, not a required phone identity login. The address itself is
-not a secret; unauthenticated visitors may load only static app assets and bounded pairing/
-unlock endpoints. All private APIs, images, event streams and terminal upgrades require an
-enrolled browser plus a valid session established by passkey verification. Per-device
-**Stay signed in** retains that session; it does not open enrollment or expose private
-routes anonymously. Explicit lock/off invalidates remembered access. Never tunnel local port 4330.
+not a secret; unauthenticated visitors may load only static app assets and bounded pairing
+endpoints. Private APIs, images, event streams and terminal upgrades require an approved
+browser credential. Initial passkey registration and exact computer confirmation remain;
+there is no recurring app lock. Device removal revokes access. Turning phone access off
+blocks it while off without deleting approved devices. Never tunnel local port 4330.
 
 1. Read current STATUS.md and OWNER_CHECK_IN.md. Run the full types/backend/build and
    four-viewport browser suite, including real WebAuthn browser/server checks, before
@@ -61,7 +59,7 @@ routes anonymously. Explicit lock/off invalidates remembered access. Never tunne
 4. Set ignored host-only `data/phone-access.json` to the selected canonical HTTPS `origin`,
    `authentication: "paired"` and `port: 4331`. This is an agent-side config operation,
    not a browser path/text editor. Missing `authentication` deliberately keeps legacy Access.
-   Start the verified app without its connector and test locked/private denials locally
+   Start the verified app without its connector and test unapproved/private denials locally
    using the exact public Host. A trust-mode/origin change invalidates old trust; record
    that disposition. No phone had enrolled in the earlier owner acceptance attempt.
 5. With the connector still stopped, route only the exact Agent Dock hostname to
@@ -81,16 +79,16 @@ routes anonymously. Explicit lock/off invalidates remembered access. Never tunne
    restore the exact prior app policy/ingress/trust configuration before restarting legacy
    operation. Do not open an unauthenticated fallback or expose local services.
 7. Continue PHONE_ACCEPTANCE.md with the owner's physical phone. Confirm enrollment,
-   unlock, cellular/home-screen use, same-history handoff, native input, idle restart,
+   returning access, cellular/home-screen use, same-history handoff, native input, idle restart,
    off/on retention and removal. Physical passkey verification is performed by the owner.
    If that human step is unavailable, stop the acceptance processes, retain config/history,
    record what actually passed and move to another independent bounded slice.
 
 The runtime token remains a scoped 0600 file under private data; no setup-level account
-credential enters the app. The app owns connector lifetime and retry. Temporary off locks
-paired devices without revoking enrollment; explicit Remove device revokes. Trust origin
+credential enters the app. The app owns connector lifetime and retry. Temporary off blocks
+remote access without revoking enrollment; explicit Remove device revokes. Trust origin
 changes and lost browser storage still require planned recovery. Do not promise perpetual
-browser storage, instantaneous offline lock delivery or end-to-end encryption from Cloudflare.
+browser storage or end-to-end encryption from Cloudflare.
 
 ## Earlier Access-mode setup — historical reference / rollback only
 
@@ -171,7 +169,7 @@ forwarded HTTP document reads to its pinned HTTPS origin and refuses plaintext m
 the real HTTP URL was tested. Do not enable a zone-wide setting without its broader scope
 being authorized, or confuse a secure cookie with a secure first page load.
 
-`node scripts/verify-phone-entry.mjs --run` checks a disposable local locked entry.
+`node scripts/verify-phone-entry.mjs --run` checks a disposable local authenticated entry.
 Adding `--public` temporarily uses the app-owned connector and exact configured origin,
 without opening enrollment, touching owner conversations or starting a provider. The
 real endpoint returned paired status without account redirect, refused forged private
@@ -279,12 +277,11 @@ Codes are short-lived, single-use, attempt-limited and stored only as hashes. Th
 cannot be redisplayed after restart: create a new code, rather than persisting secrets for
 convenient retries. A lost pairing response requires inspecting cookie/session state, not
 automatically resending the code. In the old Access mode, turning access off invalidated
-every device enrollment. In paired mode it invalidates only unlocks/pending pairing and
-retains approved devices and their lock preference. This includes remembered sessions:
-after lock/off, passkey unlock is required even when repeat prompts were disabled.
-Approved enrollment has no automatic server expiry; enrollment/remembered browser cookies
-request 400 days, renewed on visits, subject to browser retention. Require explicit
-Remove device for permanent revocation; a trust/origin reset is also a deliberate revocation.
+every device enrollment. In paired mode it closes pending pairing and active connections,
+retaining approved devices for direct reconnection once phone access is on again. There is
+no app lock or repeated verification. Enrollment has no automatic server expiry; its cookie
+requests 400 days, renewed on visits, subject to browser retention. Require explicit Remove
+device for permanent revocation; a trust/origin reset is also a deliberate revocation.
 Browser and installed-app storage may differ; verify on real iOS/Android rather than
 claiming that a desktop viewport test proves installation or authentication continuity.
 

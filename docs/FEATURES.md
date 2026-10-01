@@ -608,7 +608,7 @@ Check: [history code/tests](../apps/server/src/history.test.ts), [history UI](..
 An exited app-owned phone connector now gets three automatic retries through its existing
 supervisor, with 5/15/60-second minimum waits and a two-minute healthy period before renewing
 the allowance. Repeated failure exposes manual Reconnect; off/shutdown cancels pending retry.
-Running connectors keep their own network recovery. Enrollment/unlock records and the exact
+Running connectors keep their own network recovery. Approved-device records and the exact
 configured route remain unchanged. This does not restart externally managed connectors.
 
 | Feature                            | Status               | Actual behavior and boundary                                                                                                                                                                                                                                                                                                         |
@@ -658,7 +658,7 @@ Check: [companion user guide](../apps/vscode-mirror/README.md), [bridge maintena
 Check: [setup runbook](MULTI_COMPUTER_SETUP.md), [host adapter](../apps/server/src/hosts.ts),
 [three-host safety tests](../apps/server/src/hosts.test.ts), [selector/two-tab tests](../apps/web/tests/classic/hosts.spec.ts).
 
-## Pair once, then unlock on the phone
+## Pair once, then open the phone app
 
 **Implemented recovery:** malformed phone settings or a busy phone connection port leave
 the desktop workspace available. Phone access shows a repair message, keeps saved pairing
@@ -676,11 +676,12 @@ phone remain device acceptance. See [phone setup](PHONE_SETUP.md). Existing Clou
 Scan the active QR in Safari on iPhone or Chrome on Android to open **Name your phone**
 directly, with only a blank **Phone nickname** field. Enter a nickname, choose **Continue**,
 **Save passkey**, and confirm on the computer. The code stays out of view in page memory.
-Physical Safari enrollment succeeded. After unlock, **Make this phone yours** offers the
-default repeated phone lock or **Stay signed in**, followed by a prominent Home Screen
-guide. **Open my workspace** saves setup completion without requiring or proving installation.
+Physical Safari enrollment succeeded. After computer confirmation, the Home Screen guide
+opens directly; **Open my workspace** saves setup completion without proving installation.
+App locks, recurring passkey prompts and inactivity timeouts were removed at the owner's
+request. Existing approved browsers stay connected, including through this upgrade.
 Add the icon **after pairing**; an earlier icon may need adding again from the paired browser.
-Home Screen, cellular, restart and new preference acceptance remain separate. Manual fallback
+Home Screen, cellular and physical returning-access checks remain separate. Manual fallback
 uses a separate **Enter pairing code** screen, then
 **Continue** to the nickname screen without a server request. **Use a different code**
 or server rejection returns to code entry, preserving the nickname.
@@ -694,9 +695,9 @@ is the redesign checklist; [physical checks](PHONE_ACCEPTANCE.md) remain separat
 | Secure private app address            | Implemented          | App-owned Cloudflare connector serves the authenticated phone entry, not the local app port. The real HTTPS locked boundary was checked. The URL itself is not secret, and Cloudflare terminates TLS; this is not end-to-end encryption from Cloudflare.                                                                            |
 | Agent-led setup, no phone account MFA | Implemented          | The agent provisions through the configured Cloudflare connection; computer-side sign-in/consent stays with the person. Recommend GitHub signup when offered. Ordinary phone use has no GitHub/Cloudflare login. No purchases are assumed; this named-tunnel setup needs an available domain, not a promised free new domain.       |
 | Closed enrollment after pairing       | Implemented          | The computer opens a 15-minute, single-use 16-character code. Saving the phone's passkey and confirming its matching number on the computer must finish within that same deadline. Enrollment then closes; a synced passkey alone cannot enroll another browser.                                                                    |
-| Durable pairing, separate unlock      | Implemented          | Enrollment has no automatic server expiry. The default verified unlock lasts at most 15 minutes. A per-device Stay signed in choice retains a verified session; initial passkey creation/computer confirmation still apply. Browser cookies request 400 days, renewed on visits, not guaranteed permanent storage.                  |
-| Post-unlock setup and App lock        | Implemented          | Make this phone yours offers the per-device lock choice, then a Home Screen guide. Open my workspace saves server-side setup completion without requiring or proving installation. App lock and installation help remain available. Preference/setup writes require an active authenticated session.                                |
-| Lock, removal and storage loss        | Implemented          | Lock app/off invalidates active and remembered sessions; the next connection needs a passkey even with Stay signed in. Enrollment/preferences remain. Remove device or trust reset revokes enrollment. Lost enrollment storage may require re-pairing; background locking applies to the default mode.                              |
+| Durable paired access                 | Implemented          | Computer-approved, passkey-verified enrollment authorizes only that browser via a random, hashed credential in a Secure, HttpOnly, host-only cookie. No app lock, repeat prompt or inactivity expiry. Cookie retention requests 400 days and renews on visits; browser storage is not guaranteed.                                   |
+| Installation setup                    | Implemented          | After computer confirmation, the Home Screen guide opens directly. Open my workspace saves setup completion with safe retry, without requiring or proving installation. Only an approved phone can complete setup.                                                                                                                  |
+| Removal, off/on and storage loss      | Implemented          | Remove device or a trust reset revokes enrollment and closes private streams. Turning access off blocks connections while off, retaining approved devices for direct reconnection. Lost browser storage may require re-pairing. Existing approved devices and history survive removal of the former locking system.                 |
 | Home-screen Safari/Chrome workflow    | Needs physical setup | Responsive UI and real WebAuthn browser fixtures are checked at desktop, 412×915, 360×800 and 915×412. Actual iOS/Android install context, biometrics, keyboard, cellular and hardware handoff still need the intended phone. No offline command queue/private-history cache is installed.                                          |
 | TODO: host and share project websites | Deferred             | An agent-led Cloudflare website-hosting/sharing workflow needs its own publication and access choices. The current phone address opens the private sciencewithagents management workspace; it is not a built-in way to share a project's website with collaborators. A Cloudflare account alone does not configure either workflow. |
 

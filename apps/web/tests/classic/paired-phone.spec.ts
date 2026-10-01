@@ -326,16 +326,6 @@ test('rendered QR skips code entry and asks for a nickname before real passkey v
   await expect(settings).toContainText('Pairing is closed to new devices');
   await expect(settings.locator('.phone-qr')).toHaveCount(0);
   await expect(settings.locator('.phone-address')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  expect(phone.privateRequests()).toBe(0);
-  await page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Make this phone yours' })).toBeVisible();
-  await expect(page.getByRole('radio', { name: /^Ask for Face ID/ })).toBeChecked();
-  expect(phone.privateRequests()).toBe(0);
-  await page.screenshot({
-    path: `../../data/screenshots/${info.project.name}-phone-lock-choice.png`,
-  });
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Add sciencewithagents to your Home Screen', exact: true }),
   ).toBeVisible();
@@ -353,20 +343,16 @@ test('rendered QR skips code entry and asks for a nickname before real passkey v
   await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
   expect(phone.privateRequests()).toBeGreaterThan(0);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Enter pairing code' })).toHaveCount(0);
-  await page.screenshot({
-    path: `../../data/screenshots/${info.project.name}-passkey-unlock.png`,
-  });
+  await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Unlock|Lock app/ })).toHaveCount(0);
+  await page.screenshot({ path: `../../data/screenshots/${info.project.name}-paired-return.png` });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await settings.getByRole('button', { name: 'Turn off phone access' }).click();
   await expect(settings).toContainText('Phone access is off');
-  await page.getByRole('button', { name: 'Check connection' }).click();
-  await expect(page.getByRole('alert')).toContainText('turned off on your computer');
+  const denied = await page.evaluate(async () => (await fetch('/api/snapshot')).status);
+  expect(denied).toBe(503);
   await settings.getByRole('button', { name: 'Turn on phone access' }).click();
-  await page.getByRole('button', { name: 'Check connection' }).click();
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  await page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }).click();
+  await page.reload();
   await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
   expect(access.status(false).devices).toHaveLength(1);
   expect(access.status(false).devices[0].expiresAt).toBeNull();
@@ -376,7 +362,7 @@ test('rendered QR skips code entry and asks for a nickname before real passkey v
   await expect(page.getByRole('heading', { name: 'Enter pairing code' })).toBeVisible();
 });
 
-test('stay signed in survives reopening, checks return access, and respects manual lock and switching the lock back on', async ({
+test('paired access survives reload, backgrounding, old lock flags and transient outages without verification', async ({
   page,
   phone,
 }) => {
@@ -385,85 +371,40 @@ test('stay signed in survives reopening, checks return access, and respects manu
   await expect(page.getByRole('heading', { name: 'Confirm on your computer' })).toBeVisible();
   const pending = phone.access.status(false).pending!;
   phone.access.pairedDevices!.confirm({ id: pending.id, confirmation: pending.confirmation });
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  await page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Make this phone yours' })).toBeVisible();
-  await page.getByRole('radio', { name: /^Stay signed in/ }).check();
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Add sciencewithagents to your Home Screen', exact: true }),
-  ).toBeVisible();
   await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
   await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
   const ceremonies: string[] = [];
   page.on('request', (request) => {
-    if (/\/phone\/(unlock|enroll)/.test(request.url())) ceremonies.push(request.url());
+    if (/\/phone\/(unlock|lock|enroll)/.test(request.url())) ceremonies.push(request.url());
   });
+  await page.evaluate(() => localStorage.setItem('dock:phone-manually-locked', '1'));
   await page.reload();
   await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Make this phone yours' })).toHaveCount(0);
-  expect(ceremonies).toEqual([]);
-  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
-  await expect(page.getByRole('textbox', { name: /^Message / })).toHaveCount(0);
-  await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
-  await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
-  expect(ceremonies).toEqual([]);
-  await page.evaluate(() => window.dispatchEvent(new Event('dock:lock-phone')));
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  await page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
-  expect(ceremonies).toHaveLength(2);
-  if (page.viewportSize()!.width <= 720)
-    await page.getByRole('button', { name: 'Open projects' }).click();
-  await page.getByRole('button', { name: 'Phone access', exact: true }).click();
-  const settings = page.getByRole('dialog', { name: 'Phone access' });
-  await expect(settings.getByRole('radio', { name: /^Stay signed in/ })).toBeChecked();
-  await expect(settings.getByRole('region', { name: 'Home Screen instructions' })).toBeVisible();
-  await settings.getByRole('radio', { name: /^Ask for Face ID/ }).check();
-  let settingsAvailable = false;
-  await page.route('https://dock.example.test/api/phone/preferences', async (route) => {
-    if (!settingsAvailable) return route.abort('connectionfailed');
-    await route.fallback();
+  const draft = page.getByRole('textbox', { name: /^Message / });
+  await draft.fill('Keep this unsent draft when I leave the app.');
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('pagehide'));
+    window.dispatchEvent(new Event('pageshow'));
+    document.dispatchEvent(new Event('visibilitychange'));
   });
-  await page.route('https://dock.example.test/api/phone/status', async (route) => {
-    if (!settingsAvailable) return route.abort('connectionfailed');
-    await route.fallback();
-  });
-  await settings.getByRole('button', { name: 'Save lock preference', exact: true }).click();
-  await expect(settings.getByRole('alert')).toContainText('could not confirm the change');
-  settingsAvailable = true;
-  await settings.getByRole('button', { name: 'Save lock preference', exact: true }).click();
-  await expect(settings.getByRole('status')).toHaveText(
-    'Lock preference saved for this paired device.',
+  await expect(draft).toHaveValue('Keep this unsent draft when I leave the app.');
+  await page.route('https://dock.example.test/api/phone/status', (route) =>
+    route.abort('connectionfailed'),
   );
-  await page.reload();
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  expect(phone.access.status(false).devices).toHaveLength(1);
-  expect(phone.access.status(false).devices[0].expiresAt).toBeNull();
-});
-
-test('remembered return never bypasses device removal', async ({ page, phone }) => {
-  await prepare(page, phone);
-  await page.getByRole('button', { name: 'Save passkey', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Confirm on your computer' })).toBeVisible();
-  const pending = phone.access.status(false).pending!;
-  phone.access.pairedDevices!.confirm({ id: pending.id, confirmation: pending.confirmation });
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  await page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }).click();
-  await page.getByRole('radio', { name: /^Stay signed in/ }).check();
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
-  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(draft).toHaveValue('Keep this unsent draft when I leave the app.');
+  await page.unroute('https://dock.example.test/api/phone/status');
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.getByRole('button', { name: /Unlock|Lock app/ })).toHaveCount(0);
+  expect(ceremonies).toEqual([]);
+  // Removal still closes a returning phone; the old cookie cannot restore it.
   phone.access.revoke(pending.id);
-  await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(page.getByRole('heading', { name: 'Enter pairing code' })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: /^Message / })).toHaveCount(0);
+  await expect(draft).toHaveCount(0);
 });
 
-test('an unconfirmed manual lock stays closed across reload until verified unlock, without losing pairing', async ({
+test('phone installation setup retries a failed save without repeating pairing', async ({
   page,
   phone,
 }) => {
@@ -472,72 +413,27 @@ test('an unconfirmed manual lock stays closed across reload until verified unloc
   await expect(page.getByRole('heading', { name: 'Confirm on your computer' })).toBeVisible();
   const pending = phone.access.status(false).pending!;
   phone.access.pairedDevices!.confirm({ id: pending.id, confirmation: pending.confirmation });
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  await page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }).click();
-  await page.getByRole('radio', { name: /^Stay signed in/ }).check();
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
-  let lockAvailable = false;
-  await page.route('https://dock.example.test/api/phone/lock', async (route) => {
-    if (!lockAvailable) return route.abort('connectionfailed');
-    await route.fallback();
-  });
-  await page.evaluate(() => window.dispatchEvent(new Event('dock:lock-phone')));
-  await expect(page.getByRole('alert')).toContainText('computer could not confirm the lock');
-  await page.reload();
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  await expect(page.getByRole('alert')).toContainText('computer could not confirm the lock');
-  await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
-  await expect(page.getByRole('textbox', { name: /^Message / })).toHaveCount(0);
-  expect(await page.evaluate(() => localStorage.getItem('dock:phone-manually-locked'))).toBe('1');
-  lockAvailable = true;
-  await page.getByRole('button', { name: 'Check connection', exact: true }).click();
-  await page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem('dock:phone-manually-locked'))).toBeNull();
-  await page.reload();
-  await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
-  expect(phone.access.status(false).devices).toHaveLength(1);
-});
-
-test('phone setup reports a failed preference save, does not auto retry, and keeps Home Screen setup available', async ({
-  page,
-  phone,
-}) => {
-  await prepare(page, phone);
-  await page.getByRole('button', { name: 'Save passkey', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Confirm on your computer' })).toBeVisible();
-  const pending = phone.access.status(false).pending!;
-  phone.access.pairedDevices!.confirm({ id: pending.id, confirmation: pending.confirmation });
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  await page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }).click();
-  await page.getByRole('radio', { name: /^Stay signed in/ }).check();
+  await expect(
+    page.getByRole('heading', { name: 'Add sciencewithagents to your Home Screen' }),
+  ).toBeVisible();
   let saves = 0;
-  await page.route('https://dock.example.test/api/phone/preferences', async (route) => {
+  await page.route('https://dock.example.test/api/phone/setup/complete', async (route) => {
     saves++;
     if (saves === 1) return route.abort('connectionfailed');
     await route.fallback();
   });
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('could not confirm the change');
-  await expect(page.getByRole('heading', { name: 'Make this phone yours' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('could not confirm setup finished');
   expect(saves).toBe(1);
   expect(phone.privateRequests()).toBe(0);
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Add sciencewithagents to your Home Screen', exact: true }),
-  ).toBeVisible();
-  expect(saves).toBe(2);
-  await page.getByRole('button', { name: 'Back to app lock', exact: true }).click();
-  await expect(page.getByRole('radio', { name: /^Stay signed in/ })).toBeChecked();
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByText('Already added an icon, or the icon asks to pair again?').click();
   await expect(page.getByRole('region', { name: 'Home Screen instructions' })).toContainText(
     'Do not clear this browser’s data',
   );
   await page.getByRole('button', { name: 'Open my workspace', exact: true }).click();
   await expect(page.getByRole('textbox', { name: /^Message / })).toBeVisible();
+  expect(saves).toBe(2);
+  expect(phone.requests).toEqual({ options: 1, finish: 1 });
 });
 
 test('cancelled creation retries the same accepted code without repeating preparation', async ({
@@ -597,7 +493,7 @@ for (const [name, expected] of [
   });
 }
 
-test('slow preparation does not invoke WebAuthn, and Save runs directly during its click despite a pending lock', async ({
+test('slow preparation does not invoke WebAuthn, and Save runs directly during its click', async ({
   page,
   phone,
 }) => {
@@ -638,28 +534,15 @@ test('slow preparation does not invoke WebAuthn, and Save runs directly during i
     releaseOptions();
   }
   await expect(page.getByRole('button', { name: 'Save passkey', exact: true })).toBeVisible();
-  let releaseLock!: () => void;
-  const waitingLock = new Promise<void>((resolve) => {
-    releaseLock = resolve;
-  });
-  await page.route('https://dock.example.test/api/phone/lock', async (route) => {
-    await waitingLock;
-    await route.fallback();
-  });
-  await page.evaluate(() => window.dispatchEvent(new Event('dock:lock-phone')));
-  try {
-    await page.getByRole('button', { name: 'Save passkey', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Confirm on your computer' })).toBeVisible();
-    const actual = await page.evaluate(
-      () =>
-        (window as unknown as { pairingGestureCheck: { calls: number; sameClick: boolean } })
-          .pairingGestureCheck,
-    );
-    expect(actual.calls).toBe(1);
-    expect(actual.sameClick).toBe(true);
-  } finally {
-    releaseLock();
-  }
+  await page.getByRole('button', { name: 'Save passkey', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Confirm on your computer' })).toBeVisible();
+  const actual = await page.evaluate(
+    () =>
+      (window as unknown as { pairingGestureCheck: { calls: number; sameClick: boolean } })
+        .pairingGestureCheck,
+  );
+  expect(actual.calls).toBe(1);
+  expect(actual.sameClick).toBe(true);
   expect(phone.requests).toEqual({ options: 1, finish: 1 });
 });
 
@@ -718,33 +601,6 @@ test('a cancelled prompt does not extend the accepted code deadline', async ({ p
   await enterCode(page, phone.access.issueCode(randomUUID()).code);
   await expect(page.getByLabel('Phone nickname')).toHaveValue('My phone');
   expect(phone.requests).toEqual({ options: 1, finish: 0 });
-});
-
-test('unlock failures keep paired-device guidance and never ask to save another passkey', async ({
-  page,
-  phone,
-}) => {
-  await prepare(page, phone);
-  await page.getByRole('button', { name: 'Save passkey', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Confirm on your computer' })).toBeVisible();
-  const pending = phone.access.status(false).pending!;
-  phone.access.pairedDevices!.confirm({ id: pending.id, confirmation: pending.confirmation });
-  await page.getByRole('button', { name: 'Check connection' }).click();
-  await expect(page.getByRole('heading', { name: 'Unlock sciencewithagents' })).toBeVisible();
-  let message = 'Unlock expired. Try Unlock sciencewithagents again.';
-  await page.route('https://dock.example.test/api/phone/unlock', (route) =>
-    route.fulfill({ status: 409, json: { error: message } }),
-  );
-  await page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText(message);
-  message = 'PRIVATE_UNEXPECTED_UNLOCK_DETAILS';
-  await page.getByRole('button', { name: 'Unlock sciencewithagents', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Your phone could not be unlocked');
-  await expect(page.getByRole('alert')).not.toContainText('save');
-  await expect(page.locator('.phone-card')).not.toContainText('PRIVATE_');
-  expect(phone.access.status(false).devices).toHaveLength(1);
-  expect(phone.requests).toEqual({ options: 1, finish: 1 });
-  expect(phone.privateRequests()).toBe(0);
 });
 
 test('a scanned code is scrubbed from history and never restored from browser storage after reload', async ({

@@ -19,8 +19,6 @@ import { PhoneConnectionSetup } from './PhoneConnectionSetup';
 
 const PhoneMode = createContext<'local' | 'remote'>('local');
 export const usePhoneMode = () => useContext(PhoneMode);
-const PhoneLockAvailable = createContext(false);
-export const usePhoneLockAvailable = () => useContext(PhoneLockAvailable);
 const readStatus = async () => phoneStatusSchema.parse(await api('/phone/status'));
 
 /** No private workspace is mounted on a remote device before enrollment succeeds. */
@@ -138,16 +136,14 @@ export function PhoneGate({
   if (status?.mode === 'remote' && status.authentication === 'paired')
     return (
       <PhoneMode.Provider value="remote">
-        <PhoneLockAvailable.Provider value={true}>
-          <PairedPhoneGate
-            status={status}
-            refresh={refresh}
-            connectionError={error}
-            pairingScan={pairingScan}
-          >
-            {children}
-          </PairedPhoneGate>
-        </PhoneLockAvailable.Provider>
+        <PairedPhoneGate
+          status={status}
+          refresh={refresh}
+          connectionError={error}
+          pairingScan={pairingScan}
+        >
+          {children}
+        </PairedPhoneGate>
       </PhoneMode.Provider>
     );
   if (status && (status.mode === 'local' || status.paired))
@@ -375,17 +371,8 @@ export function PhoneSettings({
             Manage connected devices and create connection codes from sciencewithagents on your
             computer.
           </p>
-          {status.authentication === 'paired' && (
-            <button
-              className="secondary"
-              onClick={() => window.dispatchEvent(new Event('dock:lock-phone'))}
-            >
-              Lock app
-            </button>
-          )}
           {status.authentication === 'paired' ? (
             <PhoneDeviceSetup
-              status={status}
               refresh={async () => {
                 setStatus(await readStatus());
               }}

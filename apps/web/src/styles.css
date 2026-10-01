@@ -2708,35 +2708,7 @@ form > .primary {
   width: 100%;
   min-width: 0;
 }
-.phone-lock-choice {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px;
-  margin: 20px 0;
-  min-width: 0;
-}
-.phone-lock-choice label {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 0;
-  cursor: pointer;
-  color: var(--ink);
-}
-.phone-lock-choice input[type='radio'] {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  margin: 2px 0 0;
-}
-.phone-lock-choice small {
-  display: block;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-top: 6px;
-  font-size: var(--text-small);
-}
+
 .phone-install-guide ol {
   padding-left: 24px;
   line-height: 1.6;
