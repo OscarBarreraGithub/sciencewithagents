@@ -55,6 +55,11 @@ async function fixture(realServer = false) {
     config = join(data, 'launcher/config.json');
   mkdirSync(join(root, 'apps/server/dist'), { recursive: true });
   mkdirSync(join(root, 'scripts'), { recursive: true });
+  mkdirSync(join(root, 'assets/branding'), { recursive: true });
+  copyFileSync(
+    join(repoRoot, 'assets/branding/sciencewithagents.icns'),
+    join(root, 'assets/branding/sciencewithagents.icns'),
+  );
   copyFileSync(helper, join(root, 'scripts/launcher.mjs'));
   if (realServer) {
     cpSync(join(repoRoot, 'apps/server/dist'), join(root, 'apps/server/dist'), { recursive: true });
@@ -222,6 +227,21 @@ describe('manual app launcher ownership', () => {
           ])
         ).stdout.trim(),
       ).toBe('sciencewithagents');
+      const icon = await exec('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIconFile', info]);
+      expect(icon.stdout.trim()).toBe('sciencewithagents.icns');
+      await expect(
+        exec('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIconName', info]),
+      ).rejects.toThrow();
+      expect(
+        readFileSync(
+          join(launcher, 'sciencewithagents.app/Contents/Resources/sciencewithagents.icns'),
+        ),
+      ).toEqual(readFileSync(join(repoRoot, 'assets/branding/sciencewithagents.icns')));
+      await exec('/usr/bin/codesign', [
+        '--verify',
+        '--strict',
+        join(launcher, 'sciencewithagents.app'),
+      ]);
       const source = readFileSync(join(launcher, 'Launcher.applescript'), 'utf8');
       expect(source).toContain('appURL is "sciencewithagents://open"');
       expect(source).not.toContain('do shell script appURL');

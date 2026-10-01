@@ -364,14 +364,14 @@ test('Home uses the alien brand and functional headings, and QUARK has no transc
 }, info) => {
   await page.goto('/#/home');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
-  const logo = page.locator('img[src="/dock.svg?v=alien"]:visible').first();
+  const logo = page.locator('img[src="/dock.svg?v=drawn-alien"]:visible').first();
   await expect(logo).toBeVisible();
   expect(
     await logo.evaluate((element) => (element as HTMLImageElement).naturalWidth),
   ).toBeGreaterThan(0);
-  const asset = await page.request.get('/dock.svg?v=alien');
+  const asset = await page.request.get('/dock.svg?v=drawn-alien');
   expect(asset.ok()).toBe(true);
-  expect(await asset.text()).toContain('class="alien-eyes"');
+  expect(await asset.text()).toContain('data-artwork="original-alien-drawing"');
   await expect(
     page.getByText(/One home for your agents|Your ideas, in good hands|Your agents, together/i),
   ).toHaveCount(0);

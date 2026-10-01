@@ -1,5 +1,9 @@
 # Changes
 
+## 0.2.8
+
+- Use the original hand-drawn alien for the extension icon.
+
 ## 0.2.7
 
 Loaded-chat sharing choices exclude native subagents, temporary sessions and

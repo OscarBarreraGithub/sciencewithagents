@@ -66,7 +66,7 @@ an optional private Tailscale connection without a domain: check readiness, conf
 turn it on and pair. Tailscale installation/sign-in and HTTPS consent remain with the person;
 the existing domain route remains available. See [phone setup and acceptance limits](docs/PHONE_SETUP.md).
 Initial source installation still needs its setup steps. Retained backend capabilities are not
-proof that those screens work here. Phone pairing, unlocking and manual locking remain. The header’s VS Code button opens setup status and extension instructions;
+proof that those screens work here. Phone pairing, unlocking and manual locking remain. The VS Code button at the top of Chats opens setup status and extension instructions;
 shared conversations stay under Chats → Shared. Shared VS Code conversations connect
 locally without a separate editor code. Long histories open in bounded sections, with older
 messages and large tool results available on demand; original conversations are retained.
@@ -139,7 +139,8 @@ You can give your setup agent this request:
 > how to open the app next time, and anything still incomplete. Ordinary setup does not
 > need the full developer test suite.
 
-On a configured Mac, open **sciencewithagents** from Applications. It opens the app in your
+On a configured Mac, open **sciencewithagents** from your personal Applications folder
+(`~/Applications/sciencewithagents.app`), or find it by name in Spotlight. It opens the app in your
 browser through a private, one-use handoff. Older open tabs reconnect automatically when
 this browser already has access, keeping their destination and unsent drafts. Expired access
 offers **Open desktop app**; return to the tab to continue. Conflicting drafts are available in

@@ -1,5 +1,13 @@
 # Resume here — current continuation only
 
+## Latest branding correction
+
+Use the owner's original curved alien drawing, not Heldalive's pixel-style recreation.
+The canonical image is `assets/branding/alien-drawing.png`; all app, website, phone,
+Mac and companion icons are exported from it. The manual app remains installed at
+`~/Applications/sciencewithagents.app`; it opens the local browser interface and keeps
+phone access running after the browser closes. No login service was enabled.
+
 ## Latest UI correction — project setup and navigation
 
 VS Code connection/setup is now a compact control at the top of Chats, removed from
@@ -111,7 +119,7 @@ and phone connector available; login service stays off. Stop only owned test pro
 
 ## Remaining device handoff
 
-Companion 0.2.7 is installed with the alien icon and helper filtering; it activates on the next normal editor restart. A stale shared-chat list caused the
+Companion 0.2.8 is installed with the original drawn alien icon and helper filtering; it activates on the next normal editor restart. A stale shared-chat list caused the
 misleading offline status: list reads now refresh/coalesce the companion summary. The real
 active editor conversation was verified Working with steering available, without an editor
 reload. Do not reload an active conversation mid-turn. Separate real isolated editor checks passed Codex steering and Claude's acknowledged

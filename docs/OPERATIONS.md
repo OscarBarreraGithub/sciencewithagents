@@ -242,10 +242,10 @@ an interrupted Claude session just to show history. Codex reconnects its saved n
 threads without replaying prompts. Neither promises restoration of old PTY screen contents
 or exact hidden cache state. VS Code mirrors may require reopening the editor/original chat.
 
-For the required manual Mac workflow, open **Agent Dock.app** after login. Its small local
+For the required manual Mac workflow, open **sciencewithagents.app** from the user’s Applications folder after login. Its small local
 launcher starts the existing server and browser, or opens the matching installation
 already running. It refuses an unrelated server/different clone at the same address.
-Closing Safari/Chrome leaves the app running for the phone. **Quit Agent Dock → Stop and
+Closing Safari/Chrome leaves the app running for the phone. **Quit sciencewithagents → Stop and
 Quit** gracefully stops only its own server, workers and connector; saved work remains.
 The owned lifetime pipe also stops the server if the launcher supervisor disappears.
 A pre-existing separately started server is not owned or stopped by this app icon.

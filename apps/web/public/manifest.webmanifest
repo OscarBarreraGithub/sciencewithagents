@@ -8,8 +8,18 @@
   "theme_color": "#f6f5f2",
   "scope": "/",
   "icons": [
-    { "src": "/dock-192.png?v=alien", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/dock-512.png?v=alien", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/dock.svg?v=alien", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    {
+      "src": "/dock-192.png?v=drawn-alien",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/dock-512.png?v=drawn-alien",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    { "src": "/dock.svg?v=drawn-alien", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }

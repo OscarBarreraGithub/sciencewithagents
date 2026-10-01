@@ -235,6 +235,8 @@ end quit
     // The only accepted deep link opens the workspace; no URL supplies a path or command.
     const info = join(temporary, 'Contents/Info.plist');
     for (const command of [
+      'Delete :CFBundleIconName',
+      'Set :CFBundleIconFile sciencewithagents.icns',
       `Add :CFBundleIdentifier string com.sciencewithagents.desktop.${identity.slice(0, 16)}`,
       // A --no-open launcher does not take over the browser's desktop-app link.
       ...(!args.includes('--no-open')
@@ -250,7 +252,7 @@ end quit
       await exec('/usr/libexec/PlistBuddy', ['-c', command, info], { timeout: 5000 });
     await cp(
       join(root, 'assets/branding/sciencewithagents.icns'),
-      join(temporary, 'Contents/Resources/applet.icns'),
+      join(temporary, 'Contents/Resources/sciencewithagents.icns'),
     );
     await exec('/usr/bin/codesign', ['--force', '--sign', '-', temporary], { timeout: 15_000 });
     const appPath = join(stateDir, 'sciencewithagents.app');

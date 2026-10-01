@@ -472,7 +472,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
       )}
       <aside className={`sidebar ${leftOpen ? 'open' : ''}`}>
         <a className="brand" href="/" aria-label="sciencewithagents home">
-          <img src="/dock.svg?v=alien" alt="" />
+          <img src="/dock.svg?v=drawn-alien" alt="" />
           <span>
             sciencewithagents<span className="brand-period">.</span>
           </span>

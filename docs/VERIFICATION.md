@@ -1,5 +1,18 @@
 # Verification
 
+## 2026-09-30 — original alien drawing and installed app icon
+
+The canonical PNG matches the recorded checksum of the owner's original drawing.
+Icon export and production builds passed. The focused Home check passed all five
+browser profiles. A native launcher compile verified the bundled icon bytes, absence
+of the overriding AppleScript icon name, and valid application signature. The installed
+Mac app received the same icon with a private copy retained before updating it;
+the icon resolved by macOS was rendered and visually checked against the drawing.
+Companion 0.2.8 was packaged and installed without reloading the active editor.
+Native Safari showed the drawing in the running app and published website.
+Both public domains served the expected artwork, with all six graph datasets unchanged.
+These checks do not establish that an existing iPhone Home Screen icon has refreshed.
+
 ## 2026-09-30 — manager classification and helper history
 
 Production builds passed. Focused checks passed: 116 backend and 8 companion cases.

@@ -113,7 +113,7 @@ const section = (page: string) =>
       : page;
 
 function Mark({ className = '' }: { className?: string }) {
-  return <img className={className} src="/dock.svg?v=alien" alt="" width="36" height="32" />;
+  return <img className={className} src="/dock.svg?v=drawn-alien" alt="" width="36" height="32" />;
 }
 function resetLabel(value: string | null, now: number) {
   if (!value) return 'Reset time not reported';

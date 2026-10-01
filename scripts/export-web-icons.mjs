@@ -1,6 +1,6 @@
-// Export every sciencewithagents icon from the owner's original heldalive vector.
+// Export every sciencewithagents icon from the owner's original alien drawing.
 // Artwork is copied, not redrawn. Preview/export files stay under ignored data/.
-import { readFile, mkdir, copyFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
@@ -11,7 +11,11 @@ const require = createRequire(new URL('../apps/web/package.json', import.meta.ur
 const { chromium } = require('@playwright/test');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = join(root, 'apps/web/public/dock.svg');
-const vector = await readFile(source, 'utf8');
+const drawing = await readFile(join(root, 'assets/branding/alien-drawing.png'));
+// Preserve the supplied strokes and alpha exactly; only tint the white ink for light UI.
+// Keep the PNG embedded so favicons don't depend on another network request.
+const vector = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" data-artwork="original-alien-drawing"><defs><filter id="ink" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0.262745 0 0 0 0 0.352941 0 0 0 0 0.313725 0 0 0 1 0"/></filter></defs><image width="600" height="600" href="data:image/png;base64,${drawing.toString('base64')}" filter="url(#ink)"/></svg>`;
+await writeFile(source, vector);
 await copyFile(source, join(root, 'site/assets/favicon.svg'));
 await mkdir(join(root, 'data'), { recursive: true });
 const temporary = await mkdtemp(join(root, 'data/brand-export-'));

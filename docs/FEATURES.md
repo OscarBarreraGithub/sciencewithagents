@@ -88,9 +88,11 @@ is advertised; retained local-job records still have their original destination.
 ## Shared alien branding — implemented, 2026-09-30
 
 The app header, browser icon, phone install icons, Mac launcher, VS Code companion and
-public website use the owner-selected Heldalive alien. `apps/web/public/dock.svg` is the
-canonical artwork; `node scripts/export-web-icons.mjs` regenerates the raster, Mac and
-companion assets and copies the website SVG. Existing installed phone icons may keep their
+public website use the owner's original curved alien drawing, replacing the pixel-style
+recreation. `assets/branding/alien-drawing.png` preserves the original white-ink artwork;
+`node scripts/export-web-icons.mjs` embeds it in a tinted SVG and exports the phone, Mac,
+companion and website icons. The Mac launcher points directly to its `.icns`, rather than
+the generated AppleScript asset-catalog icon. Existing installed phone icons may keep their
 OS-cached artwork until the shortcut is re-added. Provider logos still identify their providers.
 
 ## QUARK conversation and board — implemented, 2026-09-30
