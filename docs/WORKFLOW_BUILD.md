@@ -74,8 +74,22 @@ They also collect current jobs, pause reasons, inherited caps, planning estimate
 readings and decisions. Job links open existing controls; budget links preselect the task.
 Opening these views creates no work. Missing readings stay visibly unavailable or stale.
 
-**Conversations:** Managers and workers share a searchable list with role filters. Drafts
-remain scoped to the browser and computer. Reloading restores the saved text; deliberate
+**Which conversation is which:** **Chats → Shared** contains your shared VS Code and
+compatible native Codex conversations. Sharing keeps the original conversation, history
+and agent; it does not create a manager. **Managers** lists managers for projects you
+create. Inspect a delegated worker through its project/task, and find resource assistance
+and past health reports in **Computer health**. Development and service agents do not
+count as your project managers.
+
+App-created Codex sessions carry an ownership marker, and native subagents retain their
+parent identity. Our shared/history pickers exclude these helpers. Finished app-owned task
+workers and released resource/search helpers are also archived in Codex, preserving their
+transcripts; explicit reuse of an eligible owned session restores it before continuing.
+Imported personal chats are left alone. The native VS Code history picker can still show
+an active standalone helper until it is archived, so the guide must not promise universal
+invisibility. See [helper visibility and native limits](VSCODE_MIRROR.md#helper-visibility).
+
+**Conversation drafts:** Drafts remain scoped to the browser and computer. Reloading restores the saved text; deliberate
 send uses the existing durable delivery receipt. Touch-keyboard Enter inserts a newline.
 Approvals display the original request and use the original answer endpoint.
 

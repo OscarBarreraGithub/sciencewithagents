@@ -48,6 +48,24 @@ list remains for your project and shared conversations. Their saved reports rema
 An installed phone view offers **Reload app** when a newer interface is available, without
 reloading in the middle of writing.
 
+## Your conversations stay separate from background helpers
+
+Sharing a VS Code conversation shows the same conversation on your phone; it does not
+turn it into a project manager or create a second agent. **Chats → Shared** holds these
+editor conversations, while **Managers** holds the managers of projects you create.
+Workers belong with their project's tasks, and resource checks belong in **Computer health**.
+This keeps background activity from filling your personal chat list with unfamiliar names.
+
+sciencewithagents records which Codex sessions it creates and recognizes native subagents.
+Its conversation pickers leave these helpers out. Finished app-owned task workers and
+released resource/search helpers are archived in Codex too, keeping their saved history
+available for later inspection. Archiving is not deletion, and imported personal chats
+are not automatically archived.
+
+One current limit: Codex's own VS Code history picker can still show a separately launched
+helper while it is active. Our app distinguishes it, but cannot promise it never appears
+in the native picker. See [helper visibility](VSCODE_MIRROR.md#helper-visibility).
+
 ## Managers keep their place
 
 Managers keep durable internal next steps and separate human action items. Home shows concise
