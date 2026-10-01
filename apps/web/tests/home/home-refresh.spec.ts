@@ -145,6 +145,16 @@ test('orb is idle until tapped, settles again and respects reduced motion', asyn
   expect(await canvas.getAttribute('data-draws')).toBe(idle);
   const before = await canvas.evaluate((e: HTMLCanvasElement) => e.toDataURL());
   await button.click();
+  expect(
+    await button.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        outline: style.outlineStyle,
+        shadow: style.boxShadow,
+      };
+    }),
+  ).toEqual({ background: 'rgba(0, 0, 0, 0)', outline: 'none', shadow: 'none' });
   await expect
     .poll(async () => Number(await canvas.getAttribute('data-draws')))
     .toBeGreaterThan(Number(idle) + 2);

@@ -83,7 +83,10 @@ leave the wheel running indefinitely.
 
 Home's orb sits beside the computer and allowance readings, below the phone toolbar,
 and uses [Thinking Orbs](https://github.com/Jakubantalik/thinking-orbs).
-It is still while idle, changes shape with a brief animation on tap, and stops again.
+It starts with a random shape, stays still while idle, and randomly chooses a different
+particle pattern on each tap, with varied orientation and gentle speed. Seven flowing
+patterns are included; polygon-outline and Rubik-like presets are excluded. Taps have
+no button halo or outline; keyboard focus remains visible. Animation stops after 1.8 seconds.
 Reduced-motion settings use static shapes; hidden/offscreen animation pauses. It makes
 no AI or network requests. On narrow phones the header uses the drawn alien as its brand
 mark, leaving room for the 44-pixel controls.

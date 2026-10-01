@@ -224,6 +224,14 @@ body:has(.home-shell) {
 }
 .home-orb {
   flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.home-shell .home-orb:is(:hover, :active) {
+  background: transparent;
+  box-shadow: none;
+}
+.home-shell .home-orb:focus:not(:focus-visible) {
+  outline: none;
 }
 .home-topline .home-orb {
   margin-left: auto;

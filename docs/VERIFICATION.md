@@ -35,6 +35,10 @@ above Chats, stays inside the screen, and retains idle/tap/reduced-motion behavi
 The production build passed; the phone screenshot was visually checked against the
 owner's marked position.
 
+The random-pattern follow-up passes the production build and existing orb interaction
+check on desktop, Chromium phone and iPhone WebKit, including a transparent background,
+no pointer outline/shadow, changed rendered content, idle pause and reduced motion.
+
 Production web build passed. Twenty focused checks passed across desktop, 412×915,
 360×800, 915×412 and iPhone WebKit: pull threshold, coalesced in-flight reads, failure/retry,
 preserved drafts, explicit release notice, nested scrolling/editor exclusions, icon bytes

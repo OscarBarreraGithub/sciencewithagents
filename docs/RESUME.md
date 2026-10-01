@@ -17,8 +17,11 @@ focused desktop/phone/WebKit checks. No server restart or model turn was needed.
 Home has pull-to-refresh with a wheel that tracks the actual cached-data reads and
 checks for a new frontend. Reload remains explicit to protect drafts. Ordinary scrolling,
 nested panel scrolling and chat gestures do not refresh. Home's Thinking Orbs
-control is still when idle; a tap changes its shape, animates gently for 1.8 seconds,
-then stops. It sits beside the computer/allowance readings, with an 80-pixel target
+control starts with a random shape and is still when idle; a tap picks a different shape
+at random from seven flowing patterns, with varied orientation/speed. Polygon and
+Rubik-like presets are excluded. It animates gently for 1.8 seconds, then stops.
+Pointer taps have no button highlight; keyboard focus stays visible.
+It sits beside the computer/allowance readings, with an 80-pixel target
 on phones, rather than in the top toolbar. No model or network call is made by the orb.
 
 The paired phone origin serves the original drawn alien without requiring a session,
