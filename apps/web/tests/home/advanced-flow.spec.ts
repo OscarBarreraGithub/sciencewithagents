@@ -45,8 +45,19 @@ test('advanced controls read metadata, retry a model failure and save an explici
       );
     }),
   ).toBe(true);
-  await page.getByRole('combobox', { name: 'Model', exact: true }).selectOption({ index: 1 });
-  const model = await page.getByRole('combobox', { name: 'Model', exact: true }).inputValue();
+  await page.getByRole('link', { name: 'Return to conversation', exact: true }).click();
+  await page.getByRole('button', { name: 'Configure', exact: true }).click();
+  await page.getByRole('link', { name: 'Advanced controls', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/advanced/${owner.managerId}$`));
+  await expect(page.getByRole('button', { name: 'Save settings', exact: true })).toBeEnabled();
+  // Opening the chat saves its view, but must not change settings or start work.
+  expect(writes.filter((url) => !new URL(url).pathname.startsWith('/api/workspace/'))).toEqual([]);
+  const modelSelect = page.getByRole('combobox', { name: 'Model', exact: true });
+  const choice = modelSelect.locator('option').nth(1);
+  await expect(choice).toBeAttached();
+  const model = (await choice.getAttribute('value'))!;
+  await modelSelect.selectOption(model);
+  await expect(modelSelect).toHaveValue(model);
   await page.screenshot({
     path: `../../data/screenshots/advanced/${info.project.name}-settings.png`,
   });

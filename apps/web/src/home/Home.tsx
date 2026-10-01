@@ -75,7 +75,9 @@ const titles: Record<string, string> = {
 const href = (page: string) => `#/${page}`;
 const route = () =>
   window.location.hash.startsWith('#/')
-    ? (window.location.hash.slice(2) || 'home').replace(/^usage(?=\/|$)/, 'work')
+    ? (window.location.hash.slice(2) || 'home')
+        .replace(/^usage(?=\/|$)/, 'work')
+        .replace(/^advanced\/?$/, 'settings')
     : new URLSearchParams(window.location.search).has('mirror')
       ? 'vscode'
       : 'home';
@@ -329,13 +331,18 @@ export function Home() {
   const phone = useReading('/phone/status', phoneStatusSchema.parse);
   const [currentRoute, setPage] = useState(route);
   useEffect(() => {
-    if (/^#\/usage(?:\/|$)/.test(location.hash))
-      history.replaceState(
-        history.state,
-        '',
-        `${location.pathname}${location.search}#/${currentRoute}`,
-      );
-  }, [currentRoute]);
+    const replaceAlias = () => {
+      if (/^#\/usage(?:\/|$)/.test(location.hash) || /^#\/advanced\/?$/.test(location.hash))
+        history.replaceState(
+          history.state,
+          '',
+          `${location.pathname}${location.search}#/${route()}`,
+        );
+    };
+    replaceAlias();
+    window.addEventListener('hashchange', replaceAlias);
+    return () => window.removeEventListener('hashchange', replaceAlias);
+  }, []);
   const page = currentRoute.split('/')[0]!;
   const [now, setNow] = useState(Date.now);
   const [dialog, setDialog] = useState<'help' | 'phone' | null>(null);

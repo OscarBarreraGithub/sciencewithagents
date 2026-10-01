@@ -82,9 +82,6 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
           <SettingsCard to="welcome" title="Welcome and setup" icon={<ShieldCheck />}>
             Check native sign-in and model readiness, then choose your team and first project.
           </SettingsCard>
-          <SettingsCard to="advanced" title="Advanced controls" icon={<Settings2 />}>
-            Session settings, provider tools, history import and deliberate context changes.
-          </SettingsCard>
           <SettingsCard to="models" title="Model preferences" icon={<Settings2 />}>
             Set your general manager, worker and assistant defaults. Restore the recommended choices
             any time.

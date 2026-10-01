@@ -1,5 +1,12 @@
 # Resume here — current continuation only
 
+## Latest navigation simplification
+
+Removed the standalone Advanced entry from Settings and Apps and deleted its unfiltered
+agent picker. Old `#/advanced` bookmarks open Settings. Keep conversation controls under
+**Configure → Advanced controls**, including direct links, context commands, native terminal,
+history and settings. Invalid conversation links offer the normal Chats list.
+
 ## Latest slider correction
 
 Native ranges no longer inherit text-input padding/borders, which offset Safari's thumb

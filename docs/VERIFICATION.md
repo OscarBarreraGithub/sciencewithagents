@@ -1,5 +1,20 @@
 # Verification
 
+## 2026-10-01 — keep Advanced controls with their conversation
+
+Removed the Settings/Apps entry and unfiltered all-agent picker. Old standalone Advanced
+links, including a trailing slash, open Settings. Missing conversation links offer Chats;
+existing conversation-specific controls, terminal and command links remain available.
+
+- Production web build passes. Twenty-five focused browser journeys pass across desktop,
+  412×915, 360×800, 915×412 and iPhone WebKit: chat Configure entry, model save/reload,
+  catalog retry, command receipt recovery, native terminal handoff, legacy redirects and
+  internal-agent filtering. The model-selection assertion now waits for the selected
+  value instead of reading it during the form's update.
+- Demo-provider fixtures only; no real model work, owner settings or backend changes.
+  Evidence: ignored `data/advanced-navigation-*.log` and browser screenshots. Test servers
+  and their browser children are closed; the owner's app remains available.
+
 ## 2026-10-01 — native slider endpoints and control layout checks
 
 Safari range inputs inherited text-field padding/borders, making the thumb stop short of

@@ -36,7 +36,6 @@ const descriptions = {
 export function AdvancedFlow({ route, data }: { route: string; data: HomeData }) {
   const [, target, intent] = route.split('/');
   const state = data.snapshot.data;
-  const [query, setQuery] = useState('');
   const [native, setNative] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [nativeError, setNativeError] = useState('');
@@ -94,35 +93,12 @@ export function AdvancedFlow({ route, data }: { route: string; data: HomeData })
           </button>
         </FlowEmpty>
       ) : !agent ? (
-        <>
-          {target && (
-            <p role="alert">That conversation is unavailable. Choose one from this computer.</p>
-          )}
-          <div className="flow-form-panel">
-            <label>
-              Find a conversation
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="An agent or project name"
-              />
-            </label>
-          </div>
-          <div className="connection-search-results">
-            {state.agents
-              .filter((a) =>
-                `${a.name} ${state.projects.find((p) => p.id === a.projectId)?.name}`
-                  .toLowerCase()
-                  .includes(query.toLowerCase()),
-              )
-              .map((a) => (
-                <a key={a.id} className="flow-button" href={`#/advanced/${a.id}`}>
-                  {a.name}
-                  <ArrowUpRight size={16} />
-                </a>
-              ))}
-          </div>
-        </>
+        <FlowEmpty title="That conversation is unavailable">
+          <p>Open a conversation in Chats, then choose its settings for advanced controls.</p>
+          <a className="flow-button" href="#/chats">
+            Open Chats <ArrowUpRight size={16} />
+          </a>
+        </FlowEmpty>
       ) : (
         <>
           <div className="activity-shortcuts">

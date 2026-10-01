@@ -492,7 +492,6 @@ test('internal development managers stay out of owner lists, while a newly creat
 }) => {
   const original = await snapshot(page);
   const internalIds = new Set(original.projects.map((p) => p.id));
-  const originalManager = original.agents.find((a) => a.role === 'manager')!;
   await page.route('**/api/snapshot', async (route) => {
     const response = await route.fetch();
     const state = snapshotSchema.parse(await response.json());
@@ -517,7 +516,22 @@ test('internal development managers stay out of owner lists, while a newly creat
   await page.goto('/#/work');
   await expect(page.locator('.quark-projects a')).toHaveCount(0);
   await page.goto('/#/advanced');
-  await expect(page.locator(`a[href="#/advanced/${originalManager.id}"]`)).toBeVisible();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Settings', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('a[href="#/models"]')).toBeVisible();
+  await expect(page.locator('.connection-grid a[href="#/work"]')).toBeVisible();
+  await expect(page.locator('a[href^="#/advanced"]')).toHaveCount(0);
+  await page.goto('/#/advanced/');
+  await expect(page).toHaveURL(/#\/settings$/);
+  await page.goto('/#/apps');
+  await expect(page.locator('a[href^="#/advanced"]')).toHaveCount(0);
+  await page.goto(`/#/advanced/${randomUUID()}`);
+  await expect(page.getByText('That conversation is unavailable', { exact: true })).toBeVisible();
+  await expect(page.locator('a[href^="#/advanced"]')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Open Chats', exact: true }).click();
+  await expect(page.locator('.chat-row')).toHaveCount(0);
   const response = await page.request.post('/api/projects', {
     headers: { Origin: baseURL! },
     data: { key: randomUUID(), name: 'My actual project', provider: 'codex' },

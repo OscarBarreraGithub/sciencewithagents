@@ -465,6 +465,11 @@ saved receipt or a new native selection. Substituted roots and unrelated history
 
 ## Session controls and starting work
 
+Advanced controls open from a conversation's **Configure → Advanced controls**. Settings
+retains general model preferences and QUARK, without a separate all-agent picker. Old
+standalone Advanced bookmarks open Settings; missing conversation links offer the normal
+filtered Chats list. Session-specific links and native terminal/context tools remain available.
+
 Implemented in the new shell: project → Add task / Add manager, per-conversation Advanced
 controls, exact model/effort settings, worker permissions and installed MCP/plugin controls,
 explicit native Codex terminal, export and saved Codex session import. Task/manager drafts

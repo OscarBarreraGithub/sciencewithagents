@@ -111,10 +111,7 @@ export function AppsGallery() {
         <h1 id="apps-heading" tabIndex={-1}>
           Apps
         </h1>
-        <p>
-          Apps built in your projects open from here. Provider tools and plugins are separate;
-          manage them in <a href="#/advanced">Advanced controls</a>.
-        </p>
+        <p>Apps built in your projects open from here.</p>
       </header>
       <div className="apps-empty">
         <div className="apps-empty-grid" aria-hidden="true">
