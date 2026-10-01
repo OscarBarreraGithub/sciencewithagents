@@ -12,9 +12,6 @@
 .flow-heading > div {
   min-width: 0;
 }
-.flow-heading .home-back {
-  margin-bottom: 20px;
-}
 .flow-heading h1 {
   font-size: clamp(28px, 3.2vw, 42px);
   line-height: 1.14;
@@ -420,9 +417,6 @@
 .flow-chat-main .send-button:disabled {
   background: #d9deec;
   color: #596785;
-}
-.flow-chat .flow-heading .home-back {
-  margin-bottom: 6px;
 }
 .flow-chat .flow-heading h1 {
   font-size: 28px;

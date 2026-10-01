@@ -9,7 +9,6 @@ import {
   type RefObject,
 } from 'react';
 import {
-  ArrowLeft,
   ArrowRight,
   ChevronRight,
   CircleHelp,
@@ -42,7 +41,7 @@ import { AppsGallery, SetupGuide } from './AppsGallery';
 import { AppUpdate } from './AppUpdate';
 import { HomeOrb } from './HomeOrb';
 import { PullToRefresh } from './PullToRefresh';
-import { Navigation, useNavigation } from './Navigation';
+import { BackLink, Navigation, useNavigation } from './Navigation';
 
 // Document titles only. Every route below keeps its existing screen.
 const titles: Record<string, string> = {
@@ -435,11 +434,14 @@ export function Home() {
         </a>
         <header className="home-header">
           <div className="home-header-inner">
+            {page !== 'home' && <BackLink />}
             <a className="home-brand" href={href('home')} aria-label="sciencewithagents home">
               <Mark />
-              <span>
-                science<span className="home-brand-light">with</span>agents
-              </span>
+              {page === 'home' && (
+                <span>
+                  science<span className="home-brand-light">with</span>agents
+                </span>
+              )}
             </a>
             {page !== 'home' && (
               <nav className="home-desktop-nav" aria-label="Main navigation">
@@ -525,9 +527,6 @@ export function Home() {
             <Resources reading={data.resources} />
           ) : (
             <section className="home-placeholder">
-              <a href={href('home')} className="home-back">
-                <ArrowLeft size={17} /> Home
-              </a>
               <div className="home-placeholder-content">
                 <h1 tabIndex={-1}>This page is not available</h1>
                 <p>

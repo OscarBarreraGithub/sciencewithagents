@@ -1,4 +1,3 @@
-import { BackLink } from './Navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowUpRight, Activity, TriangleAlert } from 'lucide-react';
 import {
@@ -508,7 +507,6 @@ export function Resources({ reading }: { reading: HomeData['resources'] }) {
   return (
     <section className="resource-page health-page">
       <nav className="health-top" aria-label="Computer health">
-        <BackLink />
         <a href="#/work" className="health-link">
           Related jobs in QUARK <ArrowUpRight size={15} />
         </a>

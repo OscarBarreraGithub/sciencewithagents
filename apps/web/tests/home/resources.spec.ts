@@ -408,10 +408,7 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
     fullPage: true,
     scale: 'css',
   });
-  await page
-    .getByRole('navigation', { name: 'Computer health', exact: true })
-    .getByRole('link', { name: 'Back', exact: true })
-    .click();
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
 });
 

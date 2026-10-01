@@ -87,9 +87,12 @@ test('settings pages are reachable, read-only on opening and fit the shared shel
     ['Phone access', 'phone'],
     ['Recovery copies', 'recovery'],
   ] as const) {
-    await page.getByRole('link', { name: new RegExp(title) }).click();
+    const destination = page.getByRole('link', { name: new RegExp(title) });
+    await destination.scrollIntoViewIfNeeded();
+    const previousScroll = await page.locator('.home-content').evaluate((node) => node.scrollTop);
+    await destination.click();
     await expect(page).toHaveURL(new RegExp(`#/${path}$`));
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
     expect(
       await page.evaluate(
         () =>
@@ -97,8 +100,25 @@ test('settings pages are reachable, read-only on opening and fit the shared shel
           document.documentElement.scrollHeight <= innerHeight,
       ),
     ).toBe(true);
-    await page.goBack();
+    await page.locator('.home-content').evaluate((node) => node.scrollTo(0, node.scrollHeight));
+    const back = page.getByRole('link', { name: 'Back', exact: true });
+    await expect(back).toBeInViewport();
+    expect(
+      await back.evaluate((link) => {
+        const box = link.getBoundingClientRect();
+        return (
+          box.width >= 44 &&
+          box.height >= 44 &&
+          link.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))
+        );
+      }),
+    ).toBe(true);
+    await back.click();
+    await expect(page).toHaveURL(/#\/settings$/);
     await expect(page.locator('.connection-grid')).toBeVisible();
+    await expect
+      .poll(() => page.locator('.home-content').evaluate((node) => node.scrollTop))
+      .toBeCloseTo(previousScroll, 0);
   }
   expect(writes).toEqual([]);
 });

@@ -8,10 +8,13 @@ const screens = ['home', 'models', 'new', 'resources', 'work', 'chats', 'apps'];
 async function fits(page: Page) {
   const size = await page.evaluate(() => {
     const panel = document.querySelector('.home-content')!;
+    const header = document.querySelector('.home-header')!;
     const box = panel.getBoundingClientRect();
     return {
       viewport: innerWidth,
       document: document.documentElement.scrollWidth,
+      headerContent: header.scrollWidth,
+      headerWidth: header.clientWidth,
       panel: panel.clientWidth,
       content: panel.scrollWidth,
       visibleHeight: box.height,
@@ -41,6 +44,7 @@ async function fits(page: Page) {
     };
   });
   expect(size.document, JSON.stringify(size)).toBeLessThanOrEqual(size.viewport + 1);
+  expect(size.headerContent, JSON.stringify(size)).toBeLessThanOrEqual(size.headerWidth + 1);
   expect.soft(size.content, JSON.stringify(size)).toBeLessThanOrEqual(size.panel + 1);
   expect(size.visibleHeight).toBeGreaterThan(80);
 }
@@ -67,6 +71,16 @@ async function inspect(page: Page, route: string) {
     await expect(name).toHaveValue('Readable project setup');
   }
   await fits(page);
+  if (route !== 'home') {
+    const back = page.getByRole('link', { name: 'Back', exact: true });
+    await expect(back).toBeInViewport();
+    const box = (await back.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    // Browser zoom can round a 44px CSS target down by a fraction of a pixel.
+    expect(box.width).toBeGreaterThanOrEqual(43.9);
+    expect(box.height).toBeGreaterThanOrEqual(43.9);
+  }
   await expectSliderLayout(page);
 }
 

@@ -1,4 +1,3 @@
-import { BackLink } from './Navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Check, RefreshCw } from 'lucide-react';
 import {
@@ -120,7 +119,6 @@ export function ModelSettings() {
       : undefined;
   return (
     <section className="model-settings">
-      <BackLink />
       <header className="model-heading">
         <p className="home-eyebrow">WORKSPACE SETTINGS</p>
         <h1 tabIndex={-1}>Model preferences</h1>

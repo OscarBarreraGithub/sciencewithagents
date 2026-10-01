@@ -72,8 +72,9 @@ review rows keep their controls and wrapped text inside padded boundaries.
 Priority/cap help explains that finer choices can be given to the manager later. A 10%
 cap measures ten percentage points of the full chosen allowance, from the moment it is
 saved; it does not mean ten percent of what remains. Existing quota pauses retain work.
-Back returns to the previous screen, including a project setup → QUARK detour, and the
-setup draft survives reload. A short navigation trail resets at Home. Right swipes go back;
+Back stays in the top bar while general pages scroll, with a 44px minimum touch target.
+It returns to the previous screen and scroll position, including a project setup → QUARK
+detour, and the setup draft survives reload. A short navigation trail resets at Home. Right swipes go back;
 vertical scrolling, inputs, sliders and horizontally scrollable panels retain their gestures.
 Native browser history remains under the browser's control.
 

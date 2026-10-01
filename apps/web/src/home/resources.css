@@ -101,9 +101,6 @@
   gap: 12px;
   flex-wrap: wrap;
 }
-.health-top .home-back {
-  margin-top: 0;
-}
 .health-link {
   display: inline-flex;
   align-items: center;

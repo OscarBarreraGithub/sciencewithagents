@@ -1,5 +1,12 @@
 # Resume here — current continuation only
 
+## Latest Back navigation correction
+
+General pages use Back in the existing persistent top bar, replacing the links that scrolled
+away with page headings. Home's alien remains a direct way home; reaching Home resets the
+short return trail. Conversation screens retain their own compact navigation. The existing
+return trail, saved form drafts, scroll restoration and swipe gestures remain in use.
+
 ## Latest navigation simplification
 
 Removed the standalone Advanced entry from Settings and Apps and deleted its unfiltered

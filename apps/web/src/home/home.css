@@ -152,6 +152,7 @@ body:has(.home-shell) {
 }
 .home-header-inner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   min-height: 64px;
@@ -542,14 +543,22 @@ body:has(.home-shell) {
   color: var(--home-muted);
 }
 .home-back {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  align-self: flex-start;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 44px;
   min-height: 44px;
-  margin-top: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--home-line);
+  border-radius: 10px;
+  background: var(--home-white);
   font-size: var(--text-small);
   font-weight: 650;
+}
+.home-back svg {
+  flex-shrink: 0;
 }
 .home-text-link {
   display: inline-flex;

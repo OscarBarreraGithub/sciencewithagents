@@ -36,7 +36,6 @@ import { ProjectConfiguration } from './ProjectConfiguration';
 import { NewConversation } from './NewConversation';
 import { AssistedSearch } from './AssistedSearch';
 import { EditorStatus } from './EditorStatus';
-import { BackLink } from './Navigation';
 import { surfaceOf } from './chat-contracts';
 import { ConfigPanel, NotesPanel, PanelFrame, SubagentsPanel, type ChatPanel } from './ChatPanels';
 import type { HomeData } from './useHomeData';
@@ -86,7 +85,6 @@ export function FlowHeading({
   return (
     <header className="flow-heading">
       <div>
-        <BackLink />
         <p className="home-eyebrow">{label}</p>
         <h1 tabIndex={-1}>{title}</h1>
         <p className="flow-subtitle">{children}</p>

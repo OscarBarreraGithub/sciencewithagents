@@ -84,6 +84,9 @@ test('project setup shows real defaults, comfortable controls and retained choic
   await page.getByRole('link', { name: 'QUARK board', exact: true }).click();
   await expect(page).toHaveURL(/#\/work$/);
   await page.reload();
+  await page.locator('.home-content').evaluate((node) => node.scrollTo(0, node.scrollHeight));
+  await expect(page.getByRole('link', { name: 'Back', exact: true })).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('quark-scrolled-back.png') });
   await page.getByRole('link', { name: 'Back', exact: true }).click();
   await expect(page).toHaveURL(/#\/new$/);
   await expect(page.getByLabel('Project name', { exact: true })).toHaveValue('Keep this setup');

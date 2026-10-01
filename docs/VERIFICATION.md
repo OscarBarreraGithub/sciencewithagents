@@ -1,5 +1,23 @@
 # Verification
 
+## 2026-10-01 — Back stays available while scrolling
+
+General pages now put Back in the existing top bar instead of inside scrolling headings.
+The compact alien still opens Home. Removed obsolete per-page Back styling; chat-specific
+navigation and the existing bounded return trail remain unchanged.
+
+- Production web build passes. Thirty-one focused browser cases pass across desktop,
+  412×915, 360×800, 915×412 and iPhone WebKit. Checks cover Back visibility/hit targets
+  at the bottom of pages, return to the prior Settings scroll position, project → QUARK
+  detours with retained drafts, Home reset, swipe exclusions and assistant chat return.
+- Enlarged text and actual Chromium zoom from 80–400% keep the header and Back usable.
+  Four non-desktop copies of the zoom-only case are intentionally skipped. Phone screenshots
+  were inspected. The navigation check waits for the destination heading before scrolling;
+  a URL change alone can precede rendering. No extra navigation system was introduced.
+- Demo fixtures only, with no owner setting or real provider changes. Logs and screenshots
+  remain under ignored `data/persistent-back-*` and `data/browser-results/home/`. Owned test
+  servers/browser children are closed. Physical-phone behavior is not inferred from emulation.
+
 ## 2026-10-01 — keep Advanced controls with their conversation
 
 Removed the Settings/Apps entry and unfiltered all-agent picker. Old standalone Advanced

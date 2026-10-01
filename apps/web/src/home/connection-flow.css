@@ -219,9 +219,6 @@
 .editor-page:has(.editor-conversation-frame) .flow-heading h1 {
   font-size: 28px;
 }
-.editor-page:has(.editor-conversation-frame) .home-back {
-  margin-bottom: 8px;
-}
 .editor-page:has(.editor-conversation-frame) .editor-conversation-frame {
   height: auto;
   min-height: 0;

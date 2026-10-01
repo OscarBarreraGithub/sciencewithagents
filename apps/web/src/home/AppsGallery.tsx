@@ -1,4 +1,3 @@
-import { BackLink } from './Navigation';
 import { useRef, useState } from 'react';
 import { ArrowUpRight, Check, Copy } from 'lucide-react';
 import './apps-gallery.css';
@@ -105,7 +104,6 @@ export function SetupGuide({ headingLevel = 3 }: { headingLevel?: 2 | 3 }) {
 export function AppsGallery() {
   return (
     <section className="apps-page" aria-labelledby="apps-heading">
-      <BackLink />
       <header className="apps-heading">
         <p className="home-eyebrow">APPS</p>
         <h1 id="apps-heading" tabIndex={-1}>
