@@ -15,11 +15,6 @@ tools, skills, plugins, hooks and connections. Saved conversations keep their ol
 until explicitly changed in Advanced controls. QUARK hooks check admission without granting
 tool permission. See [migration and limits](WORKER_TOOLS.md) and current VERIFICATION.md.
 
-Status — 2026-09-17: the native Claude adapter and shared-runtime integration are implemented.
-Standalone real-provider checks, one mixed-provider task and focused integration tests
-pass as described below. This is not universal provider or hardware acceptance.
-See [verification](VERIFICATION.md) and [current status](STATUS.md) for the wider app.
-
 ## What this gives you
 
 Claude can be a project/module manager or a task worker in the same Agent Dock project
@@ -167,34 +162,15 @@ subscription readings; QUARK estimates project shares and enforces saved budgets
 
 ## Evidence and implementation map
 
-Real checks on the installed **Claude Code 2.1.270**, 2026-09-17:
-
-- No-turn initialization accepted the actual flags and returned the installed model catalog.
-- A fresh manager reported only `mcp__dock__dock_inspect`, invoked it once and returned `READY.`.
-- A worker's first exact Write was declined and created no file. A second exact Write was
-  accepted once and created the expected fixture content.
-- After closing that runtime, constructing the same UUID did not start it. Explicit resume
-  used the same UUID; an original Read approval returned the saved content.
-- Checks used disposable workspaces and the owner's existing native subscription; no API-key
-  fallback, credential changes or binary patches. Owned processes and fixture workspaces
-  were cleaned up. Private native transcripts are not committed evidence.
-- A real Claude manager delegated to a Codex implementer and an independent Claude reviewer.
-  The task was committed, reviewed and completed without changing the original project.
-  All three visible histories/checkpoints and the manager report survived restart; provider
-  identities stayed unchanged and restoring Claude submitted no new turn. The sanitized
-  private receipt is `data/smoke/mixed-3MT1A0/verification.json`.
-
-The initial combined **41 focused tests** covered transport, shared-runtime identity/archive,
-approval, interruption, mixed-provider delegation, worktree ownership and cleanup. Subsequent
-focused regressions add stale-result, dangling-permission and prewrite Stop races. These are
-not a claim of completed physical phone, hardware restart, every mixed-team combination or all-model
-acceptance; later receipts belong in [VERIFICATION.md](VERIFICATION.md).
+Native transport, restart and mixed-provider work have isolated live evidence in Git history.
+For the current release decision and required rechecks, use [Status](STATUS.md) and
+[Verification](VERIFICATION.md). Do not extend an older check to every provider version.
 
 - [Native transport](../apps/server/src/claude-session.ts) and [owned stdio supervisor](../apps/server/src/claude-session-host.ts)
 - [Managed lifecycle](../apps/server/src/managed-claude.ts), [shared runtime](../apps/server/src/runtime.ts), [provider assignment](../apps/server/src/providers.ts)
 - [Usage normalization](../apps/server/src/usage.ts) and [usage checks](../apps/server/src/usage.test.ts)
 - [Transport tests](../apps/server/src/claude-session.test.ts), [managed lifecycle tests](../apps/server/src/managed-claude.test.ts), [runtime integration tests](../apps/server/src/claude-runtime.test.ts)
-- [Mixed-provider design and owner routing TODOs](MULTI_PROVIDER_ROUTING.md)
+- [Mixed-provider routing](MULTI_PROVIDER_ROUTING.md)
 
 Developer-only focused check: `./scripts/pnpm --filter @dock/server exec vitest run src/claude-session.test.ts src/managed-claude.test.ts src/claude-runtime.test.ts`.
 These tests use isolated fixtures; they do not send real model prompts.

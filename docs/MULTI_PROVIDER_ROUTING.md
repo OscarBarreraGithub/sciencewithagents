@@ -68,8 +68,7 @@ QUARK supplies signed manager leases, admission reservations, project/task allow
 priority, resource checks and durable pauses. It preserves files, history and queued input.
 Subscription shares are estimates derived from provider changes and measured work, not a
 validated token-to-price conversion or a promise of 2–3 percentage-point accuracy. Only the
-owner can increase a saved allowance cap. Cache refreshes are bounded and cannot guarantee
-retention. See [QUARK accounting](QUARK_ACCOUNTING.md).
+owner can increase a saved allowance cap. Automatic cache-refresh turns are disabled; no cache retention guarantee is made. See [QUARK accounting](QUARK_ACCOUNTING.md).
 
 ## Evidence and limits
 

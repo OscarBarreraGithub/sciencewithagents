@@ -31,11 +31,10 @@ node scripts/build-public-site.mjs --graph /path/to/prebuilt/public/graph --out 
 ```
 
 Use a new output directory inside an existing parent; add `--landing /path/to/site` to
-stage another landing build. The landing is served at `/`, and the supplied graph export
+stage another landing build. The public root currently redirects to GitHub via `site/_redirects`; the supplied graph export is
 at `/syllabusgraph/`. The build preserves graph payloads, scopes its Cloudflare headers,
-repairs graph error-page links, and redirects old graph assets. A small generated browser
-script forwards old root `#graph=...` links, preserving their query and fragment; ordinary
-landing anchors stay on the landing. Source files are unchanged. The graph input must be
+repairs graph error-page links, and redirects old graph assets. If the root redirect is removed later, a small generated browser
+script forwards old `#graph=...` links. With the redirect active, those root links go to GitHub. Source files are unchanged. The graph input must be
 the public export with `catalog.json`, not a course project or the SyllabusGraph repository.
 Only catalog-listed graph JSON is admitted, and symbolic links or unexpected files fail
 the build. Generated output stays ignored and is deployed separately through the existing

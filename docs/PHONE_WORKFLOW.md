@@ -1,8 +1,6 @@
 # Phone workflow — behavior contract
 
 Use this checklist when changing the phone UI so a redesign does not lose working behavior.
-Current owner observation, 2026-09-14: **physical Safari enrollment succeeded**. That is not
-acceptance of Home Screen installation, cellular use, restart or the latest pairing-only change.
 Actual runs belong in [Verification](VERIFICATION.md); person-only checks are in
 [Phone acceptance](PHONE_ACCEPTANCE.md). This contract is not a passing-test report.
 
@@ -28,7 +26,7 @@ Actual runs belong in [Verification](VERIFICATION.md); person-only checks are in
 
 ## Pairing and continued access
 
-The owner removed app locking on 2026-10-01. There is no Lock app button, unlock screen,
+There is no Lock app button, unlock screen,
 repeat-verification setting, inactivity timeout or background lock. Initial passkey
 registration and exact computer confirmation still approve each new browser. After that,
 the server accepts only its random, 256-bit browser credential against a non-revoked device.
@@ -37,7 +35,7 @@ host-only cookie on the phone. Private APIs, images, event streams and terminals
 check; knowing the public address or holding a synced passkey does not pair another browser.
 Same-origin/host checks and HTTPS remain. These controls reduce unauthorized access; they
 are not a guarantee against every attack. Physical access to an approved browser is outside
-this app's protection, as requested. [Cookie controls](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)
+this app's protection. [Cookie controls](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)
 
 **Remove device** on the computer revokes enrollment and closes private streams. A trust/origin
 reset also revokes enrollment. **Turn off phone access** closes connections and pending pairing,

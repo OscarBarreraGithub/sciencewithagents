@@ -1,200 +1,54 @@
-# Build status
+# Current status
 
-## Release-readiness check — 2026-10-01
+Checked 2026-10-01. **Early access; not yet signed off for an unattended collaborator release.**
+Documentation cleanup and a passing UI check do not resolve backend release failures.
 
-Do not describe the current source as fully release-ready. The latest checked
-[public CI run](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36842768536)
-failed six backend checks in provider/model routing, Claude runtime defaults, a read-only review,
-and the asynchronous manager-lease recheck (plus its unhandled assertion). These need triage
-against the current intended model policy; neither obsolete expectations nor runtime defects
-have yet been established as the sole cause. The older green run below is historical evidence.
-Focused UI checks pass, and the owner's running app and both usage collectors were healthy.
-That is enough for controlled real-project use, not a replacement for resolving release checks.
+## Release blockers
 
-The requested **Make full use of Claude** mode is not implemented: shared reserves, measured
-usage, background pacing and concurrency limits exist, but no simple opt-in automatically
-adjusts utilization toward the five-hour reset and steers suitable new work away from Codex.
-Keep that distinction in website copy. Explicit model choices, applicable model windows,
-project caps, priorities and computer resources must remain respected when it is built.
+The [last inspected failing CI run](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36842768536)
+has six backend failures involving provider/model routing, Claude runtime defaults, a
+read-only review and the asynchronous manager-lease recheck, including an unhandled
+assertion. Triage must distinguish stale expectations from runtime defects, correct them,
+and pass the relevant checks before a new release sign-off. Later runs are on the
+[CI page](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
 
-## Latest QUARK simplification
+## Delivered, with acceptance limits
 
-Spending limits are adjustable sliders alongside project/task cards on the QUARK board.
-Managers supply starting whole-task estimates; owner changes save on release while retaining
-prior spending and enforcement. Remaining allowances/reset times and account actions now
-live on QUARK too. The separate usage page and Help/setup’s extra links are removed; old
-usage URLs redirect. Automatic context-cache refreshes are off for new/existing installs,
-with old queued nudges cancelled. Future controls are [issue #1](https://github.com/OscarBarreraGithub/sciencewithagents/issues/1).
-Detailed accounting remains available to agents. Focused backend and five-profile checks pass.
+The app connects project setup, manager/worker conversations, versioned prompt drafts,
+shared editor chats, QUARK's board/budgets/coordinator, computer health, model preferences,
+phone pairing and recovery. [Features](FEATURES.md) describes their boundaries.
+Source installation and isolated Codex-only/Claude-only first replies have been exercised
+on Apple Silicon macOS. Linux CI does not certify native Linux desktop integration.
+Intel Mac and Windows remain unqualified; see [machine support](CONTRIBUTOR_SETUP.md#check-the-machine-first).
 
-## Latest phone simplification
+Desktop and simulated phone checks include failed requests, retry, saved data, keyboard
+layout and long chat history. They do not certify physical Home Screen retention, cellular
+reconnection, hardware keyboards or all OS/browser versions. Use [phone acceptance](PHONE_ACCEPTANCE.md)
+on the actual device. The companion is installed from source; no marketplace release is claimed.
 
-The owner removed app locks, recurring verification and inactivity timeouts. Secure pairing
-and computer-controlled device removal remain. Existing enrolled phones migrate without
-re-pairing. Physical Home Screen/browser retention remains a separate device check.
+## Outstanding product work
 
-The Apple Silicon Mac setup path has passed the checks below. This does not mean every
-owner request is complete; the current follow-ups are listed explicitly below. The MIT
-source, website and installed app include the drawn Home, chat, project setup, notepad,
-Computer health and QUARK workflows. Real isolated Codex-only and Claude-only setup journeys
-pass. [CI 36798429104](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36798429104) passed production builds, 772 backend checks, 88 companion checks and
-435 browser cases. Thirteen backend/companion and ten browser checks are deliberately skipped.
+- **Automatic five-hour utilization:** QUARK has shared reserves, caps, pacing and concurrency
+  limits. It does not yet automatically target a reset window or shift suitable new work
+  toward Claude to use spare capacity. Respect actual account/model windows and explicit choices.
+- **Apps:** the gallery is an empty placeholder. Registered app tiles and project-site
+  publication are not connected.
+- **Setup progress:** GitHub/Cloudflare copy prompts work, but do not yet detect completion
+  or hide completed steps. Native Codex/Claude sign-in/model checks are separate and connected.
+- **Updates:** the update prompt still expects a recovery-copy reference prepared in the app.
+  Moving that preparation entirely into the setup agent's workflow remains outstanding.
+- **Orb:** seven shapes, random selection and tap feedback exist; broader variety and the
+  requested longer, quiet animation remain unfinished.
 
-Phone/browser checks cover desktop, portrait, landscape and iPhone WebKit, including the
-reported keyboard/scroll regressions. Physical Home Screen, cellular and hardware keyboard
-behavior remain separate device checks; do not call those verified by emulation. Other
-platforms and account/device boundaries are listed in CONTRIBUTOR_SETUP.md. No new drawing
-or owner decision is required for the verified installation path.
+## Intentionally deferred
 
-## Latest owner correction
+AI news, the personal-agent destination, a standalone public Guide/FAQ, marketplace publication,
+distributed job migration and a packaged cross-platform installer. The README is the public
+landing; dedicated website design is deferred. Automatic cache-warming turns are disabled;
+[issue #1](https://github.com/OscarBarreraGithub/sciencewithagents/issues/1) tracks future work.
 
-App body text, labels and supporting details now use a larger shared scale with browser-text
-resizing, while Home's three destination tiles retain their sizes. Narrow controls reflow
-instead of forcing page overflow. See VERIFICATION.md for desktop, phone and zoom checks.
-
-GitHub and Cloudflare copy prompts had pale text on an inherited pale code-block background,
-making populated cards appear blank. Their text/background now stay readable in Apps and Help.
-Production build, five-profile contrast/copy/fallback checks and live Safari inspection pass.
-
-### Open owner follow-ups — checked against source, 2026-10-01
-
-- **Model defaults — completed 2026-10-01:** Model preferences now saves general manager,
-  worker and app-assistant choices. New projects snapshot those preferences, allow project
-  customization and can explicitly adopt current general worker preferences. Restore
-  recommended defaults returns the form to the creator's defaults without changing projects
-  or enabling another subscription. Legacy saved projects retain their original choices.
-- **Orb:** random selection, placement and tap-outline removal are done, but animation still
-  stops after 1.8 seconds and there are only seven real shapes. The duration/variety concern
-  was explained, not resolved. Do not count randomized rotation as additional shapes.
-- **Updates:** the agent-assisted update runbook exists, but the app still asks the person to
-  create a recovery copy before copying the update request. Moving that preparation into the
-  update-agent workflow remains unfinished; removal of the Home shortcut did not complete it.
-- **Account setup:** the readable prompts are static instructions. They do not detect GitHub
-  or Cloudflare readiness, hide completed steps or mark verified completion. Copying never
-  starts setup. This is separate from the working native-provider sign-in checks in Welcome.
-
-- **Apps gallery:** it currently renders a fixed empty state. Registered app launch tiles
-  and project website publication are not wired; the empty screen is not proof that those
-  capabilities exist. The owner explicitly deferred visual fine-tuning until there are apps.
-
-**Deliberately later:** AI news, the personal-agent destination and public Guide/FAQ remain
-deferred. Marketplace publication and physical-phone acceptance remain separate from source
-installation and browser simulation. Older private-ledger counts are historical evidence, not
-proof that these later requests were implemented.
-
-The VS Code control at the top of Chats shows connection/setup status and extension instructions.
-Shared conversations remain in Chats. Initial shared history now loads even when the browser
-is in the background; returning to the foreground refreshes promptly. The actual live editor
-conversation was opened and confirmed Working with saved history.
-
-QUARK supports closing obsolete task assignments with a saved reason and retained history.
-It cancels their queued agent turns, leaves quotas/reviews/files intact, and refuses running
-work or unresolved subtasks. Ten stale development assignments have been closed; the live
-queue and Active board are empty. This corrects the earlier premature completion claim
-while preserving evidence of what was implemented outside the in-app review flow.
-
-## Latest collaborator-setup corrections
-
-Fresh isolated native Codex-only and Claude-only first-project flows now pass. Fixed long
-installation paths exceeding the native socket limit and Claude-only projects selecting
-Codex workers by default. Updated setup prompts and automatic manager instructions to match
-current independent manager/worker choices. QUARK now groups turns by task. Focused backend
-and five-profile browser checks pass, followed by the successful public CI run above.
-
-## Latest owner-reported corrections
-
-Home fills the browser width, shows a short grouped attention list and lets mobile allowance
-scroll away. Computer no longer exposes recovery/accounting shortcuts. QUARK/resource chats
-open full-screen; labelled Open notepad controls also serve shared chats, with separate tab
-drafts and local recovery versions. Automatic resource reports stay in health history. Asked
-resource conversations can use native diagnostic tools. The alien icon is installed across
-the app, launcher, companion and public site. Focused browser checks plus actual saved-history
-checks cover all five profiles; a real native diagnostic command passed. See VERIFICATION.md.
-
-## Connected behavior
-
-- Home shows remaining Codex/Claude allowance, editor status, computer pressure,
-  project rates and durable human/general to-dos. Chats, Apps and QUARK are connected.
-- Project managers have independent provider/model/reasoning choices, separate worker
-  provider-mix and spending controls, current catalog choices and the corrected defaults.
-  Spawn creates the project without model work, then opens a full-page saved brief.
-  The same notepad is available from chat, with Minimize, versions and safe send retry.
-- Phone conversations use compact headers, message bubbles and grouped expandable
-  tool activity. Codex steering targets the observed running turn. Claude editor
-  follow-ups use its acknowledged native queue. Companion 0.2.6 is installed here,
-  and the live editor now reports Working with steering available after correcting stale list
-  summaries. No editor reload was needed. Both paths
-  passed real isolated native editor checks, preserving unsent desktop drafts.
-  Existing Codex shared-server sessions now appear separately in Chats → Shared. A real
-  native terminal passed first send, exact-turn guidance, stale-input refusal and Stop;
-  disconnecting the observer retained the terminal and completed work. Older isolated
-  terminals remain unsupported; simultaneous native/phone sends can join one reply.
-- QUARK's conversation and status board share the existing scheduler, signed manager
-  leases, account readings, resource limits, project caps and durable pauses. Its
-  bounded automatic checks spend nothing while idle. Owner instructions and timing
-  examples live outside project repositories. Managers can dispatch across providers.
-- Managers retain internal/human work items, concise human requests, notes, checkpoints
-  and decisions. Instructions require continuing independent work while awaiting input.
-  Claude launches configure native 60% compaction and handoff hooks; Codex uses native
-  compaction. One real Claude automatic compaction saved a handoff and summary, then
-  continued and finished frontend work; this does not prove every detail is retained.
-- Reviewed code is applied by its manager by default, with exact reviewed source/target
-  validation. A project can require human review instead. Small reviews have two
-  correction rounds, then a recorded manager disposition or human handoff.
-- Computer health has a current snapshot, charts and grouped project/app activity. Historical
-  evidence remains available to the assistant without a human history list. Ask Codex/Claude
-  supports central defaults, explicit live
-  model choices, retained diagnostic conversations and same-request recovery.
-- Saved conversations, worker evidence and eligible native conversation copies support
-  separate questions about completed work. Finished tasks and their reviews stay finished.
-  New Misc chats have private folders; Codex terminal sessions stay outside the contact list.
-  Explicit assisted search ranks a bounded saved-chat sample using the central bulk model;
-  it discloses partial coverage and opens original chats without sending to them.
-  Configure can pause other projects and later restore only the pauses it created.
-- Welcome reuses native sign-in, supports either provider alone and starts new empty
-  installs with Codex-only choices and pacing enabled. The Applications launcher, optional
-  phone pairing, private source backups and update-agent handoff are connected.
-
-## Current evidence and remaining acceptance
-
-Focused phone/editor/resource checks pass at desktop, 412×915, 360×800, 915×412 and
-iPhone WebKit. The real demo-API project/notepad journey passes desktop and portrait
-phone profiles, including the corrected landscape configuration panel. These
-tests include failure/retry and saved-data behavior, not just page rendering.
-
-The newest backend was deployed with verified recovery copies and the existing phone
-connection retained. Fresh-terminal opening now passes injected provider/PTY checks,
-including no fabricated first message. Project priority/cap controls use existing QUARK
-policy. A priority response lost after saving recovers through reload with the same receipt.
-
-The public landing at sciencewithagents.com and combined SyllabusGraph export pass live
-browser/route checks across all five profiles. Both domains respond, all six public datasets
-retain their exact contents, and legacy links redirect correctly. The MIT repository is public
-at [OscarBarreraGithub/sciencewithagents](https://github.com/OscarBarreraGithub/sciencewithagents).
-A fresh public-source clone plus the now-published corrections passed dependency installation,
-production builds, usage-reader and Mac launcher setup, and actual native Codex-only and
-Claude-only first replies with separate app data. Another person completes their own account
-sign-in and device steps. MIT is selected;
-the public repository contains clean source history, without the old private Git history or
-runtime files. The latest release check passed format, production builds, 772 backend checks,
-88 companion checks and 435 browser cases. Thirteen backend/companion and ten browser cases
-are deliberately skipped; physical device acceptance is not inferred from them.
-No Guide/FAQ is published.
-
-Native computer-use reached the real app in Safari and loaded the corrected layout.
-Physical phone Home Screen/cellular/restart
-journeys are distinct from browser fixtures. Do not claim those passed. Other people must
-use their own accounts and complete their own device sign-ins.
-
-Real native Codex and Claude checks pass broad reads, public HTTPS, role-appropriate scoped
-writes and refused outside-folder writes without routine permission requests. Recovery copies
-now use a separate read snapshot, with normal writes and retry receipts verified during copying.
-
-Allowance attribution is an estimate without validated 2–3 percentage-point accuracy.
-Cache expiry is estimated or unknown; refreshes cannot guarantee retention. Native tools
-remain available under provider permissions. Scoped writes are not a promise to contain
-arbitrary external MCP services or user overrides.
-
-Continue from [Resume](RESUME.md). Dated evidence is in [Verification](VERIFICATION.md),
-capabilities and limits in [Features](FEATURES.md), new-user setup in
-[Contributor setup](CONTRIBUTOR_SETUP.md), and customized updates in [Update](UPDATE_APP.md).
+Allowance attribution is estimated, without a validated 2–3 percentage-point error bound.
+No provider cache-retention guarantee exists. Native tools and external MCP services retain
+their own permission boundaries. Browser storage and source backups do not guarantee recovery
+of every unsent prompt or external native history. See [accounting](QUARK_ACCOUNTING.md),
+[worker tools](WORKER_TOOLS.md) and [recovery](RECOVERY_COPIES.md).

@@ -14,10 +14,9 @@ harmless shell-variable loop without changing that write boundary. This is one i
 provider/platform acceptance, not proof that every external tool is contained. See
 [dated evidence](VERIFICATION.md) and [Anthropic's sandbox behavior](https://code.claude.com/docs/en/sandboxing).
 
-**Direction superseded, implementation retained (2026-09-28):** the owner requested native
-capability inheritance with QUARK observation/supervision, rather than expanding these
-app-owned tool ceilings. See [the simplification account](SIMPLIFICATION_ACCOUNT.md),
-especially S01–S04. New Codex and Claude conversations now inherit native capabilities. Existing saved
+## Native inheritance
+
+New Codex and Claude conversations now inherit native capabilities. Existing saved
 conversations retain their restrictions; **Advanced controls → Tools and connections** can
 explicitly select native inheritance while idle without replacing their history. New delegated
 workers inherit when the project uses native settings and `tools` is omitted. Explicit
@@ -80,7 +79,7 @@ The allowance is for **new delegations**. Changing it does not interrupt work, r
 widen an existing conversation's tools, or change managers' own execution restrictions.
 Use a saved worker's Advanced controls to change its settings while idle. Existing owner
 choices, model pins and original provider contexts remain intact. Permission requests,
-task workspace restrictions and exact owner review/apply confirmation remain required.
+task workspace restrictions and the project’s review/application policy remain required.
 Installed plugins may include connected apps and skills; this setting does not approve
 messages, purchases, publication or other external actions.
 
@@ -115,22 +114,13 @@ the earlier `dock_delegate` schema without `tools`; resuming does not replace th
 Use the manager's explicit **New context** control when needed, preserving its saved
 history and project evidence. The app does not silently replace original contexts.
 
-## Remaining compatibility work
+## Compatibility boundary
 
-Managed Claude external MCPs, plugins, web/image tools and native-approval parity remain
-separate work. Requests for these extra capabilities on a managed Claude worker currently
-fail with an explanation. Native Claude and shared VS Code conversations retain their own
-capabilities. The current Codex adapter still requests tool consent; a project allowance
-does not yet provide the requested opt-in to native automatic tool approvals.
+The optional per-tool ceiling described above is a retained Codex-specific restricted mode.
+It does not define the capabilities of new native-inheriting Claude or Codex workers. Explicit
+unsupported restricted-mode requests fail with an explanation; do not build a second tool
+framework to force provider parity. Use native inheritance for the provider's own configured
+tools and permissions. Existing restricted contexts retain their original consent behavior.
 
-Codex's [App Server](https://learn.chatgpt.com/docs/app-server) and
-[plugin approval settings](https://developers.openai.com/plugins/build/plugins) are native
-interfaces, not an app-owned credential store. The implementation uses the existing typed
-adapter and approval flow; changing these interfaces still requires compatibility work.
-
-## Guide and website wording
-
-Decide which tools a project team may use once. Its manager then equips each new worker
-for the task, within your choices. You can inspect the tools assigned to that worker and
-keep control of permission requests and final changes. The current delegated-tool flow
-supports Codex workers; mixed-provider parity is still being built.
+Native integration still needs compatibility checks when provider protocols change. See
+[Provider compatibility](PROVIDER_COMPATIBILITY.md) and [current release status](STATUS.md).

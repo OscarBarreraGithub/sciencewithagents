@@ -5,9 +5,8 @@ authentication results and any diagnostics private. Never record credentials or 
 codes here. Read [PHONE_WORKFLOW.md](PHONE_WORKFLOW.md) for the behavior contract,
 CLOUDFLARE_SETUP.md for setup/recovery and STATUS.md for actual evidence.
 
-**Observed 2026-09-14:** the owner connected successfully in Safari, completing physical
-enrollment. Do not create a fresh code or remove that working phone just to repeat it.
-Home Screen, cellular, restart and the new pairing-only return behavior remain separate checks.
+Do not remove a working enrollment merely to repeat acceptance. Record each actual device
+result privately; browser emulation does not certify physical retention or connectivity.
 
 ## Owner journey
 
@@ -97,7 +96,7 @@ See [WebKit's login-cookie explanation](https://webkit.org/blog/14787/webkit-fea
   power-on and login, reopen it manually. Streamlined login-item setup remains deferred;
   enable the optional login service only if the owner explicitly chooses it. Do not leave
   a developer preview or install a second cloudflared daemon. Stop temporary acceptance processes
-  when the active check ends. See OPERATIONS.md for the standing development service rule.
+  when the active check ends. See OPERATIONS.md for the development process-ownership rule.
 - Mark completion only from the observed steps. Desktop viewports, fake WebSocket routes,
   connector readiness and CI do not replace physical-device evidence. Keep any remaining
   platform-specific limits explicit rather than claiming all iOS/Android combinations.

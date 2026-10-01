@@ -1,6 +1,7 @@
 # QUARK conversation and board
 
-Implemented conversation/board slice, 2026-09-30. Native permission-policy follow-up remains explicitly pending below.
+The connected coordinator and board use the same host scheduler and accounting as managers.
+See [Status](STATUS.md) for unresolved release checks and automatic utilization work.
 
 QUARK is the cross-project allocation desk. Its conversation sits above a simple board:
 waiting, working, paused/needs input and completed. Show the task, project, actual model,
@@ -14,8 +15,7 @@ Automatic decisions stay inside those bounds. A floor such as 20% remaining appl
 projects and reported provider/model windows. Do not invent a weekly limit for FAS Claude.
 
 Use the existing local runtime and queue. Store QUARK identity, instructions and decisions
-under private runtime data outside project worktrees. The default is current Opus (the
-installed catalog reports Opus 5.5); support explicit model/provider selection centrally.
+under private runtime data outside project worktrees. The default is current Opus; support explicit model/provider selection centrally.
 Keep it available while the app runs, waking on relevant events with bounded frequency and
 turn length, never an idle token-burning loop. Recover saved work after restart; a sleeping
 or stopped computer cannot run it. Project managers retain implementation responsibility.
@@ -31,9 +31,9 @@ unattended settings instead of per-tool restrictions. Authentication or external
 failures must be visible, not an endless hidden permission wait. This does not grant models
 permission to raise budgets, approve integration, or bypass provider/organization controls.
 
-## Follow-up requirements
+## Provider maintenance and permissions
 
-The usage card should open Refresh usage, Check connection, and Check & install updates.
+The usage card offers Refresh usage, Check connection, and Check & install updates.
 Use native installers, preserve sign-in, wait for active app work and refresh discovery.
 Unsupported/custom installations get an explicit explanation; never replace an embedded
 CLI or wait on an invisible administrator prompt. Rechecking native sign-in/catalog can
@@ -44,8 +44,8 @@ The latest owner correction supersedes blanket bypass: broad read/network access
 contained to the assigned project/worktree where the native provider sandbox supports it.
 Unattended mode should deny unsupported operations rather than leave a permission prompt
 waiting. Read-only diagnostics remain read-only. Arbitrary MCP/remote tools require their
-own enforcement; a prompt instruction is not a filesystem sandbox. This native launch
-policy still needs its own verified implementation; no universal containment claim yet.
+own enforcement; a prompt instruction is not a filesystem sandbox. The supported launch policy is described in [Worker tools](WORKER_TOOLS.md); no universal
+containment claim is made.
 
 ## Guide material: revisit every original request
 
@@ -109,10 +109,7 @@ at three minutes. Failed/interrupted turns need inspection, not blind replay. Th
 TIMING_EXAMPLES.md and manager context contain recent measured active turn durations,
 forecasts and token basis. They are examples, not model training or validated percentages.
 
-Verification: focused persistence/authorization/queue/update tests; responsive browser
-journeys at 1440×1000, 412×915, 360×800 and 915×412 plus iPhone WebKit. A live isolated Opus
-5.5 call successfully invoked dock_quark_inspect. A separate live owner-request test called
-dock_quark_control, saved a project weight and finished, in disposable data only.
+Verification and limits: [current status](STATUS.md) and [checks](VERIFICATION.md).
 
 Update paths follow [OpenAI's supported CLI installers](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex)
 and [Claude Code's installation/update instructions](https://code.claude.com/docs/en/setup).

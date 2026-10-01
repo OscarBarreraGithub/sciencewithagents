@@ -44,8 +44,7 @@ Existing routes are never reset. Changing the node identity or private hostname 
 deliberate setup repair, not automatic reassignment of phone trust.
 
 The private route has API, persistence, owned-process and responsive browser checks. It has
-not yet been accepted on a physical phone or an actual live Serve connection on this installation.
-The owner's existing Cloudflare connection has not been converted. See
+not yet been certified through a physical phone and live Serve acceptance run. See
 [phone acceptance](PHONE_ACCEPTANCE.md) for device checks and
 [phone workflow](PHONE_WORKFLOW.md) for pairing and Home Screen behavior.
 

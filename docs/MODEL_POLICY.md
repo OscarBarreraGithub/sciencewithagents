@@ -11,7 +11,7 @@ computer and paired phone; each selected computer keeps its own policy and sign-
 | Undergrad    | Terra        | Sonnet        | Routine checks, recurring monitoring                                                                          |
 | Uncle        | Luna         | Sonnet        | They sound confident, but also believe whatever they read. Be careful trusting them. Use for cheap, bulk work |
 
-These are the owner's work preferences, not measured intelligence ratings or accuracy
+These are the creator's work preferences, not measured intelligence ratings or accuracy
 guarantees. The uncle name recalls a confident relative whose answers need checking.
 Managers have the postdoc assignment tier. Planning, implementation and review cannot be
 labelled routine/bulk to request weaker tiers. Task classification is explicit, not an
@@ -24,7 +24,7 @@ family default; the app does not pretend an older/different pinned model has cha
 reasoning are separate from the workers' provider mix and spending slider. A manager model
 pin does not change the model used by postdoc workers. Workers have
 Research & coding, Review and Bulk choices, including exact versions from live catalogs.
-The [corrected recommended matrix](CHAT_UI_REQUIREMENTS.md#corrected-worker-defaults) supplies
+The [recommended matrix](#recommended-worker-defaults) supplies
 the family defaults. The initial recommendation is **Balanced + Tokenmax**; when only one
 provider is enabled, use its **Only** preset instead. No second subscription is enabled by
 restoring recommendations. Haiku is not a shipping default.
@@ -102,6 +102,22 @@ explicitly pinned and native-controlled contexts retain their choices. The advan
 model menu offers **Follow central model default** to opt back in. Changing presets does
 not move an existing conversation to another provider or rewrite its history.
 
+## Recommended worker defaults
+
+Each cell is **Research/coding · Review · Bulk**. These are configurable families, resolved
+to the latest available model unless explicitly pinned. Manager selection is independent.
+
+| Spending | Codex only            | Codex heavy           | Balanced               | Claude heavy           | Claude only            |
+| -------- | --------------------- | --------------------- | ---------------------- | ---------------------- | ---------------------- |
+| Light    | Terra · Sol · Luna    | Terra · Opus · Luna   | Terra · Opus · Luna    | Opus · Sol · Sonnet    | Opus · Opus · Sonnet   |
+| Default  | Sol · Astra · Luna    | Sol · Opus · Luna     | Sol · Opus · Sonnet    | Opus · Sol · Sonnet    | Opus · Fable · Sonnet  |
+| Tokenmax | Astra · Astra · Terra | Astra · Fable · Terra | Astra · Fable · Sonnet | Fable · Astra · Sonnet | Fable · Fable · Sonnet |
+
+The creator's preference is Balanced + Tokenmax. For an account with a replenishing Claude
+five-hour allowance, Balanced or Claude heavy may fit its available capacity; QUARK still
+checks actual reported windows, model-specific allowances and reserves. This is a configurable
+recommendation, not an assertion about every institutional plan.
+
 ## Undergrad escalation
 
 An undergrad receives `dock_escalate(question, evidence)` when escalation is enabled. It can
@@ -168,7 +184,7 @@ Verified evidence and current installed-provider limitations are recorded in VER
 
 The separate QUARK coordinator has a central model choice in shared/quark-coordinator.ts,
 resolved by ModelPolicy.resolveQuark against the installed catalog. Its default is Claude
-Opus (currently reported here as Opus 5.5), following the latest family entry. The QUARK
+Opus, following the latest family entry. The QUARK
 model/settings panel supports exact catalog choices and another provider; no unavailable
 model is silently substituted. This is the owner's explicit exception to ordinary project
 manager postdoc defaults. Provider changes preserve the old conversation and use a new one.

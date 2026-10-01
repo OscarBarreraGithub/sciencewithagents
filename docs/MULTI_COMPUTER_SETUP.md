@@ -74,7 +74,7 @@ Cross-account assistant memory/routing is intentionally not automatic.
    and native **Take control here** with two clients. No uncertain input is resent.
    Complete the physical phone journey separately using PHONE_ACCEPTANCE.md.
 
-## Security and recovery / future wiki material
+## Security and recovery
 
 - Only the exact typed application route/method/query allowlist is forwarded. Phone
   pairing, computer administration, remote folder selection and raw provider RPC are not.

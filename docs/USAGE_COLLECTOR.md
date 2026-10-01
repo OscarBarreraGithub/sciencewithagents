@@ -11,11 +11,11 @@ minutes. Reading a cached view sends no model prompt.
 
 Reuse the standalone reader instead of forking the menu-bar app or creating a second
 sign-in store. CodexBar maintains Codex retrieval. A small native Claude reader supplements it because
-the installed helper omitted the live Fable window, and the pinned official reader did
-not recognize this Mac’s Claude credential namespace. The setup script
+a CodexBar build can omit model-specific windows or fail to recognize a native Claude
+credential namespace. The setup script
 copies the installed CLI into ignored `data/tools/`, checks it and records its checksum.
 It retains the MIT license. The menu-bar app need not run or stay installed once this
-standalone copy and its usage access have been verified. This task does not uninstall it.
+standalone copy and its usage access have been verified. Removing a menu-bar app is a separate user choice.
 
 `scripts/setup-usage-collector.mjs` is an agent-led setup step, not an instruction that
 normal phone users run commands. If absent on Apple Silicon macOS, setup downloads the official v0.65.0 standalone archive
@@ -39,7 +39,7 @@ needs to work; a missing reading is displayed as unknown, never zero.
 
 ## When a reading fails
 
-**All usage** keeps the last successful reading visibly stale, with its observation time,
+**QUARK** keeps the last successful reading visibly stale, with its observation time,
 a plain explanation and the next automatic check. Claude failures distinguish sign-in,
 refused authorization/access, throttled usage checks, service/network problems, unsupported
 reports and account changes. A usage-check rate limit does not mean model allowance is exhausted.
@@ -56,13 +56,10 @@ No new sign-in, account switch or token refresh is attempted by the usage reader
 ## Independent windows and estimates
 
 Keep five-hour, weekly and named model-specific windows separate. Fable windows in native `limits` remain distinct from the general Claude window. An absent
-Fable row is not proof of free Fable capacity. The owner reports Harvard FAS has no
-general weekly cap. This host-only statement can be recorded against its verified native
-account fingerprint; another sign-in cannot inherit it. A missing weekly field alone does
-not prove that for another account. The live FAS report has a general five-hour window,
-no general weekly window, and a separate Fable weekly window. It did not report a Fable
-five-hour window. Anthropic says Fable may also draw from normal usage, so QUARK checks
-both applicable meters and never adds Fable as extra general capacity.
+Fable row is not proof of free Fable capacity. An explicit host-only account statement about
+an absent general weekly cap is bound to its verified native account fingerprint; another
+sign-in cannot inherit it. A missing field alone does not prove unlimited capacity. General
+and model-specific windows are checked together, never added as extra general capacity.
 The current collector targets its locally configured OAuth source; it does not pool
 other accounts, move native conversations or forward credentials across computers.
 

@@ -23,14 +23,8 @@ central admission scheduler. It extends the existing durable work queue across p
 managers, Codex, Claude and owned local transcription jobs. Jira is unnecessary for this:
 tasks, branches, receipts and results already live together in the app.
 
-**2026-10-01:** QUARK watches active managed turns and exposes budgets and pause/continue
-on its shared board. The backend retains its token ledger; the older technical usage page
-and cache controls are removed. Read [automatic accounting](QUARK_ACCOUNTING.md) for this addition; it
-supersedes the older admission-only and interactive headroom exceptions below. Older
-priority/local-compute controls are also available from Work in the new interface.
-
-The owner selected QUARK on 2026-09-25, replacing the PULSAR working name. Internal
-`pulsar` API paths and storage keys remain stable; existing jobs and settings carry forward.
+Internal `pulsar` API paths and storage keys retain their earlier names for compatibility.
+Use [current status](STATUS.md) for release blockers and unfinished utilization automation.
 
 ## New-install setup
 
@@ -104,7 +98,7 @@ an adversarial isolation boundary.
 
 Compatibility: fresh manager contexts get the pause tool, and managed Claude reloads its
 host tools on connection. Existing Codex contexts may retain their original dynamic-tool
-catalog. The installed 0.156.0 schema has no replacement catalog field on `thread/resume`;
+catalog. Do not assume `thread/resume` replaces a saved catalog;
 do not rewrite saved rollouts or silently replace a context to add it. Such conversations
 still receive the automatic lease/quota enforcement; the new manual manager tool becomes
 available with a deliberate **New context**. The owner can always use the app's stop control.
@@ -160,7 +154,8 @@ Work still needs clear assignments and completion criteria; QUARK does not inven
 
 ## Local transcription
 
-Choose **Transcribe a video**, paste one public YouTube link, and set urgency. The default
+This retained advanced/manager workflow accepts a public YouTube link and urgency; it is
+not a Home action. The default
 is interactive; a manager uses `dock_transcribe` with its task’s priority. The app verifies
 its Whisper base model, downloads the selected audio, converts it and transcribes locally.
 Read/download the result in the app; a requesting agent receives one saved success, failure
@@ -184,8 +179,6 @@ Expected finish times are estimates and waiting jobs can explicitly have no know
 
 Upgrades keep the saved pacing choice. Older workspaces with no saved policy retain their
 previous off default; the owner can enable it from Work after inspecting old queued jobs.
-New empty installations start with pacing on. The owner’s existing installation already
-has it enabled.
-Original approvals, task writer exclusion, independent review and exact integration preview
-and confirmation remain required. See [acceptance ledger](QUARK_CHECKLIST.md) and
-[verification](VERIFICATION.md) for evidence and deployment status.
+New empty installations start with pacing on. Native approvals, task writer exclusion, independent review and exact integration validation
+remain. Managers apply by default; the human-review policy requires confirmation. See
+[verification](VERIFICATION.md) and [status](STATUS.md).

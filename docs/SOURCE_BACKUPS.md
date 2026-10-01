@@ -66,7 +66,7 @@ no extra agent, timer, daemon, file watcher or Git hook to install. Unreviewed w
 transcript-only tasks are not exported. Local checkpoints are still the worker's duty.
 
 - Reviewed work goes to `agent-dock/task-<task-id>`, preserving unfinished integration.
-- Exact owner-approved integration goes to the configured main branch, fast-forward only.
+- Exact policy-authorized integration goes to the configured main branch, fast-forward only.
 - Every attempted export checks the GitHub repository is private and checks its remote
   branch. Only a remotely confirmed commit counts as backed up. Existing verified receipts
   avoid duplicate work; an explicit Retry source backup rechecks current remote state.
@@ -92,7 +92,7 @@ Unsaved edits, arbitrary terminal-created commits outside managed task completio
 records, conversations, provider caches, uploads and credentials require separate private
 backup/recovery. Do not claim GitHub makes the whole machine recoverable.
 
-## Troubleshooting / future wiki material
+## Troubleshooting
 
 - **Offline, expired GitHub login or uncertain response:** retain source and receipts;
   inspect authentication/connectivity, then use the explicit retry. Status reports a

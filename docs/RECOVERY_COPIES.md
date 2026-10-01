@@ -129,7 +129,7 @@ provider/account/full-machine restore test. Eight browser checks exercise actual
 copy/recheck/reload and first-load/uncertain-response recovery at desktop,
 412×915, 360×800 and 915×412. Screenshots are private ignored development evidence.
 
-### Troubleshooting / future wiki material
+### Troubleshooting
 
 - **A copy is not a backup strategy:** same-disk snapshots, GitHub source backups
   and off-device private recovery protect different data and failure modes.

@@ -73,8 +73,7 @@ Durable origin metadata separates automatic reports from owner conversations, in
 older reports outside the recent history window. Resource-owned records with unknown origins
 also remain saved outside the normal chat list; no conversation is deleted.
 
-Automatic checks are configurable and off on a fresh installation. The owner requested
-them for this computer. Defaults: checkpoint every **6 hours**, plus persistent CPU ≥85%,
+Automatic checks are configurable and off on a fresh installation. Defaults: checkpoint every **6 hours**, plus persistent CPU ≥85%,
 OS memory warning/critical, swap-out ≥10 MiB/s, or disk space <10 GiB / <5%. Warnings must
 persist for two minutes; critical signals for 30 seconds. These are application heuristics,
 not vendor guarantees. A pressure episode gets one diagnosis; routine checkpoints can

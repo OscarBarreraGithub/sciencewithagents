@@ -16,11 +16,10 @@ deleted. Large transfers or unavailable browser storage keep a recovery/retry ro
 
 ## Share an editor conversation
 
-With companion **0.2.5**, choose **Share a Codex conversation** or **Share a Claude Code
+With the current companion, choose **Share a Codex conversation** or **Share a Claude Code
 conversation** from VS Code’s sciencewithagents menu. The extension connects directly to
 the running local app. There is no separate editor authentication, code or credential.
-The owner explicitly removed that requirement on September 29 after it broke a working
-sharing flow. Existing provider accounts and phone pairing are unchanged.
+Existing provider accounts and phone pairing are unchanged.
 
 The editor producer remains native loopback-only and rejects browser-origin connections;
 it is never registered on the public phone listener. This trusts local native programs on
@@ -38,7 +37,7 @@ Model discovery errors no longer imply that an already signed-in account needs a
 The remaining account/device steps have separate purposes:
 
 - Codex or Claude owns its initial sign-in; an existing native session is reused.
-- Phone pairing admits that browser once. Returning access uses the saved lock preference;
+- Phone pairing admits that browser once. Returning access uses the approved browser credential without an app lock;
   there is no separate phone GitHub or Cloudflare login in paired mode.
 - Private GitHub source backups are optional and reuse the existing GitHub CLI sign-in.
 - A separate computer needs its own authorized connection and provider accounts. This remains
@@ -61,4 +60,4 @@ browser history, web settings or source repository. Demo mode is deliberately is
 does not enable this boundary against an owner’s data.
 
 See [verification](VERIFICATION.md) for tested behavior and the remaining physical-device
-and live-editor activation limits.
+limits.

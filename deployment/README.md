@@ -12,10 +12,10 @@ page while website design is deferred. `site/_redirects` uses temporary 302 resp
 direct `/syllabusgraph/` links and datasets remain available. Root `#graph=...` bookmarks
 now go to GitHub as well; fragments do not reach the redirect service.
 
-The combined artifact retains the landing source and supplied public graph
+The combined artifact includes a minimal GitHub-link fallback and supplied public graph
 export at `/syllabusgraph/`. Without the root redirect, its build script preserves old `#graph=...` links,
 redirects old graph assets, relocates the graph's headers and repairs its 404 page.
-Font licence notices are included under `/assets/fonts/`.
+The unused promotional page assets/fonts are removed; graph assets retain their existing notices.
 
 ## Prepare one immutable release directory
 
@@ -49,7 +49,7 @@ sh scripts/pnpm dlx wrangler@4.132.0 dev --config deployment/public-site.wrangle
 
 Open that loopback address and verify the temporary GitHub redirect from `/` and
 `/index.html`, the destination repository/README, `/syllabusgraph/` graph loading, a graph
-404 and `/assets/fonts/NOTICE.txt`. If the landing is restored later, also check its copy
+404 and the shared favicon. If a landing is added later, also check its copy
 prompt and desktop/phone layouts. Stop this owned preview when done. A successful dry run checks packaging;
 it does not establish these browser journeys or account access.
 
