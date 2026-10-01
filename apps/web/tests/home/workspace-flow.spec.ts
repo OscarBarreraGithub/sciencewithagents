@@ -761,7 +761,7 @@ test('task shows its shared budgets, quota pause and jobs, with a scoped budget 
   await region.getByRole('button', { name: 'Retry readings' }).click();
   await expect(region.getByRole('alert')).toHaveCount(0);
   await region.getByRole('link', { name: 'Manage budgets' }).click();
-  await expect(page.getByLabel('Project', { exact: true })).toHaveValue(task.projectId);
-  await expect(page.getByLabel('Work covered', { exact: true })).toHaveValue(task.id);
+  await expect(page).toHaveURL(new RegExp(`/#/work/${task.id}$`));
+  await expect(page.locator('.quark-workspace .flow-heading h1')).toHaveText('QUARK');
   expect(writes).toEqual([]);
 });

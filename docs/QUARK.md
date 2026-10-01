@@ -1,9 +1,10 @@
 # QUARK
 
-Open **Work** for the QUARK conversation and shared status board. Tell it which project to
+Open **QUARK** for its conversation, shared status board and live spending sliders.
+Managers set the starting task caps; the owner can raise or lower them on the cards. Tell it which project to
 pause, prioritize or allocate allowance to. Its typed controls save each decision; hard
 limits remain independently enforced by the host. See [conversation, controls and guide
-notes](QUARK_COORDINATOR.md). **Allowances & budgets** retains the detailed accounting view.
+notes](QUARK_COORDINATOR.md). **Allowance details** retains the detailed accounting view.
 
 Managers receive a compact current QUARK view at managed turn start and coalesced updates on
 existing coordination replies for both providers. Claude also receives updates through its

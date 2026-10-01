@@ -657,14 +657,6 @@ dialog.home-help-dialog {
   color: inherit;
   cursor: pointer;
 }
-.home-help-more {
-  font-size: var(--text-small);
-}
-.home-help-more a {
-  color: var(--home-blue);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
 
 /* Provider maintenance actions inside the allowance popovers. */
 .provider-actions {

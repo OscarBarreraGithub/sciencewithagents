@@ -528,7 +528,7 @@ export function Home() {
           ) : page === 'resources' ? (
             <Resources reading={data.resources} />
           ) : page === 'usage' ? (
-            <Quark key={currentRoute} data={data} now={now} taskId={currentRoute.split('/')[1]} />
+            <Quark key={currentRoute} data={data} now={now} />
           ) : (
             <section className="home-placeholder">
               <a href={href('home')} className="home-back">
@@ -577,11 +577,6 @@ export function Home() {
                 <h3>Accounts for apps that publish online</h3>
                 <SetupGuide />
               </section>
-              <p className="home-help-more">
-                Also: <a href={href('settings')}>Settings</a> ·{' '}
-                <a href={href('computers')}>Computers and accounts</a> ·{' '}
-                <a href={href('usage')}>Usage and allowances</a>
-              </p>
             </div>
           </Modal>
         )}

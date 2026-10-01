@@ -1,6 +1,6 @@
 import { BackLink } from './Navigation';
 import { useEffect, useRef, useState } from 'react';
-import { RefreshCw, Pause, ShieldCheck, Clock3 } from 'lucide-react';
+import { RefreshCw, Pause, Clock3 } from 'lucide-react';
 import { quarkStatusSchema, type QuarkStatus, type QuarkSettings } from '@dock/shared';
 import { api } from '../api';
 import type { HomeData } from './useHomeData';
@@ -8,30 +8,15 @@ import './Quark.css';
 
 const percent = (n: number) => `${n.toFixed(1)}%`;
 const number = (n: number | null) => (n === null ? 'Not reported' : n.toLocaleString());
-export function Quark({ data, now, taskId }: { data: HomeData; now: number; taskId?: string }) {
+export function Quark({ data, now }: { data: HomeData; now: number }) {
   const [state, setState] = useState<QuarkStatus | null>(null);
   const [settings, setSettings] = useState<QuarkSettings | null>(null);
   const [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
-  const [project, setProject] = useState(''),
-    [task, setTask] = useState(''),
-    [provider, setProvider] = useState<'codex' | 'claude'>('codex');
-  const [windowId, setWindowId] = useState(''),
-    [limit, setLimit] = useState('10');
   const alive = useRef(true),
     pending = useRef(false),
     receipt = useRef<{ signature: string; key: string } | null>(null);
-  const projects = data.snapshot.data?.projects ?? [];
-  const tasks = data.snapshot.data?.tasks.filter((t) => t.projectId === project) ?? [];
-  const capacity = data.capacity.data?.providers.find((p) => p.provider === provider);
-  const initialTask = data.snapshot.data?.tasks.find((item) => item.id === taskId);
-  useEffect(() => {
-    if (initialTask) {
-      setProject(initialTask.projectId);
-      setTask(initialTask.id);
-    }
-  }, [initialTask?.id]);
   async function load() {
     if (pending.current) return;
     pending.current = true;
@@ -84,7 +69,6 @@ export function Quark({ data, now, taskId }: { data: HomeData; now: number; task
       if (alive.current) setBusy(false);
     }
   }
-  const valid = project && windowId && Number(limit) > 0 && Number(limit) <= 100;
   return (
     <section className="quark-page">
       <BackLink />
@@ -160,150 +144,9 @@ export function Quark({ data, now, taskId }: { data: HomeData; now: number; task
       </button>
       {state && (
         <>
-          <section className="quark-section">
-            <h2>
-              <ShieldCheck size={19} /> Spending limits
-            </h2>
-            <p>
-              “Use at most 10%” means ten percentage points of the full allowance, starting when you
-              save. Tasks share their cap with descendants. A project cap also includes manager
-              overhead. Resets do not refill these budgets.
-            </p>
-            <form
-              className="quark-budget-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (valid)
-                  void mutate(
-                    '/quark/budgets',
-                    {
-                      projectId: project,
-                      taskId: task || null,
-                      provider,
-                      windowId,
-                      limitPercent: Number(limit),
-                    },
-                    'Budget saved. QUARK will enforce it automatically.',
-                  );
-              }}
-            >
-              <label>
-                Project
-                <select
-                  aria-label="Project"
-                  value={project}
-                  onChange={(e) => {
-                    setProject(e.target.value);
-                    setTask('');
-                  }}
-                  required
-                >
-                  <option value="">Choose a project</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Work covered
-                <select
-                  aria-label="Work covered"
-                  value={task}
-                  onChange={(e) => setTask(e.target.value)}
-                >
-                  <option value="">Whole project</option>
-                  {tasks.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Provider
-                <select
-                  aria-label="Provider"
-                  value={provider}
-                  onChange={(e) => {
-                    setProvider(e.target.value as 'codex' | 'claude');
-                    setWindowId('');
-                  }}
-                >
-                  <option value="codex">Codex</option>
-                  <option value="claude">Claude</option>
-                </select>
-              </label>
-              <label>
-                Allowance
-                <select
-                  aria-label="Allowance"
-                  value={windowId}
-                  onChange={(e) => setWindowId(e.target.value)}
-                  required
-                >
-                  <option value="">Choose a reported window</option>
-                  {capacity?.windows
-                    .filter((w) => w.scope !== 'other')
-                    .map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.label}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                Use at most (%)
-                <input
-                  type="number"
-                  min="0.1"
-                  max="100"
-                  step="0.1"
-                  value={limit}
-                  onChange={(e) => setLimit(e.target.value)}
-                  required
-                />
-              </label>
-              <button className="quark-primary" disabled={busy || !valid}>
-                Set budget
-              </button>
-            </form>
-            {!projects.length && (
-              <p className="quark-muted">Your workspace projects will appear here when added.</p>
-            )}
-            {!state.budgets.length && (
-              <p className="quark-empty">
-                No project caps yet. Shared QUARK pacing still applies when enabled.
-              </p>
-            )}
-            <div className="quark-budget-list">
-              {state.budgets.map((b) => (
-                <Budget
-                  key={b.id}
-                  budget={b}
-                  name={projects.find((p) => p.id === b.projectId)?.name ?? 'Project'}
-                  task={data.snapshot.data?.tasks.find((t) => t.id === b.taskId)?.title}
-                  busy={busy}
-                  save={(n) =>
-                    mutate(
-                      '/quark/budgets',
-                      {
-                        id: b.id,
-                        expectedRevision: b.revision,
-                        projectId: b.projectId,
-                        taskId: b.taskId,
-                        provider: b.provider,
-                        windowId: b.windowId,
-                        limitPercent: n,
-                      },
-                      'Budget updated. Paused conversations stay paused until you continue them.',
-                    )
-                  }
-                />
-              ))}
-            </div>
-          </section>
+          <p className="quark-board-link">
+            <a href="#/work">Adjust spending on the QUARK board →</a>
+          </p>
           <section className="quark-section">
             <h2>
               <Pause size={19} /> Paused work
@@ -617,65 +460,5 @@ export function Quark({ data, now, taskId }: { data: HomeData; now: number; task
         </>
       )}
     </section>
-  );
-}
-function Budget({
-  budget: b,
-  name,
-  task,
-  busy,
-  save,
-}: {
-  budget: QuarkStatus['budgets'][number];
-  name: string;
-  task?: string;
-  busy: boolean;
-  save: (n: number) => Promise<void>;
-}) {
-  const [limit, setLimit] = useState(String(b.limitPercent));
-  useEffect(() => setLimit(String(b.limitPercent)), [b.limitPercent]);
-  return (
-    <article className="quark-budget">
-      <h3>
-        {name}
-        {task ? ` · ${task}` : ''}
-      </h3>
-      <p className="home-eyebrow">
-        {b.provider} · {b.windowId === 'secondary' ? 'Weekly' : b.windowId}
-      </p>
-      <strong>
-        {percent(b.remainingPercent)} <small>of budget remaining</small>
-      </strong>
-      <p>
-        ≈ {percent(b.spentPercent)} spent · {percent(b.reservedPercent)} reserved for recent or
-        running work
-      </p>
-      <progress
-        max={b.limitPercent}
-        value={Math.min(b.limitPercent, b.spentPercent)}
-        aria-label={`${name} estimated budget consumed`}
-      />
-      {b.reason && <p className="quark-warning">{b.reason}</p>}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save(Number(limit));
-        }}
-      >
-        <label>
-          Budget for {name}
-          <input
-            type="number"
-            min="0.1"
-            max="100"
-            step="0.1"
-            required
-            value={limit}
-            onChange={(e) => setLimit(e.target.value)}
-          />
-        </label>
-        <button disabled={busy}>Update budget</button>
-      </form>
-    </article>
   );
 }

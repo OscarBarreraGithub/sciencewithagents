@@ -1,5 +1,14 @@
 # Design decisions
 
+## 2026-10-01 — spending belongs with the QUARK board
+
+Replace the separate spending form with sliders on project/task cards, reusing existing
+durable caps. Managers set initial task estimates through their existing budget tool; no
+blanket percentage or new scheduling algorithm. Preserve project limits, account windows,
+owner control over increases, recorded spending, revision checks and retry receipts.
+Display live ledger estimates, with explicit continuation after quota pauses. Remove the
+Help/setup footer’s settings, computer and allowance links; setup prompts stay accessible.
+
 ## 2026-10-01 — remove app locking, retain secure pairing
 
 The owner explicitly removed physical-device security from the app. This supersedes all

@@ -1,5 +1,14 @@
 # Resume here — current continuation only
 
+## Latest owner request — simpler spending controls
+
+QUARK project/task cards now hold saved-budget sliders with live estimated spending.
+Managers are instructed to set initial task caps before delegation. Owner edits save on
+release, retain spending, handle lost replies/concurrent edits, and survive column moves.
+The separate allowance form and Help/setup’s extra three links are removed. Focused checks
+pass; see VERIFICATION.md. No owner budget was changed and no real model work was launched.
+Do not create another scheduling system or broad review for this UI change.
+
 ## Latest phone simplification
 
 App locking is removed from UI, contracts and backend. Approved browsers authenticate

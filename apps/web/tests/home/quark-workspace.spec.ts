@@ -119,7 +119,7 @@ test('one task card groups worker turns and only task completion moves it to Com
   await page.goto('/#/work');
   const working = page.getByRole('region', { name: 'Working', exact: true });
   await expect(working.locator('.quark-ticket')).toHaveCount(1);
-  await expect(working.locator('.quark-ticket')).toHaveAttribute('href', `#/task/${ids[0]}`);
+  await expect(working.locator('.quark-ticket h4 a')).toHaveAttribute('href', `#/task/${ids[0]}`);
   await expect(working.locator('.quark-ticket')).toContainText('3 recent turns');
   await expect(page.getByRole('region', { name: 'Waiting', exact: true })).toContainText(
     'Review still pending',
@@ -153,7 +153,7 @@ test('one task card groups worker turns and only task completion moves it to Com
   await page.getByRole('button', { name: 'Completed', exact: true }).click();
   await expect(page.locator('.quark-ticket')).toHaveCount(1);
   await expect(page.locator('.quark-ticket')).toContainText('Finished task with retries');
-  await expect(page.locator('.quark-ticket')).toHaveAttribute('href', `#/task/${ids[2]}`);
+  await expect(page.locator('.quark-ticket h4 a')).toHaveAttribute('href', `#/task/${ids[2]}`);
 });
 
 test('closing obsolete work cancels its queue and keeps the saved task and reason after reload', async ({

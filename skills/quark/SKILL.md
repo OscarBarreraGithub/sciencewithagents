@@ -39,7 +39,11 @@ resume deliberate holds, or create replacement tasks to escape limits. Only the 
 increase an existing cap. Percentage attribution and cache expiry remain estimates.
 
 App-managed managers already receive typed inspection/delegation tools and signed QUARK
-leases. Use those tools inside managed turns, not this external client to sidestep a lease.
+leases. Managers set a starting cap for each bounded task, covering its planned workers and
+review, with the real provider/window IDs; the owner can adjust these caps directly on the
+QUARK board. A per-turn scheduling estimate is not the total task budget. Existing owner
+limits take precedence; do not invent a percentage when evidence is missing. Use those
+tools inside managed turns, not this external client to sidestep a lease.
 The external client requests work from an existing app-managed manager. It cannot turn the
 calling terminal agent into a leased manager or control unrelated editor/terminal activity.
 It cannot approve permissions, apply code, choose shell commands or modify account credentials.

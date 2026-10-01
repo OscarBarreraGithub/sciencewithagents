@@ -1,5 +1,29 @@
 # Verification
 
+## 2026-10-01 — spending sliders on the QUARK board
+
+Replaced the allowance page’s budget form/list with project/task card sliders. They reuse
+saved caps, update on release, preserve the original spending baseline and retain pending
+receipts when a task moves columns. Managers are instructed to save whole-task estimates
+before delegation. Removed the three unrelated links from Help/setup.
+
+- Production server/web builds pass. Focused accounting/manager-cap checks: 39 pass.
+- 65 distinct browser cases pass across desktop, 412×915, 360×800, 915×412 and iPhone WebKit.
+  Actual demo API writes cover raise/lower, keyboard/pointer/touch, reload persistence,
+  lost-reply retry without a second revision, and concurrent edits without overwriting.
+  Navigation, task budget handoff, ledger retry, pause recovery and cache controls pass.
+  The first matrix identified an obsolete assertion for the removed form; its corrected
+  retry check passes on all five profiles. No real model calls or owner budget changes.
+- Phone screenshots were inspected; controls fit and touch saves remain on the board.
+  Native Safari shows the simplified allowance page and QUARK board. Physical iPhone
+  acceptance is not inferred from WebKit emulation.
+- The idle installed app restarted with the new manager instructions. Its four projects,
+  49 agents, 2,052 entries, approved phone and every saved allowance cap remain unchanged.
+  The phone entry is reachable, and Safari reconnects with the existing pairing.
+
+Evidence: ignored `data/quark-sliders-*.log`, `data/browser-results/home/` and the pre-update
+SQLite recovery copy. Test servers and browser processes are closed after checks.
+
 ## 2026-10-01 — remove phone app locks, preserve paired access
 
 Removed the lock UI, repeat-verification preference, unlock routes and short/remembered

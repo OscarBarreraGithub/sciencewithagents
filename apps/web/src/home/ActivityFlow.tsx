@@ -70,7 +70,7 @@ export function ActivityFlow({ currentRoute, data }: { currentRoute: string; dat
         </div>
       </section>
     );
-  if (page === 'work') return <QuarkWorkspace data={data} />;
+  if (page === 'work') return <QuarkWorkspace data={data} taskId={id} />;
   if (page === 'transcribe')
     return (
       <section className="flow-page activity-page">

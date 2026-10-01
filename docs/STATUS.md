@@ -1,5 +1,12 @@
 # Build status
 
+## Latest QUARK simplification
+
+Spending limits are adjustable sliders alongside project/task cards on the QUARK board.
+Managers are instructed to supply the starting whole-task estimates; owner changes save on
+release while retaining prior spending and existing enforcement. Removed the duplicate form
+and Help/setup’s extra navigation row. Focused backend and five-profile browser checks pass.
+
 ## Latest phone simplification
 
 The owner removed app locks, recurring verification and inactivity timeouts. Secure pairing

@@ -12,6 +12,7 @@ import { SchedulerPanel } from '../SchedulerPanel';
 import { useReading, type HomeData } from './useHomeData';
 import { ChatPage, FlowHeading, FlowEmpty, stateNames } from './WorkspaceFlow';
 import { AssistantFullscreen } from './AssistantFullscreen';
+import { BudgetSlider, type BoardBudget, type BudgetEdits } from './BudgetSlider';
 import './quark-workspace.css';
 
 const columns = ['Waiting', 'Working', 'Paused / needs input', 'Completed'] as const;
@@ -30,12 +31,12 @@ type Card = {
   estimate: string;
   resources: string;
   actual: string;
-  budgets: string[];
+  budgets: BoardBudget[];
   team: string;
+  resume: string[];
 };
 const live = (j: Job) => j.status === 'queued' || j.status === 'running';
 const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-const providerName = (p: string) => (p === 'claude' ? 'Claude' : 'Codex');
 
 /** The task's own status decides completion; a finished turn only says that turn ended.
  *  Turns are ordered active first, then newest finished first. */
@@ -70,7 +71,7 @@ function placeTask(
   ];
 }
 
-export function QuarkWorkspace({ data }: { data: HomeData }) {
+export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: string }) {
   const reading = useReading('/quark/coordinator', quarkCoordinatorStatusSchema.parse);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -79,7 +80,10 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
   const [filter, setFilter] = useState('all');
   const [completedSearch, setCompletedSearch] = useState('');
   const [completedLimit, setCompletedLimit] = useState(10);
+  const budgetEdits = useRef<BudgetEdits>(new Map());
+  const [, renderBudgets] = useState(0);
   const startKey = useRef(crypto.randomUUID());
+  const resumeKeys = useRef(new Map<string, string>());
   const s = reading.data;
   useEffect(() => {
     if (s?.agentId) startKey.current = crypto.randomUUID();
@@ -88,6 +92,23 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
     reading.retry();
     data.snapshot.retry();
   };
+  async function continueWork(runIds: string[]) {
+    setBusy(true);
+    setError('');
+    try {
+      for (const runId of runIds) {
+        const key = resumeKeys.current.get(runId) ?? crypto.randomUUID();
+        resumeKeys.current.set(runId, key);
+        await api('/quark/resume', { key, runId });
+        resumeKeys.current.delete(runId);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not continue this work.');
+    } finally {
+      setBusy(false);
+      refresh();
+    }
+  }
   async function start() {
     setBusy(true);
     setError('');
@@ -101,7 +122,34 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
       setBusy(false);
     }
   }
+  const budgetSlider = (budget: BoardBudget) => (
+    <BudgetSlider
+      key={budget.id}
+      budget={budget}
+      edits={budgetEdits.current}
+      changed={() => renderBudgets((n) => n + 1)}
+      windowLabel={
+        s?.capacity
+          .find((p) => p.provider === budget.provider)
+          ?.windows.find((w) => w.id === budget.windowId)?.label ??
+        s?.accounting.windows.find(
+          (w) => w.provider === budget.provider && w.windowId === budget.windowId,
+        )?.label ??
+        'Saved allowance'
+      }
+      refresh={refresh}
+    />
+  );
   const state = data.snapshot.data;
+  const focusedTask = useRef<string | null>(null);
+  useEffect(() => {
+    if (!taskId || focusedTask.current === taskId || !s || !state) return;
+    const card = document.getElementById(`quark-task-${taskId}`);
+    if (card) {
+      card.scrollIntoView({ block: 'center' });
+      focusedTask.current = taskId;
+    }
+  }, [taskId, s, state]);
   const runs = s
     ? [...s.queue.jobs, ...s.queue.history].filter((j) => j.agentId !== s.agentId)
     : [];
@@ -138,6 +186,10 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
       actual: `${j.tokensCharged.toLocaleString()} tokens · ${j.tokenBasis}`,
       budgets: [],
       team: '',
+      resume:
+        s?.accounting.holds
+          .filter((h) => !h.releasedAt && h.runId === j.runId)
+          .map((h) => h.runId) ?? [],
     };
   };
   // One card per task, however many workers, managers or retries took turns on it. The task
@@ -154,7 +206,7 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
       (a) => a?.status === 'waiting',
     );
     const project = projectOf(task?.projectId ?? (lead && agentOf(lead.agentId)?.projectId));
-    const quotaHold = s?.accounting.holds.find(
+    const quotaHolds = s?.accounting.holds.filter(
       (hold) =>
         !hold.releasedAt &&
         (team.some((agent) => agent.id === hold.agentId) ||
@@ -165,7 +217,7 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
       turns,
       asking?.name,
       !!project?.policy.paused,
-      quotaHold?.reason,
+      quotaHolds?.[0]?.reason,
     );
     const plan = lead?.estimate ?? task?.scheduling;
     return [
@@ -192,12 +244,8 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
           ? `Current turn: ${lead.tokensCharged.toLocaleString()} tokens · ${lead.tokenBasis}`
           : '',
         // Allowance caps come from QUARK's accounting; bounded turn history is never summed.
-        budgets: (s?.accounting.budgets ?? [])
-          .filter((b) => b.taskId === taskId)
-          .map(
-            (b) =>
-              `${providerName(b.provider)}: ${b.remainingPercent.toFixed(1)}% left of ${b.limitPercent}% allocated${b.reason ? ' · waiting' : ''}`,
-          ),
+        budgets: (s?.accounting.budgets ?? []).filter((b) => b.taskId === taskId),
+        resume: quotaHolds?.map((h) => h.runId) ?? [],
         team:
           team.length > 1 || turns.length > 1
             ? [team.length && count(team.length, 'agent'), count(turns.length, 'recent turn')]
@@ -249,6 +297,7 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
       actual: j.phase,
       budgets: [],
       team: '',
+      resume: [],
     }),
   );
   const cards = [...workCards, ...localCards];
@@ -274,6 +323,14 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
       {error && (
         <p className="form-error" role="alert">
           {error}
+        </p>
+      )}
+      {s && reading.error && (
+        <p role="alert">
+          Spending readings could not update. Showing the last saved readings.{' '}
+          <button className="flow-button" onClick={reading.retry}>
+            Retry readings
+          </button>
         </p>
       )}
       {!s ? (
@@ -429,7 +486,15 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
           </div>
           <div className="quark-board-heading">
             <div>
-              <h2>Project queue</h2>
+              <h2>Projects and budgets</h2>
+              <p className="quark-budget-help">
+                Managers set starting task budgets. Adjust a slider to change one; it saves on
+                release. Spending updates automatically.
+              </p>
+              <small className="quark-budget-help">
+                Percentages refer to the full allowance. Project limits and the shared reserve still
+                apply.
+              </small>
             </div>
             <a className="flow-button" href="#/projects">
               Projects <ArrowUpRight size={16} />
@@ -441,19 +506,20 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
                 state?.projects.some((project) => project.id === p.id && !project.internal),
               )
               .map((p) => (
-                <a key={p.id} href={`#/project/${p.id}`}>
-                  <strong>{p.name}</strong>
+                <article key={p.id} className="quark-project-card">
+                  <a href={`#/project/${p.id}`}>
+                    <strong>{p.name}</strong>
+                    <ArrowUpRight size={15} />
+                  </a>
                   <span>{p.policy.paused ? 'Paused' : `Priority weight ${p.policy.weight}`}</span>
                   {p.policy.instruction && <small>{p.policy.instruction}</small>}
                   {s.accounting.budgets
                     .filter((b) => b.projectId === p.id && !b.taskId)
-                    .map((b) => (
-                      <small key={b.id}>
-                        {b.provider}: {b.remainingPercent.toFixed(1)}% left of {b.limitPercent}%
-                        allocated{b.reason ? ' · waiting' : ''}
-                      </small>
-                    ))}
-                </a>
+                    .map(budgetSlider)}
+                  {!s.accounting.budgets.some((b) => b.projectId === p.id && !b.taskId) && (
+                    <small>Task budgets are on the cards below.</small>
+                  )}
+                </article>
               ))}
           </div>
           <div className="flow-filters quark-filters" aria-label="Board status">
@@ -501,9 +567,11 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
                       .filter((c) => c.column === column)
                       .slice(0, column === 'Completed' ? completedLimit : 30)
                       .map((c) => (
-                        <a key={c.id} className="quark-ticket" href={c.href}>
+                        <article key={c.id} id={`quark-task-${c.id}`} className="quark-ticket">
                           <span className="quark-ticket-project">{c.project}</span>
-                          <h4>{c.title}</h4>
+                          <h4>
+                            <a href={c.href}>{c.title}</a>
+                          </h4>
                           <span className="quark-ticket-model">{c.model}</span>
                           {column !== 'Completed' && <p>{c.reason}</p>}
                           {column !== 'Completed' && (
@@ -514,9 +582,6 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
                               </span>
                               {c.resources && <span>{c.resources}</span>}
                               {c.actual && <span>{c.actual}</span>}
-                              {c.budgets.map((b, i) => (
-                                <span key={i}>{b}</span>
-                              ))}
                               {c.team && (
                                 <span>
                                   <Users size={13} />
@@ -525,15 +590,27 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
                               )}
                             </div>
                           )}
+                          {column !== 'Completed' && c.budgets.map(budgetSlider)}
+                          {column !== 'Completed' && c.resume.length > 0 && (
+                            <button
+                              className="flow-button quark-continue"
+                              disabled={busy}
+                              onClick={() => void continueWork(c.resume)}
+                            >
+                              Continue work
+                            </button>
+                          )}
                           <footer>
                             <span>
                               {column === 'Completed'
                                 ? c.team || c.actual || 'Open details'
                                 : `${c.priority} · weight ${c.weight}`}
                             </span>
-                            <ArrowUpRight size={15} />
+                            <a href={c.href} aria-label={`Open ${c.title}`}>
+                              <ArrowUpRight size={15} />
+                            </a>
                           </footer>
-                        </a>
+                        </article>
                       ))}
                     {!visibleCards.some((c) => c.column === column) && (
                       <p className="quark-column-empty">

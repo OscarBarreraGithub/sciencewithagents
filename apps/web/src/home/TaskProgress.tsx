@@ -76,7 +76,7 @@ export function TaskProgress({ task, data }: { task: Task; data: HomeData }) {
     .filter((decision) => decision.taskId && family.has(decision.taskId))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 3);
-  const usageLink = `#/usage/${task.id}`;
+  const usageLink = `#/work/${task.id}`;
   return (
     <section className="flow-panel task-progress" aria-label="Task progress and spending">
       {task.closure && (

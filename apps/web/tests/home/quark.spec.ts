@@ -72,11 +72,10 @@ test('usage explains a stale provider reading and its shared automatic retry wit
   });
 });
 
-test('QUARK budgets, pause recovery and cache settings work on phone and desktop with safe retries', async ({
+test('allowance details link to board budgets and retain pause recovery and cache settings', async ({
   page,
 }, info) => {
   let state = initial();
-  const requests: object[] = [];
   await page.route('**/api/snapshot', async (route) => {
     const response = await route.fetch(),
       body = await response.json();
@@ -121,51 +120,41 @@ test('QUARK budgets, pause recovery and cache settings work on phone and desktop
     await route.fulfill({ json: body });
   });
   await page.route('**/api/quark', (route) => route.fulfill({ json: state }));
-  await page.route('**/api/quark/budgets', (route) => {
-    const payload = route.request().postDataJSON();
-    requests.push(payload);
-    if (requests.length === 1)
-      return route.fulfill({
-        status: 502,
-        json: { error: 'Connection interrupted. Try saving again.' },
-      });
-    state = {
-      ...state,
-      budgets: [
-        {
-          id: '10000000-0000-4000-8000-000000000004',
-          revision: 1,
-          projectId: project,
-          taskId: null,
-          provider: 'codex',
-          windowId: 'secondary',
-          limitPercent: 10,
-          createdAt: now,
-          startSequence: 0,
-          source: 'owner',
-          spentPercent: 8,
-          reservedPercent: 1,
-          remainingPercent: 2,
-          reason: 'Allowance budget reached its stopping buffer.',
-        },
-      ],
-      holds: [
-        {
-          runId: run,
-          agentId: agent,
-          projectId: project,
-          reason: 'Allowance budget reached its stopping buffer.',
-          createdAt: now,
-          cause: 'budget',
-          stopAcknowledgedAt: now,
-          releasedAt: null,
-          lastAttemptAt: now,
-          error: null,
-        },
-      ],
-    };
-    return route.fulfill({ json: state });
-  });
+  state = {
+    ...state,
+    budgets: [
+      {
+        id: '10000000-0000-4000-8000-000000000004',
+        revision: 1,
+        projectId: project,
+        taskId: null,
+        provider: 'codex',
+        windowId: 'secondary',
+        limitPercent: 10,
+        createdAt: now,
+        startSequence: 0,
+        source: 'owner',
+        spentPercent: 8,
+        reservedPercent: 1,
+        remainingPercent: 2,
+        reason: 'Allowance budget reached its stopping buffer.',
+      },
+    ],
+    holds: [
+      {
+        runId: run,
+        agentId: agent,
+        projectId: project,
+        reason: 'Allowance budget reached its stopping buffer.',
+        createdAt: now,
+        cause: 'budget',
+        stopAcknowledgedAt: now,
+        releasedAt: null,
+        lastAttemptAt: now,
+        error: null,
+      },
+    ],
+  };
   await page.route('**/api/quark/resume', (route) =>
     route.fulfill({ status: 409, json: { error: 'Increase the budget before continuing.' } }),
   );
@@ -177,15 +166,10 @@ test('QUARK budgets, pause recovery and cache settings work on phone and desktop
   await page.goto('/#/usage');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Usage and allowances');
   await expect(page.getByText('94.0%', { exact: false })).toBeVisible();
-  await page.getByLabel('Project', { exact: true }).selectOption(project);
-  await page.getByLabel('Allowance', { exact: true }).selectOption('secondary');
-  await page.getByLabel('Use at most (%)').fill('10');
-  await page.getByRole('button', { name: 'Set budget', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Connection interrupted');
-  await page.getByRole('button', { name: 'Set budget', exact: true }).click();
-  expect(requests).toHaveLength(2);
-  expect(requests[0]).toEqual(requests[1]);
-  await expect(page.getByRole('status')).toContainText('Budget saved');
+  await expect(page.getByRole('button', { name: 'Set budget', exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Adjust spending on the QUARK board →' }),
+  ).toHaveAttribute('href', '#/work');
   await page.getByRole('button', { name: 'Continue saved work' }).click();
   await expect(page.getByRole('alert')).toContainText('Increase the budget');
   await page.getByText('Context cache settings', { exact: true }).click();
@@ -282,7 +266,9 @@ test('QUARK read failures recover without starting work or hiding an empty ledge
   await page.goto('/#/usage');
   await expect(page.getByRole('alert')).toContainText('Usage ledger unavailable');
   await page.getByRole('button', { name: 'Retry reading' }).click();
-  await expect(page.getByText('No project caps yet.', { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Adjust spending on the QUARK board' }),
+  ).toBeVisible();
   await page.getByText('Tokens by agent', { exact: true }).click();
   await expect(
     page.getByText('New agent work will appear automatically.', { exact: false }),

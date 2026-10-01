@@ -1,9 +1,9 @@
 # Automatic accounting, allowance caps and cache refreshes
 
-Open **All usage** or **Work** from Home, on the computer or paired phone. These now open
-the QUARK usage screen. Opening it makes no model calls. It shows remaining account
-allowances, estimated project shares, project/agent/run token counters, saved spending caps,
-quota pauses and estimated cache timers. Projects, tasks and managed Conversations open from Home;
+Open **QUARK** from Home, on the computer or paired phone, for the conversation, shared
+work board and spending sliders. **Allowance details** opens remaining account allowances,
+estimated project shares, project/agent/run token counters, quota pauses and estimated cache
+timers. Opening these views makes no model calls. Projects, tasks and managed Conversations open from Home;
 each uses the same saved work and QUARK state.
 
 Managers also need a signed, host-renewed QUARK lease before orchestration. The lease and
@@ -12,11 +12,23 @@ do not manage those leases; the host enforces their budgets independently of man
 
 ## Set and use a spending budget
 
-Choose a project, optionally a task, provider and a reported allowance window. **Use at
-most 10%** grants ten percentage points of the full allowance from the time the cap is
+Managers are instructed to set each planned task’s starting cap with `dock_budget` before
+delegation, estimating the whole bounded task, workers and review from available evidence.
+They use the actual provider/window readings, without inventing a generic percentage.
+Existing task caps appear on task cards; project caps appear on project cards in **QUARK**.
+Move a slider up or down; release it to save. Estimated spent/remaining amounts refresh
+from the shared ledger every ten seconds while the page is visible. Provider readings can
+be older or unavailable; these are not instantaneous billing figures.
+
+Each slider names its provider and allowance window. A **10%** cap grants ten percentage
+points of the full allowance from the time the cap is
 saved; it is not ten percent of the remaining balance. Weekly and five-hour caps are
 separate. A plan without a reported weekly meter cannot acquire an invented weekly cap.
-Model-specific meters can be selected separately; they are not extra general capacity.
+Model-specific meters stay separate; they are not extra general capacity. Adjustments keep
+the original spending baseline. A lost reply retries the same saved operation; another
+device’s edit is reported rather than overwritten. Raising a cap does not resume paused
+work by itself: use **Continue work** on the card after checking the remaining allowance.
+For a new project-wide cap, tell QUARK what to allocate (or set it during project setup).
 
 A task cap includes its descendants, workers, associated manager reports and cache
 refreshes. A whole-project cap also includes general manager conversation overhead.

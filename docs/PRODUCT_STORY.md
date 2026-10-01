@@ -316,6 +316,13 @@ project's share, and pauses managed work as it approaches the cap. Your files an
 conversations stay in place. Increase the budget and explicitly continue the saved work
 when you are ready. Managers can tighten a cap but cannot give themselves more allowance.
 
+**Implemented:** Spending controls sit with the work on the QUARK board. Managers are
+instructed to estimate and save starting task budgets before delegation. Each saved project
+or task cap has a slider with estimated spending and remaining budget; release to save an
+adjustment. The board refreshes automatically. Changing a cap keeps the spending already
+recorded, and conflicting edits from another device are surfaced. Help/setup stays focused
+on its copyable setup prompts, without unrelated settings, computer or allowance shortcuts.
+
 Open the details to see provider-reported tokens per run, agent and project, including
 cache use and missing readings. Percentage shares are estimates, not a bill; 2–3 percentage-
 point accuracy has not been validated. Claude now feeds QUARK input/cache activity while it

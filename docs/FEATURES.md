@@ -373,8 +373,8 @@ including unchanged original history. Older/compacted and future native formats 
 explicit availability limits; this is not a guarantee of every historical transcript.
 
 Task detail also shows current jobs and quota pauses, planning estimates, inherited allowance
-caps, recent token readings and decisions. Its budget action keeps the selected task when
-opening Usage. Failed readings retain a visible stale-data notice and an explicit retry.
+caps, recent token readings and decisions. Its budget action opens the selected task on
+the QUARK board. Failed readings retain a visible stale-data notice and an explicit retry.
 
 Home, Computer health, Model settings and QUARK accounting/budget controls remain available.
 Work/Attention/review, the personal agent, shared editor chats, saved-history search, browser
@@ -487,6 +487,15 @@ own independent review and the project's manager-apply or human-review policy. I
 require fresh validation; the final integration remains a clean fast-forward.
 
 ## QUARK, shared allowances and local work
+
+**Implemented:** Spending sliders now live with saved project/task caps on the QUARK board.
+Managers are instructed to save initial whole-task estimates before delegation, using actual
+provider windows. Owner adjustments save on release, retain spending already recorded,
+retry lost replies idempotently and report conflicting device edits. The board refreshes
+its ledger readings every ten seconds while visible; provider data and attribution remain
+estimated/delayed. Explicit **Continue work** resumes quota-held jobs when allowed.
+The detailed allowance page retains accounting/cache controls but removes its duplicate
+spending form. Help/setup no longer adds the three unrelated navigation links.
 
 Implemented: All usage explains Claude read failures, retains the last successful time and
 shows the next automatic check. Provider retry hints and the existing cooldown are shared

@@ -190,23 +190,30 @@
   margin: 8px 0;
 }
 .quark-projects {
-  display: flex;
-  gap: 8px;
-  overflow: auto;
-  padding: 3px 0 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 14px;
+  padding: 3px 0 20px;
 }
-.quark-projects a {
-  flex: 0 0 200px;
+.quark-project-card {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 13px 16px;
+  gap: 6px;
+  min-width: 0;
+  padding: 18px;
   background: white;
   border: 1px solid var(--q-border);
   border-radius: 12px;
-  text-decoration: none;
-  color: inherit;
   font-size: var(--text-small);
+}
+.quark-project-card > a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+  min-height: 44px;
 }
 .quark-projects span,
 .quark-projects small {
@@ -405,4 +412,93 @@
     float: none;
     margin-left: 10px;
   }
+}
+
+.quark-budget-help {
+  color: var(--q-muted);
+  line-height: 1.5;
+  max-width: 720px;
+}
+.quark-ticket h4 a {
+  color: inherit;
+  text-decoration: none;
+}
+.quark-ticket footer > a {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  color: inherit;
+}
+.quark-budget-slider {
+  border-top: 1px solid var(--q-border);
+  margin-top: 14px;
+  padding-top: 14px;
+  min-width: 0;
+}
+.quark-budget-slider label {
+  display: block;
+  color: #243538;
+}
+.quark-budget-slider-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: var(--text-small);
+}
+.quark-budget-slider-heading strong {
+  font-size: var(--text-lead);
+  color: #243538;
+  white-space: nowrap;
+}
+.quark-budget-slider input[type='range'] {
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin: 4px 0;
+  padding: 0;
+  accent-color: #426d5d;
+  cursor: pointer;
+}
+.quark-budget-slider p {
+  margin: 8px 0 2px;
+  font-size: var(--text-small);
+  line-height: 1.5;
+}
+.quark-budget-slider small {
+  display: block;
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--q-muted);
+}
+.quark-budget-slider [role='status'] {
+  min-height: 1.5em;
+  margin-top: 4px;
+}
+.quark-budget-meter {
+  height: 5px;
+  border-radius: 3px;
+  background: #e5ebe7;
+  overflow: hidden;
+}
+.quark-budget-meter > span {
+  display: block;
+  height: 100%;
+  background: #799c8d;
+}
+.quark-budget-error button {
+  min-height: 44px;
+  padding: 8px 12px;
+  margin: 8px 8px 0 0;
+  border: 1px solid var(--q-border);
+  border-radius: 9px;
+  background: white;
+  font: inherit;
+}
+.quark-budget-error [role='alert'] {
+  color: #8c3434;
+}
+.quark-continue {
+  margin-top: 12px;
 }

@@ -80,8 +80,8 @@ test('project setup shows real defaults, comfortable controls and retained choic
   await expect(priority).toContainText('Tell your manager more specific priorities');
   await expect(priority).toContainText('QUARK pauses its work');
   await priority.getByRole('radio', { name: /^High / }).check();
-  await page.getByRole('link', { name: 'QUARK allocations', exact: true }).click();
-  await expect(page).toHaveURL(/#\/usage$/);
+  await page.getByRole('link', { name: 'QUARK board', exact: true }).click();
+  await expect(page).toHaveURL(/#\/work$/);
   await page.reload();
   await page.getByRole('link', { name: 'Back', exact: true }).click();
   await expect(page).toHaveURL(/#\/new$/);
@@ -156,9 +156,9 @@ test('right swipe returns from QUARK while vertical scrolling and form gestures 
   await expect(page).toHaveURL(/#\/new$/);
   await swipe('.flow-heading h1', 60);
   await expect(page).toHaveURL(/#\/new$/);
-  await page.getByRole('link', { name: 'QUARK allocations', exact: true }).click();
-  await expect(page).toHaveURL(/#\/usage$/);
-  await swipe('.quark-heading h1');
+  await page.getByRole('link', { name: 'QUARK board', exact: true }).click();
+  await expect(page).toHaveURL(/#\/work$/);
+  await swipe('.quark-workspace .flow-heading h1');
   await expect(page).toHaveURL(/#\/new$/);
   await expect(page.getByLabel('Project name', { exact: true })).toHaveValue('Swipe draft');
 });

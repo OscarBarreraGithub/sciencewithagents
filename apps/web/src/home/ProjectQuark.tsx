@@ -394,8 +394,8 @@ export function QuarkControls({
           ))}
       </div>
       <div className="quark-links">
-        <a className="flow-button" href="#/usage">
-          QUARK allocations <ArrowRight size={16} />
+        <a className="flow-button" href="#/work">
+          QUARK board <ArrowRight size={16} />
         </a>
         <button
           type="button"
