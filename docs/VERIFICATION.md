@@ -15,6 +15,11 @@ existing conversation-specific controls, terminal and command links remain avail
   Evidence: ignored `data/advanced-navigation-*.log` and browser screenshots. Test servers
   and their browser children are closed; the owner's app remains available.
 
+Follow-up Settings cleanup removes Open conversations and Saved history from that grid;
+their conversation Configure links and records remain. Production web build and all five
+existing Settings navigation/layout cases pass, with the phone screenshot inspected.
+Evidence is in ignored `data/settings-chat-cleanup-*.log`.
+
 ## 2026-10-01 — native slider endpoints and control layout checks
 
 Safari range inputs inherited text-field padding/borders, making the thumb stop short of

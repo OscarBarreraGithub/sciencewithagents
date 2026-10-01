@@ -6,6 +6,8 @@ Removed the standalone Advanced entry from Settings and Apps and deleted its unf
 agent picker. Old `#/advanced` bookmarks open Settings. Keep conversation controls under
 **Configure → Advanced controls**, including direct links, context commands, native terminal,
 history and settings. Invalid conversation links offer the normal Chats list.
+Open conversations and Saved history are removed from the main Settings grid as well;
+keep their existing conversation Configure links and saved records.
 
 ## Latest slider correction
 

@@ -82,7 +82,7 @@ test('settings pages are reachable, read-only on opening and fit the shared shel
     path: `../../data/screenshots/connections/${info.project.name}-settings.png`,
   });
   for (const [title, path] of [
-    ['Models and roles', 'models'],
+    ['Model preferences', 'models'],
     ['Computers and accounts', 'computers'],
     ['Phone access', 'phone'],
     ['Recovery copies', 'recovery'],

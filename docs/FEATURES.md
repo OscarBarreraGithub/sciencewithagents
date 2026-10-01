@@ -469,6 +469,8 @@ Advanced controls open from a conversation's **Configure → Advanced controls**
 retains general model preferences and QUARK, without a separate all-agent picker. Old
 standalone Advanced bookmarks open Settings; missing conversation links offer the normal
 filtered Chats list. Session-specific links and native terminal/context tools remain available.
+Settings also omits Open conversations and Saved history; those are available from each chat's
+Configure panel, alongside the chat search tools.
 
 Implemented in the new shell: project → Add task / Add manager, per-conversation Advanced
 controls, exact model/effort settings, worker permissions and installed MCP/plugin controls,

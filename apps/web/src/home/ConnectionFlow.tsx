@@ -1,10 +1,8 @@
 import { useRef, useState, type ReactNode } from 'react';
 import {
   ArrowUpRight,
-  BookOpen,
   DatabaseBackup,
   Laptop,
-  MessageCircle,
   Monitor,
   Settings2,
   ShieldCheck,
@@ -95,14 +93,8 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
           <SettingsCard to="recovery" title="Recovery copies" icon={<DatabaseBackup />}>
             Keep private copies of your records and prepare an update with your setup agent.
           </SettingsCard>
-          <SettingsCard to="workspace" title="Open conversations" icon={<MessageCircle />}>
-            Return to saved views and deliberately continue from another browser.
-          </SettingsCard>
           <SettingsCard to="work" title="QUARK" icon={<Monitor />}>
             See remaining allowance, adjust budgets and manage waiting work.
-          </SettingsCard>
-          <SettingsCard to="search" title="Saved history" icon={<BookOpen />}>
-            Find conversations, results and the recorded decisions behind them.
           </SettingsCard>
         </div>
       </section>
