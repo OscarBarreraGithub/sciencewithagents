@@ -42,7 +42,7 @@ import { useScrollHints } from './useScrollHints';
 import { HomeOverview, ProviderMark, ago, providerName } from './HomeOverview';
 import { AppsGallery, SetupGuide } from './AppsGallery';
 import { AppUpdate } from './AppUpdate';
-import { HeaderOrb } from './HeaderOrb';
+import { HomeOrb } from './HomeOrb';
 import { PullToRefresh } from './PullToRefresh';
 import { Navigation, useNavigation } from './Navigation';
 
@@ -488,13 +488,13 @@ export function Home() {
               <a href={href('settings')} className="home-icon-button" aria-label="Settings">
                 <Settings2 size={19} />
               </a>
-              <HeaderOrb />
             </div>
           </div>
         </header>
         <AppUpdate />
         <div className="home-topline">
           <ComputerLink data={data} />
+          {page === 'home' && !mobile && <HomeOrb size={20} />}
           <button
             type="button"
             className={`home-phone tone-${phoneTone}`}
@@ -511,8 +511,13 @@ export function Home() {
           {page === 'home' && <PullToRefresh main={main} />}
           {mobile && page === 'home' && (
             <div className="home-mobile-status" aria-label="Computer and allowances">
-              <ComputerLink data={data} />
-              <Allowances data={data} now={now} />
+              <div className="home-mobile-readings">
+                <ComputerLink data={data} />
+                <div className="home-mobile-allowances">
+                  <Allowances data={data} now={now} />
+                </div>
+              </div>
+              <HomeOrb />
             </div>
           )}
           {page === 'welcome' ? (

@@ -225,6 +225,9 @@ body:has(.home-shell) {
 .home-orb {
   flex-shrink: 0;
 }
+.home-topline .home-orb {
+  margin-left: auto;
+}
 .home-pull-refresh {
   position: sticky;
   top: 0;
@@ -754,14 +757,23 @@ dialog.home-help-dialog {
     padding: 2px 0 8px;
   }
   .home-mobile-status {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 80px;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
+    gap: 12px;
     padding: 8px 0 12px;
   }
+  .home-mobile-readings {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  .home-mobile-allowances {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
   .home-mobile-status .home-computer {
-    flex-basis: 100%;
     min-height: 32px;
   }
   .home-editor-state {

@@ -29,6 +29,12 @@ No model message, backend change, pairing reset or manual service restart was re
 
 ## 2026-10-01 — Home refresh, quiet orb and phone icon
 
+The placement correction moves the orb from the toolbar into Home's computer/allowance
+band. The five-profile check verifies the phone orb is to the right of the readings,
+above Chats, stays inside the screen, and retains idle/tap/reduced-motion behavior.
+The production build passed; the phone screenshot was visually checked against the
+owner's marked position.
+
 Production web build passed. Twenty focused checks passed across desktop, 412×915,
 360×800, 915×412 and iPhone WebKit: pull threshold, coalesced in-flight reads, failure/retry,
 preserved drafts, explicit release notice, nested scrolling/editor exclusions, icon bytes

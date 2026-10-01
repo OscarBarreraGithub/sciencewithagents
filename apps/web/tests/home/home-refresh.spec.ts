@@ -130,6 +130,15 @@ test('orb is idle until tapped, settles again and respects reduced motion', asyn
   await page.goto('/#/home');
   const button = page.getByRole('button', { name: 'Change orb shape', exact: true });
   const canvas = button.locator('canvas');
+  await expect(page.locator('.home-header .home-orb')).toHaveCount(0);
+  const orbBox = (await button.boundingBox())!;
+  const destinations = (await page.locator('.overview-destinations').boundingBox())!;
+  expect(orbBox.y + orbBox.height).toBeLessThanOrEqual(destinations.y);
+  if (page.viewportSize()!.width <= 700) {
+    const readings = (await page.locator('.home-mobile-readings').boundingBox())!;
+    expect(orbBox.x).toBeGreaterThanOrEqual(readings.x + readings.width);
+    expect(orbBox.height).toBe(80);
+  }
   await expect(canvas).toHaveAttribute('data-draws', /\d+/);
   const idle = await canvas.getAttribute('data-draws');
   await page.waitForTimeout(300);

@@ -81,7 +81,8 @@ The explicit Reload app action still protects unsent drafts. Nested panels and e
 keep their own scrolling. Reads time out after 15 seconds so a lost connection cannot
 leave the wheel running indefinitely.
 
-The top-right orb uses [Thinking Orbs](https://github.com/Jakubantalik/thinking-orbs).
+Home's orb sits beside the computer and allowance readings, below the phone toolbar,
+and uses [Thinking Orbs](https://github.com/Jakubantalik/thinking-orbs).
 It is still while idle, changes shape with a brief animation on tap, and stops again.
 Reduced-motion settings use static shapes; hidden/offscreen animation pauses. It makes
 no AI or network requests. On narrow phones the header uses the drawn alien as its brand
