@@ -1,6 +1,7 @@
 # Build status
 
-The collaborator release is ready for the verified Apple Silicon Mac setup path. The MIT
+The Apple Silicon Mac setup path has passed the checks below. This does not mean every
+owner request is complete; the current follow-ups are listed explicitly below. The MIT
 source, website and installed app include the drawn Home, chat, project setup, notepad,
 Computer health and QUARK workflows. Real isolated Codex-only and Claude-only setup journeys
 pass. [CI 36798429104](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36798429104) passed production builds, 772 backend checks, 88 companion checks and
@@ -13,6 +14,36 @@ platforms and account/device boundaries are listed in CONTRIBUTOR_SETUP.md. No n
 or owner decision is required for the verified installation path.
 
 ## Latest owner correction
+
+GitHub and Cloudflare copy prompts had pale text on an inherited pale code-block background,
+making populated cards appear blank. Their text/background now stay readable in Apps and Help.
+Production build, five-profile contrast/copy/fallback checks and live Safari inspection pass.
+
+### Open owner follow-ups — checked against source, 2026-10-01
+
+- **Model defaults:** the global provider/tier editor still overlaps the separate project
+  worker matrix. Task defaults only chooses a provider; family/pin changes do not consistently
+  feed that matrix, and routine/calculation/orchestration dispatch falls back to global policy.
+  The discussed split into new-project defaults, project overrides and app-assistant settings
+  has not been implemented. Preserve explicit choices while consolidating these paths.
+- **Orb:** random selection, placement and tap-outline removal are done, but animation still
+  stops after 1.8 seconds and there are only seven real shapes. The duration/variety concern
+  was explained, not resolved. Do not count randomized rotation as additional shapes.
+- **Updates:** the agent-assisted update runbook exists, but the app still asks the person to
+  create a recovery copy before copying the update request. Moving that preparation into the
+  update-agent workflow remains unfinished; removal of the Home shortcut did not complete it.
+- **Account setup:** the readable prompts are static instructions. They do not detect GitHub
+  or Cloudflare readiness, hide completed steps or mark verified completion. Copying never
+  starts setup. This is separate from the working native-provider sign-in checks in Welcome.
+
+- **Apps gallery:** it currently renders a fixed empty state. Registered app launch tiles
+  and project website publication are not wired; the empty screen is not proof that those
+  capabilities exist. The owner explicitly deferred visual fine-tuning until there are apps.
+
+**Deliberately later:** AI news, the personal-agent destination and public Guide/FAQ remain
+deferred. Marketplace publication and physical-phone acceptance remain separate from source
+installation and browser simulation. Older private-ledger counts are historical evidence, not
+proof that these later requests were implemented.
 
 The VS Code control at the top of Chats shows connection/setup status and extension instructions.
 Shared conversations remain in Chats. Initial shared history now loads even when the browser
@@ -73,8 +104,9 @@ checks cover all five profiles; a real native diagnostic command passed. See VER
 - Reviewed code is applied by its manager by default, with exact reviewed source/target
   validation. A project can require human review instead. Small reviews have two
   correction rounds, then a recorded manager disposition or human handoff.
-- Computer health has a current snapshot, charts, grouped app/project activity and
-  bounded searchable history. Ask Codex/Claude supports central defaults, explicit live
+- Computer health has a current snapshot, charts and grouped project/app activity. Historical
+  evidence remains available to the assistant without a human history list. Ask Codex/Claude
+  supports central defaults, explicit live
   model choices, retained diagnostic conversations and same-request recovery.
 - Saved conversations, worker evidence and eligible native conversation copies support
   separate questions about completed work. Finished tasks and their reviews stay finished.

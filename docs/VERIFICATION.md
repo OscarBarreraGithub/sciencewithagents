@@ -1,5 +1,15 @@
 # Verification
 
+## 2026-10-01 — visible GitHub and Cloudflare setup prompts
+
+Live Safari reproduced populated prompt cards with near-white text on a pale inherited
+`pre` background. Explicit card text/background styling fixes Apps and Help together.
+The production frontend build passed. One focused journey passes all five browser profiles:
+both prompts have readable computed contrast, retain their full copy text, and select that
+text for manual copying when the clipboard rejects. Clipboard success/failure is simulated
+inside the browser; no account setup is executed. Phone/WebKit screenshots and the updated
+live Safari page were visually inspected. Test artifacts remain in ignored data/.
+
 ## 2026-10-01 — Computer health presentation cleanup
 
 The production frontend build and strict TypeScript check passed. Thirty focused resource

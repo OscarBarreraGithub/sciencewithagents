@@ -91,6 +91,86 @@ async function noHorizontalOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 }
 
+test('GitHub and Cloudflare prompts are readable and copyable in Apps and Help', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const state = window as Window & { setupCopies: string[]; setupCopyFails: boolean };
+    state.setupCopies = [];
+    state.setupCopyFails = false;
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          if (state.setupCopyFails) throw new Error('Clipboard unavailable');
+          state.setupCopies.push(value);
+        },
+      },
+    });
+  });
+  await readings(page);
+  await page.goto('/#/apps');
+  for (const destination of ['Apps', 'Help']) {
+    if (destination === 'Help')
+      await page.getByRole('button', { name: 'Help and setup', exact: true }).click();
+    const guide =
+      destination === 'Apps'
+        ? page.locator('.apps-setup')
+        : page.getByRole('dialog', { name: 'Help and setup', exact: true });
+    const cards = guide.locator('.setup-prompt');
+    await expect(cards).toHaveCount(2);
+    for (const [index, account] of ['GitHub', 'Cloudflare'].entries()) {
+      const card = cards.nth(index);
+      const prompt = card.locator('pre');
+      await expect(prompt).toContainText(`Set up ${account} sign-in on this computer`);
+      await expect(prompt).toContainText('Never ask me to paste credentials into chat.');
+      // DOM visibility alone misses pale text on a pale inherited pre background.
+      const contrast = await prompt.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const luminance = (color: string) => {
+          const channels = color
+            .match(/[\d.]+/g)!
+            .slice(0, 3)
+            .map(Number)
+            .map((n) => {
+              const value = n / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            });
+          return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+        };
+        const ink = luminance(style.color);
+        const paper = luminance(style.backgroundColor);
+        return (Math.max(ink, paper) + 0.05) / (Math.min(ink, paper) + 0.05);
+      });
+      expect(contrast).toBeGreaterThanOrEqual(4.5);
+      await card.getByRole('button', { name: 'Copy', exact: true }).click();
+      await expect(card.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
+      expect(
+        await page.evaluate(() =>
+          (window as Window & { setupCopies: string[] }).setupCopies.at(-1),
+        ),
+      ).toBe(await prompt.textContent());
+      expect((await prompt.boundingBox())!.height).toBeGreaterThan(50);
+      await page.screenshot({
+        path: test.info().outputPath(`${destination}-${account}-prompt.png`),
+      });
+    }
+    await noHorizontalOverflow(page);
+  }
+  await page.evaluate(() => {
+    (window as Window & { setupCopyFails: boolean }).setupCopyFails = true;
+  });
+  const lastCard = page
+    .getByRole('dialog', { name: 'Help and setup', exact: true })
+    .locator('.setup-prompt')
+    .last();
+  await lastCard.getByRole('button').click();
+  await expect(lastCard.getByRole('status')).toContainText('copy it by hand');
+  expect(await page.evaluate(() => getSelection()?.toString())).toBe(
+    await lastCard.locator('pre').textContent(),
+  );
+});
+
 test('drawn Home is read-only, responsive, and opens real destinations', async ({ page }, info) => {
   const mutations: string[] = [];
   page.on('request', (request) => {

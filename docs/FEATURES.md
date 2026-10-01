@@ -1,5 +1,11 @@
 # Feature map
 
+**Optional account prompts (2026-10-01): readable and copyable in Apps and Help.** Prompt cards
+set both text and background colors, avoiding the shared code-block style that made their
+contents appear blank. Copy and manual-selection fallback have focused responsive checks.
+These remain setup-agent instructions, not automatic account-readiness detection. Confirmed
+unfinished model-settings, orb and update-flow requests are listed in [Build status](STATUS.md).
+
 **Helper visibility (2026-09-30): implemented with a native-editor limit.** App-created
 Codex contexts now carry durable ownership/provenance; native helpers and managed contexts
 are excluded from our shared/saved-session pickers. Internal development projects no longer

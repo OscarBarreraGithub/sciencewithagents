@@ -1,5 +1,14 @@
 # Resume here — current continuation only
 
+## Latest setup correction and request reconciliation
+
+GitHub/Cloudflare prompts contained text but inherited a pale code-block background with pale
+text. Fixed the shared Apps/Help prompt styling; five-profile contrast/copy/fallback checks and
+live Safari inspection pass. Read STATUS.md's open owner follow-ups before claiming completion:
+model-default consolidation, orb duration/variety, agent-managed recovery preparation and
+account-readiness detection remain unfinished. Apps is still a fixed empty state for later
+app registration. These source-confirmed gaps supersede older broad completion claims below.
+
 ## Latest Computer health cleanup
 
 Projects and jobs now sit above Apps and processes on desktop and phones. The explanatory
