@@ -13,13 +13,17 @@
   border-radius: 16px;
   background: white;
 }
+.config-section > * {
+  min-width: 0;
+  max-width: 100%;
+}
 .config-section > legend,
 .config-section > h3 {
   float: left;
   width: 100%;
   margin: 0 0 12px;
   padding: 0;
-  font-size: 16px;
+  font-size: var(--text-reading);
   font-weight: 650;
 }
 .config-section > legend + * {
@@ -27,14 +31,14 @@
 }
 .config-help {
   color: var(--home-muted);
-  font-size: 13px;
+  font-size: var(--text-small);
   margin: 0 0 12px;
   overflow-wrap: anywhere;
 }
 .config-section label {
   display: grid;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 600;
   min-width: 0;
   margin: 0;
@@ -92,7 +96,7 @@
 }
 .config-folder strong {
   display: block;
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .config-folder small {
   display: block;
@@ -122,7 +126,7 @@
 .config-stops {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 500;
   color: var(--home-muted);
   text-align: center;
@@ -142,7 +146,7 @@
 }
 .config-custom-note {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-small);
   color: #6f5a1f;
 }
 .config-link-button {
@@ -176,7 +180,7 @@
   min-height: 44px;
   align-content: center;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 650;
 }
 .config-defaults {
@@ -210,7 +214,7 @@
 }
 .config-models > summary small {
   font-weight: 500;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--home-muted);
   overflow-wrap: anywhere;
 }
@@ -230,12 +234,12 @@
 .config-warning {
   grid-column: 1 / -1;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #8a5a12;
   overflow-wrap: anywhere;
 }
 .config-defaults p {
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--home-muted);
   margin: 8px 0;
 }
@@ -247,7 +251,7 @@
 .config-defaults table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-small);
   white-space: nowrap;
 }
 .config-defaults :is(th, td) {
@@ -286,7 +290,7 @@
 }
 .config-check small {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--home-muted);
 }
 .config-tracking {
@@ -328,7 +332,7 @@
   justify-content: space-between;
   gap: 12px;
   color: var(--home-muted);
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .project-config.embedded .config-section {
   padding: 16px;
@@ -356,7 +360,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .config-stops {
-    font-size: 11px;
+    font-size: var(--text-caption);
   }
   .config-spawn {
     width: 100%;

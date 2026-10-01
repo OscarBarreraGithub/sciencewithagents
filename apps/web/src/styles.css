@@ -10,7 +10,13 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  font-size: 14px;
+  /* Respect browser text preferences; components share one readable scale. */
+  font-size: 100%;
+  --text-caption: 0.875rem;
+  --text-small: 1rem;
+  --text-body: 1.0625rem;
+  --text-reading: 1.125rem;
+  --text-lead: 1.25rem;
   --paper: #fffefa;
   --line: #e6e7df;
   --muted: #899086;
@@ -24,6 +30,7 @@
 }
 body {
   margin: 0;
+  font-size: var(--text-body);
 }
 button,
 input,
@@ -70,6 +77,12 @@ select {
   outline: none;
   min-width: 0;
 }
+/* WebKit can count a large native control's inner text as page overflow even
+   when the control itself fits. Keep text scrolling inside that control. */
+input:not([type='range']),
+select {
+  overflow: hidden;
+}
 input:focus,
 textarea:focus,
 select:focus {
@@ -105,7 +118,7 @@ pre {
   font-family: 'SFMono-Regular', Consolas, monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.6;
   background: #f3f3ee;
   padding: 14px;
@@ -119,13 +132,13 @@ code {
   font-size: 0.9em;
 }
 small {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .muted {
   color: var(--muted);
 }
 .small-text {
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .app-shell {
   display: grid;
@@ -151,7 +164,7 @@ small {
   align-items: center;
   gap: 7px;
   padding: 0 4px;
-  font-size: 16px;
+  font-size: var(--text-reading);
   font-weight: 650;
   letter-spacing: -0.6px;
   flex-wrap: wrap;
@@ -168,7 +181,7 @@ small {
   margin-left: auto;
   border: 1px solid #dce0d4;
   font-family: monospace;
-  font-size: 8px;
+  font-size: var(--text-caption);
   letter-spacing: 1px;
   padding: 3px 4px;
   border-radius: 3px;
@@ -179,13 +192,13 @@ small {
   align-items: center;
   gap: 9px;
   margin: 36px 3px 24px;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 550;
 }
 .workspace-label small {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--text-caption);
   font-weight: 400;
   margin-top: 4px;
 }
@@ -221,10 +234,10 @@ small {
   padding: 0;
   box-shadow: none;
   background: none;
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .search-box > span {
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #acb29f;
   border: 1px solid #e0e3d8;
   border-radius: 3px;
@@ -235,7 +248,7 @@ small {
   align-items: center;
   justify-content: space-between;
   font-family: monospace;
-  font-size: 9px;
+  font-size: var(--text-caption);
   letter-spacing: 1.6px;
   color: #929b89;
   margin: 30px 6px 12px;
@@ -261,7 +274,7 @@ small {
   text-align: left;
   padding: 10px 9px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-small);
   flex-shrink: 0;
 }
 .project-link > span:nth-child(2) {
@@ -295,10 +308,10 @@ small {
   align-items: center;
   gap: 8px;
   color: #969d8f;
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .sidebar-empty {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--muted);
   padding: 0 8px;
 }
@@ -313,12 +326,12 @@ small {
   align-items: flex-start;
   gap: 8px;
   padding: 12px 10px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   line-height: 1.3;
 }
 .host-card small {
   display: block;
-  font-size: 9px;
+  font-size: var(--text-caption);
   color: #969e8d;
   margin-top: 4px;
 }
@@ -346,7 +359,7 @@ small {
   gap: 8px;
   width: 100%;
   padding: 17px 6px 0;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #929b89;
 }
 .help-link > svg:last-child:not(:first-child) {
@@ -370,7 +383,7 @@ small {
   justify-content: space-between;
   padding: 0 31px;
   border-bottom: 1px solid var(--line);
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .breadcrumbs {
   display: flex;
@@ -396,7 +409,7 @@ small {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #929b89;
 }
 .channel-header {
@@ -457,7 +470,7 @@ small {
   margin: 0;
 }
 .channel-identity p {
-  font-size: 11px;
+  font-size: var(--text-caption);
   margin: 6px 0 0;
   color: #939b8d;
 }
@@ -472,7 +485,7 @@ small {
   align-items: center;
   gap: 5px;
   white-space: nowrap;
-  font-size: 9px;
+  font-size: var(--text-caption);
   color: #7b8874;
   background: #f0f3ea;
   border: 1px solid #e2e8d9;
@@ -514,7 +527,7 @@ small {
   gap: 7px;
   border-radius: 6px;
   padding: 10px 13px;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 500;
   min-height: 36px;
 }
@@ -538,7 +551,7 @@ small {
 }
 .task-button {
   padding: 8px 10px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   min-height: 32px;
 }
 .icon-button {
@@ -567,7 +580,7 @@ small {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #979e91;
   position: relative;
   white-space: nowrap;
@@ -589,7 +602,7 @@ small {
 }
 .tab-count {
   font-family: monospace;
-  font-size: 9px;
+  font-size: var(--text-caption);
   background: #f0f1ea;
   color: #919987;
   padding: 1px 5px;
@@ -614,7 +627,7 @@ small {
   gap: 14px;
   color: #a1a895;
   font-family: monospace;
-  font-size: 9px;
+  font-size: var(--text-caption);
   margin: 27px 0 33px;
 }
 .conversation-date > span {
@@ -640,7 +653,7 @@ small {
   background: #edece5;
   border: 1px solid #e2e0d5;
   border-radius: 50%;
-  font-size: 9px;
+  font-size: var(--text-caption);
   font-weight: 500;
   color: #7b7f6f;
 }
@@ -655,16 +668,16 @@ small {
   margin: 3px 0 9px;
 }
 .message-heading > strong {
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 600;
   color: #4e5a47;
 }
 .message-heading time {
-  font-size: 9px;
+  font-size: var(--text-caption);
   color: #a3aa99;
 }
 .markdown {
-  font-size: 13px;
+  font-size: var(--text-small);
   line-height: 1.75;
   color: #56614d;
   overflow-wrap: anywhere;
@@ -695,14 +708,14 @@ small {
 .markdown h1,
 .markdown h2,
 .markdown h3 {
-  font-size: 16px;
+  font-size: var(--text-reading);
   margin-bottom: 12px;
 }
 .markdown table {
   display: block;
   overflow: auto;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .markdown td,
 .markdown th {
@@ -720,7 +733,7 @@ small {
 }
 .handoff-label {
   font-family: monospace;
-  font-size: 8px;
+  font-size: var(--text-caption);
   letter-spacing: 0.5px;
   color: #899d7e;
   background: #f0f4ea;
@@ -757,7 +770,7 @@ small {
 }
 .generated-image details {
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .generated-image a {
   text-decoration: underline;
@@ -775,7 +788,7 @@ small {
   align-items: center;
   gap: 8px;
   font-family: monospace;
-  font-size: 10px;
+  font-size: var(--text-caption);
   cursor: pointer;
   padding: 10px;
 }
@@ -789,7 +802,7 @@ small {
   flex-shrink: 0;
 }
 .tool-state {
-  font-size: 8px;
+  font-size: var(--text-caption);
   color: #9aab8c;
 }
 .tool-entry pre {
@@ -797,7 +810,7 @@ small {
   border: 0;
   border-radius: 0;
   background: #f4f6ed;
-  font-size: 11px;
+  font-size: var(--text-caption);
   max-height: 360px;
   overflow: auto;
 }
@@ -809,7 +822,7 @@ small {
   background: #faf7ed;
   padding: 10px 12px;
   border-radius: 6px;
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .system-entry svg {
   flex-shrink: 0;
@@ -828,7 +841,7 @@ small {
   gap: 3px;
   margin-left: 43px;
   color: #9ba38f;
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .thinking > span {
   width: 4px;
@@ -861,7 +874,7 @@ small {
 }
 .native-child-note {
   padding: 10px 0;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.5;
   overflow-wrap: anywhere;
   max-height: 40vh;
@@ -877,7 +890,7 @@ small {
   display: flex;
   align-items: center;
   gap: 13px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   padding: 11px 3px;
   color: #8d9781;
   min-width: 0;
@@ -889,17 +902,17 @@ small {
   max-width: 50%;
   white-space: nowrap;
   overflow: hidden;
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .model-spark {
   color: #758a6b;
-  font-size: 15px;
+  font-size: var(--text-reading);
 }
 .permission {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 9px;
+  font-size: var(--text-caption);
   white-space: nowrap;
 }
 .permission > span {
@@ -909,7 +922,7 @@ small {
   border-radius: 50%;
 }
 .reasoning {
-  font-size: 9px;
+  font-size: var(--text-caption);
   margin-left: auto;
   white-space: nowrap;
   color: #a0a795;
@@ -937,7 +950,7 @@ small {
   padding: 15px 16px 5px;
   min-height: 75px;
   max-height: 180px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #526047;
 }
 .composer textarea::placeholder {
@@ -956,7 +969,7 @@ small {
 }
 .slash-icon {
   font-family: monospace;
-  font-size: 18px;
+  font-size: var(--text-lead);
   color: #a0aa94;
 }
 .send-button {
@@ -983,13 +996,13 @@ small {
   border-radius: 5px;
   padding: 6px 8px;
   color: #80916f;
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .steer-toggle {
   display: flex !important;
   align-items: center;
   gap: 5px !important;
-  font-size: 10px !important;
+  font-size: var(--text-caption) !important;
   color: #8b987e;
   margin: 0 !important;
 }
@@ -1004,7 +1017,7 @@ small {
   justify-content: space-between;
   gap: 5px;
   padding: 9px 3px 0;
-  font-size: 8px;
+  font-size: var(--text-caption);
   color: #a7ae9a;
 }
 .team-panel {
@@ -1023,14 +1036,14 @@ small {
   gap: 10px;
   border-bottom: 1px solid var(--line);
   font-family: monospace;
-  font-size: 9px;
+  font-size: var(--text-caption);
   letter-spacing: 1.5px;
   color: #9aa38b;
   flex-shrink: 0;
 }
 .team-live {
   margin-left: auto;
-  font-size: 7px;
+  font-size: var(--text-caption);
   letter-spacing: 1px;
   color: #859978;
   border: 1px solid #e1e7d7;
@@ -1052,7 +1065,7 @@ small {
   margin-bottom: 12px;
 }
 .section-title h2 {
-  font-size: 12px;
+  font-size: var(--text-small);
   letter-spacing: 0;
   margin: 0;
   color: #53634a;
@@ -1060,13 +1073,13 @@ small {
 }
 .section-title > span {
   font-family: monospace;
-  font-size: 9px;
+  font-size: var(--text-caption);
   border: 1px solid #e5e9dd;
   border-radius: 4px;
   padding: 1px 5px;
 }
 .team-description {
-  font-size: 10px;
+  font-size: var(--text-caption);
   line-height: 1.75;
   color: #a0a78f;
   margin-bottom: 21px;
@@ -1146,7 +1159,7 @@ dialog .session-confirm input {
   flex: 1;
 }
 .agent-card strong {
-  font-size: 10px;
+  font-size: var(--text-caption);
   display: block;
   font-weight: 500;
   overflow: hidden;
@@ -1155,7 +1168,7 @@ dialog .session-confirm input {
   color: #5d6c50;
 }
 .agent-card small {
-  font-size: 8px;
+  font-size: var(--text-caption);
   color: #a0aa92;
   display: flex;
   align-items: center;
@@ -1189,18 +1202,18 @@ dialog .session-confirm input {
 }
 .task-kicker {
   font-family: monospace;
-  font-size: 8px;
+  font-size: var(--text-caption);
   letter-spacing: 1px;
   color: #a4ad96;
 }
 .focus-task strong {
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.5;
   font-weight: 500;
   color: #627155;
 }
 .focus-task .badge {
-  font-size: 8px;
+  font-size: var(--text-caption);
   padding: 3px 5px;
 }
 .decision-note {
@@ -1210,7 +1223,7 @@ dialog .session-confirm input {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 8px;
+  font-size: var(--text-caption);
   color: #a3ad94;
   text-transform: capitalize;
 }
@@ -1222,10 +1235,10 @@ dialog .session-confirm input {
 }
 .decision-note time {
   margin-left: auto;
-  font-size: 7px;
+  font-size: var(--text-caption);
 }
 .decision-note p {
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #8d9a7d;
   margin: 8px 0 0;
   line-height: 1.8;
@@ -1237,14 +1250,14 @@ dialog .session-confirm input {
   gap: 7px;
   align-items: center;
   color: #a4ae96;
-  font-size: 8px;
+  font-size: var(--text-caption);
   border-top: 1px solid var(--line);
 }
 .empty-focus {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #a1ad91;
   padding: 6px 3px;
 }
@@ -1271,7 +1284,7 @@ dialog .session-confirm input {
 .eyebrow {
   font-family: monospace;
   letter-spacing: 1.5px;
-  font-size: 9px;
+  font-size: var(--text-caption);
   color: #a1a98f;
   display: block;
   margin-bottom: 15px;
@@ -1286,7 +1299,7 @@ dialog .session-confirm input {
 }
 .welcome p {
   color: #94a184;
-  font-size: 13px;
+  font-size: var(--text-small);
   max-width: 420px;
   margin: 0 auto 25px;
 }
@@ -1295,7 +1308,7 @@ dialog .session-confirm input {
   justify-content: center;
   flex-wrap: wrap;
   gap: 20px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #99a58d;
   margin-top: 50px;
 }
@@ -1321,7 +1334,7 @@ dialog .session-confirm input {
   margin: 0 0 16px;
 }
 .conversation-intro p {
-  font-size: 13px;
+  font-size: var(--text-small);
   color: #98a08d;
 }
 .starter-note {
@@ -1329,7 +1342,7 @@ dialog .session-confirm input {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #a6ae97;
   margin-top: 30px;
   line-height: 1.5;
@@ -1351,7 +1364,7 @@ dialog .session-confirm input {
 }
 .popover strong {
   display: block;
-  font-size: 10px;
+  font-size: var(--text-caption);
   font-weight: 500;
   color: #98a288;
   padding: 9px;
@@ -1365,7 +1378,7 @@ dialog .session-confirm input {
   width: 100%;
   padding: 10px 9px;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #697b59;
 }
 .popover button:hover,
@@ -1381,7 +1394,7 @@ dialog .session-confirm input {
   background: #fff1e7;
   border-bottom: 1px solid #efd9c9;
   color: #ab785a;
-  font-size: 12px;
+  font-size: var(--text-small);
   flex-shrink: 0;
 }
 .error-banner > span {
@@ -1410,10 +1423,10 @@ dialog .session-confirm input {
   border-radius: 6px;
   margin: 12px 0;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .mcp-settings legend {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #64745a;
 }
 .mcp-settings label {
@@ -1432,7 +1445,7 @@ dialog .session-confirm input {
 }
 .mcp-settings p {
   color: #64745a;
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.5;
   margin: 8px 0 0;
 }
@@ -1440,7 +1453,7 @@ dialog .session-confirm input {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #6c7d5c;
 }
 .settings-fields {
@@ -1452,15 +1465,15 @@ dialog .session-confirm input {
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .settings-fields select {
   width: 100%;
-  font-size: 12px;
+  font-size: var(--text-small);
   padding: 8px;
 }
 .small-button {
-  font-size: 11px;
+  font-size: var(--text-caption);
   padding: 6px 12px;
   min-height: 30px;
 }
@@ -1486,16 +1499,16 @@ dialog .session-confirm input {
   margin: 0 0 13px;
 }
 .board-heading p {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #98a48b;
   margin: 0;
 }
 .board-heading .eyebrow {
-  font-size: 8px;
+  font-size: var(--text-caption);
 }
 .board-heading .secondary {
   white-space: nowrap;
-  font-size: 10px;
+  font-size: var(--text-caption);
   min-height: 32px;
   padding: 7px 10px;
 }
@@ -1519,13 +1532,13 @@ dialog .session-confirm input {
   margin-bottom: 17px;
 }
 .task-card h3 {
-  font-size: 15px;
+  font-size: var(--text-reading);
   color: #667759;
   line-height: 1.5;
   margin: 0 0 10px;
 }
 .task-card > p {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #98a58d;
   margin: 0 0 20px;
 }
@@ -1537,12 +1550,12 @@ dialog .session-confirm input {
 }
 .acceptance > span {
   font-family: monospace;
-  font-size: 7px;
+  font-size: var(--text-caption);
   letter-spacing: 1px;
   color: #a4b093;
 }
 .acceptance p {
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #8f9f80;
   margin: 6px 0 0;
 }
@@ -1556,7 +1569,7 @@ dialog .session-confirm input {
   display: flex;
   gap: 8px;
   align-items: center;
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #91a080;
   text-align: left;
 }
@@ -1566,7 +1579,7 @@ dialog .session-confirm input {
   gap: 10px;
   border-top: 1px solid #edf0e5;
   padding-top: 13px;
-  font-size: 8px;
+  font-size: var(--text-caption);
   color: #a7b197;
 }
 .task-card footer > span {
@@ -1585,25 +1598,25 @@ dialog .session-confirm input {
   color: #a6b496;
 }
 .board-empty h3 {
-  font-size: 18px;
+  font-size: var(--text-lead);
   margin: 20px 0 8px;
   color: #849b6e;
 }
 .board-empty p {
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .decisions-section {
   margin-top: 35px;
 }
 .decisions-section h3 {
-  font-size: 13px;
+  font-size: var(--text-small);
   color: #7c9166;
   margin-bottom: 15px;
 }
 .decision-row {
   border-bottom: 1px solid #e7eedb;
   padding: 14px 0;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #94a781;
 }
 .decision-row summary {
@@ -1622,14 +1635,14 @@ dialog .session-confirm input {
   margin-top: 2px;
 }
 .decision-row summary time {
-  font-size: 8px;
+  font-size: var(--text-caption);
   white-space: nowrap;
   color: #acb79e;
 }
 .decision-row p {
   padding-left: 24px;
   margin: 15px 0 0;
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #a4b493;
 }
 .approval-card {
@@ -1641,12 +1654,12 @@ dialog .session-confirm input {
 }
 .approval-card .eyebrow {
   color: #b49a66;
-  font-size: 8px;
+  font-size: var(--text-caption);
   margin-bottom: 10px;
 }
 .mcp-form-notice,
 .mcp-form-field p {
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -1659,7 +1672,7 @@ dialog .session-confirm input {
 .mcp-url-request {
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .mcp-url-request .secondary {
   display: inline-flex;
@@ -1702,13 +1715,13 @@ dialog .session-confirm input {
   flex: 0 0 auto;
 }
 .approval-card h3 {
-  font-size: 13px;
+  font-size: var(--text-small);
   color: #958557;
   overflow-wrap: anywhere;
   line-height: 1.6;
 }
 .approval-card summary {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #a6996c;
   cursor: pointer;
 }
@@ -1718,7 +1731,7 @@ dialog .session-confirm input {
   background: #faf3df;
 }
 .approval-card label {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #998d60;
 }
 .approval-card select,
@@ -1730,7 +1743,7 @@ dialog .session-confirm input {
   padding: 0;
   margin: 20px 0;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .approval-question legend {
   font-weight: 600;
@@ -1768,7 +1781,7 @@ dialog .session-confirm input {
   margin-top: 15px;
 }
 .button-row button {
-  font-size: 10px;
+  font-size: var(--text-caption);
   min-height: 31px;
   padding: 6px 10px;
 }
@@ -1780,7 +1793,7 @@ dialog .session-confirm input {
   background: #faf4e7;
   border: 1px solid #ede1c5;
   border-radius: 7px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #a89465;
 }
 .recovery-note svg {
@@ -1792,7 +1805,7 @@ dialog .session-confirm input {
 .load-history {
   display: block;
   margin: 0 auto 20px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #9db08a;
   padding: 7px 10px;
   border: 1px solid #e1e8d6;
@@ -1814,7 +1827,7 @@ dialog .session-confirm input {
   padding: 12px 16px;
   background: #292f29;
   color: #b2bca9;
-  font-size: 10px;
+  font-size: var(--text-caption);
   flex-shrink: 0;
 }
 .terminal-bar button {
@@ -1834,7 +1847,7 @@ dialog .session-confirm input {
   padding: 12px 5px 0 12px;
 }
 .terminal-note {
-  font-size: 10px;
+  font-size: var(--text-caption);
   line-height: 1.6;
   color: #8b9882;
   padding: 8px 16px;
@@ -1844,7 +1857,7 @@ dialog .session-confirm input {
 .terminal-note[role='alert'],
 .terminal-note[role='status'] {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #f1d4b6;
 }
 .terminal-keys {
@@ -1861,7 +1874,7 @@ dialog .session-confirm input {
   padding: 7px 10px;
   color: #a1b28e;
   font-family: monospace;
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .xterm {
   height: 100%;
@@ -1897,24 +1910,24 @@ dialog::backdrop {
   flex-shrink: 0;
 }
 dialog p {
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.6;
   color: #606b59;
   margin-bottom: 18px;
 }
 dialog h3 {
-  font-size: 15px;
+  font-size: var(--text-reading);
   color: var(--ink);
 }
 dialog label,
 .settings-card label {
-  font-size: 14px;
+  font-size: var(--text-body);
   color: var(--ink);
 }
 dialog input,
 dialog textarea,
 dialog select {
-  font-size: 16px;
+  font-size: var(--text-reading);
   color: var(--ink);
 }
 dialog .primary {
@@ -1922,14 +1935,14 @@ dialog .primary {
 }
 dialog details {
   margin: 16px 0;
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 dialog .session-error,
 .settings-card .session-error {
   color: #a33122;
 }
 .settings-help {
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.5;
   color: #606b59;
 }
@@ -1956,23 +1969,23 @@ dialog .session-error,
   padding-top: 12px;
 }
 .project-create-form label {
-  font-size: 14px;
+  font-size: var(--text-body);
   color: var(--ink);
 }
 .project-create-form p,
 .getting-started p {
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.6;
   color: #606b59;
 }
 .project-create-form input,
 .project-create-form textarea {
-  font-size: 16px;
+  font-size: var(--text-reading);
   color: var(--ink);
 }
 .project-create-form label .muted {
   display: inline;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .project-privacy {
   display: flex;
@@ -1992,7 +2005,7 @@ dialog .session-error,
 .project-actions > .primary {
   width: 100%;
   min-height: 44px;
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .project-folder {
   width: 100%;
@@ -2001,7 +2014,7 @@ dialog .session-error,
 }
 .project-create-form .project-next {
   margin: 12px 0 0;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .project-create-form .project-error {
   color: #a13823;
@@ -2010,7 +2023,7 @@ dialog .session-error,
   padding-left: 23px;
 }
 .getting-started h3 {
-  font-size: 15px;
+  font-size: var(--text-reading);
   color: var(--ink);
 }
 label {
@@ -2018,7 +2031,7 @@ label {
   flex-direction: column;
   gap: 7px;
   margin: 17px 0;
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 500;
   color: #93a77e;
 }
@@ -2167,14 +2180,14 @@ form > .primary {
   }
   .breadcrumbs {
     gap: 8px;
-    font-size: 12px;
+    font-size: var(--text-small);
     max-width: 70%;
   }
   .topbar-right {
     gap: 8px;
   }
   .activity-count {
-    font-size: 9px;
+    font-size: var(--text-caption);
   }
   .channel-header {
     padding: 21px 18px 17px;
@@ -2184,7 +2197,7 @@ form > .primary {
     gap: 6px;
   }
   .channel-title h1 {
-    font-size: 17px;
+    font-size: var(--text-lead);
     overflow-wrap: anywhere;
   }
   .channel-identity {
@@ -2192,7 +2205,7 @@ form > .primary {
     align-items: flex-start;
   }
   .channel-identity p {
-    font-size: 10px;
+    font-size: var(--text-caption);
     line-height: 1.5;
     margin-top: 6px;
     max-width: 245px;
@@ -2210,7 +2223,7 @@ form > .primary {
     display: none;
   }
   .badge {
-    font-size: 8px;
+    font-size: var(--text-caption);
     padding: 3px 5px;
   }
   .tabs {
@@ -2219,7 +2232,7 @@ form > .primary {
     height: 41px;
   }
   .tabs > button {
-    font-size: 10px;
+    font-size: var(--text-caption);
     gap: 5px;
     padding-bottom: 10px;
   }
@@ -2228,14 +2241,14 @@ form > .primary {
     height: 14px;
   }
   .tab-count {
-    font-size: 8px;
+    font-size: var(--text-caption);
   }
   .conversation-inner {
     padding: 0 17px 18px;
   }
   .conversation-date {
     margin: 22px 0 25px;
-    font-size: 8px;
+    font-size: var(--text-caption);
   }
   .message {
     gap: 9px;
@@ -2247,10 +2260,10 @@ form > .primary {
     margin-top: 2px;
   }
   .message-heading strong {
-    font-size: 11px;
+    font-size: var(--text-caption);
   }
   .message-heading time {
-    font-size: 8px;
+    font-size: var(--text-caption);
   }
   .message-avatar .avatar,
   .user-avatar {
@@ -2261,21 +2274,21 @@ form > .primary {
     width: 14px;
   }
   .markdown {
-    font-size: 13px;
+    font-size: var(--text-small);
     line-height: 1.7;
   }
   .composer-area {
     padding: 0 14px max(11px, env(safe-area-inset-bottom));
   }
   .composer textarea {
-    font-size: 16px;
+    font-size: var(--text-reading);
     line-height: 1.5;
     padding: 13px 12px 2px;
     min-height: 72px;
     max-height: 125px;
   }
   .composer textarea::placeholder {
-    font-size: 13px;
+    font-size: var(--text-small);
     line-height: 1.5;
   }
   .composer-toolbar {
@@ -2286,26 +2299,26 @@ form > .primary {
     height: 34px;
   }
   .composer-caption {
-    font-size: 7px;
+    font-size: var(--text-caption);
     gap: 5px;
     padding-top: 8px;
   }
   .model-row {
     gap: 9px;
     padding: 8px 1px;
-    font-size: 9px;
+    font-size: var(--text-caption);
   }
   .model-button {
-    font-size: 10px;
+    font-size: var(--text-caption);
   }
   .model-spark {
-    font-size: 14px;
+    font-size: var(--text-body);
   }
   .permission {
-    font-size: 8px;
+    font-size: var(--text-caption);
   }
   .reasoning {
-    font-size: 8px;
+    font-size: var(--text-caption);
   }
   .tool-entry {
     margin-left: 36px;
@@ -2323,10 +2336,10 @@ form > .primary {
     font-size: 22px;
   }
   .conversation-intro p {
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .starter-note {
-    font-size: 9px;
+    font-size: var(--text-caption);
     align-items: flex-start;
     margin-top: 22px;
   }
@@ -2343,15 +2356,15 @@ form > .primary {
     font-size: 25px;
   }
   .board-heading .eyebrow {
-    font-size: 7px;
+    font-size: var(--text-caption);
     line-height: 1.7;
     letter-spacing: 1px;
   }
   .board-heading p {
-    font-size: 10px;
+    font-size: var(--text-caption);
   }
   .board-heading .secondary {
-    font-size: 9px;
+    font-size: var(--text-caption);
     padding: 6px 8px;
   }
   .task-grid {
@@ -2361,19 +2374,19 @@ form > .primary {
     padding: 15px;
   }
   .task-card > p {
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .task-card h3 {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
   .acceptance p {
-    font-size: 11px;
+    font-size: var(--text-caption);
   }
   .task-card footer {
-    font-size: 9px;
+    font-size: var(--text-caption);
   }
   .task-agents button {
-    font-size: 11px;
+    font-size: var(--text-caption);
   }
   .settings-card {
     left: 14px;
@@ -2389,10 +2402,10 @@ form > .primary {
     flex-basis: 100%;
   }
   .settings-fields select {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
   .settings-fields label {
-    font-size: 11px;
+    font-size: var(--text-caption);
   }
   .popover {
     right: -5px;
@@ -2400,11 +2413,11 @@ form > .primary {
   }
   .popover button,
   .popover a {
-    font-size: 12px;
+    font-size: var(--text-small);
     padding: 13px 9px;
   }
   .popover strong {
-    font-size: 11px;
+    font-size: var(--text-caption);
   }
   .team-panel.open {
     width: min(305px, 90vw);
@@ -2413,56 +2426,56 @@ form > .primary {
     padding-top: 22px;
   }
   .team-description {
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .agent-card strong {
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .agent-card small {
-    font-size: 10px;
+    font-size: var(--text-caption);
   }
   .agent-card {
     padding: 11px 7px;
   }
   .section-title h2 {
-    font-size: 13px;
+    font-size: var(--text-small);
   }
   .focus-task strong {
-    font-size: 13px;
+    font-size: var(--text-small);
   }
   .decision-note p {
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .decision-note > div {
-    font-size: 10px;
+    font-size: var(--text-caption);
   }
   .team-panel footer {
-    font-size: 10px;
+    font-size: var(--text-caption);
   }
   .team-panel header {
-    font-size: 10px;
+    font-size: var(--text-caption);
   }
   .sidebar .search-box {
     height: 42px;
   }
   .search-box input {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
   .sidebar .project-link {
-    font-size: 13px;
+    font-size: var(--text-small);
   }
   .sidebar .add-project {
-    font-size: 12px;
+    font-size: var(--text-small);
     min-height: 35px;
   }
   .workspace-label {
-    font-size: 13px;
+    font-size: var(--text-small);
   }
   .host-card {
-    font-size: 11px;
+    font-size: var(--text-caption);
   }
   .help-link {
-    font-size: 12px;
+    font-size: var(--text-small);
     min-height: 40px;
   }
   .welcome {
@@ -2473,11 +2486,11 @@ form > .primary {
     font-size: 35px;
   }
   .welcome .eyebrow {
-    font-size: 8px;
+    font-size: var(--text-caption);
     line-height: 1.8;
   }
   .welcome p {
-    font-size: 13px;
+    font-size: var(--text-small);
   }
   .welcome-features {
     margin-top: 30px;
@@ -2489,20 +2502,20 @@ form > .primary {
     margin-bottom: 25px;
   }
   .error-banner {
-    font-size: 11px;
+    font-size: var(--text-caption);
     padding: 10px 14px;
   }
   .terminal-bar {
     flex-direction: column;
     gap: 8px;
     padding: 10px 12px;
-    font-size: 10px;
+    font-size: var(--text-caption);
   }
   .terminal-host {
     padding: 7px 3px 0 5px;
   }
   .terminal-note {
-    font-size: 9px;
+    font-size: var(--text-caption);
     padding: 8px 12px;
   }
   .terminal-keys {
@@ -2510,21 +2523,21 @@ form > .primary {
     padding: 7px 10px;
   }
   .terminal-keys button {
-    font-size: 10px;
+    font-size: var(--text-caption);
     padding: 8px 10px;
   }
   .approval-card {
     padding: 15px;
   }
   .approval-card label {
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .approval-card select,
   .approval-card textarea {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
   .button-row button {
-    font-size: 12px;
+    font-size: var(--text-small);
     min-height: 36px;
   }
   dialog {
@@ -2534,12 +2547,12 @@ form > .primary {
     font-size: 20px;
   }
   dialog label {
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   dialog input,
   dialog textarea,
   dialog select {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
   .primary,
   .secondary {
@@ -2554,7 +2567,7 @@ form > .primary {
     min-height: 32px;
   }
   .recovery-note {
-    font-size: 11px;
+    font-size: var(--text-caption);
   }
 }
 @media (max-height: 500px) {
@@ -2584,7 +2597,7 @@ form > .primary {
     display: none;
   }
   .channel-title h1 {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
   .channel-identity > .avatar {
     width: 30px;
@@ -2689,7 +2702,7 @@ form > .primary {
 .phone-card label {
   display: grid;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .phone-card input {
   width: 100%;
@@ -2722,7 +2735,7 @@ form > .primary {
   color: var(--muted);
   line-height: 1.5;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .phone-install-guide ol {
   padding-left: 24px;
@@ -2816,7 +2829,7 @@ form > .primary {
   overflow: auto;
 }
 .draft-handoff {
-  font-size: 12px;
+  font-size: var(--text-small);
   max-height: 18vh;
   overflow: auto;
   overflow-wrap: anywhere;
@@ -2849,7 +2862,7 @@ form > .primary {
 }
 .host-selector {
   margin: 4px 3px 12px;
-  font-size: 12px;
+  font-size: var(--text-small);
   min-width: 0;
 }
 .host-selector label {
@@ -2903,6 +2916,6 @@ form > .primary {
   background: #fff;
   color: #34465c;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-small);
   cursor: pointer;
 }

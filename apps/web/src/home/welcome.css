@@ -20,7 +20,7 @@
 .welcome-intro p,
 .welcome-step p,
 .welcome-phone p {
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.7;
   color: #637087;
 }
@@ -47,7 +47,7 @@
   box-shadow: 0 5px 24px #3053a914;
 }
 .welcome-orbit i {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #4b63a8;
   font-style: normal;
   letter-spacing: 2px;
@@ -80,7 +80,7 @@
   border: 1px solid #dde5f5;
   background: #f3f6fc;
   border-radius: 11px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #3860bc;
 }
 .welcome-step h2,
@@ -120,7 +120,7 @@
   gap: 10px;
 }
 .welcome-provider-heading h3 {
-  font-size: 17px;
+  font-size: var(--text-lead);
   margin: 0;
 }
 .welcome-pill {
@@ -128,7 +128,7 @@
   align-items: center;
   gap: 6px;
   border-radius: 20px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   background: #edf0f6;
   padding: 7px 9px;
   color: #526077;
@@ -140,7 +140,7 @@
 .welcome-page .welcome-fine,
 .welcome-sign-in small {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.6;
   color: #69758a;
 }
@@ -155,7 +155,7 @@
   gap: 12px;
   border-top: 1px solid #e3e8f0;
   padding: 12px 0;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .welcome-model-list li > span:last-child {
   text-align: right;
@@ -163,7 +163,7 @@
 }
 .welcome-model-list small {
   display: block;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #748099;
   margin-top: 5px;
   line-height: 1.5;
@@ -173,7 +173,7 @@
   align-items: center;
   gap: 5px;
   color: #305dc3;
-  font-size: 13px;
+  font-size: var(--text-small);
   min-height: 44px;
   text-decoration: none;
 }

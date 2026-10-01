@@ -47,8 +47,13 @@ export function AssistantFullscreen({
       }}
     >
       <header className="assistant-fullscreen-bar">
-        <button type="button" className="flow-button" onClick={close}>
-          <ArrowLeft size={18} /> {back}
+        <button
+          type="button"
+          className="flow-button assistant-back"
+          onClick={close}
+          aria-label={back}
+        >
+          <ArrowLeft size={18} /> <span>{back}</span>
         </button>
         <strong>{title.replace(/ conversation$/, '')}</strong>
         {controls}

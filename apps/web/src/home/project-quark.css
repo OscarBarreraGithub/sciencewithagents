@@ -29,11 +29,11 @@
 }
 .quark-priority strong {
   display: block;
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .quark-priority small {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 500;
   color: var(--home-muted);
 }
@@ -67,11 +67,11 @@
   justify-content: space-between;
   gap: 2px 12px;
   margin: 0 0 6px;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .quark-allocation-head span {
   color: var(--home-muted);
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .quark-bar {
   display: flex;
@@ -102,7 +102,7 @@
 }
 .quark-allocation-note {
   margin: 5px 0 0;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--home-muted);
   overflow-wrap: anywhere;
 }

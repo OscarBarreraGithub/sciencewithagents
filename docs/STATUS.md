@@ -15,6 +15,10 @@ or owner decision is required for the verified installation path.
 
 ## Latest owner correction
 
+App body text, labels and supporting details now use a larger shared scale with browser-text
+resizing, while Home's three destination tiles retain their sizes. Narrow controls reflow
+instead of forcing page overflow. See VERIFICATION.md for desktop, phone and zoom checks.
+
 GitHub and Cloudflare copy prompts had pale text on an inherited pale code-block background,
 making populated cards appear blank. Their text/background now stay readable in Apps and Help.
 Production build, five-profile contrast/copy/fallback checks and live Safari inspection pass.

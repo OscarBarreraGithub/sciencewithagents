@@ -24,14 +24,14 @@
   gap: 8px;
   margin: 0;
   color: var(--home-ink);
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .assisted-search-prompt textarea {
   width: 100%;
   min-height: 120px;
   resize: vertical;
   background: white;
-  font-size: 16px;
+  font-size: var(--text-reading);
   line-height: 1.5;
 }
 .assisted-search-row {
@@ -56,7 +56,7 @@
 }
 .assisted-search-note {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.5;
   color: var(--home-muted);
   overflow-wrap: anywhere;
@@ -70,7 +70,7 @@
 }
 .assisted-search-pending p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -89,13 +89,13 @@
 }
 .assisted-search-result header p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--home-muted);
   overflow-wrap: anywhere;
 }
 .assisted-search-result header strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--home-ink);
 }
 .assisted-search-result .chat-icon-button {
@@ -125,15 +125,15 @@
   border-color: var(--home-blue);
 }
 .assisted-search-links strong {
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .assisted-search-links small {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--home-muted);
 }
 .assisted-search-heading {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 650;
 }
 .assisted-search-pool {
@@ -144,11 +144,11 @@
   display: flex;
   align-items: center;
   min-height: 44px;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 650;
   cursor: pointer;
 }
 .assisted-search-result .health-report-text {
-  font-size: 13px;
+  font-size: var(--text-small);
   line-height: 1.55;
 }

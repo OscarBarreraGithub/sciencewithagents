@@ -6,7 +6,7 @@
   border-radius: 7px;
   background: #f7f8f1;
   color: #46583d;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -14,11 +14,11 @@
 .execution-info h4,
 .execution-info h5 {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: var(--text-small);
   color: #3c4e33;
 }
 .execution-info h3 {
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .execution-info p {
   margin: 7px 0;
@@ -84,7 +84,7 @@
 .execution-muted,
 .execution-observed {
   color: #66745e;
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .execution-reason {
   white-space: pre-wrap;

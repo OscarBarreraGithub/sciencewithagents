@@ -15,11 +15,11 @@
   flex: 1;
 }
 .resource-home-link strong {
-  font-size: 13px;
+  font-size: var(--text-small);
   display: block;
 }
 .resource-home-link small {
-  font-size: 12px;
+  font-size: var(--text-small);
   display: block;
   line-height: 1.6;
   color: #738277;
@@ -63,7 +63,7 @@
   background: #fff;
   color: inherit;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 600;
   cursor: pointer;
 }
@@ -76,7 +76,7 @@
 .health-page input[type='search'] {
   width: 100%;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-small);
   color: inherit;
   background: #fff;
   border: 1px solid #d5dae2;
@@ -87,11 +87,11 @@
   padding: 0 10px;
 }
 .health-page h2 {
-  font-size: 17px;
+  font-size: var(--text-lead);
   letter-spacing: -0.02em;
 }
 .health-page h3 {
-  font-size: 14px;
+  font-size: var(--text-body);
   letter-spacing: -0.01em;
 }
 .health-top {
@@ -109,7 +109,7 @@
   align-items: center;
   gap: 5px;
   min-height: 44px;
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--health-blue) !important;
 }
@@ -119,7 +119,7 @@
 }
 .health-heading p {
   margin-top: 4px;
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--health-muted);
 }
 .health-section-heading {
@@ -132,7 +132,7 @@
 }
 .health-section-heading p {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--health-muted);
   line-height: 1.5;
 }
@@ -141,13 +141,13 @@
 }
 .health-footnote {
   margin-top: 10px !important;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.55;
   color: var(--health-muted);
 }
 .health-empty {
   padding: 12px 2px;
-  font-size: 13px;
+  font-size: var(--text-small);
   line-height: 1.55;
   color: var(--health-muted);
 }
@@ -155,7 +155,7 @@
 .health-alert {
   padding: 10px 12px;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: var(--text-small);
   line-height: 1.55;
   background: #f2efe4;
 }
@@ -239,7 +239,7 @@
   border-radius: 10px;
   background: #edf3ee;
   color: #2f5a47;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .health-status svg {
   flex: none;
@@ -247,7 +247,7 @@
 }
 .health-status p {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.5;
 }
 .health-status.is-pressure {
@@ -279,7 +279,7 @@
   border-radius: 10px;
 }
 .health-metric > span {
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--health-muted);
 }
@@ -294,19 +294,19 @@
   line-height: 1.25;
 }
 .health-metric strong small {
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--health-muted);
   letter-spacing: 0;
 }
 .health-metric strong.is-missing {
-  font-size: 15px;
+  font-size: var(--text-reading);
   font-weight: 550;
   color: var(--health-muted);
   line-height: 1.9;
 }
 .health-metric p {
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.45;
   color: var(--health-muted);
 }
@@ -345,7 +345,7 @@
   border-left: 3px solid #c98a1b;
   background: #fcf7ee;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .health-findings li.is-critical {
   border-left-color: #c2413a;
@@ -353,7 +353,7 @@
 }
 .health-findings span,
 .health-findings small {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--health-muted);
   line-height: 1.5;
 }
@@ -378,7 +378,7 @@
 }
 .health-assistant-head p {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--health-muted);
 }
 .health-assistant-tools {
@@ -393,7 +393,7 @@
 }
 .health-provider button {
   min-height: 48px;
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .health-provider button[aria-checked='true'] {
   background: #202738;
@@ -413,13 +413,13 @@
 }
 .health-model-pick label > span,
 .health-field > span {
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--health-muted);
 }
 .health-model-pick > small {
   grid-column: 1 / -1;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.5;
   color: var(--health-muted);
 }
@@ -429,11 +429,11 @@
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--health-soft);
-  font-size: 13px;
+  font-size: var(--text-small);
   overflow-wrap: anywhere;
 }
 .health-model-fixed small {
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.5;
   color: var(--health-muted);
 }
@@ -455,10 +455,11 @@
 }
 .health-transcript-hint,
 .health-panel-hint {
-  height: 18px;
+  min-height: 1.5em;
+  flex-shrink: 0;
   margin-top: -8px;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--text-small);
+  line-height: 1.5;
   text-align: center;
   color: var(--health-muted);
 }
@@ -470,7 +471,7 @@
   max-width: 94%;
   padding: 9px 12px;
   border-radius: 10px;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -482,10 +483,10 @@
   margin-bottom: 2px;
 }
 .health-message header strong {
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .health-message header small {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--health-muted);
 }
 .health-message.is-question {
@@ -510,12 +511,12 @@
   align-self: center;
   max-width: 100%;
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--health-muted);
   text-align: center;
 }
 .health-intro {
-  font-size: 13px;
+  font-size: var(--text-small);
   line-height: 1.6;
   color: var(--health-muted);
 }
@@ -531,15 +532,15 @@
   display: grid;
 }
 .health-latest header strong {
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .health-latest header small {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--health-muted);
 }
 .health-latest p {
   margin-top: 6px;
-  font-size: 13px;
+  font-size: var(--text-small);
   line-height: 1.55;
   color: var(--health-muted);
   display: -webkit-box;
@@ -560,10 +561,10 @@
   flex: 1 1 240px;
   display: grid;
   gap: 2px;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .health-running small {
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.5;
   color: var(--health-muted);
 }
@@ -572,7 +573,7 @@
   gap: 6px;
 }
 .health-composer label {
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
 }
 .health-composer label span {
@@ -601,14 +602,14 @@
   color: #fff;
 }
 .health-composer-note {
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.5;
   color: var(--health-muted);
 }
 
 /* Report text (model output). */
 .health-report-text {
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -629,13 +630,13 @@
 .health-report-text h3,
 .health-report-text h4 {
   margin: 10px 0 4px;
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .health-report-text code {
   padding: 1px 4px;
   border-radius: 4px;
   background: var(--health-soft);
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .health-report-text pre {
   white-space: pre-wrap;
@@ -658,7 +659,7 @@
   gap: 10px;
   min-height: 48px;
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--health-muted);
 }
 .health-readout strong {
@@ -683,7 +684,7 @@
 }
 .health-plot header small {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--health-muted);
 }
 .health-plot header p {
@@ -693,13 +694,13 @@
 }
 .health-plot header p strong {
   display: block;
-  font-size: 16px;
+  font-size: var(--text-reading);
   font-variant-numeric: tabular-nums;
 }
 .health-plot header p span {
   display: block;
   min-height: 18px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--health-muted);
 }
 .health-plot-body {
@@ -712,7 +713,7 @@
   flex-direction: column;
   justify-content: space-between;
   height: 110px;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1;
   text-align: right;
   color: var(--health-muted);
@@ -771,7 +772,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--health-muted);
 }
 .health-pressure-strip {
@@ -813,7 +814,7 @@
   flex-wrap: wrap;
   gap: 6px 12px;
   margin-top: 10px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--health-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -858,7 +859,7 @@
 .health-table-head {
   padding: 0 0 6px;
   border-bottom: 1px solid var(--health-line);
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--health-muted);
 }
@@ -875,17 +876,17 @@
 .health-row {
   padding: 9px 0;
   border-bottom: 1px solid #eef0f1;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .health-row strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-small);
   overflow-wrap: anywhere;
 }
 .health-row small {
   display: block;
   margin-top: 1px;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.45;
   color: var(--health-muted);
 }
@@ -927,7 +928,7 @@
   align-items: center;
   gap: 10px;
   min-height: 48px;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .health-check input {
   width: 20px;
@@ -936,7 +937,7 @@
   accent-color: var(--health-blue);
 }
 .health-check span {
-  font-size: 13px !important;
+  font-size: var(--text-small) !important;
   color: inherit !important;
   font-weight: 600;
 }
@@ -947,7 +948,7 @@
   align-items: center;
   min-height: 52px;
   padding: 0 16px;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 650;
   cursor: pointer;
 }
@@ -958,7 +959,7 @@
 }
 .health-settings-body p,
 .health-settings-body small {
-  font-size: 13px;
+  font-size: var(--text-small);
   line-height: 1.6;
   color: var(--health-muted);
 }

@@ -9,7 +9,7 @@
 .mirror-all-chats {
   border: 0;
   background: transparent;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #52684b;
   padding: 10px;
 }
@@ -54,11 +54,11 @@
   text-overflow: ellipsis;
 }
 .mirror-chat-label strong {
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
 }
 .mirror-chat-label small {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--muted);
   margin-top: 4px;
 }
@@ -116,7 +116,7 @@
 .mirror-home p,
 .mirror-setup li {
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.7;
 }
 .mirror-home .mirror-chat-list {
@@ -127,14 +127,14 @@
   padding: 16px;
 }
 .mirror-home .mirror-chat-label strong {
-  font-size: 15px;
+  font-size: var(--text-reading);
 }
 .mirror-setup {
   border-top: 1px solid var(--border);
   padding-top: 22px;
 }
 .mirror-setup h2 {
-  font-size: 16px;
+  font-size: var(--text-reading);
 }
 .mirror-setup ol {
   padding-left: 22px;
@@ -144,7 +144,7 @@
 }
 .mirror-setup summary {
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .mirror-conversation {
   display: flex;
@@ -167,14 +167,14 @@
   flex: 1;
 }
 .mirror-header h1 {
-  font-size: 18px;
+  font-size: var(--text-lead);
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .mirror-header p {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--muted);
   margin: 6px 0 0;
   overflow-wrap: anywhere;
@@ -201,12 +201,12 @@
   box-shadow: 0 5px 25px #0002;
   border: 1px solid var(--border);
   border-radius: 10px;
-  font-size: 13px;
+  font-size: var(--text-small);
   line-height: 1.6;
 }
 .mirror-notice {
   padding: 10px 24px;
-  font-size: 12px;
+  font-size: var(--text-small);
   background: #f6f0e5;
   color: #6b5837;
   flex-shrink: 0;
@@ -225,7 +225,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .mirror-history {
   padding: 6px 14px;
@@ -281,7 +281,7 @@
 }
 .mirror-text {
   overflow-wrap: anywhere;
-  font-size: 15px;
+  font-size: var(--text-reading);
   line-height: 1.5;
 }
 .mirror-text p {
@@ -293,7 +293,7 @@
 .mirror-log pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--text-small);
   padding: 10px;
   background: #f1f2ed;
   border-radius: 6px;
@@ -305,7 +305,7 @@
   max-width: 100%;
 }
 .mirror-activity {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--muted);
   max-width: 100%;
 }
@@ -326,7 +326,7 @@
 .mirror-activity-group {
   max-width: 84%;
   margin: 2px 0;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #596170;
 }
 .mirror-activity-group > summary {
@@ -381,14 +381,14 @@
   border-bottom: 0;
 }
 .mirror-empty {
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--muted);
 }
 .mirror-working {
   display: flex;
   gap: 9px;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--muted);
 }
 .mirror-composer {
@@ -410,7 +410,7 @@
   resize: none;
   field-sizing: content;
   font: inherit;
-  font-size: 15px;
+  font-size: var(--text-reading);
   line-height: 1.45;
   min-height: 44px;
   max-height: 140px;
@@ -433,7 +433,7 @@
   }
 }
 .mirror-note {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--muted);
   margin: 8px 0 0;
   line-height: 1.5;
@@ -444,11 +444,11 @@
   margin-right: auto;
 }
 .mirror-receipt {
-  font-size: 12px;
+  font-size: var(--text-small);
   margin: 8px 0;
 }
 .mirror-clear {
-  font-size: 12px;
+  font-size: var(--text-small);
   background: none;
   border: 0;
   text-decoration: underline;
@@ -486,10 +486,10 @@
     gap: 8px;
   }
   .mirror-header h1 {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
   .mirror-header p {
-    font-size: 11px;
+    font-size: var(--text-caption);
     margin-top: 2px;
   }
   .mirror-header .mirror-avatar {
@@ -507,10 +507,10 @@
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
   }
   .mirror-input-row textarea {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
   .mirror-note {
-    font-size: 10px;
+    font-size: var(--text-caption);
   }
   .mirror-controls summary {
     display: grid;
@@ -533,7 +533,7 @@
     overflow: hidden;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
-    font-size: 11px;
+    font-size: var(--text-caption);
     line-height: 1.35;
   }
   .mirror-composer > .mirror-receipt {
@@ -544,7 +544,7 @@
     margin-bottom: 6px;
   }
   .mirror-stop-row p {
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .mirror-home {
     padding: 24px 20px;
@@ -555,7 +555,7 @@
     padding: 8px 16px;
   }
   .mirror-header h1 {
-    font-size: 15px;
+    font-size: var(--text-reading);
   }
   .mirror-log {
     padding: 8px 16px;
@@ -577,7 +577,7 @@
 }
 @media (max-height: 500px) and (pointer: coarse) {
   .mirror-input-row textarea {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
 }
 .mirror-stop-row {
@@ -594,7 +594,7 @@
   padding: 8px 16px;
 }
 .compact-view .mirror-header h1 {
-  font-size: 15px;
+  font-size: var(--text-reading);
 }
 .compact-view .mirror-log {
   padding: 8px 16px;
@@ -619,7 +619,7 @@
 }
 .mirror-stop-row p {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   flex: 1 1 12rem;
 }
 .mirror-notepad {
@@ -634,6 +634,6 @@
   background: #fff;
   color: #34465c;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-small);
   cursor: pointer;
 }

@@ -13,7 +13,7 @@
 }
 .source-backup p {
   color: #657087;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.65;
   margin-bottom: 12px;
 }
@@ -32,7 +32,7 @@
   margin-bottom: 12px;
 }
 .source-backup label {
-  font-size: 14px;
+  font-size: var(--text-body);
   color: #25334b;
 }
 .source-backup label.source-backup-choice,
@@ -46,7 +46,7 @@
 }
 .source-backup .source-backup-choice > span,
 .source-backup .source-backup-consent > span {
-  font-size: 14px;
+  font-size: var(--text-body);
   color: #25334b;
   line-height: 1.6;
   margin: 0;
@@ -64,7 +64,7 @@
 .source-backup-choice small {
   display: block;
   color: #657087;
-  font-size: 13px;
+  font-size: var(--text-small);
   margin-top: 4px;
 }
 .source-backup-field {
@@ -75,7 +75,7 @@
 }
 .source-backup-field input {
   font: inherit;
-  font-size: 16px;
+  font-size: var(--text-reading);
   min-height: 44px;
   color: #25334b;
   background: white;

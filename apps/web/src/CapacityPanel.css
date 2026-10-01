@@ -20,11 +20,11 @@
   min-width: 0;
 }
 .capacity-strip b {
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .capacity-strip span span,
 .capacity-strip small {
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.35;
 }
 .capacity-provider {

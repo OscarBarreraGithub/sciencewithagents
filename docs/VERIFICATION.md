@@ -1,5 +1,28 @@
 # Verification
 
+## 2026-10-01 — larger app text and zoom reflow
+
+Production frontend build and strict TypeScript passed. Thirty-six distinct focused browser
+cases pass across desktop, 412×915, 360×800, 915×412 and iPhone WebKit; four redundant mobile
+copies of the desktop-only zoom check are deliberately skipped. The final five-profile
+assistant-chat rerun verifies the corrected short-phone composer cap after the other 35
+cases passed. No backend or real-provider turn was needed.
+
+Home, model preferences, project setup, Computer health, QUARK, allowances, Chats and Apps
+fit with normal and doubled root text size. Chromium's actual tab zoom API verifies 80%,
+100%, 125%, 150%, 200% and 400% zoom, including reachable form controls and no horizontal
+page overflow. Focused journeys retain notepad drafts, independent attention/to-do scrolling,
+project overrides and normal navigation. A tall large-text to-do remains reachable by scrolling
+its section; it need not show its title when scrolled to the very bottom of that same row.
+
+Desktop/phone/zoom screenshots were visually inspected, along with the installed app in
+native Safari. Existing Home destination tile typography and sizing were retained. The
+notepad rule spacing follows its text; narrow assistant chats keep their accessible back
+action with an arrow. Safari's native form text stays inside its control at larger sizes.
+These are browser/device simulations, not physical iOS keyboard or OS text-size acceptance.
+The installed app serves the new frontend without a backend restart; private records and
+model settings were unchanged. Test profiles, screenshots and logs remain in ignored data/.
+
 ## 2026-10-01 — consolidated general model preferences
 
 Shared, server and frontend production builds and strict TypeScript checks passed. Sixty-eight

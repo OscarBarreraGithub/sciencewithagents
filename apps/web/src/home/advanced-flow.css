@@ -19,7 +19,7 @@
   font-size: 24px;
 }
 .advanced-page .settings-help {
-  font-size: 13px;
+  font-size: var(--text-small);
   margin: 14px 0;
 }
 .advanced-page .settings-fields {
@@ -35,7 +35,7 @@
   min-width: 0;
 }
 .advanced-page .mcp-settings legend {
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 650;
 }
 .advanced-page .mcp-settings label:has(input[type='checkbox']) {
@@ -45,7 +45,7 @@
   min-height: 44px;
 }
 .advanced-page .mcp-settings p {
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .advanced-actions {
   display: flex;
@@ -77,7 +77,7 @@
 }
 .advanced-terminal button {
   min-height: 44px;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .advanced-page .flow-form-panel .execution-info {
   max-width: 100%;
@@ -107,11 +107,11 @@
   color: var(--home-ink);
   padding: 0;
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .advanced-page .execution-info :is(h3, h4, h5) {
   color: var(--home-ink);
-  font-size: 16px;
+  font-size: var(--text-reading);
 }
 .advanced-page .execution-info h3 {
   font-size: 24px;
@@ -119,7 +119,7 @@
 }
 .advanced-page .execution-info :is(dt, .execution-muted, .execution-observed) {
   color: var(--home-muted);
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .advanced-page .execution-info :is(section, .execution-quota, .execution-snapshot) {
   border-color: var(--home-line);

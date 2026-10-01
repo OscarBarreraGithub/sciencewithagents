@@ -21,6 +21,7 @@ dialog.assistant-fullscreen,
 }
 .assistant-fullscreen-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
   flex-shrink: 0;
@@ -29,7 +30,7 @@ dialog.assistant-fullscreen,
 }
 .assistant-fullscreen-bar > strong {
   flex: 1;
-  min-width: 0;
+  min-width: max-content;
 }
 .assistant-fullscreen-body.chat-pane {
   flex: 1;
@@ -69,7 +70,8 @@ dialog.assistant-fullscreen,
   overflow: visible;
 }
 .assistant-fullscreen .flow-chat-main .composer > textarea {
-  max-height: min(calc(var(--assistant-height, 100dvh) * 0.3), 220px);
+  /* Keep conversation space when larger controls wrap on a short phone. */
+  max-height: min(calc(var(--assistant-height, 100dvh) * 0.28), 220px);
 }
 .assistant-fullscreen .flow-chat-main .composer-toolbar {
   display: grid;
@@ -125,7 +127,7 @@ dialog.assistant-fullscreen,
 .assistant-fullscreen .health-chat-controls > summary {
   padding: 10px 12px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .assistant-fullscreen .health-chat-main {
   display: flex;
@@ -148,12 +150,13 @@ dialog.assistant-fullscreen,
 }
 .assistant-launch {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
 .assistant-launch p {
-  font-size: 13px;
+  font-size: var(--text-small);
   line-height: 1.6;
   color: #67747b;
 }
@@ -163,11 +166,11 @@ dialog.assistant-fullscreen,
     gap: 6px;
   }
   .assistant-fullscreen-bar > strong {
-    font-size: 14px;
+    font-size: var(--text-body);
   }
   .assistant-fullscreen-bar .flow-button {
     padding: 6px;
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .assistant-fullscreen .flow-chat-main .composer {
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
@@ -176,27 +179,37 @@ dialog.assistant-fullscreen,
     padding: 8px;
   }
   .assistant-fullscreen .flow-chat-main .composer > textarea {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
   .assistant-fullscreen .flow-chat-main .composer-toolbar > div {
     gap: 4px;
   }
   .assistant-fullscreen .flow-chat-main .composer-priority {
-    width: 118px;
+    width: 10em;
+    max-width: 100%;
     padding-inline: 8px;
   }
   .assistant-fullscreen .composer-notepad {
     padding-inline: 6px;
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .assistant-fullscreen .health-assistant-head p {
     display: none;
   }
   .assistant-fullscreen .health-assistant-tools button {
-    font-size: 12px;
+    font-size: var(--text-small);
     padding: 6px;
   }
   .assistant-fullscreen .composer.draft-steady > .draft-handoff > p.muted:first-child {
+    display: none;
+  }
+}
+@media (max-width: 400px) {
+  .assistant-fullscreen-bar .assistant-back {
+    width: 44px;
+    flex: none;
+  }
+  .assistant-back > span {
     display: none;
   }
 }

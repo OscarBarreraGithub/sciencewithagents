@@ -13,7 +13,7 @@
 .apps-heading p:not(.home-eyebrow) {
   margin-top: 8px;
   color: var(--home-muted);
-  font-size: 14px;
+  font-size: var(--text-body);
   max-width: 62ch;
 }
 .apps-heading a {
@@ -43,31 +43,31 @@
   background: #f6f2ea;
 }
 .apps-empty h2 {
-  font-size: 18px;
+  font-size: var(--text-lead);
 }
 .apps-empty p {
   margin: 6px auto 0;
   max-width: 46ch;
   color: var(--home-muted);
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .apps-setup {
   display: grid;
   gap: 8px;
 }
 .apps-setup > h2 {
-  font-size: 18px;
+  font-size: var(--text-lead);
 }
 .apps-setup > p {
   color: var(--home-muted);
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .setup-guide {
   display: grid;
   gap: 14px;
 }
 .setup-guide-note {
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--home-muted);
   line-height: 1.6;
 }
@@ -92,7 +92,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 15px;
+  font-size: var(--text-reading);
   letter-spacing: -0.02em;
 }
 .setup-step-number {
@@ -104,12 +104,12 @@
   border-radius: 50%;
   background: var(--home-ink);
   color: #fff;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 750;
   letter-spacing: 0;
 }
 .setup-guide li > p {
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--home-muted);
   line-height: 1.6;
 }
@@ -127,7 +127,7 @@
   gap: 12px;
   padding: 4px 6px 4px 14px;
   border-bottom: 1px solid #353b4c;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 700;
   color: #c9cedb;
 }
@@ -160,7 +160,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12.5px;
+  font-size: var(--text-small);
   line-height: 1.6;
   user-select: text;
 }
@@ -173,7 +173,7 @@
 }
 .setup-prompt-status {
   padding: 0 14px 12px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #ffd98a;
 }
 .setup-link {
@@ -186,7 +186,7 @@
   border: 1px solid var(--home-line);
   border-radius: 10px;
   background: var(--home-paper);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 700;
 }
 .setup-link:hover {

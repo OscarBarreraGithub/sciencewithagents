@@ -40,7 +40,7 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--home-muted);
 }
 .activity-kind {
@@ -48,7 +48,7 @@
   align-items: center;
   gap: 7px;
   color: #4455aa;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 650;
 }
 .activity-kind svg {
@@ -67,7 +67,7 @@
   padding: 10px 16px;
   border: 1px solid var(--home-line);
   background: #fff;
-  font-size: 13px;
+  font-size: var(--text-small);
   white-space: nowrap;
 }
 .activity-calm {
@@ -104,7 +104,7 @@
 .activity-shortcuts a > span {
   grid-column: 2;
   color: var(--home-muted);
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .activity-shortcuts a > svg:first-child {
   grid-row: span 2;
@@ -145,7 +145,7 @@
   flex-direction: column;
   gap: 8px;
   font-weight: 550;
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--home-ink);
   min-width: 0;
 }
@@ -155,11 +155,11 @@
   background: #fcfcfe;
   border-color: var(--home-line);
   border-radius: 10px;
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 .flow-form-panel :is(button, .secondary) {
   min-height: 44px;
-  font-size: 13px;
+  font-size: var(--text-small);
   padding: 10px 15px;
   border: 1px solid var(--home-line);
   border-radius: 10px;
@@ -173,7 +173,7 @@
   justify-self: start;
 }
 .flow-form-panel .muted {
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .flow-form-panel .pulsar-panel {
   border-top: 1px solid var(--home-line);
@@ -195,7 +195,7 @@
   overflow-wrap: anywhere;
 }
 .flow-form-panel .pulsar-job small {
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .flow-form-panel summary {
   min-height: 44px;
@@ -253,7 +253,7 @@
   border: 1px solid var(--home-line);
   border-radius: 24px;
   background: #fff;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .activity-page .flow-filters button.selected {
   background: #eef0ff;

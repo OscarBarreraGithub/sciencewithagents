@@ -1,5 +1,11 @@
 # Feature map
 
+**Readable app text (2026-10-01): implemented.** Body copy, settings labels, forms, chat
+messages and supporting details share a larger text scale that respects browser text sizing.
+The three main Home destination tiles keep their existing sizes. Narrow controls wrap, the
+notepad's lines scale with its text, and large native Safari fields retain their own text
+scrolling. Zoom and phone evidence is recorded in VERIFICATION.md.
+
 **General model preferences (2026-10-01): implemented.** Settings → Model preferences owns
 new-project manager/worker defaults, separate from per-project customization. The creator's
 corrected matrix starts at Balanced + Tokenmax (the provider's Only preset for one-provider

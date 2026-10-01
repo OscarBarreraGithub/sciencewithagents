@@ -49,8 +49,9 @@ body:has(.home-shell) {
     -apple-system,
     BlinkMacSystemFont,
     sans-serif;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.5;
+  overflow-wrap: anywhere;
   -webkit-font-smoothing: antialiased;
 }
 .home-shell a,
@@ -65,7 +66,7 @@ body:has(.home-shell) {
   justify-content: center;
   gap: 16px;
   background: #e9edfc;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .home-update button {
   min-height: 44px;
@@ -118,7 +119,7 @@ body:has(.home-shell) {
     no-repeat right 12px center;
   box-shadow: 0 2px 3px #20273808;
   color: var(--home-ink);
-  font-size: 16px;
+  font-size: var(--text-reading);
   line-height: 1.4;
   cursor: pointer;
 }
@@ -162,7 +163,7 @@ body:has(.home-shell) {
   align-items: center;
   gap: 10px;
   min-height: 44px;
-  font-size: 18px;
+  font-size: var(--text-lead);
   font-weight: 780;
   letter-spacing: -0.8px;
   white-space: nowrap;
@@ -187,7 +188,7 @@ body:has(.home-shell) {
   padding: 0 12px;
   border-radius: 10px;
   color: var(--home-muted);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 680;
 }
 .home-desktop-nav a:hover {
@@ -256,7 +257,7 @@ body:has(.home-shell) {
   background: var(--home-white);
   box-shadow: 0 2px 8px #23382a14;
   color: var(--home-ink);
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .home-pull-wheel.refreshing svg {
   animation: home-refresh-turn 1s linear infinite;
@@ -281,7 +282,7 @@ body:has(.home-shell) {
   border: 1px solid var(--home-line);
   border-radius: 999px;
   background: var(--home-white);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 650;
   white-space: nowrap;
 }
@@ -303,7 +304,7 @@ body:has(.home-shell) {
   border-color: #b9ad98;
 }
 .home-allowance-value {
-  font-size: 15px;
+  font-size: var(--text-reading);
   font-weight: 750;
   letter-spacing: -0.02em;
 }
@@ -331,11 +332,11 @@ body:has(.home-shell) {
   border-radius: 14px;
   background: var(--home-white);
   box-shadow: 0 12px 40px #2a21141f;
-  font-size: 13px;
+  font-size: var(--text-small);
   white-space: normal;
 }
 .home-popover-title {
-  font-size: 15px;
+  font-size: var(--text-reading);
   font-weight: 720;
 }
 .home-popover-title span {
@@ -371,11 +372,11 @@ body:has(.home-shell) {
 }
 .home-allowance-windows small {
   grid-column: 1 / -1;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--home-muted);
 }
 .home-popover-note {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--home-muted);
 }
 .home-editor svg {
@@ -414,7 +415,7 @@ body:has(.home-shell) {
   width: 100%;
   margin: 0 auto;
   padding: 4px 32px;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .home-computer {
   display: flex;
@@ -518,7 +519,7 @@ body:has(.home-shell) {
   flex: 0 0 24px;
   height: 24px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--home-muted);
   background: var(--home-paper);
 }
@@ -528,14 +529,14 @@ body:has(.home-shell) {
   z-index: 1;
   height: 24px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #5e6680;
   background: #ffffffed;
 }
 
 /* Shared by other screens. */
 .home-eyebrow {
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 750;
   letter-spacing: 0.14em;
   color: var(--home-muted);
@@ -547,7 +548,7 @@ body:has(.home-shell) {
   align-self: flex-start;
   min-height: 44px;
   margin-top: 8px;
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 650;
 }
 .home-text-link {
@@ -555,7 +556,7 @@ body:has(.home-shell) {
   align-items: center;
   gap: 6px;
   min-height: 44px;
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 650;
 }
 .home-text-link:hover {
@@ -570,7 +571,7 @@ body:has(.home-shell) {
   border: 1px solid #ead7b8;
   border-radius: 12px;
   background: #fff4e5;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .home-connection-note > svg {
   flex-shrink: 0;
@@ -593,7 +594,7 @@ body:has(.home-shell) {
   border: 1px dashed #b3a891;
   border-radius: 8px;
   color: #5b5344;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .home-placeholder {
   display: flex;
@@ -642,22 +643,22 @@ dialog.home-help-dialog {
   gap: 8px;
 }
 .home-help h3 {
-  font-size: 16px;
+  font-size: var(--text-reading);
   letter-spacing: -0.02em;
 }
 .home-help > section > p {
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--home-muted);
 }
 .home-help button.setup-link {
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 700;
   color: inherit;
   cursor: pointer;
 }
 .home-help-more {
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .home-help-more a {
   color: var(--home-blue);
@@ -672,7 +673,7 @@ dialog.home-help-dialog {
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid var(--home-line);
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .provider-actions button,
 .provider-actions > a {
@@ -694,7 +695,7 @@ dialog.home-help-dialog {
   cursor: default;
 }
 .provider-actions p {
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -702,7 +703,7 @@ dialog.home-help-dialog {
   padding: 10px;
   border-radius: 6px;
   background: #f0ece4;
-  font-size: 12px;
+  font-size: var(--text-small);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -721,7 +722,7 @@ dialog.home-help-dialog {
     padding: 0 20px;
   }
   .home-brand {
-    font-size: 16px;
+    font-size: var(--text-reading);
   }
   .home-desktop-nav a {
     padding: 0 9px;
@@ -747,7 +748,7 @@ dialog.home-help-dialog {
   .home-brand {
     flex: 1;
     min-width: 0;
-    font-size: 17px;
+    font-size: var(--text-lead);
   }
   .home-desktop-nav {
     display: none;
@@ -799,7 +800,7 @@ dialog.home-help-dialog {
   .home-topline {
     display: none;
     padding: 2px 14px;
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .home-computer-state {
     display: none;
@@ -828,7 +829,7 @@ dialog.home-help-dialog {
     height: 28px;
   }
   .home-brand {
-    font-size: 16px;
+    font-size: var(--text-reading);
     gap: 7px;
   }
   .home-phone > span {

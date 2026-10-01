@@ -15,11 +15,11 @@
 }
 .focus-card h4 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .focus-card p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-small);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -32,7 +32,7 @@
 .focus-card .focus-note,
 .focus-card .focus-names,
 .focus-card .focus-result {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--home-muted);
 }
 .focus-card .focus-names {

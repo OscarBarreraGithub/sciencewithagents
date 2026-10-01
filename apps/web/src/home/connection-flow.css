@@ -40,13 +40,13 @@
 }
 .connection-card p {
   color: var(--home-muted);
-  font-size: 14px;
+  font-size: var(--text-body);
   flex: 1;
 }
 .connection-open {
   display: flex;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: var(--text-small);
   margin-top: 25px;
   color: var(--home-blue);
 }
@@ -117,10 +117,10 @@
 }
 .connection-page .flow-form-panel .attention-list h3 {
   margin: 15px 0;
-  font-size: 18px;
+  font-size: var(--text-lead);
 }
 .connection-page :is(small, .mirror-note, .mirror-chat-label small, .mirror-message small) {
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .connection-search-results {
   display: flex;
@@ -208,7 +208,7 @@
     padding: 2px 10px;
   }
   .editor-page .mirror-header p {
-    font-size: 11px;
+    font-size: var(--text-caption);
     line-height: 1.2;
   }
 }

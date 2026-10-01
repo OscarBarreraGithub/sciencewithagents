@@ -35,7 +35,7 @@
 }
 .recovery-list h3 {
   margin: 0 0 8px;
-  font-size: 15px;
+  font-size: var(--text-reading);
 }
 .recovery-list small {
   color: var(--muted, #64716b);

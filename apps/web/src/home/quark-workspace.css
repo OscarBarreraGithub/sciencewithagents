@@ -27,7 +27,7 @@
   background: #fafcfb;
 }
 .quark-overview span {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--q-muted);
 }
 .quark-overview strong {
@@ -36,7 +36,7 @@
   font-weight: 550;
 }
 .quark-overview small {
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.6;
   color: var(--q-muted);
 }
@@ -63,10 +63,10 @@
 }
 .quark-desk h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--text-lead);
 }
 .quark-desk header p {
-  font-size: 12px;
+  font-size: var(--text-small);
   margin: 5px 0 0;
   color: var(--q-muted);
 }
@@ -114,7 +114,7 @@
   border-radius: 0;
 }
 .quark-desk .flow-chat-notice {
-  font-size: 11px;
+  font-size: var(--text-caption);
   margin: 0 8px 8px;
 }
 .quark-desk .composer-priority {
@@ -131,7 +131,7 @@
 .quark-settings label {
   display: grid;
   gap: 5px;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .quark-settings select {
   max-width: 100%;
@@ -161,7 +161,7 @@
 .quark-decisions summary,
 .quark-advanced summary {
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .quark-decisions summary span {
   float: right;
@@ -171,7 +171,7 @@
   border-top: 1px solid var(--q-border);
   margin-top: 14px;
   padding-top: 14px;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .quark-decisions article small {
   color: var(--q-muted);
@@ -206,7 +206,7 @@
   border-radius: 12px;
   text-decoration: none;
   color: inherit;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .quark-projects span,
 .quark-projects small {
@@ -232,7 +232,7 @@
   align-items: center;
   gap: 7px;
   margin: 0 0 16px;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
 }
 .quark-column h3 b {
@@ -279,26 +279,26 @@
   box-shadow: 0 3px 8px #2937310c;
 }
 .quark-ticket-project {
-  font-size: 10px;
+  font-size: var(--text-caption);
   text-transform: uppercase;
   letter-spacing: 0.055em;
   color: #70867d;
 }
 .quark-ticket h4 {
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.5;
   font-weight: 600;
   margin: 7px 0;
 }
 .quark-ticket-model {
-  font-size: 10px;
+  font-size: var(--text-caption);
   background: #f0f3f5;
   padding: 3px 6px;
   border-radius: 4px;
   display: inline-block;
 }
 .quark-ticket p {
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.65;
   color: var(--q-muted);
   margin: 12px 0;
@@ -307,7 +307,7 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #71817d;
 }
 .quark-ticket-facts span {
@@ -322,16 +322,16 @@
   border-top: 1px solid #eff1ef;
   padding-top: 10px;
   margin-top: 12px;
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .quark-column-empty {
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.6;
   padding: 14px 2px;
   color: #7c8786;
 }
 .quark-footnote {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--q-muted);
   line-height: 1.7;
 }
@@ -343,7 +343,7 @@
   display: grid;
   gap: 8px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .quark-history-search input {
   width: 100%;

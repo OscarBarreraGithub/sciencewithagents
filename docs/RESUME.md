@@ -1,5 +1,13 @@
 # Resume here — current continuation only
 
+## Latest readability correction
+
+Supporting text across the app uses shared rem-based sizes: captions 14px, labels 16px,
+body 17px and reading/input text 18px at the usual browser default. The Home Chats/Apps/QUARK
+tile sizes remain unchanged. Narrow headers and controls wrap; small-phone assistant chats
+use an accessible back arrow and preserve conversation space. Keep the Safari native-control
+overflow containment and scalable notepad line spacing when adjusting these styles.
+
 ## Latest model consolidation
 
 General model preferences now contain the independent manager selection and shared worker

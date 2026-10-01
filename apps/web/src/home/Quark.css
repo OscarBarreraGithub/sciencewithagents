@@ -2,7 +2,7 @@
   margin: auto;
   padding: 16px 0 60px;
   color: #19243a;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.6;
 }
 .quark-heading {
@@ -44,7 +44,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 650;
 }
 .quark-page button:disabled {
@@ -60,7 +60,7 @@
   display: flex;
   flex-direction: column;
   gap: 7px;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
   color: #4b5870;
 }
@@ -70,7 +70,7 @@
   box-sizing: border-box;
 }
 .quark-page small {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #657088;
   font-weight: 400;
 }
@@ -83,7 +83,7 @@
 }
 .quark-page h3 {
   margin: 0 0 12px;
-  font-size: 15px;
+  font-size: var(--text-reading);
   overflow-wrap: anywhere;
 }
 .quark-allowances,
@@ -176,7 +176,7 @@
 }
 .quark-muted,
 .quark-footnote {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #657088;
 }
 .quark-empty {
@@ -210,7 +210,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 7px;
-  font-size: 12px;
+  font-size: var(--text-small);
   max-width: 600px;
   margin: 18px 0;
   padding: 18px;
@@ -265,7 +265,7 @@
     padding: 18px;
   }
   .quark-runs summary {
-    font-size: 12px;
+    font-size: var(--text-small);
   }
   .quark-settings {
     padding: 18px;
@@ -287,7 +287,7 @@
 .quark-report > summary {
   min-height: 44px;
   padding: 8px 0;
-  font-size: 18px;
+  font-size: var(--text-lead);
   font-weight: 650;
   cursor: pointer;
 }

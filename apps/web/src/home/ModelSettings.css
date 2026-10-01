@@ -22,7 +22,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 650;
 }
 .model-settings button:disabled {
@@ -30,7 +30,7 @@
   cursor: default;
 }
 .model-settings select {
-  font-size: 12px;
+  font-size: var(--text-small);
   width: 100%;
   min-width: 0;
 }
@@ -54,16 +54,16 @@
 }
 .model-heading > p:last-child {
   color: #657088;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.7;
   max-width: 475px;
 }
 .model-settings strong {
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .model-settings small {
   display: block;
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.6;
   color: #627088;
   margin-top: 6px;
@@ -81,13 +81,13 @@
 }
 .model-explainer,
 .model-routing > p:not(.home-eyebrow) {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: #647188;
   line-height: 1.7;
   max-width: 710px;
 }
 .model-catalog-note {
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #738096;
   display: inline-block;
   margin: 0 20px 18px 0;
@@ -122,7 +122,7 @@
 }
 .model-tier header p {
   color: #6b778d;
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.7;
   margin: 0;
   max-width: 280px;
@@ -136,14 +136,14 @@
   min-width: 0;
 }
 .model-provider-choice label {
-  font-size: 11px;
+  font-size: var(--text-caption);
   display: grid;
   gap: 8px;
   color: #52617a;
 }
 .model-provider-choice details {
   margin-top: 12px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #6b7890;
 }
 .model-provider-choice summary {
@@ -158,7 +158,7 @@
   line-height: 1.7;
 }
 .model-unavailable {
-  font-size: 10px;
+  font-size: var(--text-caption);
   line-height: 1.6;
   color: #926335;
 }
@@ -194,7 +194,7 @@
   padding: 18px 20px;
   border-radius: 10px;
   color: #59677e;
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.8;
 }
 .model-scope svg {
@@ -214,7 +214,7 @@
   padding: 28px 0;
 }
 .model-save > span {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #728098;
 }
 .model-save > div {
@@ -234,7 +234,7 @@
   display: flex;
   gap: 8px;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
@@ -290,7 +290,7 @@
     grid-template-columns: 1fr 116px;
   }
   .model-settings strong {
-    font-size: 12px;
+    font-size: var(--text-small);
   }
 }
 /* Keep form styles independent of the retained classic workspace. */
@@ -310,13 +310,13 @@
 }
 .model-tier header p,
 .model-settings small {
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .model-provider-choice label {
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .model-provider-choice details {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .model-provider-choice details label:has(input[type='checkbox']) {
   display: flex;
@@ -325,10 +325,10 @@
 }
 .model-catalog-note,
 .model-unavailable {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .model-scope {
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .model-settings .model-escalation {
   flex-direction: row;
@@ -353,7 +353,7 @@
 }
 .model-enabled p {
   color: #657088;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.6;
 }
 .model-enabled > div {
@@ -389,6 +389,6 @@
 }
 .model-restore p {
   color: #657088;
-  font-size: 13px;
+  font-size: var(--text-small);
   margin: 10px 0 0;
 }

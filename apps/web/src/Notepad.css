@@ -25,7 +25,7 @@ dialog.notepad,
     -apple-system,
     BlinkMacSystemFont,
     sans-serif;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.5;
   overflow: hidden;
 }
@@ -49,7 +49,7 @@ dialog.notepad::backdrop {
   min-width: 0;
 }
 .notepad-title p {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--pad-muted);
   margin: 0;
   overflow: hidden;
@@ -64,7 +64,7 @@ dialog.notepad::backdrop {
   color: var(--pad-ink);
 }
 .notepad-status {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--pad-muted);
   white-space: nowrap;
 }
@@ -89,7 +89,7 @@ dialog.notepad::backdrop {
   background: white;
   color: var(--pad-ink);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 650;
   cursor: pointer;
 }
@@ -148,22 +148,22 @@ dialog.notepad.with-history .notepad-body {
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
-    transparent 27px,
-    var(--pad-rule) 27px,
-    var(--pad-rule) 28px
+    transparent calc(1.75em - 1px),
+    var(--pad-rule) calc(1.75em - 1px),
+    var(--pad-rule) 1.75em
   );
   background-position: 0 13px;
   background-attachment: local;
   color: var(--pad-ink);
   font: inherit;
-  font-size: 16px;
-  line-height: 28px;
+  font-size: var(--text-reading);
+  line-height: 1.75;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 .notepad-count {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--pad-muted);
 }
 .notepad-history {
@@ -185,12 +185,12 @@ dialog.notepad.with-history .notepad-body {
 }
 .notepad-history-head h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-reading);
 }
 .notepad-history p,
 .notepad-history-note {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--pad-muted);
   overflow-wrap: anywhere;
 }
@@ -226,11 +226,11 @@ dialog.notepad.with-history .notepad-body {
   display: flex;
   gap: 8px;
   align-items: baseline;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .notepad-versions em {
   font-style: normal;
-  font-size: 11px;
+  font-size: var(--text-caption);
   padding: 1px 6px;
   border-radius: 6px;
   background: #edf0ff;
@@ -238,7 +238,7 @@ dialog.notepad.with-history .notepad-body {
 }
 .notepad-versions small {
   color: var(--pad-muted);
-  font-size: 12px;
+  font-size: var(--text-small);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -254,7 +254,7 @@ dialog.notepad.with-history .notepad-body {
   border-radius: 10px;
   background: var(--pad-paper);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 .notepad-history-actions {
   display: flex;
@@ -277,7 +277,7 @@ dialog.notepad.with-history .notepad-body {
   border-radius: 12px;
   box-shadow: 0 8px 32px #20273826;
   background: #fffdf5;
-  font-size: 12px;
+  font-size: var(--text-small);
 }
 .notepad-options-head {
   display: flex;
@@ -335,7 +335,7 @@ dialog.notepad.with-history .notepad-body {
     padding: 10px 12px;
   }
   .notepad-title h2 {
-    font-size: 18px;
+    font-size: var(--text-lead);
   }
   .notepad-status {
     max-width: 45%;

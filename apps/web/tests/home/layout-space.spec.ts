@@ -119,6 +119,9 @@ test('attention and to-dos grow from compact panels to independently scrolling s
   expect(await panes.nth(1).evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
   expect(await panes.nth(0).evaluate((e) => e.scrollTop)).toBe(attentionScroll);
   expect(await page.locator('.home-content').evaluate((e) => e.scrollTop)).toBe(mainScroll);
+  // A large-text row can exceed the short landscape pane. Its title must remain
+  // reachable by scrolling that pane, not necessarily visible at its bottom edge.
+  await todos.getByText('Saved to-do 30', { exact: true }).scrollIntoViewIfNeeded();
   await expect(todos.getByText('Saved to-do 30', { exact: true })).toBeInViewport();
   await page.screenshot({ path: info.outputPath('full-independent-scroll.png') });
 
