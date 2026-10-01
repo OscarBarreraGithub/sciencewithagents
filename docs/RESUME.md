@@ -1,5 +1,14 @@
 # Resume here — current continuation only
 
+## Latest model form layout correction
+
+Model preferences now aligns provider checkboxes beside their names, places headings inside
+cards, and separates introductions, controls and helper copy. Manager fields share one
+responsive row and stack on narrow screens; model-level and assistant choices also reflow
+with enlarged text. Shared heading/paragraph resets no longer override component spacing,
+and project setup uses the same responsive manager grid. No model policy or saved choices
+changed. Focused viewport/zoom evidence is in VERIFICATION.md.
+
 ## Latest Back navigation correction
 
 General pages use Back in the existing persistent top bar, replacing the links that scrolled

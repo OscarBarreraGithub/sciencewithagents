@@ -8,6 +8,9 @@ scrolling. Slider thumbs reach their native endpoints; when stop labels cannot f
 chosen text size, the current choice stays visible without splitting words. Automated checks
 cover control bounds, overlapping labels and enlarged text in addition to whole-page overflow.
 Zoom and phone evidence is recorded in VERIFICATION.md.
+Model preferences use aligned provider choices, consistent card/section spacing and fields
+that stack with available width or enlarged text. The shared spacing reset also preserves
+the intended paragraph/heading gaps on Settings and project setup.
 
 **General model preferences (2026-10-01): implemented.** Settings → Model preferences owns
 new-project manager/worker defaults, separate from per-project customization. Model levels in

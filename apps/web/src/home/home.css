@@ -77,10 +77,8 @@ body:has(.home-shell) {
   color: inherit;
   text-decoration: none;
 }
-.home-shell h1,
-.home-shell h2,
-.home-shell h3,
-.home-shell p {
+/* Component spacing must win regardless of stylesheet import order. */
+.home-shell :where(h1, h2, h3, p) {
   margin: 0;
 }
 .home-shell h1,

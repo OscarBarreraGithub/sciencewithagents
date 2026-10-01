@@ -143,7 +143,7 @@ export function ModelSettings() {
         </button>
       ) : (
         <>
-          <fieldset className="model-enabled" disabled={busy}>
+          <fieldset className="model-enabled config-section" disabled={busy}>
             <legend>Providers in your defaults</legend>
             <p>
               Choose the subscriptions you use. With one provider, it handles both managers and
@@ -182,7 +182,7 @@ export function ModelSettings() {
                       });
                     }}
                   />
-                  {providerNames[provider]}
+                  <span>{providerNames[provider]}</span>
                 </label>
               ))}
             </div>
@@ -203,98 +203,102 @@ export function ModelSettings() {
             <div className="config-form">
               <fieldset className="config-section" disabled={busy}>
                 <legend>Manager default</legend>
-                <label>
-                  Manager provider
-                  <select
-                    value={policyProvider(draft, 'manager') ?? 'ask'}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setDraft({
-                        ...draft,
-                        ...(value === 'ask' ? { preset: 'pick' as const } : {}),
-                        providers: {
-                          ...draft.providers,
-                          manager: value === 'ask' ? 'preset' : (value as ProviderId),
-                        },
-                      });
-                    }}
-                  >
-                    {draft.enabledProviders.map((provider) => (
-                      <option key={provider} value={provider}>
-                        {providerNames[provider]}
-                      </option>
-                    ))}
-                    <option value="ask">Choose at project setup</option>
-                  </select>
-                </label>
-                {managerChoice && managerProvider && (
-                  <div className="config-grid">
-                    <label>
-                      Manager model
-                      <select
-                        value={managerChoice.model ?? ''}
-                        onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            managerModels: {
-                              ...draft.managerModels,
-                              [managerProvider]: {
-                                ...managerChoice,
-                                model: event.target.value || null,
-                                effort: null,
-                              },
-                            },
-                          })
-                        }
-                      >
-                        <option value="">
-                          {latestFamily(managerCatalog, managerChoice.family)?.label ??
-                            managerChoice.family}{' '}
-                          · latest available
+                <div className="config-grid model-manager-grid">
+                  <label>
+                    Manager provider
+                    <select
+                      value={policyProvider(draft, 'manager') ?? 'ask'}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setDraft({
+                          ...draft,
+                          ...(value === 'ask' ? { preset: 'pick' as const } : {}),
+                          providers: {
+                            ...draft.providers,
+                            manager: value === 'ask' ? 'preset' : (value as ProviderId),
+                          },
+                        });
+                      }}
+                    >
+                      {draft.enabledProviders.map((provider) => (
+                        <option key={provider} value={provider}>
+                          {providerNames[provider]}
                         </option>
-                        {managerChoice.model && !managerModel && (
-                          <option value={managerChoice.model}>
-                            {managerChoice.model} · unavailable
-                          </option>
-                        )}
-                        {managerCatalog.map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {model.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Manager reasoning
-                      <select
-                        disabled={!managerModel}
-                        value={
-                          managerChoice.effort ??
-                          (managerModel ? policyDefaultEffort(managerModel.efforts, 'postdoc') : '')
-                        }
-                        onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            managerModels: {
-                              ...draft.managerModels,
-                              [managerProvider]: {
-                                ...managerChoice,
-                                effort: event.target.value || null,
+                      ))}
+                      <option value="ask">Choose at project setup</option>
+                    </select>
+                  </label>
+                  {managerChoice && managerProvider && (
+                    <>
+                      <label>
+                        Manager model
+                        <select
+                          value={managerChoice.model ?? ''}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              managerModels: {
+                                ...draft.managerModels,
+                                [managerProvider]: {
+                                  ...managerChoice,
+                                  model: event.target.value || null,
+                                  effort: null,
+                                },
                               },
-                            },
-                          })
-                        }
-                      >
-                        {!managerModel && <option value="">Refresh available models</option>}
-                        {managerModel?.efforts.map((effort) => (
-                          <option key={effort} value={effort}>
-                            {effortLabel(effort)}
+                            })
+                          }
+                        >
+                          <option value="">
+                            {latestFamily(managerCatalog, managerChoice.family)?.label ??
+                              managerChoice.family}{' '}
+                            · latest available
                           </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                )}
+                          {managerChoice.model && !managerModel && (
+                            <option value={managerChoice.model}>
+                              {managerChoice.model} · unavailable
+                            </option>
+                          )}
+                          {managerCatalog.map((model) => (
+                            <option key={model.id} value={model.id}>
+                              {model.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Manager reasoning
+                        <select
+                          disabled={!managerModel}
+                          value={
+                            managerChoice.effort ??
+                            (managerModel
+                              ? policyDefaultEffort(managerModel.efforts, 'postdoc')
+                              : '')
+                          }
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              managerModels: {
+                                ...draft.managerModels,
+                                [managerProvider]: {
+                                  ...managerChoice,
+                                  effort: event.target.value || null,
+                                },
+                              },
+                            })
+                          }
+                        >
+                          {!managerModel && <option value="">Refresh available models</option>}
+                          {managerModel?.efforts.map((effort) => (
+                            <option key={effort} value={effort}>
+                              {effortLabel(effort)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  )}
+                </div>
                 <p className="config-help">
                   Managers start from the Postdoc mapping below, with xhigh where supported.
                   Choosing a manager model here leaves worker models unchanged.

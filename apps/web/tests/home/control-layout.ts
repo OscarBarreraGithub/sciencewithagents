@@ -1,5 +1,49 @@
 import { expect, type Page } from '@playwright/test';
 
+export async function expectModelFormLayout(page: Page) {
+  const issues = await page.locator('.model-settings').evaluate((form) => {
+    const problems: string[] = [];
+    const box = (selector: string) => form.querySelector(selector)!.getBoundingClientRect();
+    const title = form.querySelector('h1')!.firstChild!;
+    const range = document.createRange();
+    for (const word of title.textContent!.matchAll(/\S+/g)) {
+      range.setStart(title, word.index);
+      range.setEnd(title, word.index + word[0].length);
+      if (new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size > 1)
+        problems.push(`Heading word "${word[0]}" is split across lines`);
+    }
+    const providerRow = box('.model-enabled > div');
+    if (providerRow.top - box('.model-enabled > p').bottom < 11)
+      problems.push('Provider choices crowd the introduction');
+    if (box('.model-enabled > p:last-child').top - providerRow.bottom < 11)
+      problems.push('Provider choices crowd the save instructions');
+    if (box('.config-form').top - box('.model-project-defaults > p').bottom < 11)
+      problems.push('Project defaults crowd the introduction');
+    for (const label of form.querySelectorAll('.model-enabled label')) {
+      const check = label.querySelector('input')!.getBoundingClientRect();
+      const text = label.querySelector('span')!.getBoundingClientRect();
+      if (
+        text.left - check.right < 7 ||
+        Math.abs(check.y + check.height / 2 - text.y - text.height / 2) > 2
+      )
+        problems.push(`${label.textContent}: checkbox and name are not aligned side by side`);
+    }
+    for (const card of form.querySelectorAll('.config-section, .model-tier')) {
+      const bounds = card.getBoundingClientRect();
+      for (const field of card.querySelectorAll('select, input:not([type="range"])')) {
+        if (!field.getClientRects().length) continue;
+        const rect = field.getBoundingClientRect();
+        if (rect.left < bounds.left + 10 || rect.right > bounds.right - 10)
+          problems.push(
+            `${field.getAttribute('aria-label') ?? field.parentElement?.textContent}: field reaches outside the card padding`,
+          );
+      }
+    }
+    return problems;
+  });
+  expect(issues, `Model form spacing at ${page.url()}`).toEqual([]);
+}
+
 /** Check inside controls, where clipping can be hidden by an otherwise fitting page. */
 export async function expectSliderLayout(page: Page) {
   const problems = await page

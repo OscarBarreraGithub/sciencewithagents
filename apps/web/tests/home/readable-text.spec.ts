@@ -1,9 +1,19 @@
 import { chromium, expect, test, type Page } from '@playwright/test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { expectSliderLayout } from './control-layout';
+import { expectModelFormLayout, expectSliderLayout } from './control-layout';
 
-const screens = ['home', 'models', 'new', 'resources', 'work', 'chats', 'apps'];
+const screens = [
+  'home',
+  'models',
+  'new',
+  'resources',
+  'work',
+  'chats',
+  'apps',
+  'settings',
+  'welcome',
+];
 
 async function fits(page: Page) {
   const size = await page.evaluate(() => {
@@ -52,6 +62,8 @@ async function fits(page: Page) {
 async function inspect(page: Page, route: string) {
   await expect(page.locator('main h1').first()).toBeVisible();
   if (route === 'models') {
+    await expect(page.getByRole('group', { name: 'Providers in your defaults' })).toBeVisible();
+    await expectModelFormLayout(page);
     await page
       .getByRole('group', { name: 'Manager default', exact: true })
       .scrollIntoViewIfNeeded();
@@ -104,6 +116,21 @@ test('larger text reflows with doubled reading size on desktop and phones', asyn
     if (route === 'models') {
       await page.locator('.home-content').evaluate((e) => e.scrollTo(0, 0));
       await page.screenshot({ path: info.outputPath('models-double-text.png') });
+    }
+    // Keep viewport evidence of the actual form, not just its page heading.
+    if (route === 'models') {
+      await page.evaluate(() => {
+        document.documentElement.style.fontSize = '100%';
+      });
+      for (const [name, selector] of [
+        ['providers', '.model-enabled'],
+        ['manager', '.model-manager-grid'],
+        ['levels', '.model-tier'],
+        ['assistants', '.model-routing'],
+      ]) {
+        await page.locator(selector!).first().scrollIntoViewIfNeeded();
+        await page.screenshot({ path: info.outputPath(`models-${name}.png`) });
+      }
     }
   }
 });

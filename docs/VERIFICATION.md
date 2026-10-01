@@ -1,5 +1,26 @@
 # Verification
 
+## 2026-10-01 — model preferences spacing and alignment
+
+Provider choices align checkbox and name horizontally, legends sit inside their cards,
+and descriptions have space before/after controls. The manager provider, model and reasoning
+share a responsive grid used by project setup. Model-level choices and app-assistant rows
+stack when needed. A lower-specificity shell reset preserves component heading/paragraph
+spacing across related settings screens.
+
+- Production web build and formatting pass. Twenty-six focused browser cases pass across
+  desktop, 412×915, 360×800, 915×412 and iPhone WebKit, covering save/retry, exact model
+  choices, defaults restoration, project customization, Settings navigation and layout.
+- Normal/doubled text and real Chromium zoom from 80–400% are checked. Screenshots caught
+  a split heading word on the smallest phone at doubled text; a smaller minimum heading
+  size fixes it. All six readability/zoom cases pass again after that correction; four
+  duplicate non-desktop zoom cases are intentionally skipped in each run. Geometry checks
+  cover checkbox/text alignment, paragraph/control gaps, card insets and unbroken title words.
+- Rendered provider/manager/model-level/assistant forms, Settings and worker controls were
+  inspected. Demo fixtures only: no owner preference changes or real model launches.
+  Evidence stays under ignored `data/model-spacing-*` and `data/browser-results/home/`.
+  Owned test servers/browser children are closed; no physical-device acceptance is claimed.
+
 ## 2026-10-01 — Back stays available while scrolling
 
 General pages now put Back in the existing top bar instead of inside scrolling headings.
