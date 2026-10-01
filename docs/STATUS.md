@@ -21,11 +21,11 @@ Production build, five-profile contrast/copy/fallback checks and live Safari ins
 
 ### Open owner follow-ups — checked against source, 2026-10-01
 
-- **Model defaults:** the global provider/tier editor still overlaps the separate project
-  worker matrix. Task defaults only chooses a provider; family/pin changes do not consistently
-  feed that matrix, and routine/calculation/orchestration dispatch falls back to global policy.
-  The discussed split into new-project defaults, project overrides and app-assistant settings
-  has not been implemented. Preserve explicit choices while consolidating these paths.
+- **Model defaults — completed 2026-10-01:** Model preferences now saves general manager,
+  worker and app-assistant choices. New projects snapshot those preferences, allow project
+  customization and can explicitly adopt current general worker preferences. Restore
+  recommended defaults returns the form to the creator's defaults without changing projects
+  or enabling another subscription. Legacy saved projects retain their original choices.
 - **Orb:** random selection, placement and tap-outline removal are done, but animation still
   stops after 1.8 seconds and there are only seven real shapes. The duration/variety concern
   was explained, not resolved. Do not count randomized rotation as additional shapes.

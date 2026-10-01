@@ -1,10 +1,20 @@
 # Feature map
 
+**General model preferences (2026-10-01): implemented.** Settings → Model preferences owns
+new-project manager/worker defaults, separate from per-project customization. The creator's
+corrected matrix starts at Balanced + Tokenmax (the provider's Only preset for one-provider
+installs), follows live family versions and supports exact pins. Restore recommended defaults
+stages the original recommendations for saving while retaining subscriptions and existing
+projects. Project registration and previews use the same saved preference snapshot; family
+remapping reaches worker dispatch. Project-specific routine/calculation/orchestration choices
+keep the project's provider, with stronger calculation requirements. Legacy projects preserve
+saved behavior and can explicitly adopt current general preferences. See MODEL_POLICY.md.
+
 **Optional account prompts (2026-10-01): readable and copyable in Apps and Help.** Prompt cards
 set both text and background colors, avoiding the shared code-block style that made their
 contents appear blank. Copy and manual-selection fallback have focused responsive checks.
 These remain setup-agent instructions, not automatic account-readiness detection. Confirmed
-unfinished model-settings, orb and update-flow requests are listed in [Build status](STATUS.md).
+unfinished orb and update-flow requests are listed in [Build status](STATUS.md).
 
 **Helper visibility (2026-09-30): implemented with a native-editor limit.** App-created
 Codex contexts now carry durable ownership/provenance; native helpers and managed contexts

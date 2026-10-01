@@ -1,5 +1,26 @@
 # Verification
 
+## 2026-10-01 — consolidated general model preferences
+
+Shared, server and frontend production builds and strict TypeScript checks passed. Sixty-eight
+focused backend checks cover policy persistence, idempotent/revisioned saves, project snapshots
+across restart, recommendations reset, independent manager/worker pins, current catalog versions,
+renamed families, project-provider routing and stronger calculation requirements. Existing native
+choices, saved projects and reconnected folders retain their settings. No live model turn is
+needed for these fixture checks.
+
+Thirty focused browser cases pass at desktop 1440×1000, 412×915, 360×800, 915×412 and
+iPhone WebKit. They cover general settings save/retry/conflicts, project customization,
+recommendations reset without rewriting saved setup drafts, single-provider setup, and
+first-project notepad/send through the demo backend. Phone and desktop screenshots were
+visually inspected. These are simulated devices, not physical-phone acceptance.
+
+The installed manual app was restarted after a verified SQLite recovery snapshot with no
+queued/running work. Project/agent/history counts stayed at 4/49/2,052; phone access retained
+its existing paired device. Native Safari refreshed both real provider catalogs, displayed
+actual current versions and xhigh for the manager, and successfully saved the owner's
+recommended defaults. No live model turn, new project or login service was started.
+
 ## 2026-10-01 — visible GitHub and Cloudflare setup prompts
 
 Live Safari reproduced populated prompt cards with near-white text on a pale inherited

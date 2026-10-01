@@ -10,12 +10,26 @@ export const providerMixSchema = z.enum([
 ]);
 export const spendingLevelSchema = z.enum(['light', 'default', 'tokenmax']);
 export const workerPurposeSchema = z.enum(['research', 'review', 'bulk']);
-const workerChoice = z
+export const workerChoiceSchema = z
   .object({
     provider: providerIdSchema,
     family: z.string().trim().min(1).max(60),
     model: z.string().trim().min(1).max(100).nullable().default(null),
     effort: effortSchema.nullable().default(null),
+  })
+  .strict();
+export const workerPreferencesSchema = z
+  .object({
+    providerMix: providerMixSchema,
+    spending: spendingLevelSchema,
+    overrides: z
+      .object({
+        research: workerChoiceSchema.optional(),
+        review: workerChoiceSchema.optional(),
+        bulk: workerChoiceSchema.optional(),
+      })
+      .strict()
+      .default({}),
   })
   .strict();
 export const projectWorkflowSchema = z
@@ -29,12 +43,18 @@ export const projectWorkflowSchema = z
     ambiguity: z.enum(['continue', 'ask-human']).default('continue'),
     overrides: z
       .object({
-        research: workerChoice.optional(),
-        review: workerChoice.optional(),
-        bulk: workerChoice.optional(),
+        research: workerChoiceSchema.optional(),
+        review: workerChoiceSchema.optional(),
+        bulk: workerChoiceSchema.optional(),
       })
       .strict()
       .default({}),
+    // Snapshot the user's mappings when a project is created. Absence preserves legacy projects.
+    familyDefaults: z.record(z.string().min(1).max(60), workerChoiceSchema).optional(),
+    managerDefaults: z
+      .object({ codex: workerChoiceSchema, claude: workerChoiceSchema })
+      .strict()
+      .optional(),
   })
   .strict();
 export type ProjectWorkflow = z.infer<typeof projectWorkflowSchema>;
@@ -97,6 +117,21 @@ export const modelFamilies: Record<
   opus: { provider: 'claude', tier: 'grad' },
   fable: { provider: 'claude', tier: 'postdoc' },
 };
+export function projectFamilyDefault(
+  workflow: ProjectWorkflow,
+  provider: 'codex' | 'claude',
+  tier: 'uncle' | 'undergrad' | 'grad' | 'postdoc',
+) {
+  const family = Object.keys(modelFamilies).find(
+    (key) => modelFamilies[key]!.provider === provider && modelFamilies[key]!.tier === tier,
+  );
+  return family ? workflow.familyDefaults?.[family] : undefined;
+}
+export function projectManagerDefault(workflow: ProjectWorkflow, provider: 'codex' | 'claude') {
+  return (
+    workflow.managerDefaults?.[provider] ?? projectFamilyDefault(workflow, provider, 'postdoc')
+  );
+}
 export function workerDefault(
   workflow: ProjectWorkflow,
   purpose: z.infer<typeof workerPurposeSchema>,
@@ -107,5 +142,6 @@ export function workerDefault(
     workerDefaults[workflow.spending][workflow.providerMix][
       ['research', 'review', 'bulk'].indexOf(purpose)
     ]!;
+  if (workflow.familyDefaults?.[family]) return workflow.familyDefaults[family];
   return { provider: modelFamilies[family]!.provider, family, model: null, effort: null };
 }

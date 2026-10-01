@@ -12,11 +12,16 @@ import {
   taskTiers,
   tierLabels,
   policyProvider,
+  newProjectWorkflow,
+  managerModelChoice,
+  recommendedModelPolicy,
+  policyDefaultEffort,
   type ModelPolicy,
   type ModelPolicyStatus,
   type ProviderId,
 } from '@dock/shared';
 import { api } from '../api';
+import { WorkerSettings } from './ProjectConfiguration';
 import './ModelSettings.css';
 
 const tiersHighToLow = modelTierSchema.options.slice().reverse();
@@ -25,7 +30,7 @@ const descriptions = {
     'They sound confident, but also believe whatever they read. Be careful trusting them. Use for cheap, bulk work',
   undergrad: 'Routine checks and recurring monitoring. Can ask a grad student for help.',
   grad: 'Research, implementation, review, calculations and difficult questions.',
-  postdoc: 'Project managers and your overarching personal agent.',
+  postdoc: 'Managers and the strongest worker defaults. Manager choices above stay separate.',
 };
 const providerNames = { codex: 'Codex', claude: 'Claude' };
 export function ModelSettings() {
@@ -94,7 +99,7 @@ export function ModelSettings() {
         setSaved(value);
         setDraft(value.policy);
         receipt.current = null;
-        setNotice('Model settings saved. New assignments will use these choices.');
+        setNotice('Model settings saved. New projects and app assistants will use these choices.');
       }
     } catch (e) {
       if (active.current)
@@ -104,13 +109,25 @@ export function ModelSettings() {
     }
   }
   const dirty = draft && saved && JSON.stringify(draft) !== JSON.stringify(saved.policy);
+  const managerProvider = draft ? policyProvider(draft, 'manager') : undefined;
+  const managerChoice =
+    draft && managerProvider ? managerModelChoice(draft, managerProvider) : null;
+  const managerCatalog = saved?.catalogs.find((c) => c.provider === managerProvider)?.models ?? [];
+  const managerModel = managerChoice?.model
+    ? managerCatalog.find((m) => m.id === managerChoice.model)
+    : managerChoice
+      ? latestFamily(managerCatalog, managerChoice.family)
+      : undefined;
   return (
     <section className="model-settings">
       <BackLink />
       <header className="model-heading">
         <p className="home-eyebrow">WORKSPACE SETTINGS</p>
-        <h1 tabIndex={-1}>Models and roles</h1>
-        <p>Choose default models for managers, workers and routine computer checks.</p>
+        <h1 tabIndex={-1}>Model preferences</h1>
+        <p>
+          Your defaults for new projects and app assistants. Customize each project when you create
+          it.
+        </p>
       </header>
       {error && (
         <div className="model-feedback error" role="alert">
@@ -176,56 +193,147 @@ export function ModelSettings() {
               <a href="#/welcome">Check accounts and setup</a>
             </p>
           </fieldset>
-          <fieldset className="model-presets" disabled={busy}>
-            <legend>01 / Who takes the lead?</legend>
-            {(
-              [
-                [
-                  'codex-heavy',
-                  'Codex heavy',
-                  'Codex defaults for managers and research/coding. Projects choose their worker mix separately.',
-                ],
-                [
-                  'claude-heavy',
-                  'Claude heavy',
-                  'Claude defaults for managers and research/coding. Projects choose their worker mix separately.',
-                ],
-                [
-                  'pick',
-                  'Pick as I go',
-                  'Choose when creating a manager. Managers choose and explain each worker’s provider.',
-                ],
-              ] as const
-            ).map(([value, label, description]) => (
-              <label className={draft.preset === value ? 'selected' : ''} key={value}>
-                <input
-                  type="radio"
-                  name="model-preset"
-                  value={value}
-                  checked={draft.preset === value}
-                  onChange={() => setDraft({ ...draft, preset: value })}
-                />
-                <span>
-                  <strong>{label}</strong>
-                  <small>
-                    {value !== 'pick' && draft.enabledProviders.length === 1
-                      ? `${providerNames[draft.enabledProviders[0]!]} managers and workers while it is your only provider.`
-                      : description}
-                  </small>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-          {draft.enabledProviders.length === 1 && (
-            <p className="model-feedback">
-              {providerNames[draft.enabledProviders[0]!]} is your only default provider. Either
-              heavy preset keeps all automatic work there; Pick as I go still asks for a choice.
+          <section
+            className="model-project-defaults"
+            aria-labelledby="model-project-defaults-title"
+          >
+            <h2 id="model-project-defaults-title">New project defaults</h2>
+            <p className="model-explainer">
+              These are copied into each new project. Existing projects keep their saved choices.
+              You can customize the manager and workers during setup.
             </p>
-          )}
+            <div className="config-form">
+              <fieldset className="config-section" disabled={busy}>
+                <legend>Manager default</legend>
+                <label>
+                  Manager provider
+                  <select
+                    value={policyProvider(draft, 'manager') ?? 'ask'}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setDraft({
+                        ...draft,
+                        ...(value === 'ask' ? { preset: 'pick' as const } : {}),
+                        providers: {
+                          ...draft.providers,
+                          manager: value === 'ask' ? 'preset' : (value as ProviderId),
+                        },
+                      });
+                    }}
+                  >
+                    {draft.enabledProviders.map((provider) => (
+                      <option key={provider} value={provider}>
+                        {providerNames[provider]}
+                      </option>
+                    ))}
+                    <option value="ask">Choose at project setup</option>
+                  </select>
+                </label>
+                {managerChoice && managerProvider && (
+                  <div className="config-grid">
+                    <label>
+                      Manager model
+                      <select
+                        value={managerChoice.model ?? ''}
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            managerModels: {
+                              ...draft.managerModels,
+                              [managerProvider]: {
+                                ...managerChoice,
+                                model: event.target.value || null,
+                                effort: null,
+                              },
+                            },
+                          })
+                        }
+                      >
+                        <option value="">
+                          {latestFamily(managerCatalog, managerChoice.family)?.label ??
+                            managerChoice.family}{' '}
+                          · latest available
+                        </option>
+                        {managerChoice.model && !managerModel && (
+                          <option value={managerChoice.model}>
+                            {managerChoice.model} · unavailable
+                          </option>
+                        )}
+                        {managerCatalog.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Manager reasoning
+                      <select
+                        disabled={!managerModel}
+                        value={
+                          managerChoice.effort ??
+                          (managerModel ? policyDefaultEffort(managerModel.efforts, 'postdoc') : '')
+                        }
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            managerModels: {
+                              ...draft.managerModels,
+                              [managerProvider]: {
+                                ...managerChoice,
+                                effort: event.target.value || null,
+                              },
+                            },
+                          })
+                        }
+                      >
+                        {!managerModel && <option value="">Refresh available models</option>}
+                        {managerModel?.efforts.map((effort) => (
+                          <option key={effort} value={effort}>
+                            {effortLabel(effort)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                )}
+                <p className="config-help">
+                  Managers start from the Postdoc mapping below, with xhigh where supported.
+                  Choosing a manager model here leaves worker models unchanged.
+                </p>
+              </fieldset>
+              <WorkerSettings
+                workflow={newProjectWorkflow(draft)}
+                catalogs={{
+                  codex: {
+                    models: saved?.catalogs.find((c) => c.provider === 'codex')?.models ?? [],
+                    error: saved?.catalogs.find((c) => c.provider === 'codex')?.error ?? '',
+                    loaded: !!saved?.catalogs.find((c) => c.provider === 'codex')?.observedAt,
+                  },
+                  claude: {
+                    models: saved?.catalogs.find((c) => c.provider === 'claude')?.models ?? [],
+                    error: saved?.catalogs.find((c) => c.provider === 'claude')?.error ?? '',
+                    loaded: !!saved?.catalogs.find((c) => c.provider === 'claude')?.observedAt,
+                  },
+                }}
+                disabled={busy}
+                modelsOnly
+                onChange={(workflow) =>
+                  setDraft({
+                    ...draft,
+                    projectDefaults: {
+                      providerMix: workflow.providerMix,
+                      spending: workflow.spending,
+                      overrides: workflow.overrides,
+                    },
+                  })
+                }
+              />
+            </div>
+          </section>
           <section className="model-team">
             <div className="model-section-heading">
               <div>
-                <p className="home-eyebrow">02 / YOUR TEAM</p>
                 <h2>Model levels</h2>
               </div>
               <button onClick={() => void refresh()} disabled={busy}>
@@ -377,52 +485,53 @@ export function ModelSettings() {
             </div>
           </section>
           <section className="model-routing">
-            <p className="home-eyebrow">03 / TASK DEFAULTS</p>
-            <h2>Task defaults</h2>
+            <h2>App assistant defaults</h2>
             <p>
-              These provider choices take precedence over the preset. Managers always use the
-              postdoc level. Serious work starts at grad student.
+              Used outside project teams, such as computer checks and assisted search. Their models
+              come from the levels above. Projects use their saved worker preferences.
             </p>
             <div className="model-route-list">
-              {taskClassSchema.options.map((task) => {
-                const provider = policyProvider(draft, task);
-                return (
-                  <label key={task}>
-                    <span>
-                      <strong>{taskLabels[task]}</strong>
-                      <small>
-                        {tierLabels[taskTiers[task]]} ·{' '}
-                        {provider ? providerNames[provider] : 'Choose at dispatch'}
-                      </small>
-                    </span>
-                    <select
-                      aria-label={`${taskLabels[task]} provider`}
-                      disabled={busy}
-                      value={draft.providers[task]}
-                      onChange={(e) =>
-                        setDraft({
-                          ...draft,
-                          providers: {
-                            ...draft.providers,
-                            [task]: e.target.value as 'preset' | ProviderId,
-                          },
-                        })
-                      }
-                    >
-                      <option value="preset">Follow preset</option>
-                      {draft.enabledProviders.map((provider) => (
-                        <option key={provider} value={provider}>
-                          {providerNames[provider]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                );
-              })}
+              {taskClassSchema.options
+                .filter((task) => task !== 'manager' && task !== 'reasoning')
+                .map((task) => {
+                  const provider = policyProvider(draft, task);
+                  return (
+                    <label key={task}>
+                      <span>
+                        <strong>{taskLabels[task]}</strong>
+                        <small>
+                          {tierLabels[taskTiers[task]]} ·{' '}
+                          {provider ? providerNames[provider] : 'Choose at dispatch'}
+                        </small>
+                      </span>
+                      <select
+                        aria-label={`${taskLabels[task]} provider`}
+                        disabled={busy}
+                        value={draft.providers[task]}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            providers: {
+                              ...draft.providers,
+                              [task]: e.target.value as 'preset' | ProviderId,
+                            },
+                          })
+                        }
+                      >
+                        <option value="preset">Follow preset</option>
+                        {draft.enabledProviders.map((provider) => (
+                          <option key={provider} value={provider}>
+                            {providerNames[provider]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })}
             </div>
             <label className="model-scheduled">
               <span>
-                <strong>Unattended checks in “pick as I go”</strong>
+                <strong>Automatic checks provider</strong>
                 <small>Used when the routine provider follows the preset.</small>
               </span>
               <select
@@ -459,13 +568,31 @@ export function ModelSettings() {
           <aside className="model-scope">
             <ArrowUpRight size={20} />
             <p>
-              New app assignments use this policy. Policy-managed chats follow updates between
-              turns, on the same provider. Existing pinned or imported conversations retain their
-              model; use their advanced model control to follow the central default. Native editor
-              conversations retain their own settings. <a href="#/resources">Computer health</a>{' '}
-              uses the routine-check default.
+              New projects copy these preferences; their automatic family choices still follow the
+              latest available version. Exact versions stay pinned. App assistants use their shared
+              defaults. Existing projects and native editor conversations keep their own settings.{' '}
+              <a href="#/resources">Computer health</a> uses the routine-check default.
             </p>
           </aside>
+          <section className="model-restore">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setDraft(recommendedModelPolicy(draft));
+                setNotice(
+                  'Recommended defaults restored in this form. Save to apply them. Existing projects stay unchanged.',
+                );
+              }}
+            >
+              Restore recommended defaults
+            </button>
+            <p>
+              The creator’s corrected model matrix, latest available families, an independent
+              manager choice and Balanced + Tokenmax. With one enabled provider, use its Only
+              preset. Review the choices, then Save.
+            </p>
+          </section>
           <div className="model-save">
             <span>{dirty ? 'You have unsaved changes' : 'Your shared model policy'}</span>
             <div>

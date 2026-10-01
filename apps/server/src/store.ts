@@ -8,6 +8,7 @@ import {
   defaultModelPolicy,
   modelPolicySchema,
   policyProvider,
+  newProjectWorkflow,
   agentSchema,
   approvalSchema,
   decisionSchema,
@@ -325,6 +326,11 @@ export class Store extends EventEmitter {
         provider,
       });
       this.event('project.created', p.id, p.managerId, { name });
+      const workflow = newProjectWorkflow(
+        modelPolicySchema.parse(this.getSetting('model-policy') ?? defaultModelPolicy),
+      );
+      this.setSetting(`project-workflow:${p.id}`, workflow);
+      this.event('project.workflow_changed', p.id, p.managerId, workflow);
       return projectSchema.parse(p);
     });
   }

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   projectWorkflowSchema,
   projectWorkflowSaveSchema,
+  newProjectWorkflow,
   type ProjectWorkflow,
 } from '@dock/shared';
 import { Conflict, type Store } from './store.js';
@@ -46,6 +47,11 @@ export function registerProjectWorkflowRoutes(
         );
       const workflow = projectWorkflowSchema.parse({
         ...value.workflow,
+        familyDefaults:
+          value.workflow.familyDefaults ??
+          current.familyDefaults ??
+          newProjectWorkflow(models.policy()).familyDefaults,
+        managerDefaults: value.workflow.managerDefaults ?? current.managerDefaults,
         revision: current.revision + 1,
       });
       store.setSetting(`project-workflow:${projectId}`, workflow);

@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { effortSchema, providerIdSchema, modelTierSchema, taskClassSchema } from './providers.js';
+import {
+  modelFamilies,
+  projectWorkflowSchema,
+  workerPreferencesSchema,
+} from './project-workflow.js';
 
 export const tierLabels = {
   uncle: 'Uncle',
@@ -71,6 +76,11 @@ export const modelPolicySchema = z
       )
       .default(['codex', 'claude']),
     models: z.object({ codex: tiers, claude: tiers }).strict(),
+    // A manager choice must not change the worker model occupying the postdoc slot.
+    managerModels: z
+      .object({ codex: choice.optional(), claude: choice.optional() })
+      .strict()
+      .default({}),
     providers: z
       .object({
         manager: z.enum(['preset', 'codex', 'claude']),
@@ -84,6 +94,11 @@ export const modelPolicySchema = z
     // Unattended work needs an explicit choice even under Pick as I go.
     scheduledProvider: providerIdSchema,
     escalation: z.boolean(),
+    projectDefaults: workerPreferencesSchema.default({
+      providerMix: 'balanced',
+      spending: 'tokenmax',
+      overrides: {},
+    }),
   })
   .strict();
 export type ModelPolicy = z.infer<typeof modelPolicySchema>;
@@ -117,7 +132,55 @@ export const defaultModelPolicy: ModelPolicy = {
   },
   scheduledProvider: 'claude',
   escalation: true,
+  managerModels: {},
+  projectDefaults: { providerMix: 'balanced', spending: 'tokenmax', overrides: {} },
 };
+
+export function managerModelChoice(policy: ModelPolicy, provider: 'codex' | 'claude') {
+  return policy.managerModels[provider] ?? policy.models[provider].postdoc;
+}
+
+/** The owner's recommendations, without enabling subscriptions or changing existing projects. */
+export function recommendedModelPolicy(current: ModelPolicy): ModelPolicy {
+  const next = structuredClone(defaultModelPolicy);
+  next.revision = current.revision;
+  next.enabledProviders = [...current.enabledProviders];
+  if (next.enabledProviders.length === 1) {
+    const provider = next.enabledProviders[0]!;
+    next.scheduledProvider = provider;
+    next.projectDefaults.providerMix = provider === 'codex' ? 'codex-only' : 'claude-only';
+  }
+  return next;
+}
+
+/** Same saved preference snapshot for the setup preview, backend registration and manager context. */
+export function newProjectWorkflow(policy: ModelPolicy) {
+  const preferences = structuredClone(policy.projectDefaults);
+  if (policy.enabledProviders.length === 1)
+    preferences.providerMix =
+      policy.enabledProviders[0] === 'claude' ? 'claude-only' : 'codex-only';
+  const familyDefaults = Object.fromEntries(
+    Object.entries(modelFamilies).map(([family, slot]) => {
+      const choice = policy.models[slot.provider][slot.tier];
+      return [
+        family,
+        {
+          provider: slot.provider,
+          family: choice.family,
+          model: choice.model,
+          effort: choice.effort,
+        },
+      ];
+    }),
+  );
+  const managerDefaults = Object.fromEntries(
+    (['codex', 'claude'] as const).map((provider) => {
+      const { family, model, effort } = managerModelChoice(policy, provider);
+      return [provider, { provider, family, model, effort }];
+    }),
+  );
+  return projectWorkflowSchema.parse({ ...preferences, familyDefaults, managerDefaults });
+}
 export const modelPolicySaveSchema = z
   .object({
     key: z.string().uuid(),

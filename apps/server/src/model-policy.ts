@@ -1,6 +1,9 @@
 import {
   assignmentSchema,
   workerDefault,
+  projectFamilyDefault,
+  projectManagerDefault,
+  managerModelChoice,
   modelFamilies,
   type Role,
   quarkModelChoiceSchema,
@@ -132,10 +135,16 @@ export class ModelPolicy {
       )
         throw new Conflict('Choose enabled providers for task defaults and unattended checks.');
       for (const provider of ['codex', 'claude'] as const)
-        for (const tier of levels) {
-          const selection = input.policy.models[provider][tier];
-          if (JSON.stringify(selection) === JSON.stringify(previous.models[provider][tier]))
-            continue;
+        for (const tier of [...levels, 'manager'] as const) {
+          const selection =
+            tier === 'manager'
+              ? managerModelChoice(input.policy, provider)
+              : input.policy.models[provider][tier];
+          const old =
+            tier === 'manager'
+              ? managerModelChoice(previous, provider)
+              : previous.models[provider][tier];
+          if (JSON.stringify(selection) === JSON.stringify(old)) continue;
           if (!selection.model && !selection.effort) continue; // New family names can be prepared before provider access exists.
           const cached = this.cache.get(provider);
           const selectedId =
@@ -149,9 +158,35 @@ export class ModelPolicy {
             (selection.effort && !model.efforts.includes(selection.effort))
           )
             throw new Conflict(
-              `Refresh ${provider} models and choose an available model and thinking level for ${tierLabels[tier]}.`,
+              `Refresh ${provider} models and choose an available model and thinking level for ${tier === 'manager' ? 'managers' : tierLabels[tier]}.`,
             );
         }
+      for (const [purpose, choice] of Object.entries(input.policy.projectDefaults.overrides)) {
+        if (
+          JSON.stringify(choice) ===
+          JSON.stringify(
+            previous.projectDefaults.overrides[purpose as 'research' | 'review' | 'bulk'],
+          )
+        )
+          continue;
+        if (!input.policy.enabledProviders.includes(choice.provider))
+          throw new Conflict('Choose an enabled provider for new-project defaults.');
+        if (!choice.model && !choice.effort) continue;
+        const cached = this.cache.get(choice.provider);
+        const selected = choice.model
+          ? cached?.models.find((m) => m.id === choice.model)
+          : latestFamily(cached?.models ?? [], choice.family);
+        if (
+          !selected ||
+          cached?.error ||
+          !cached?.observedAt ||
+          this.clock() - Date.parse(cached.observedAt) >= 300_000 ||
+          (choice.effort && !selected.efforts.includes(choice.effort))
+        )
+          throw new Conflict(
+            'Refresh models and choose an available model and thinking level for new-project defaults.',
+          );
+      }
       const policy = modelPolicySchema.parse({ ...input.policy, revision: previous.revision + 1 });
       this.store.setSetting(key, policy);
       this.store.event('model_policy.changed', null, null, policy);
@@ -163,6 +198,7 @@ export class ModelPolicy {
     task: TaskClass,
     request?: ExecutionRequest,
     scheduled = false,
+    defaultChoice?: { family: string; model: string | null; effort: string | null },
   ): Promise<Assignment> {
     const policy = this.policy();
     const provider = this.provider(task, request?.provider, scheduled);
@@ -178,7 +214,11 @@ export class ModelPolicy {
       );
     if (request?.difficulty === 'high' && levels.indexOf(requestedTier) < levels.indexOf('grad'))
       throw new Conflict('Difficult questions and calculations require a grad student or postdoc.');
-    const choice = policy.models[provider][requestedTier];
+    const choice =
+      defaultChoice ??
+      (task === 'manager'
+        ? managerModelChoice(policy, provider)
+        : policy.models[provider][requestedTier]);
     const pin = request?.model ?? choice.model;
     const catalog = await this.catalog(provider);
     if (this.closed)
@@ -233,23 +273,56 @@ export class ModelPolicy {
     if (!this.store.getSetting(`project-workflow:${projectId}`)) return this.resolve(task, request);
     const workflow = projectWorkflow(this.store, projectId);
     const purpose = role === 'reviewer' ? 'review' : task === 'bulk' ? 'bulk' : 'research';
-    // Calculations and orchestration retain their stronger central minimum.
-    if (['calculation', 'orchestration', 'routine'].includes(task))
-      return this.resolve(task, request);
-    const choice = workerDefault(workflow, purpose);
+    let choice = workerDefault(workflow, purpose);
+    // Stay within this project's provider choice for routine and more demanding work.
+    // Legacy projects retain prior routing until their settings are explicitly changed.
+    if (['calculation', 'orchestration', 'routine'].includes(task)) {
+      if (!workflow.familyDefaults) return this.resolve(task, request);
+      const provider = request?.provider ?? choice.provider;
+      const tier = request?.tier ?? taskTiers[task];
+      const minimum = projectFamilyDefault(workflow, provider, tier);
+      if (task === 'routine') choice = minimum ?? choice;
+      else {
+        const model = choice.model ?? choice.family;
+        const detected = Object.entries(modelFamilies).find(
+          ([family, slot]) =>
+            slot.provider === provider &&
+            latestFamily([{ id: model, label: model, isDefault: false }], family),
+        );
+        if (
+          provider !== choice.provider ||
+          !detected ||
+          levels.indexOf(detected[1].tier) < levels.indexOf(tier)
+        )
+          choice = minimum ?? choice;
+      }
+      return this.resolve(
+        task,
+        {
+          ...request,
+          mode: request?.mode ?? 'automatic',
+          difficulty: request?.difficulty ?? 'unspecified',
+          provider,
+        },
+        false,
+        choice,
+      );
+    }
     const provider = request?.provider ?? choice.provider;
     if (!this.policy().enabledProviders.includes(provider))
       throw new Conflict(
         `Enable ${provider} or choose a project preset using your connected provider.`,
       );
-    const family =
-      provider === choice.provider
-        ? choice.family
-        : this.policy().models[provider][
-            request?.tier ?? (purpose === 'bulk' ? 'undergrad' : 'grad')
-          ].family;
+    if (provider !== choice.provider) {
+      const tier = request?.tier ?? (purpose === 'bulk' ? 'undergrad' : 'grad');
+      choice = projectFamilyDefault(workflow, provider, tier) ?? {
+        provider,
+        ...this.policy().models[provider][tier],
+      };
+    }
+    const family = choice.family;
     const catalog = await this.catalog(provider);
-    const pin = request?.model ?? (provider === choice.provider ? choice.model : null);
+    const pin = request?.model ?? choice.model;
     const selected = pin
       ? catalog.find((model) => model.id === pin)
       : latestFamily(catalog, family);
@@ -335,6 +408,10 @@ export class ModelPolicy {
               ...(agent.assignment?.tier ? { tier: agent.assignment.tier } : {}),
               difficulty: agent.assignment?.difficulty ?? 'unspecified',
             },
+            false,
+            agent.role === 'manager'
+              ? projectManagerDefault(projectWorkflow(this.store, agent.projectId), agent.provider)
+              : undefined,
           );
     return this.store.transaction(() => {
       if (this.store.agent(agent.id).updatedAt !== agent.updatedAt)

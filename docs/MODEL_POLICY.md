@@ -1,12 +1,12 @@
 # One shared model policy
 
-Open **Workspace settings** (the settings icon on Home). Choose a provider preset, refresh
-available models, adjust any defaults, then **Save model settings**. This works on the
+Open **Settings → Model preferences**. Set your manager and worker defaults, refresh
+available models, then **Save model settings**. This works on the
 computer and paired phone; each selected computer keeps its own policy and sign-ins.
 
 | Level        | Codex family | Claude family | Default work                                                                                    |
 | ------------ | ------------ | ------------- | ----------------------------------------------------------------------------------------------- |
-| Postdoc      | Astra        | Fable         | Project/module managers and the personal agent                                                  |
+| Postdoc      | Astra        | Fable         | Project/module managers and the strongest worker defaults                                       |
 | Grad student | Sol          | Opus          | Research, implementation, review, calculations, difficult questions and delegated orchestration |
 | Undergrad    | Terra        | Sonnet        | Routine checks, recurring monitoring                                                            |
 | Uncle        | Luna         | Sonnet        | They sound confident, but also believe whatever they read. Be careful trusting them. Use for cheap, bulk work |
@@ -20,37 +20,48 @@ family default; the app does not pretend an older/different pinned model has cha
 
 ## Defaults and overrides
 
-Project creation uses separate manager selection, provider-mix and spending controls. The
-[corrected project matrix](CHAT_UI_REQUIREMENTS.md#corrected-worker-defaults) supplies research,
-review and bulk families; exact versions come from the live catalog. These project settings
-override the global fallback below. Explicit supported versions remain selectable. Haiku is
-not a shipping default. Legacy saved pins are retained; known low-tier models cannot be
-relabelled as suitable for a managed calculation/review. Unknown future models are not
-assigned an invented capability classification.
+**New project defaults** is the user-wide starting point. Manager provider, model and
+reasoning are separate from the workers' provider mix and spending slider. A manager model
+pin does not change the model used by postdoc workers. Workers have
+Research & coding, Review and Bulk choices, including exact versions from live catalogs.
+The [corrected recommended matrix](CHAT_UI_REQUIREMENTS.md#corrected-worker-defaults) supplies
+the family defaults. The initial recommendation is **Balanced + Tokenmax**; when only one
+provider is enabled, use its **Only** preset instead. No second subscription is enabled by
+restoring recommendations. Haiku is not a shipping default.
 
-A new empty installation uses **Codex only** until another provider is deliberately enabled.
-Saved policies and existing workspaces retain their choices. **Providers in your defaults**
-controls automatic routing: with one provider, both heavy presets keep managers and workers
-there. Removing a provider resets its task overrides to Follow preset and chooses an enabled
-provider for unattended checks; exact model pins remain saved. Explicit conversation/delegation
-provider choices and existing identities are still honored. This setting is not a security ban.
-A transient sign-in/catalog failure never changes the selected providers.
+**Restore recommended defaults** fills the settings form with the creator's corrected
+matrix, original family mappings, unpinned latest models, manager and routine defaults.
+Review the form and Save to apply. It preserves enabled providers and existing projects.
+The recommendation is configuration, not a promise that all families exist in every account.
+Missing families stay visible and can be replaced with any supported exact model.
 
-With both providers enabled:
+New projects copy the saved manager choices, worker mix, spending level, task overrides and family mappings
+at registration, including projects created by the local API/CLI. Setup uses the same shared
+snapshot function as registration and dispatch. Project customization never writes the
+user-wide preferences. Existing project choices, explicit model pins and saved setup drafts
+are preserved. **Use my general worker preferences** in project settings explicitly adopts
+the current defaults; Save applies that project's change. The setup draft has the equivalent
+**Use my current worker preferences** action. Neither resets the manager selection,
+review/application policy or budgets.
 
-- **Codex heavy:** Codex manager/research/coding defaults and Luna for bulk work.
-- **Claude heavy:** Claude manager/research/coding defaults and Sonnet for bulk work.
-- Routine checks use the saved scheduled-provider choice; both providers retain their own
-  central Terra/Sonnet defaults. Exact saved overrides are preserved.
-- **Pick as I go:** choose a provider when creating a manager or the personal agent.
-  Managers must name a provider on each delegation. Instructions tell them to honor the
-  owner's choice, otherwise choose fresh available QUARK headroom and record a reason.
-  They ask the owner if neither fits. Unattended checks use a saved provider choice.
-- Per-task provider settings override the preset. A per-delegation provider overrides those.
-- Each provider/tier has one editable **family name**, an optional exact **model** pin and
-  optional **thinking level**. Family names are not scattered across launchers. Renaming a
-  family in Settings updates its consumers. Exact pins can use any model the installed
-  provider reports, including an older version outside the normal family.
+Family mappings are shared across recommended worker choices and their corresponding model
+levels. A renamed family or exact slot pin appears in new-project previews and dispatch.
+A project's saved family continues resolving the latest available version at each new
+assignment; an exact pin stays on that version. Later global changes do not rewrite its
+snapshot. Existing projects without a snapshot retain legacy behavior until their settings
+are changed. An already registered folder is never reinitialized with new preferences.
+
+**App assistant defaults** controls non-project routine checks, bulk search and stronger
+consultations through the same central model levels. QUARK retains its explicit coordinator
+model in its own controls. Inside new projects, routine work and calculations use the project's
+provider choice; calculations and delegated orchestration retain the grad-or-higher minimum.
+A Light Terra research choice is therefore not used for calculations. Explicit native choices
+and imported conversations remain separate from defaults.
+
+Old provider presets/task routing remain readable for saved installations and legacy projects.
+The ordinary settings page no longer presents those as a second competing worker editor.
+Choosing the manager at project setup requires an explicit provider before Spawn when the
+user-wide manager preference is **Choose at project setup**.
 
 New managers whose central choice has no explicit effort prefer **xhigh** when the live
 catalog supports it (then max/high/medium, then a reported level). Setup displays this
@@ -76,7 +87,8 @@ not replayed by the app on another model. Provider-internal alias resolution or 
 remains provider behavior; an assignment records the requested choice, not a guarantee of
 every hidden inference step. Future unknown family names require a central mapping change.
 
-Policy-managed conversations refresh family defaults **between turns on the same provider**.
+Policy-managed conversations refresh available family versions **between turns on the same provider**.
+New project managers use their project’s saved manager choice; workers use its worker mappings.
 Queued/admitted work freezes its exact choice and policy revision. Existing legacy, imported,
 explicitly pinned and native-controlled contexts retain their choices. The advanced session
 model menu offers **Follow central model default** to opt back in. Changing presets does

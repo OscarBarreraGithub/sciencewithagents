@@ -93,7 +93,11 @@ it('gives managers a compact shared-budget view while retaining full task eviden
   );
   expect(context).not.toHaveProperty('recent');
   expect(context.execution).not.toHaveProperty('models');
-  expect(context.workerModelDefaults).toBeNull();
+  expect(context.workerModelDefaults).toMatchObject({
+    research: { provider: 'codex', family: 'astra' },
+    review: { provider: 'claude', family: 'fable' },
+    bulk: { provider: 'claude', family: 'sonnet' },
+  });
   store.setSetting(`project-workflow:${project}`, {
     providerMix: 'codex-heavy',
     spending: 'light',
@@ -311,7 +315,7 @@ it('rechecks the allowance after worktree preparation and never silently routes 
   };
   const granted = projectToolsSchema.parse({ codex: input.tools });
   store.setSetting(`worker-tools:${project}`, granted);
-  const resolve = vi.spyOn(runtime.modelPolicy, 'resolve');
+  const resolve = vi.spyOn(runtime.modelPolicy, 'resolveWorker');
   const assignment = await runtime.modelPolicy.resolve('reasoning');
   resolve.mockResolvedValueOnce({ ...assignment, provider: 'claude' });
   await expect(managerTool(runtime, manager, randomUUID(), 'dock_delegate', input)).rejects.toThrow(

@@ -1,11 +1,22 @@
 # Resume here — current continuation only
 
+## Latest model consolidation
+
+General model preferences now contain the independent manager selection and shared worker
+mix/spending/task defaults. The creator's corrected matrix is the resettable recommendation:
+Balanced + Tokenmax with both providers, Only with a single provider. New project registration,
+setup preview and worker resolution use the same snapshotted mappings/overrides. Later global
+changes preserve existing projects and exact pins; current general worker preferences can be
+adopted explicitly. Routine/calculation/orchestration no longer escape a new project's provider
+choice. The older duplicate Task defaults editor is replaced by scoped app-assistant defaults.
+See MODEL_POLICY.md for legacy migration boundaries and STATUS.md for remaining requests.
+
 ## Latest setup correction and request reconciliation
 
 GitHub/Cloudflare prompts contained text but inherited a pale code-block background with pale
 text. Fixed the shared Apps/Help prompt styling; five-profile contrast/copy/fallback checks and
 live Safari inspection pass. Read STATUS.md's open owner follow-ups before claiming completion:
-model-default consolidation, orb duration/variety, agent-managed recovery preparation and
+orb duration/variety, agent-managed recovery preparation and
 account-readiness detection remain unfinished. Apps is still a fixed empty state for later
 app registration. These source-confirmed gaps supersede older broad completion claims below.
 

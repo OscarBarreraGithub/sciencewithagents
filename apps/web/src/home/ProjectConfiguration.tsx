@@ -4,6 +4,9 @@ import {
   effortLabel,
   id as uuidSchema,
   latestFamily,
+  newProjectWorkflow,
+  projectManagerDefault,
+  managerModelChoice,
   modelPolicyStatusSchema,
   policyProvider,
   projectConnectionSchema,
@@ -120,16 +123,18 @@ function familyFor(model: Model, provider: ProviderId, fallback: string) {
 }
 
 /** Worker preferences: two independent sliders plus exact per-purpose choices. */
-function WorkerSettings({
+export function WorkerSettings({
   workflow,
   catalogs,
   disabled,
   onChange,
+  modelsOnly = false,
 }: {
   workflow: ProjectWorkflow;
   catalogs: Catalogs;
   disabled: boolean;
   onChange: (next: ProjectWorkflow) => void;
+  modelsOnly?: boolean;
 }) {
   const custom = workerPurposes.some((purpose) => workflow.overrides[purpose]);
   const mixIndex = providerMixes.indexOf(workflow.providerMix);
@@ -149,7 +154,9 @@ function WorkerSettings({
         </summary>
         <p>
           Each cell lists Research &amp; coding · Review · Bulk tasks. The mix slider tells your
-          manager which provider you would like it to lean on; it is not a metered percentage.
+          manager which provider you would like it to lean on; it is not a metered percentage. This
+          is the recommended family matrix; your mappings and overrides are reflected in Task
+          models.
         </p>
         <div className="config-table-wrap">
           <table>
@@ -351,56 +358,65 @@ function WorkerSettings({
         </p>
       </details>
 
-      <label className="config-check">
-        <input
-          type="checkbox"
-          checked={workflow.applyChanges === 'human'}
-          onChange={(event) =>
-            onChange({ ...workflow, applyChanges: event.target.checked ? 'human' : 'manager' })
-          }
-        />
-        <span>Let me review changes before they are applied</span>
-      </label>
-      <label className="config-check">
-        <input
-          type="checkbox"
-          checked={workflow.reviewLimit === 'ask-human'}
-          onChange={(event) =>
-            onChange({
-              ...workflow,
-              reviewLimit: event.target.checked ? 'ask-human' : 'manager-decides',
-            })
-          }
-        />
-        <span>After two review rounds, ask me instead of letting the manager decide</span>
-      </label>
-      <label className="config-check">
-        <input
-          type="checkbox"
-          checked={workflow.reviewPlan}
-          onChange={(event) => onChange({ ...workflow, reviewPlan: event.target.checked })}
-        />
-        <span>
-          Plan review: check the plan’s overall direction before work starts
-          <small>A short, high-level check. Finished work is still reviewed independently.</small>
-        </span>
-      </label>
-      <label className="config-check">
-        <input
-          type="checkbox"
-          checked={workflow.ambiguity === 'ask-human'}
-          onChange={(event) =>
-            onChange({ ...workflow, ambiguity: event.target.checked ? 'ask-human' : 'continue' })
-          }
-        />
-        <span>
-          Stop and ask me when something is unclear
-          <small>
-            Otherwise the manager records a reasonable assumption, tells you, and continues other
-            unblocked work. Genuine approvals always come to you.
-          </small>
-        </span>
-      </label>
+      {!modelsOnly && (
+        <>
+          <label className="config-check">
+            <input
+              type="checkbox"
+              checked={workflow.applyChanges === 'human'}
+              onChange={(event) =>
+                onChange({ ...workflow, applyChanges: event.target.checked ? 'human' : 'manager' })
+              }
+            />
+            <span>Let me review changes before they are applied</span>
+          </label>
+          <label className="config-check">
+            <input
+              type="checkbox"
+              checked={workflow.reviewLimit === 'ask-human'}
+              onChange={(event) =>
+                onChange({
+                  ...workflow,
+                  reviewLimit: event.target.checked ? 'ask-human' : 'manager-decides',
+                })
+              }
+            />
+            <span>After two review rounds, ask me instead of letting the manager decide</span>
+          </label>
+          <label className="config-check">
+            <input
+              type="checkbox"
+              checked={workflow.reviewPlan}
+              onChange={(event) => onChange({ ...workflow, reviewPlan: event.target.checked })}
+            />
+            <span>
+              Plan review: check the plan’s overall direction before work starts
+              <small>
+                A short, high-level check. Finished work is still reviewed independently.
+              </small>
+            </span>
+          </label>
+          <label className="config-check">
+            <input
+              type="checkbox"
+              checked={workflow.ambiguity === 'ask-human'}
+              onChange={(event) =>
+                onChange({
+                  ...workflow,
+                  ambiguity: event.target.checked ? 'ask-human' : 'continue',
+                })
+              }
+            />
+            <span>
+              Stop and ask me when something is unclear
+              <small>
+                Otherwise the manager records a reasonable assumption, tells you, and continues
+                other unblocked work. Genuine approvals always come to you.
+              </small>
+            </span>
+          </label>
+        </>
+      )}
     </fieldset>
   );
 }
@@ -415,7 +431,7 @@ export function ProjectSettings({
   manager: Agent;
   act: (fn: () => Promise<unknown>) => Promise<void>;
 }) {
-  const { catalogs, reload } = useCatalogs();
+  const { catalogs, policy, reload } = useCatalogs();
   const [saved, setSaved] = useState<ProjectWorkflow | null>(null);
   const [draft, setDraft] = useState<ProjectWorkflow | null>(null);
   const [error, setError] = useState('');
@@ -473,7 +489,38 @@ export function ProjectSettings({
         <SessionSettings agent={manager} close={() => {}} act={act} embedded />
       </section>
       {draft ? (
-        <WorkerSettings workflow={draft} catalogs={catalogs} disabled={busy} onChange={setDraft} />
+        <>
+          <p className="config-help">
+            These choices belong to this project. General preferences are in{' '}
+            <a href="#/models">Model preferences</a>.
+          </p>
+          <button
+            type="button"
+            className="flow-button"
+            disabled={busy || !policy}
+            onClick={() => {
+              if (policy)
+                setDraft({
+                  ...draft,
+                  ...newProjectWorkflow(policy),
+                  managerDefaults: draft.managerDefaults,
+                  revision: draft.revision,
+                  applyChanges: draft.applyChanges,
+                  reviewLimit: draft.reviewLimit,
+                  reviewPlan: draft.reviewPlan,
+                  ambiguity: draft.ambiguity,
+                });
+            }}
+          >
+            Use my general worker preferences
+          </button>
+          <WorkerSettings
+            workflow={draft}
+            catalogs={catalogs}
+            disabled={busy}
+            onChange={setDraft}
+          />
+        </>
       ) : (
         !error && <p className="config-help">Reading {project.name} settings…</p>
       )}
@@ -594,7 +641,10 @@ export function ProjectConfiguration({
   const provider =
     spawn.provider ?? (policy && policyProvider(policy, 'manager')) ?? enabled[0] ?? 'codex';
   const catalog = catalogs[provider];
-  const centralChoice = policy?.models[provider][taskTiers.manager];
+  const centralChoice =
+    projectManagerDefault(spawn.workflow, provider) ??
+    (policy ? managerModelChoice(policy, provider) : undefined);
+  const needsManagerChoice = !!policy && !spawn.provider && !policyProvider(policy, 'manager');
   const centralModel = centralChoice
     ? centralChoice.model
       ? catalog.models.find((m) => m.id === centralChoice.model)
@@ -636,17 +686,10 @@ export function ProjectConfiguration({
       current.workflowRequest
     )
       return;
-    const providerMix =
-      policy.enabledProviders.length === 1
-        ? policy.enabledProviders[0] === 'claude'
-          ? 'claude-only'
-          : 'codex-only'
-        : policy.preset === 'pick'
-          ? 'balanced'
-          : policy.preset;
     persist({
       ...current,
-      workflow: { ...current.workflow, providerMix },
+      provider: current.provider ?? policyProvider(policy, 'manager') ?? null,
+      workflow: newProjectWorkflow(policy),
       workflowChosen: true,
     });
   }, [policy, spawn.workflowChosen, locked]);
@@ -848,7 +891,7 @@ export function ProjectConfiguration({
         throw reason;
       }
     });
-  const workerDisabled = busy || !!spawn.workflowRequest;
+  const workerDisabled = busy || !policy || !!spawn.workflowRequest;
   const quarkPending =
     (!!spawn.priorityRequest && !spawn.prioritySaved) ||
     Object.keys(spawn.capRequests ?? {}).some(
@@ -959,7 +1002,7 @@ export function ProjectConfiguration({
             <label>
               Provider
               <select
-                value={provider}
+                value={needsManagerChoice ? '' : provider}
                 onChange={(event) =>
                   edit(
                     {
@@ -971,6 +1014,11 @@ export function ProjectConfiguration({
                   )
                 }
               >
+                {needsManagerChoice && (
+                  <option value="" disabled>
+                    Choose a manager provider
+                  </option>
+                )}
                 {(['codex', 'claude'] as const)
                   .filter((p) => enabled.includes(p) || p === provider)
                   .map((p) => (
@@ -1039,6 +1087,32 @@ export function ProjectConfiguration({
           disabled={workerDisabled}
           onChange={(workflow) => edit({ workflow, workflowChosen: true })}
         />
+        <p className="config-help">
+          Starting from your <a href="#/models">general model preferences</a>. Changes here apply
+          only to this project.{' '}
+          <button
+            type="button"
+            className="config-link-button"
+            disabled={workerDisabled}
+            onClick={() => {
+              if (policy)
+                edit({
+                  workflow: {
+                    ...spawn.workflow,
+                    ...newProjectWorkflow(policy),
+                    managerDefaults: spawn.workflow.managerDefaults,
+                    applyChanges: spawn.workflow.applyChanges,
+                    reviewLimit: spawn.workflow.reviewLimit,
+                    reviewPlan: spawn.workflow.reviewPlan,
+                    ambiguity: spawn.workflow.ambiguity,
+                  },
+                  workflowChosen: true,
+                });
+            }}
+          >
+            Use my current worker preferences
+          </button>
+        </p>
         <QuarkControls
           coordinator={coordinator}
           projectId={spawn.project && !spawn.project.existing ? spawn.project.id : null}
@@ -1078,6 +1152,7 @@ export function ProjectConfiguration({
               className="flow-button primary config-spawn"
               disabled={
                 busy ||
+                needsManagerChoice ||
                 (!policy && !locked) ||
                 capsInvalid ||
                 (!spawn.project && !spawn.name.trim())
@@ -1091,7 +1166,7 @@ export function ProjectConfiguration({
               <button
                 type="button"
                 className="flow-button primary config-spawn"
-                disabled={busy || !policy || !canChooseFolder}
+                disabled={busy || !policy || needsManagerChoice || !canChooseFolder}
                 onClick={() => void connect()}
               >
                 <FolderOpen size={17} />

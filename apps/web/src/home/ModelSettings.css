@@ -6,7 +6,7 @@
 }
 .model-settings button,
 .model-settings select,
-.model-settings input:not([type='radio']):not([type='checkbox']) {
+.model-settings input:not([type='radio']):not([type='checkbox']):not([type='range']) {
   font: inherit;
   min-height: 44px;
   border: 1px solid #d6dae2;
@@ -57,39 +57,6 @@
   font-size: 14px;
   line-height: 1.7;
   max-width: 475px;
-}
-.model-presets {
-  border: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin: 0 0 44px;
-}
-.model-presets legend {
-  font-size: 11px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  font-weight: 700;
-  padding: 0 0 18px;
-}
-.model-presets label {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  border: 1px solid #dde1e9;
-  border-radius: 12px;
-  padding: 20px 15px;
-  background: #fff;
-  cursor: pointer;
-}
-.model-presets label.selected {
-  border-color: #3561d8;
-  background: #f1f5ff;
-  box-shadow: 0 0 0 1px #3561d8;
-}
-.model-presets input {
-  margin-top: 3px;
 }
 .model-settings strong {
   font-size: 13px;
@@ -276,14 +243,6 @@
   color: #865730;
 }
 @media (max-width: 760px) {
-  .model-presets {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    margin-bottom: 34px;
-  }
-  .model-presets label {
-    padding: 15px;
-  }
   .model-tier-grid {
     grid-template-columns: 1fr;
   }
@@ -349,13 +308,6 @@
   flex: 0 0 auto;
   padding: 0;
 }
-.model-presets {
-  min-width: 0;
-}
-.model-presets label {
-  flex-direction: row;
-}
-.model-presets small,
 .model-tier header p,
 .model-settings small {
   font-size: 12px;
@@ -420,4 +372,23 @@
 }
 .model-enabled a {
   color: #2459dd;
+}
+.model-project-defaults {
+  margin-bottom: 32px;
+}
+.model-project-defaults .config-form {
+  max-width: none;
+}
+.model-project-defaults .config-grid {
+  margin-top: 14px;
+}
+.model-restore {
+  border-top: 1px solid #dfe4ec;
+  padding-top: 24px;
+  margin-top: 24px;
+}
+.model-restore p {
+  color: #657088;
+  font-size: 13px;
+  margin: 10px 0 0;
 }

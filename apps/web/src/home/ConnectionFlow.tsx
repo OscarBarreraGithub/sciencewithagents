@@ -85,8 +85,9 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
           <SettingsCard to="advanced" title="Advanced controls" icon={<Settings2 />}>
             Session settings, provider tools, history import and deliberate context changes.
           </SettingsCard>
-          <SettingsCard to="models" title="Models and roles" icon={<Settings2 />}>
-            Set provider preferences, the four team roles and exact model choices.
+          <SettingsCard to="models" title="Model preferences" icon={<Settings2 />}>
+            Set your general manager, worker and assistant defaults. Restore the recommended choices
+            any time.
           </SettingsCard>
           <SettingsCard to="computers" title="Computers and accounts" icon={<Laptop />}>
             Choose where work happens. Accounts, files and history stay on their computer.

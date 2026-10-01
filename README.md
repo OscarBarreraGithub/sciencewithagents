@@ -86,9 +86,12 @@ conversations stay under Computer health and out of the normal chat list. Both u
 
 Project setup keeps the manager's provider/model separate from the workers' provider mix
 (Codex only through Claude only) and spending level (Light, Default or Tokenmax).
-The controls show actual available model names. **Workspace settings** holds the shared
-defaults and family mappings. Defaults follow available updates; exact versions remain
-selectable, and missing models are reported rather than silently replaced. See
+The controls show actual available model names. **Settings → Model preferences** holds
+your general manager and worker defaults, initially the creator's Balanced + Tokenmax
+recommendation (Only for a single provider). New projects get their own saved choices;
+later preference changes leave those intact. **Restore recommended defaults** brings back
+the creator's recommendations for you to save. Defaults follow available updates; exact
+versions remain selectable, and missing models are reported rather than silently replaced. See
 [model policy](docs/MODEL_POLICY.md) for coverage, native-session boundaries and the full mapping.
 
 Read the [interface handoff](docs/UI_REBUILD.md) for the exact scope, or the

@@ -1,5 +1,19 @@
 # Design decisions
 
+## 2026-10-01 — general model preferences and project choices
+
+Extend the existing revisioned model policy rather than maintain competing task editors.
+Save general worker mix, spending and per-purpose overrides there; use one shared snapshot
+function in setup and project registration. Manager provider/model/reasoning remain independent
+of worker sliders and pins. Snapshot both manager and worker choices when creating a project,
+so later general edits do not rewrite projects. Latest families still follow available versions;
+explicit version pins stay exact. Legacy projects retain prior behavior until explicitly edited.
+
+Seed recommendations from the owner's corrected matrix, Balanced + Tokenmax, adapting to Only
+for single-provider installs. Restore recommended defaults fills the form; Save applies it.
+Retain enabled subscriptions, native conversations and existing projects. Keep ordinary app
+assistant choices separate from project workers while reusing the same central model mappings.
+
 ## 2026-09-30 — separate personal chats from app-created helpers
 
 Preserve explicit project `internal` metadata in snapshots. Development/service projects

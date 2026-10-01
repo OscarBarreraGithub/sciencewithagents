@@ -5,11 +5,14 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   defaultModelPolicy,
+  recommendedModelPolicy,
+  newProjectWorkflow,
   resourceSampleSchema,
   type Model,
   type ModelPolicy as Policy,
 } from '@dock/shared';
 import { ModelPolicy, latestFamily } from './model-policy.js';
+import { projectWorkflow } from './project-workflow.js';
 import { Store } from './store.js';
 import { Runtime } from './runtime.js';
 import { DemoProvider } from './demo.js';
@@ -63,6 +66,196 @@ const save = (edit: (p: Policy) => void) => {
   edit(p);
   return policy.save({ key: randomUUID(), expectedRevision: p.revision, policy: p });
 };
+it('copies general preferences into projects, preserves older choices after reset and restart, and resolves live versions', async () => {
+  await policy.refresh();
+  save((p) => {
+    p.projectDefaults = {
+      providerMix: 'codex-only',
+      spending: 'light',
+      overrides: {
+        research: { provider: 'codex', family: 'sol', model: 'gpt-5.5', effort: 'medium' },
+      },
+    };
+  });
+  const first = store.register(join(root, 'first'), 'First', '');
+  expect(projectWorkflow(store, first.id)).toEqual(newProjectWorkflow(policy.policy()));
+  expect(await policy.resolveWorker(first.id, 'implementer')).toMatchObject({
+    model: 'gpt-5.5',
+    effort: 'medium',
+  });
+  expect(await policy.resolveWorker(first.id, 'reviewer')).toMatchObject({ model: 'gpt-6-sol' });
+  save((p) => {
+    p.models.codex.grad.model = 'gpt-5.6-sol';
+  });
+  const second = store.register(join(root, 'second'), 'Second', '');
+  expect(await policy.resolveWorker(second.id, 'reviewer')).toMatchObject({ model: 'gpt-5.6-sol' });
+  expect(await policy.resolveWorker(first.id, 'reviewer')).toMatchObject({ model: 'gpt-6-sol' });
+  const recommended = recommendedModelPolicy(policy.policy());
+  const request = {
+    key: randomUUID(),
+    expectedRevision: recommended.revision,
+    policy: recommended,
+  };
+  const saved = policy.save(request);
+  expect(policy.save(request)).toEqual(saved);
+  const third = store.register(join(root, 'third'), 'Third', '');
+  expect(await policy.resolveWorker(third.id, 'implementer')).toMatchObject({
+    model: 'gpt-6-astra',
+  });
+  expect(await policy.resolveWorker(third.id, 'reviewer')).toMatchObject({
+    model: 'claude-fable-5-1',
+  });
+  const retained = projectWorkflow(store, first.id);
+  expect(store.register(join(root, 'first'), 'Reconnected', '').id).toBe(first.id);
+  expect(projectWorkflow(store, first.id)).toEqual(retained);
+  store.close();
+  store = new Store(join(root, 'dock.sqlite'));
+  policy = new ModelPolicy(store, async (provider) => catalogs[provider]);
+  expect(projectWorkflow(store, first.id)).toEqual(retained);
+  expect(await policy.resolveWorker(first.id, 'implementer')).toMatchObject({ model: 'gpt-5.5' });
+  expect(store.runs()).toHaveLength(0);
+});
+it('uses central family remapping for new project previews and dispatch without rewriting existing or legacy projects', async () => {
+  save((p) => {
+    p.projectDefaults = { providerMix: 'codex-only', spending: 'default', overrides: {} };
+  });
+  const before = store.register(join(root, 'before'), 'Before', '');
+  save((p) => {
+    p.models.codex.grad.family = 'quasar';
+  });
+  policy = new ModelPolicy(store, async () => [
+    ...catalogs.codex,
+    model('quasar-7'),
+    model('quasar-8'),
+  ]);
+  const after = store.register(join(root, 'after'), 'After', '');
+  expect(projectWorkflow(store, after.id).familyDefaults?.sol?.family).toBe('quasar');
+  expect(await policy.resolveWorker(after.id, 'implementer')).toMatchObject({
+    model: 'quasar-8',
+  });
+  expect(await policy.resolveWorker(before.id, 'implementer')).toMatchObject({
+    model: 'gpt-6-sol',
+  });
+  store.setSetting(`project-workflow:${before.id}`, {
+    providerMix: 'codex-only',
+    spending: 'light',
+  });
+  expect(await policy.resolveWorker(before.id, 'implementer')).toMatchObject({
+    model: 'gpt-5.6-terra',
+  });
+});
+it('keeps routine checks and calculations within project provider preferences while enforcing stronger calculation models', async () => {
+  save((p) => {
+    p.projectDefaults = { providerMix: 'claude-only', spending: 'light', overrides: {} };
+    p.providers.calculation = 'codex';
+  });
+  const claude = store.register(join(root, 'claude'), 'Claude workers', '');
+  expect(
+    await policy.resolveWorker(claude.id, 'implementer', {
+      taskClass: 'calculation',
+      mode: 'automatic',
+      difficulty: 'high',
+    }),
+  ).toMatchObject({ provider: 'claude', model: 'opus' });
+  expect(
+    await policy.resolveWorker(claude.id, 'researcher', {
+      taskClass: 'routine',
+      mode: 'automatic',
+      difficulty: 'low',
+    }),
+  ).toMatchObject({ provider: 'claude', model: 'sonnet' });
+  save((p) => {
+    p.projectDefaults.providerMix = 'codex-only';
+  });
+  const codex = store.register(join(root, 'codex'), 'Light workers', '');
+  expect(await policy.resolveWorker(codex.id, 'implementer')).toMatchObject({
+    model: 'gpt-5.6-terra',
+  });
+  expect(
+    await policy.resolveWorker(codex.id, 'implementer', {
+      taskClass: 'calculation',
+      mode: 'automatic',
+      difficulty: 'high',
+    }),
+  ).toMatchObject({ model: 'gpt-6-sol' });
+  expect(
+    await policy.resolveWorker(codex.id, 'researcher', {
+      taskClass: 'orchestration',
+      mode: 'automatic',
+      difficulty: 'high',
+    }),
+  ).toMatchObject({ model: 'gpt-6-sol' });
+});
+it('restores recommendations without enabling another provider and validates user-wide worker pins', async () => {
+  save((p) => {
+    p.enabledProviders = ['codex'];
+    p.scheduledProvider = 'codex';
+  });
+  const recommended = recommendedModelPolicy(policy.policy());
+  expect(recommended.enabledProviders).toEqual(['codex']);
+  expect(recommended.projectDefaults).toMatchObject({
+    providerMix: 'codex-only',
+    spending: 'tokenmax',
+  });
+  await policy.refresh();
+  expect(() =>
+    save((p) => {
+      p.projectDefaults.overrides.review = {
+        provider: 'codex',
+        family: 'sol',
+        model: 'missing-model',
+        effort: null,
+      };
+    }),
+  ).toThrow('available model');
+  expect(() =>
+    save((p) => {
+      p.projectDefaults.overrides.review = {
+        provider: 'codex',
+        family: 'sol',
+        model: 'gpt-6-sol',
+        effort: 'ultra',
+      };
+    }),
+  ).toThrow('thinking level');
+  const existing = store.register(root, 'Keep manager', '');
+  const first = await policy.prepare(store.agent(existing.managerId));
+  await policy.catalog('codex');
+  save((p) => {
+    p.models.codex.postdoc.model = 'gpt-5.5';
+  });
+  expect((await policy.prepare(store.agent(existing.managerId), 'next-manager-turn')).model).toBe(
+    first.model,
+  );
+});
+it('keeps general manager pins independent of worker slots and preserves each project manager snapshot', async () => {
+  await policy.refresh();
+  save((p) => {
+    p.managerModels.codex = { ...p.models.codex.postdoc, model: 'gpt-5.5', effort: 'medium' };
+  });
+  const project = store.register(root, 'Independent manager', '');
+  expect(await policy.prepare(store.agent(project.managerId))).toMatchObject({
+    model: 'gpt-5.5',
+    effort: 'medium',
+  });
+  expect(await policy.resolveWorker(project.id, 'implementer')).toMatchObject({
+    model: 'gpt-6-astra',
+  });
+  expect(policy.policy().models.codex.postdoc.model).toBeNull();
+  save((p) => {
+    p.managerModels.codex = { ...p.models.codex.postdoc };
+  });
+  const next = store.register(join(root, 'next'), 'Next manager', '');
+  expect(await policy.prepare(store.agent(next.managerId))).toMatchObject({ model: 'gpt-6-astra' });
+  expect(await policy.prepare(store.agent(project.managerId), 'later-turn')).toMatchObject({
+    model: 'gpt-5.5',
+  });
+  expect(() =>
+    save((p) => {
+      p.managerModels.codex = { ...p.models.codex.postdoc, model: 'missing' };
+    }),
+  ).toThrow('available model');
+});
 it('uses xhigh for new managers when available, preserves explicit effort, and respects native catalogs', async () => {
   const supported = ['low', 'medium', 'high', 'xhigh'];
   policy = new ModelPolicy(store, async () => [{ ...model('gpt-6-astra'), efforts: supported }]);
