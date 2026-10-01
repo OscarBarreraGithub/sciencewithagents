@@ -6,6 +6,14 @@ have empty or incomplete data. These images are not final product or launch artw
 must be replaced for the final presentation. Conversation text is an example from that
 moment, not current setup instructions. See [current status](../STATUS.md) for known gaps.
 
+## Home
+
+Your starting point on the phone: see the selected computer and remaining Codex and Claude
+allowance, open your chats or QUARK's work queue, and find items needing your attention
+alongside your own to-do list. The Apps tile is a placeholder for future integrations.
+
+<img src="00-home.png" alt="Phone Home screen with remaining AI allowance, Chats, Apps, QUARK, attention items and a to-do list" width="360">
+
 ## 1. Projects that wait their turn
 
 Set a project to **Back burner** for work you want done when other work is out of the way.
