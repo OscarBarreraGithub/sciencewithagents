@@ -1,8 +1,9 @@
 import { chromium, expect, test, type Page } from '@playwright/test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { expectSliderLayout } from './control-layout';
 
-const screens = ['home', 'models', 'new', 'resources', 'work', 'usage', 'chats', 'apps'];
+const screens = ['home', 'models', 'new', 'resources', 'work', 'chats', 'apps'];
 
 async function fits(page: Page) {
   const size = await page.evaluate(() => {
@@ -66,6 +67,7 @@ async function inspect(page: Page, route: string) {
     await expect(name).toHaveValue('Readable project setup');
   }
   await fits(page);
+  await expectSliderLayout(page);
 }
 
 test('larger text reflows with doubled reading size on desktop and phones', async ({

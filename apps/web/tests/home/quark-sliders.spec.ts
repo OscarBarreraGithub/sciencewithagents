@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { expectSliderLayout } from './control-layout';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Store } from '../../../server/dist/store.js';
@@ -163,6 +164,7 @@ test('board budget sliders save durable caps, retry lost replies and respect con
   }
   await card.scrollIntoViewIfNeeded();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expectSliderLayout(page);
   await page.screenshot({ path: info.outputPath('board-budget-slider.png') });
 });
 

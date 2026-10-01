@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { defaultModelPolicy } from '@dock/shared';
+import { expectSliderLayout } from './control-layout';
 
 async function models(page: Page) {
   await page.route('**/api/model-policy', (route) =>
@@ -161,4 +162,39 @@ test('right swipe returns from QUARK while vertical scrolling and form gestures 
   await swipe('.quark-workspace .flow-heading h1');
   await expect(page).toHaveURL(/#\/new$/);
   await expect(page.getByLabel('Project name', { exact: true })).toHaveValue('Swipe draft');
+});
+
+test('worker slider endpoints and labels fit at normal and doubled text size', async ({
+  page,
+}, info) => {
+  await models(page);
+  for (const route of ['new', 'models']) {
+    await page.goto(`/#/${route}`);
+    const workers = page.getByRole('group', { name: 'Workers', exact: true });
+    await expect(workers).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    for (const size of ['100%', '200%']) {
+      await page.evaluate((size) => {
+        document.documentElement.style.fontSize = size;
+      }, size);
+      for (const slider of await workers.getByRole('slider').all()) {
+        await slider.press('Home');
+        await expect(slider).toHaveValue('0');
+        await expectSliderLayout(page);
+        await slider.press('ArrowRight');
+        await expect(slider).toHaveValue('1');
+        await expectSliderLayout(page);
+        await slider.press('End');
+        await expect(slider).toHaveValue((await slider.getAttribute('max')) ?? '');
+        await expectSliderLayout(page);
+      }
+      await workers
+        .locator('.config-sliders')
+        .screenshot({ path: info.outputPath(`${route}-sliders-${size}.png`) });
+      await expectSliderLayout(page);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+    }
+  }
 });

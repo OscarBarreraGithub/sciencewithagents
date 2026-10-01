@@ -77,6 +77,12 @@ select {
   outline: none;
   min-width: 0;
 }
+/* A native range is not a text field. Insets displace Safari's thumb from its track. */
+input[type='range'] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
 /* WebKit can count a large native control's inner text as page overflow even
    when the control itself fits. Keep text scrolling inside that control. */
 input:not([type='range']),

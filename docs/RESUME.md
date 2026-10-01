@@ -1,5 +1,13 @@
 # Resume here — current continuation only
 
+## Latest slider correction
+
+Native ranges no longer inherit text-input padding/borders, which offset Safari's thumb
+from the track endpoint. Crowded worker labels show the current choice without splitting
+words. Shared layout checks now cover inside-control bounds/overlap and text scaling, not
+only page overflow, with focused five-profile evidence in VERIFICATION.md. No backend or
+owner preference change was needed.
+
 ## Latest owner request — one QUARK screen, cache warming deferred
 
 QUARK project/task cards now hold saved-budget sliders with live estimated spending.

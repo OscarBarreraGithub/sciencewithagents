@@ -1,5 +1,23 @@
 # Verification
 
+## 2026-10-01 — native slider endpoints and control layout checks
+
+Safari range inputs inherited text-field padding/borders, making the thumb stop short of
+the track endpoint. Native ranges now reset those insets. Worker stop labels switch to the
+current choice when space/text size would otherwise break words or overlap.
+
+- The new regression check fails against the original styling on iPhone WebKit. Shared
+  control checks cover text-field insets, 44px targets, label bounds, overlap, broken words
+  and a visible selected value. They run through existing browser CI, including QUARK caps.
+- Production web build and 16 focused browser cases pass: desktop, 412×915, 360×800,
+  915×412 and iPhone WebKit, normal/doubled text, worker min/intermediate/max values and
+  budget persistence. Real Chromium browser zoom spans 80–400%; the four non-desktop
+  copies of that zoom-only case are intentionally skipped. Small-phone and WebKit
+  screenshots were inspected. No real models were launched or owner settings changed.
+- Evidence stays under ignored `data/slider-layout-*` and `data/browser-results/home/`.
+  These checks catch the measured regressions, not every possible visual defect or
+  physical-device rendering difference. Owned test listeners/browser children are closed.
+
 ## 2026-10-01 — consolidate usage into QUARK, defer cache warming
 
 Removed the usage component/styles and technical lists. QUARK now shows remaining allowance,

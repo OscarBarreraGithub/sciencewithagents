@@ -109,6 +109,8 @@
   gap: 12px;
 }
 .config-sliders {
+  container: worker-sliders / inline-size;
+  font-size: var(--text-small);
   display: grid;
   gap: 18px;
   padding: 4px 0 14px;
@@ -130,6 +132,8 @@
   font-weight: 500;
   color: var(--home-muted);
   text-align: center;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .config-stops.three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -143,6 +147,29 @@
 .config-stops .active {
   color: var(--home-ink);
   font-weight: 700;
+}
+/* Show the current choice when all stops cannot fit at the user's text size. */
+@container worker-sliders (max-width: 19em) {
+  .config-stops:not(.three) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .config-stops:not(.three) > span:not(.active) {
+    display: none;
+  }
+  .config-stops:not(.three) > .active {
+    text-align: center;
+  }
+}
+@container worker-sliders (max-width: 15em) {
+  .config-stops.three {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .config-stops.three > span:not(.active) {
+    display: none;
+  }
+  .config-stops.three > .active {
+    text-align: center;
+  }
 }
 .config-custom-note {
   margin: 0;
