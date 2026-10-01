@@ -1,5 +1,18 @@
 # Resume here — current continuation only
 
+## Latest Home polish
+
+Home has pull-to-refresh with a wheel that tracks the actual cached-data reads and
+checks for a new frontend. Reload remains explicit to protect drafts. Ordinary scrolling,
+nested panel scrolling and chat gestures do not refresh. The top-right Thinking Orbs
+control is still when idle; a tap changes its shape, animates gently for 1.8 seconds,
+then stops. No model or network call is made by the orb.
+
+The paired phone origin serves the original drawn alien without requiring a session,
+including the conventional Apple touch-icon path. Existing iPhone shortcuts can retain
+their cached icon: setup help explains adding and checking a new shortcut before removing
+the old one. Do not clear browser data or reset pairing to fix an icon.
+
 ## Latest branding correction
 
 Use the owner's original curved alien drawing, not Heldalive's pixel-style recreation.

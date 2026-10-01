@@ -222,6 +222,44 @@ body:has(.home-shell) {
 .home-icon-button:hover {
   background: #f0ece4;
 }
+.home-orb {
+  flex-shrink: 0;
+}
+.home-pull-refresh {
+  position: sticky;
+  top: 0;
+  height: 0;
+  z-index: 8;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.home-pull-wheel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--home-line);
+  border-radius: 20px;
+  background: var(--home-white);
+  box-shadow: 0 2px 8px #23382a14;
+  color: var(--home-ink);
+  font-size: 12px;
+}
+.home-pull-wheel.refreshing svg {
+  animation: home-refresh-turn 1s linear infinite;
+}
+@keyframes home-refresh-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-pull-wheel.refreshing svg {
+    animation: none;
+  }
+}
 .home-chip,
 .home-allowance > summary {
   display: inline-flex;
@@ -755,6 +793,13 @@ dialog.home-help-dialog {
   .home-scroll-hint {
     flex-basis: 20px;
     height: 20px;
+  }
+}
+
+/* The alien alone keeps the phone header spacious, including its optional lock. */
+@media (max-width: 450px) {
+  .home-brand > span {
+    display: none;
   }
 }
 @media (max-width: 380px) {

@@ -10,6 +10,7 @@ import {
   snapshotSchema,
 } from '@dock/shared';
 import { api } from '../api';
+import { trackRefresh } from './refreshHome';
 
 const mirrorsSchema = mirrorWindowSchema.array();
 
@@ -24,32 +25,43 @@ export function useReading<T>(path: string, parse: (value: unknown) => T) {
   const retry = useRef<() => void>(() => {});
   useEffect(() => {
     let alive = true;
-    let pending = false;
-    const read = async () => {
-      if (pending) return;
-      pending = true;
-      try {
-        const data = parse(await api(path));
-        if (alive) setReading({ data, error: false, loaded: true });
-      } catch {
-        if (alive) setReading((old) => ({ ...old, error: true, loaded: true }));
-      } finally {
-        pending = false;
-      }
+    let pending: Promise<boolean> | null = null;
+    let controller: AbortController | undefined;
+    const read = () => {
+      if (pending) return pending;
+      controller = new AbortController();
+      const signal = controller.signal;
+      const timeout = window.setTimeout(() => controller?.abort(), 15_000);
+      pending = (async () => {
+        try {
+          const data = parse(await api(path, undefined, signal));
+          if (alive) setReading({ data, error: false, loaded: true });
+          return true;
+        } catch {
+          if (alive) setReading((old) => ({ ...old, error: true, loaded: true }));
+          return false;
+        } finally {
+          window.clearTimeout(timeout);
+          pending = null;
+        }
+      })();
+      return pending;
     };
     const refresh = () => {
       if (!document.hidden) void read();
     };
+    const requested = (event: Event) => trackRefresh(event, read());
     retry.current = () => void read();
     void read();
     const timer = window.setInterval(refresh, 10_000);
     document.addEventListener('visibilitychange', refresh);
-    window.addEventListener('swa:refresh-home', refresh);
+    window.addEventListener('swa:refresh-home', requested);
     return () => {
       alive = false;
+      controller?.abort();
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', refresh);
-      window.removeEventListener('swa:refresh-home', refresh);
+      window.removeEventListener('swa:refresh-home', requested);
     };
   }, [path, parse]);
   return { ...reading, retry: () => retry.current() };

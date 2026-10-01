@@ -1,5 +1,23 @@
 # Verification
 
+## 2026-10-01 — Home refresh, quiet orb and phone icon
+
+Production web build passed. Twenty focused checks passed across desktop, 412×915,
+360×800, 915×412 and iPhone WebKit: pull threshold, coalesced in-flight reads, failure/retry,
+preserved drafts, explicit release notice, nested scrolling/editor exclusions, icon bytes
+and stable orb canvas between taps. The WebKit gesture fixture uses event fields because
+its Touch constructor is unavailable; this is simulated interaction, not physical iOS
+acceptance. An additional Chromium phone check used native touch dispatch to pull a tile
+without opening it. A controlled clock/network check verified the 15-second timeout stops
+the wheel and permits another refresh. Reduced motion stays static even after a tap.
+Ten existing panel-growth and update/draft regressions also passed across all five profiles.
+
+Native Safari opened the updated live app and exercised the orb. An unauthenticated fetch
+through the actual phone connection returned the exact drawn-alien PNG and updated install
+metadata. Phone access remained enabled with its existing paired device. This does not prove
+an already-installed iOS shortcut has replaced its cached icon. No provider/model turn,
+server restart, editor reload or pairing reset was needed.
+
 ## 2026-09-30 — original alien drawing and installed app icon
 
 The canonical PNG matches the recorded checksum of the owner's original drawing.

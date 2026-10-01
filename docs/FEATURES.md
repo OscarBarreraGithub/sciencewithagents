@@ -73,6 +73,20 @@ a new frontend bundle. Reload is explicit so typing is not interrupted; Help als
 Old clients predating this behavior need one reload to receive it. Pairing and running work
 are unchanged.
 
+On Home, pull down from the top to refresh the displayed readings and check for an app
+update. A small wheel follows the pull and spins until those reads finish; failures offer
+a retry message while retaining existing data. Ordinary scrolling remains scrolling.
+This reads the shared cached allowances; it does not launch agents or force provider calls.
+The explicit Reload app action still protects unsent drafts. Nested panels and editors
+keep their own scrolling. Reads time out after 15 seconds so a lost connection cannot
+leave the wheel running indefinitely.
+
+The top-right orb uses [Thinking Orbs](https://github.com/Jakubantalik/thinking-orbs).
+It is still while idle, changes shape with a brief animation on tap, and stops again.
+Reduced-motion settings use static shapes; hidden/offscreen animation pauses. It makes
+no AI or network requests. On narrow phones the header uses the drawn alien as its brand
+mark, leaving room for the 44-pixel controls.
+
 ## Home and space cleanup — implemented, 2026-09-30
 
 The Chats, Apps and QUARK tiles together occupy about 42% of the visible phone viewport,
@@ -102,6 +116,9 @@ recreation. `assets/branding/alien-drawing.png` preserves the original white-ink
 companion and website icons. The Mac launcher points directly to its `.icns`, rather than
 the generated AppleScript asset-catalog icon. Existing installed phone icons may keep their
 OS-cached artwork until the shortcut is re-added. Provider logos still identify their providers.
+The conventional Apple touch-icon path serves the same drawing, with explicit icon dimensions
+and app title. Phone setup includes instructions to replace a stale shortcut without clearing
+browser data or removing a working connection first.
 
 ## QUARK conversation and board — implemented, 2026-09-30
 

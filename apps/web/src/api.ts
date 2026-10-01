@@ -29,8 +29,13 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 }
-export async function api<T = unknown>(path: string, body?: unknown): Promise<T> {
+export async function api<T = unknown>(
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
   const response = await fetch(apiUrl(path), {
+    signal,
     ...(body === undefined
       ? {}
       : {

@@ -42,6 +42,8 @@ import { useScrollHints } from './useScrollHints';
 import { HomeOverview, ProviderMark, ago, providerName } from './HomeOverview';
 import { AppsGallery, SetupGuide } from './AppsGallery';
 import { AppUpdate } from './AppUpdate';
+import { HeaderOrb } from './HeaderOrb';
+import { PullToRefresh } from './PullToRefresh';
 import { Navigation, useNavigation } from './Navigation';
 
 // Document titles only. Every route below keeps its existing screen.
@@ -486,6 +488,7 @@ export function Home() {
               <a href={href('settings')} className="home-icon-button" aria-label="Settings">
                 <Settings2 size={19} />
               </a>
+              <HeaderOrb />
             </div>
           </div>
         </header>
@@ -505,6 +508,7 @@ export function Home() {
           </button>
         </div>
         <main className="home-content" id="home-content" ref={main}>
+          {page === 'home' && <PullToRefresh main={main} />}
           {mobile && page === 'home' && (
             <div className="home-mobile-status" aria-label="Computer and allowances">
               <ComputerLink data={data} />

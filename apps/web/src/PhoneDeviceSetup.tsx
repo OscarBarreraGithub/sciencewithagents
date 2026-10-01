@@ -37,6 +37,14 @@ export function HomeScreenGuide() {
         sciencewithagents.
       </p>
       <details>
+        <summary>Still seeing the old app icon?</summary>
+        <p>
+          Open this address in Safari or Chrome and reload it, then add it to your Home Screen
+          again. The icon should show the little drawn alien. Open the new shortcut and check that
+          it connects before removing the old one. Keep your browser data and passkey.
+        </p>
+      </details>
+      <details>
         <summary>Already added an icon, or the icon asks to pair again?</summary>
         <p>
           An icon added before pairing does not automatically inherit later Safari sign-in. Return

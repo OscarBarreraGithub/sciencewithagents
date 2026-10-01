@@ -33,6 +33,11 @@ try {
   };
   for (const size of [180, 192, 512])
     await render(size, join(root, `apps/web/public/dock-${size}.png`));
+  // Conventional iOS path also works for launchers that don't use the manifest.
+  await copyFile(
+    join(root, 'apps/web/public/dock-180.png'),
+    join(root, 'apps/web/public/apple-touch-icon.png'),
+  );
   await render(128, join(root, 'apps/vscode-mirror/icon.png'));
   if (process.platform === 'darwin') {
     for (const size of [16, 32, 128, 256, 512]) {
