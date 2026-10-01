@@ -521,7 +521,7 @@ test('internal development managers stay out of owner lists, while a newly creat
     page.getByRole('heading', { level: 1, name: 'Settings', exact: true }),
   ).toBeVisible();
   await expect(page.locator('a[href="#/models"]')).toBeVisible();
-  await expect(page.locator('.connection-grid a[href="#/work"]')).toBeVisible();
+  await expect(page.locator('.connection-grid a[href="#/work"]')).toHaveCount(0);
   await expect(page.locator('a[href^="#/advanced"]')).toHaveCount(0);
   await page.goto('/#/advanced/');
   await expect(page).toHaveURL(/#\/settings$/);

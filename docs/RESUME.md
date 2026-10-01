@@ -8,6 +8,7 @@ agent picker. Old `#/advanced` bookmarks open Settings. Keep conversation contro
 history and settings. Invalid conversation links offer the normal Chats list.
 Open conversations and Saved history are removed from the main Settings grid as well;
 keep their existing conversation Configure links and saved records.
+QUARK's duplicate Settings card is removed; use its Home tile or main navigation.
 
 ## Latest slider correction
 

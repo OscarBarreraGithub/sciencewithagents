@@ -3,7 +3,6 @@ import {
   ArrowUpRight,
   DatabaseBackup,
   Laptop,
-  Monitor,
   Settings2,
   ShieldCheck,
   Smartphone,
@@ -92,9 +91,6 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
           </SettingsCard>
           <SettingsCard to="recovery" title="Recovery copies" icon={<DatabaseBackup />}>
             Keep private copies of your records and prepare an update with your setup agent.
-          </SettingsCard>
-          <SettingsCard to="work" title="QUARK" icon={<Monitor />}>
-            See remaining allowance, adjust budgets and manage waiting work.
           </SettingsCard>
         </div>
       </section>
