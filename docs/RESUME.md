@@ -15,8 +15,12 @@ reload; Codex history survives server restart. Fixed overlong Unix socket paths 
 Claude-only worker defaults. The shipped setup requests and manager charter match the actual
 provider/sliders workflow. QUARK task grouping and 44px notepad/recovery targets are reviewed
 and tested. The native Opus task was paused at its unchanged task cap; root retained its edits.
-The full public CI run for these corrections is still pending; older passing runs do not
-certify this new tree. See the newest VERIFICATION.md section for focused evidence.
+[CI 36798429104](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36798429104) passed the corrected implementation: 772 backend, 88 companion and
+435 browser cases. The final in-app setup-prompt wording and release notes received a
+production build and formatting check without repeating the full matrix. The collaborator
+release is ready on the verified Mac path. Do not resume another broad implementation or
+review pass without a concrete new failure or request. Device/account steps remain in
+OWNER_CHECK_IN.md and are not agent implementation blockers.
 
 ## Latest UI slice
 
@@ -40,14 +44,14 @@ work lists, versioned drafts, QUARK supervision and manager application of revie
 Reviews are small and bounded to two correction rounds, with recorded judgement or human
 handoff. Continue other unblocked work while one item needs input. See FEATURES.md.
 
-The latest complete release check passed production builds, 759 backend checks, 88 companion
-checks and 340 browser cases across desktop, 412x915, 360x800, 915x412 and iPhone WebKit.
+The latest complete release check passed production builds, 772 backend checks, 88 companion
+checks and 435 browser cases across desktop, 412x915, 360x800, 915x412 and iPhone WebKit.
 Thirteen backend/companion and ten browser checks are deliberately skipped. The latest
 shared-chat keyboard correction has a deterministic scroll-before-resize regression and
 passes all eight mobile keyboard cases. Four busy shared-send cases pass too. No physical
 keyboard animation is inferred from visual-viewport fixtures. Evidence is in VERIFICATION.md.
 
-[CI 36699029736](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36699029736)
+An earlier [CI 36699029736](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36699029736)
 finished successfully at 10:06:32 UTC; its browser matrix took 9.5 minutes. An earlier run
 timed out opening a new project brief on iPhone WebKit. Three fresh-data repetitions and
 the full rerun passed unchanged. Its cause is unconfirmed; diagnostics now retain future
@@ -61,7 +65,7 @@ saved a handoff/summary, continued and finished; complete context retention is n
 Recovery copies use their own read-only WAL snapshots and preserve normal concurrent writes.
 
 The running manual app serves these fixes and retains the existing phone connection. Its
-latest verified recovery copy before this update retained four projects, 45 conversations and 1,922 entries.
+latest verified recovery copy before this update retained four projects, 47 conversations and 2,046 entries.
 sciencewithagents.app is installed in this owner's Applications folder. Keep the manual app
 and phone connector available; login service stays off. Stop only owned test processes.
 

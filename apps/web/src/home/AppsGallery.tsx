@@ -12,7 +12,7 @@ const setupSteps = [
       'Needed for apps whose code is backed up or published through GitHub. Create a GitHub account first if you do not have one.',
     label: 'Prompt for your setup agent',
     prompt:
-      'On this computer, check whether the GitHub CLI (gh) is installed and signed in. Run `gh --version` and `gh auth status`. If gh is missing, tell me how to install it for this operating system and wait for my confirmation. If it is not signed in, start `gh auth login` for github.com with the browser sign-in and tell me when I need to approve it. Keep any existing sign-in. Do not create repositories, change settings or push anything. Finish by telling me which GitHub account is signed in.',
+      'Set up GitHub sign-in on this computer. Check the installed GitHub CLI and existing account first. If gh is missing, install it using the official method for this operating system; handle the technical steps yourself. Preserve a working sign-in. Otherwise open the native browser sign-in and tell me when I need to complete it. Never ask me to paste credentials into chat. This step does not create repositories or upload files. Finish by checking the connected account and explaining any step that still needs me.',
   },
   {
     id: 'cloudflare',
@@ -21,7 +21,7 @@ const setupSteps = [
       'Needed for apps hosted on Cloudflare and for the Cloudflare phone connection. Create a Cloudflare account first if you do not have one.',
     label: 'Prompt for your setup agent',
     prompt:
-      'On this computer, check whether I can use Cloudflare from the command line. Run `npx wrangler --version` and `npx wrangler whoami`. If I am not signed in, start `npx wrangler login` and tell me when I need to approve it in the browser. Keep any existing sign-in. Do not create, change or deploy any Cloudflare project, domain, tunnel or DNS record. Finish by telling me which Cloudflare account is signed in.',
+      'Set up Cloudflare sign-in on this computer using the official Wrangler CLI. Check for an existing installation and working account first, and preserve them. Handle any required CLI setup yourself, then open the native browser sign-in only if needed and tell me when I need to complete it. Never ask me to paste credentials into chat. This step does not create, change or deploy a project, domain, tunnel or DNS record. Finish by checking the connected account. For sciencewithagents phone access, continue through docs/CLOUDFLARE_SETUP.md only if I choose that route; local use and the no-domain phone option do not require Cloudflare.',
   },
 ] as const;
 

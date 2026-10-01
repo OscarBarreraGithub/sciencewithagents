@@ -37,8 +37,11 @@ Thirty focused browser cases pass across desktop, 412×915, 360×800, 915×412 a
 Five send cases initially waited behind stale allowance in a reused demo store; all five
 passed against a fresh isolated store, with no source or assertion changes. The earlier CI
 failures in model-setting copy, QUARK heading selection and the WebKit reconnect navigation
-were corrected; 35 focused settings/reconnect cases also pass. Full public CI is pending this
-source checkpoint, so the earlier green run is not current-release acceptance.
+were corrected; 35 focused settings/reconnect cases also pass. [CI 36798429104](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36798429104) then passed production builds, 772 backend, 88 companion and
+435 browser cases, with 13 backend/companion and ten browser cases intentionally skipped.
+The browser matrix took 12 minutes. The final in-app account-setup prompt wording and
+release notes were separately built/formatted; that copy-only follow-up skips a redundant
+full CI run. It changes no setup execution, permissions or provider behavior.
 
 The revised public setup prompt passed five local and five live browser profiles, including
 copy/fallback, graph navigation, legacy redirects and six datasets. It is deployed on both

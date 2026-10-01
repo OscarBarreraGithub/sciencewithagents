@@ -1,16 +1,16 @@
 # Build status
 
-As of 2026-09-30, the MIT source and website are public. The drawn Home,
-chat, project setup, notepad and Computer health are integrated. The owner can use
-the current app; the full goal remains open for remaining acceptance. Ordinary phone flows
-can be tested in browser emulation without waiting for physical-device confirmation.
-Drawings are not blocking the backend. Corrections for the owner's reported keyboard jumps,
-Latest messages/composer overlap and hidden Send button are built. A later full run exposed
-a Safari scroll-before-resize race; the correction passes eight mobile viewport checks,
-including a deterministic reproduction of that event ordering. Actual phone confirmation remains. The UI is a connected first pass,
-not completed mobile acceptance. An earlier complete release check passed; current public CI must be rerun after these corrections. One earlier
-iPhone WebKit project-brief failure did not recur in three fresh-data repetitions or the
-full rerun; its cause remains unconfirmed and failure diagnostics are retained. See [Verification](VERIFICATION.md).
+The collaborator release is ready for the verified Apple Silicon Mac setup path. The MIT
+source, website and installed app include the drawn Home, chat, project setup, notepad,
+Computer health and QUARK workflows. Real isolated Codex-only and Claude-only setup journeys
+pass. [CI 36798429104](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36798429104) passed production builds, 772 backend checks, 88 companion checks and
+435 browser cases. Thirteen backend/companion and ten browser checks are deliberately skipped.
+
+Phone/browser checks cover desktop, portrait, landscape and iPhone WebKit, including the
+reported keyboard/scroll regressions. Physical Home Screen, cellular and hardware keyboard
+behavior remain separate device checks; do not call those verified by emulation. Other
+platforms and account/device boundaries are listed in CONTRIBUTOR_SETUP.md. No new drawing
+or owner decision is required for the verified installation path.
 
 ## Latest collaborator-setup corrections
 
@@ -18,7 +18,7 @@ Fresh isolated native Codex-only and Claude-only first-project flows now pass. F
 installation paths exceeding the native socket limit and Claude-only projects selecting
 Codex workers by default. Updated setup prompts and automatic manager instructions to match
 current independent manager/worker choices. QUARK now groups turns by task. Focused backend
-and five-profile browser checks pass; the next public CI run remains pending.
+and five-profile browser checks pass, followed by the successful public CI run above.
 
 ## Latest owner-reported corrections
 
@@ -89,12 +89,13 @@ The public landing at sciencewithagents.com and combined SyllabusGraph export pa
 browser/route checks across all five profiles. Both domains respond, all six public datasets
 retain their exact contents, and legacy links redirect correctly. The MIT repository is public
 at [OscarBarreraGithub/sciencewithagents](https://github.com/OscarBarreraGithub/sciencewithagents).
-A clean tracked-source copy passed dependency installation, production build, usage-reader
-setup and Mac launcher compilation with isolated fake provider executables; another person's
-account sign-in and physical device still require their own acceptance. MIT is selected;
+A fresh public-source clone plus the now-published corrections passed dependency installation,
+production builds, usage-reader and Mac launcher setup, and actual native Codex-only and
+Claude-only first replies with separate app data. Another person completes their own account
+sign-in and device steps. MIT is selected;
 the public repository contains clean source history, without the old private Git history or
-runtime files. The latest release check passed format, production builds, 759 backend checks,
-88 companion checks and 340 browser cases. Thirteen backend/companion and ten browser cases
+runtime files. The latest release check passed format, production builds, 772 backend checks,
+88 companion checks and 435 browser cases. Thirteen backend/companion and ten browser cases
 are deliberately skipped; physical device acceptance is not inferred from them.
 No Guide/FAQ is published.
 
