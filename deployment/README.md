@@ -37,7 +37,7 @@ Never deploy `site/` alone: that would remove the graph tab's destination.
 ## Check the artifact locally
 
 ```sh
-sh scripts/pnpm dlx wrangler@4.132.0 dev --config deployment/public-site.wrangler.jsonc --ip 127.0.0.1 --port 8787
+sh scripts/pnpm dlx wrangler@4.132.0 dev --config deployment/public-site.wrangler.jsonc --ip 127.0.0.1 --port 8787 --persist-to data/site-preview-state
 ```
 
 Open that loopback address and verify the landing, GitHub destination, copyable setup

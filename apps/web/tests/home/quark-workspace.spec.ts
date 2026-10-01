@@ -125,6 +125,31 @@ test('one task card groups worker turns and only task completion moves it to Com
     'Review still pending',
   );
   await expect(page.locator('.quark-ticket')).toHaveCount(2);
+  // A stopped worker's durable quota hold still pauses its task when newer manager turns queue.
+  coordinator.accounting.holds = [
+    {
+      runId: coordinator.queue.history[1].runId,
+      agentId: agent.id,
+      projectId: project.id,
+      reason: 'Retained worker quota pause',
+      cause: 'budget',
+      createdAt: new Date().toISOString(),
+      stopAcknowledgedAt: new Date().toISOString(),
+      releasedAt: null,
+      lastAttemptAt: null,
+      error: null,
+    },
+  ];
+  await page.reload();
+  await expect(
+    page.getByRole('region', { name: 'Paused / needs input', exact: true }),
+  ).toContainText('Retained worker quota pause');
+  await expect(working.locator('.quark-ticket')).toHaveCount(1);
+  coordinator.accounting.holds[0].releasedAt = new Date().toISOString();
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Waiting', exact: true })).toContainText(
+    'Review still pending',
+  );
   await page.getByRole('button', { name: 'Completed', exact: true }).click();
   await expect(page.locator('.quark-ticket')).toHaveCount(1);
   await expect(page.locator('.quark-ticket')).toContainText('Finished task with retries');

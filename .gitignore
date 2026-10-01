@@ -8,4 +8,5 @@ data/
 *.tsbuildinfo
 test-results/
 playwright-report/
+.wrangler/
 .DS_Store

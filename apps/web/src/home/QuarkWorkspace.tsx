@@ -44,6 +44,7 @@ function placeTask(
   turns: Job[],
   asking: string | undefined,
   projectPaused: boolean,
+  quotaReason?: string,
 ): [Column, string] {
   const active = turns.filter(live);
   const lead = active.find((j) => j.status === 'running') ?? active[0];
@@ -53,6 +54,7 @@ function placeTask(
     return [columns[3], ''];
   if (task?.status === 'needs_decision') return [columns[2], 'Your manager needs input.'];
   if (asking) return [columns[2], `${asking} is waiting for your answer.`];
+  if (quotaReason) return [columns[2], quotaReason];
   if (held) return [columns[2], held.reason];
   if (projectPaused) return [columns[2], lead?.reason ?? 'This project is paused in QUARK.'];
   if (lead) return [lead.status === 'running' ? columns[1] : columns[0], lead.reason];
@@ -152,7 +154,19 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
       (a) => a?.status === 'waiting',
     );
     const project = projectOf(task?.projectId ?? (lead && agentOf(lead.agentId)?.projectId));
-    const [column, reason] = placeTask(task, turns, asking?.name, !!project?.policy.paused);
+    const quotaHold = s?.accounting.holds.find(
+      (hold) =>
+        !hold.releasedAt &&
+        (team.some((agent) => agent.id === hold.agentId) ||
+          turns.some((turn) => turn.runId === hold.runId)),
+    );
+    const [column, reason] = placeTask(
+      task,
+      turns,
+      asking?.name,
+      !!project?.policy.paused,
+      quotaHold?.reason,
+    );
     const plan = lead?.estimate ?? task?.scheduling;
     return [
       {

@@ -28,6 +28,10 @@ collapsed recent turns on task detail. A finished worker turn cannot complete it
 Task caps come from accounting rather than adding bounded history. Opus was quota-paused;
 root collected, reviewed and tested its edits without increasing that cap or the shared reserve.
 Notepad and draft-recovery controls now meet the existing touch-target check.
+The live Safari check exposed a durable worker hold displayed as Waiting after a manager
+queued another turn. Task cards now include unreleased worker holds when choosing their
+column. Five additional browser cases verify Paused, unaffected sibling tasks and explicit
+hold release; no quota or resumption rule changed.
 
 Thirty focused browser cases pass across desktop, 412×915, 360×800, 915×412 and iPhone WebKit.
 Five send cases initially waited behind stale allowance in a reused demo store; all five
@@ -39,6 +43,11 @@ source checkpoint, so the earlier green run is not current-release acceptance.
 The revised public setup prompt passed five local and five live browser profiles, including
 copy/fallback, graph navigation, legacy redirects and six datasets. It is deployed on both
 sciencewithagents.com domains. Private checks and screenshots remain under ignored data/.
+The installed manual app was restarted after a verified recovery copy retaining four projects,
+47 conversations and 2,046 entries. Five-profile live layout checks pass for full-screen
+QUARK/resource chats, notepad access, Home width and mobile allowance scrolling. Native Safari
+also confirmed the clean chat list and the active shared editor. Pairing remains enabled;
+the existing editor was not reloaded. Owned test servers and browser processes were closed.
 
 ## 2026-09-30 — correct chat clutter, editor navigation and phone shell
 
