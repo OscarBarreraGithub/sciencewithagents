@@ -1,5 +1,13 @@
 # Resume here — current continuation only
 
+## Latest Phone access layout correction
+
+Phone access now uses full-width responsive panels instead of embedding the narrow dialog form.
+Connection status sits above pairing/devices on desktop; small screens stack all panels. Initial
+connection choices and paired-phone installation help use the same spacing. Long device lists
+are bounded; controls wrap with enlarged text. Preserve the existing pairing state machine,
+code expiry, confirmation, revocation and reconnect handlers. No backend or owner pairing changed.
+
 ## Latest recovery layout correction
 
 Recovery uses full-width desktop columns and stacked phone panels. Saved copies are compact,

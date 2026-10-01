@@ -16,6 +16,7 @@ import { PairedPhoneGate } from './PairedPhoneGate';
 import { pairingLink, readPairingCode } from './pairing-link';
 import { HomeScreenGuide, PhoneDeviceSetup } from './PhoneDeviceSetup';
 import { PhoneConnectionSetup } from './PhoneConnectionSetup';
+import './phone-settings.css';
 
 const PhoneMode = createContext<'local' | 'remote'>('local');
 export const usePhoneMode = () => useContext(PhoneMode);
@@ -345,47 +346,55 @@ export function PhoneSettings({
     !status.pending &&
     (status.authentication !== 'paired' || status.enrollmentOpen)
   );
-  return (
-    <Modal embedded={embedded} title="Phone access" close={close}>
+  const content = (
+    <div className="phone-settings-layout">
       {error && (
-        <p className="form-error" role="alert">
+        <p className="phone-settings-error form-error" role="alert">
           {error}
         </p>
       )}
       {!status ? (
-        <>
+        <section className="phone-settings-panel phone-settings-wide">
           <p>Checking your connection setup…</p>
           {error && (
             <button className="secondary" disabled={busy} onClick={() => void act(async () => {})}>
               Try connection again
             </button>
           )}
-        </>
+        </section>
       ) : status.mode === 'remote' ? (
         <>
-          <p>
-            This device is connected to your computer. Your agents keep working when you close this
-            app.
-          </p>
-          <p>
-            Manage connected devices and create connection codes from sciencewithagents on your
-            computer.
-          </p>
-          {status.authentication === 'paired' ? (
-            <PhoneDeviceSetup
-              refresh={async () => {
-                setStatus(await readStatus());
-              }}
-            />
-          ) : (
-            <>
-              <h3>Add to your home screen</h3>
-              <HomeScreenGuide />
-            </>
-          )}
+          <section className="phone-settings-panel" aria-label="Connection">
+            <h3>Connection</h3>
+            <p>
+              This device is connected to your computer. Your agents keep working when you close
+              this app.
+            </p>
+            <p>
+              Manage connected devices and create connection codes from sciencewithagents on your
+              computer.
+            </p>
+          </section>
+          <section
+            className="phone-settings-panel phone-settings-install"
+            aria-label="Home Screen setup"
+          >
+            {status.authentication === 'paired' ? (
+              <PhoneDeviceSetup
+                refresh={async () => {
+                  setStatus(await readStatus());
+                }}
+              />
+            ) : (
+              <>
+                <h3>Add to your home screen</h3>
+                <HomeScreenGuide />
+              </>
+            )}
+          </section>
         </>
       ) : status.setupIssue ? (
-        <>
+        <section className="phone-settings-panel phone-settings-wide">
           <p role="alert" className="form-error">
             {status.setupIssue === 'configuration'
               ? 'Phone settings need repair.'
@@ -411,242 +420,272 @@ export function PhoneSettings({
           >
             {status.setupIssue === 'listener' ? 'Retry connection' : 'Check phone setup'}
           </button>
-        </>
+        </section>
       ) : !status.configured ? (
-        <PhoneConnectionSetup connected={async () => setStatus(await readStatus())} />
+        <div className="phone-settings-wide">
+          <PhoneConnectionSetup connected={async () => setStatus(await readStatus())} />
+        </div>
       ) : (
         <>
-          {status.transport === 'tailscale' && (
-            <p>
-              Keep Tailscale connected on this computer and your phone. This address is private to
-              your Tailscale network; your phone still needs its passkey.
-            </p>
-          )}
-          <p>
-            {status.enabled ? 'Phone access is on.' : 'Phone access is off.'} Your computer must
-            stay awake and online.
-          </p>
-          {status.enabled && status.connection === 'connecting' && (
-            <p role="status">Connecting your phone address… This can take a moment.</p>
-          )}
-          {status.enabled && status.connection === 'connected' && (
-            <p role="status">Your phone connection is ready.</p>
-          )}
-          {status.enabled && status.connection === 'error' && (
-            <>
-              <p role="alert">
-                The phone connection stopped. Check this computer’s internet connection and try
-                again. Your agents and history are safe.
-              </p>
-              <button
-                className="secondary"
-                disabled={busy}
-                onClick={() =>
-                  void act(async () => {
-                    await api('/phone/reconnect', {});
-                  })
-                }
-              >
-                Reconnect phone access
-              </button>
-            </>
-          )}
-          {!status.enabled ? (
-            <button
-              className="primary"
-              disabled={busy}
-              onClick={() =>
-                void act(async () => {
-                  await api('/phone/enabled', { enabled: true });
-                })
-              }
-            >
-              Turn on phone access
-            </button>
-          ) : (
-            <>
-              {status.authentication === 'paired' && (
-                <>
-                  <p role="status">
-                    {status.pending
-                      ? 'Your phone is waiting for confirmation.'
-                      : status.enrollmentInProgress
-                        ? 'Continue pairing on your phone.'
-                        : status.enrollmentOpen
-                          ? 'Pairing is open for one phone.'
-                          : 'Pairing is closed to new devices.'}
-                  </p>
-                  {status.enrollmentInProgress && (
-                    <p>
-                      Finish saving the passkey on your phone, then confirm it here. If your phone
-                      asks you to start again, choose Cancel pairing here first.
-                    </p>
-                  )}
-                  {status.pending && (
-                    <section className="phone-code" ref={confirmation}>
-                      <p>
-                        Confirm <strong>{status.pending.name}</strong> only if this number matches
-                        your phone:
-                      </p>
-                      <strong>{status.pending.confirmation}</strong>
-                      <button
-                        className="primary"
-                        disabled={busy}
-                        onClick={() =>
-                          void act(async () => {
-                            await api('/phone/confirm', {
-                              id: status.pending!.id,
-                              confirmation: status.pending!.confirmation,
-                            });
-                            setCode(null);
-                          })
-                        }
-                      >
-                        Confirm this phone
-                      </button>
-                    </section>
-                  )}
-                  {(status.enrollmentOpen || status.enrollmentInProgress || status.pending) && (
-                    <button
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() =>
-                        void act(async () => {
-                          await api('/phone/enrollment/close', {});
-                          setCode(null);
-                        })
-                      }
-                    >
-                      Cancel pairing
-                    </button>
-                  )}
-                </>
-              )}
-              {!status.pending && !status.enrollmentInProgress && !showPairing && (
+          <section
+            className="phone-settings-panel phone-settings-connection phone-settings-wide"
+            aria-label="Connection"
+          >
+            <div className="phone-settings-copy">
+              <h3>Connection</h3>
+              {status.transport === 'tailscale' && (
                 <p>
-                  To pair a phone, choose <strong>Create a new code</strong>. The QR code and
-                  instructions will appear here.
+                  Keep Tailscale connected on this computer and your phone. This address is private
+                  to your Tailscale network; your phone still needs its passkey.
                 </p>
               )}
-              {!status.pending && !status.enrollmentInProgress && (
+              <p>
+                {status.enabled ? 'Phone access is on.' : 'Phone access is off.'} Your computer must
+                stay awake and online.
+              </p>
+              {status.enabled && status.connection === 'connecting' && (
+                <p role="status">Connecting your phone address… This can take a moment.</p>
+              )}
+              {status.enabled && status.connection === 'connected' && (
+                <p role="status">Your phone connection is ready.</p>
+              )}
+              {status.enabled && status.connection === 'error' && (
+                <>
+                  <p role="alert">
+                    The phone connection stopped. Check this computer’s internet connection and try
+                    again. Your agents and history are safe.
+                  </p>
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() =>
+                      void act(async () => {
+                        await api('/phone/reconnect', {});
+                      })
+                    }
+                  >
+                    Reconnect phone access
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="phone-settings-controls">
+              {!status.enabled ? (
                 <button
                   className="primary"
-                  disabled={busy || !['external', 'connected'].includes(status.connection)}
+                  disabled={busy}
                   onClick={() =>
                     void act(async () => {
-                      // The server may replace the old code even if its response is lost.
-                      setCode(null);
-                      setCode(
-                        phoneCodeSchema.parse(
-                          await api('/phone/code', { key: crypto.randomUUID() }),
-                        ),
-                      );
+                      await api('/phone/enabled', { enabled: true });
                     })
                   }
                 >
-                  Create a new code
+                  Turn on phone access
                 </button>
-              )}
-              {showPairing && code && (
+              ) : (
                 <>
-                  <p>
-                    {status.authentication === 'paired'
-                      ? 'Scan this QR with your phone’s camera, then give your phone a nickname. Continue in Safari or Chrome, save the passkey, then confirm the matching number here. Add to Home Screen after pairing.'
-                      : 'Scan this QR on your phone and sign in, then give your phone a nickname.'}
-                  </p>
-                  <div className="phone-qr">
-                    <a
-                      href={pairingLink(status.origin!, code.code)}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label="Open phone pairing"
-                    >
-                      <QRCodeSVG
-                        value={pairingLink(status.origin!, code.code)}
-                        size={180}
-                        marginSize={4}
-                        title="Scan to fill your phone’s connection code"
-                      />
-                    </a>
-                  </div>
-                  <p className="phone-address">
-                    Or open{' '}
-                    <a href={status.origin!} target="_blank" rel="noreferrer">
-                      {status.origin}
-                    </a>{' '}
-                    in your phone’s browser and type the code below. Scanning the QR code is
-                    optional.
-                  </p>
-                  <div className="phone-code" aria-live="polite">
-                    <strong>{code.code}</strong>
-                    <small>
-                      One use · 15 minutes to finish pairing · expires at{' '}
-                      {new Date(code.expiresAt).toLocaleTimeString([], {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                      })}
-                    </small>
-                  </div>
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() =>
+                      void act(async () => {
+                        await api('/phone/enabled', { enabled: false });
+                        setCode(null);
+                      })
+                    }
+                  >
+                    Turn off phone access
+                  </button>
                   <p className="muted">
-                    Scanning skips code entry; typing is only a fallback. This is a one-time
-                    connection code, not a password to remember. Keep this QR and code private.{' '}
                     {status.authentication === 'paired'
-                      ? 'Your phone still needs your confirmation on this computer.'
-                      : 'Choose Connect this device on your phone to finish.'}
+                      ? 'Turning this off pauses access on every phone, but keeps their pairing. Only Remove device forgets a phone.'
+                      : 'Turning this off disconnects every device and invalidates their codes and access. Your agents and history are kept.'}
                   </p>
                 </>
               )}
-              <h3>Connected devices</h3>
-              {!status.devices.some(
-                (device) =>
-                  !device.revokedAt &&
-                  (!device.expiresAt || Date.parse(device.expiresAt) > Date.now()),
-              ) && <p className="muted">No connected devices yet.</p>}
-              <ul className="phone-devices">
-                {status.devices
-                  .filter(
-                    (device) =>
-                      !device.revokedAt &&
-                      (!device.expiresAt || Date.parse(device.expiresAt) > Date.now()),
-                  )
-                  .map((device) => (
-                    <li key={device.id}>
-                      <span>{device.name}</span>
+            </div>
+          </section>
+          {status.enabled && (
+            <>
+              <section className="phone-settings-panel" aria-label="Pair a phone">
+                <h3>Pair a phone</h3>
+                {status.authentication === 'paired' && (
+                  <>
+                    <p role="status">
+                      {status.pending
+                        ? 'Your phone is waiting for confirmation.'
+                        : status.enrollmentInProgress
+                          ? 'Continue pairing on your phone.'
+                          : status.enrollmentOpen
+                            ? 'Pairing is open for one phone.'
+                            : 'Pairing is closed to new devices.'}
+                    </p>
+                    {status.enrollmentInProgress && (
+                      <p>
+                        Finish saving the passkey on your phone, then confirm it here. If your phone
+                        asks you to start again, choose Cancel pairing here first.
+                      </p>
+                    )}
+                    {status.pending && (
+                      <section className="phone-code" ref={confirmation}>
+                        <p>
+                          Confirm <strong>{status.pending.name}</strong> only if this number matches
+                          your phone:
+                        </p>
+                        <strong>{status.pending.confirmation}</strong>
+                        <button
+                          className="primary"
+                          disabled={busy}
+                          onClick={() =>
+                            void act(async () => {
+                              await api('/phone/confirm', {
+                                id: status.pending!.id,
+                                confirmation: status.pending!.confirmation,
+                              });
+                              setCode(null);
+                            })
+                          }
+                        >
+                          Confirm this phone
+                        </button>
+                      </section>
+                    )}
+                    {(status.enrollmentOpen || status.enrollmentInProgress || status.pending) && (
                       <button
                         className="secondary"
                         disabled={busy}
                         onClick={() =>
                           void act(async () => {
-                            await api(`/phone/devices/${device.id}/revoke`, {});
+                            await api('/phone/enrollment/close', {});
+                            setCode(null);
                           })
                         }
                       >
-                        {status.authentication === 'paired' ? 'Remove device' : 'Disconnect'}
+                        Cancel pairing
                       </button>
-                    </li>
-                  ))}
-              </ul>
-              <button
-                className="secondary"
-                disabled={busy}
-                onClick={() =>
-                  void act(async () => {
-                    await api('/phone/enabled', { enabled: false });
-                    setCode(null);
-                  })
-                }
-              >
-                Turn off phone access
-              </button>
-              <p className="muted">
-                {status.authentication === 'paired'
-                  ? 'Turning this off pauses access and locks every phone, but keeps their pairing. Only Remove device forgets a phone.'
-                  : 'Turning this off disconnects every device and invalidates their codes and access. Your agents and history are kept.'}
-              </p>
+                    )}
+                  </>
+                )}
+                {!status.pending && !status.enrollmentInProgress && !showPairing && (
+                  <p>
+                    To pair a phone, choose <strong>Create a new code</strong>. The QR code and
+                    instructions will appear here.
+                  </p>
+                )}
+                {!status.pending && !status.enrollmentInProgress && (
+                  <button
+                    className="primary"
+                    disabled={busy || !['external', 'connected'].includes(status.connection)}
+                    onClick={() =>
+                      void act(async () => {
+                        // The server may replace the old code even if its response is lost.
+                        setCode(null);
+                        setCode(
+                          phoneCodeSchema.parse(
+                            await api('/phone/code', { key: crypto.randomUUID() }),
+                          ),
+                        );
+                      })
+                    }
+                  >
+                    Create a new code
+                  </button>
+                )}
+                {showPairing && code && (
+                  <>
+                    <p>
+                      {status.authentication === 'paired'
+                        ? 'Scan this QR with your phone’s camera, then give your phone a nickname. Continue in Safari or Chrome, save the passkey, then confirm the matching number here. Add to Home Screen after pairing.'
+                        : 'Scan this QR on your phone and sign in, then give your phone a nickname.'}
+                    </p>
+                    <div className="phone-qr">
+                      <a
+                        href={pairingLink(status.origin!, code.code)}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Open phone pairing"
+                      >
+                        <QRCodeSVG
+                          value={pairingLink(status.origin!, code.code)}
+                          size={180}
+                          marginSize={4}
+                          title="Scan to fill your phone’s connection code"
+                        />
+                      </a>
+                    </div>
+                    <p className="phone-address">
+                      Or open{' '}
+                      <a href={status.origin!} target="_blank" rel="noreferrer">
+                        {status.origin}
+                      </a>{' '}
+                      in your phone’s browser and type the code below. Scanning the QR code is
+                      optional.
+                    </p>
+                    <div className="phone-code" aria-live="polite">
+                      <strong>{code.code}</strong>
+                      <small>
+                        One use · 15 minutes to finish pairing · expires at{' '}
+                        {new Date(code.expiresAt).toLocaleTimeString([], {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                      </small>
+                    </div>
+                    <p className="muted">
+                      Scanning skips code entry; typing is only a fallback. This is a one-time
+                      connection code, not a password to remember. Keep this QR and code private.{' '}
+                      {status.authentication === 'paired'
+                        ? 'Your phone still needs your confirmation on this computer.'
+                        : 'Choose Connect this device on your phone to finish.'}
+                    </p>
+                  </>
+                )}
+              </section>
+              <section className="phone-settings-panel" aria-label="Connected devices">
+                <h3>Connected devices</h3>
+                {!status.devices.some(
+                  (device) =>
+                    !device.revokedAt &&
+                    (!device.expiresAt || Date.parse(device.expiresAt) > Date.now()),
+                ) && <p className="muted">No connected devices yet.</p>}
+                <ul className="phone-devices" tabIndex={0} aria-label="Connected phones">
+                  {status.devices
+                    .filter(
+                      (device) =>
+                        !device.revokedAt &&
+                        (!device.expiresAt || Date.parse(device.expiresAt) > Date.now()),
+                    )
+                    .map((device) => (
+                      <li key={device.id}>
+                        <span>{device.name}</span>
+                        <button
+                          className="secondary"
+                          disabled={busy}
+                          onClick={() =>
+                            void act(async () => {
+                              await api(`/phone/devices/${device.id}/revoke`, {});
+                            })
+                          }
+                        >
+                          {status.authentication === 'paired' ? 'Remove device' : 'Disconnect'}
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </section>
             </>
           )}
         </>
       )}
+    </div>
+  );
+  return embedded ? (
+    <section className="phone-settings" aria-label="Phone connection settings">
+      {content}
+    </section>
+  ) : (
+    <Modal title="Phone access" close={close} className="phone-settings-dialog">
+      <div className="phone-settings">{content}</div>
     </Modal>
   );
 }

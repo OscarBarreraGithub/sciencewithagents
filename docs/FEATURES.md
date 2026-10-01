@@ -1,5 +1,11 @@
 # Feature map
 
+**Phone access layout (2026-10-01): implemented.** Connection, pairing and connected-device
+panels use the full desktop width and stack on phones. First-time connection choices and
+instructions share the same layout; paired phones get spaced Home Screen help. Long device
+lists scroll within their panel. Pairing confirmation, expiry, removal and retry behavior stay
+the same; opening the page creates no code or connection change.
+
 **Recovery layout (2026-10-01): implemented.** Recovery copies and retained browser drafts
 use bounded, independently scrolling lists. Each copy expands for its counts, reference,
 verification and update request. Desktop uses the page width with help alongside; phones

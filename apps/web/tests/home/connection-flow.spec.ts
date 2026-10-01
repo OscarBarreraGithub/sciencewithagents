@@ -139,9 +139,7 @@ test('unavailable phone setup retains a usable workspace and only rechecks statu
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
   issue = null;
   await page.getByRole('link', { name: /Phone access/ }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Bring your workspace to your phone.' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Set up a phone connection' })).toBeVisible();
   expect(writes).toEqual([]);
 });
 
@@ -161,7 +159,7 @@ test('phone settings retry a first-read failure inside the app without locking t
   await expect(page.getByRole('alert')).toContainText('temporarily unavailable');
   await page.getByRole('button', { name: 'Try connection again', exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'Bring your workspace to your phone.', exact: true }),
+    page.getByRole('heading', { name: 'Set up a phone connection', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
 });

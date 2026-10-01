@@ -1,7 +1,8 @@
 .phone-connection-setup {
   display: grid;
-  gap: 1rem;
-  max-width: 42rem;
+  gap: 24px;
+  align-items: start;
+  min-width: 0;
 }
 .phone-connection-setup h3,
 .phone-connection-setup h4,
@@ -12,8 +13,16 @@
   display: grid;
   gap: 0.8rem;
   padding: 1rem;
+  margin: 0;
+  min-width: 0;
   border: 1px solid #dce1e9;
   border-radius: 14px;
+}
+.phone-connection-setup legend {
+  font-size: var(--text-small);
+  line-height: 1.5;
+  padding: 0 6px;
+  max-width: 100%;
 }
 .phone-connection-setup fieldset label {
   display: flex;
@@ -24,6 +33,8 @@
   min-height: 44px;
   padding: 0.5rem 0;
   margin: 0;
+  font-size: var(--text-body);
+  color: var(--ink);
 }
 .phone-connection-setup fieldset input[type='radio'] {
   width: 1rem;
@@ -39,7 +50,7 @@
   display: grid;
   gap: 0.7rem;
 }
-.phone-connection-setup a {
+.phone-settings .phone-connection-setup a {
   text-decoration: underline;
   text-underline-offset: 3px;
 }

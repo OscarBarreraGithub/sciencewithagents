@@ -103,7 +103,7 @@ test('phone connection failure and reconnect stay inside the app', async ({ page
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('phone setup explains the agent-assisted handoff without terminal or payment instructions', async ({
+test('phone setup explains private and existing-domain choices without terminal or payment instructions', async ({
   page,
 }) => {
   await page.goto('/');
@@ -111,10 +111,12 @@ test('phone setup explains the agent-assisted handoff without terminal or paymen
     await page.getByRole('button', { name: 'Open projects' }).click();
   await page.getByRole('button', { name: 'Phone access', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Phone access' });
-  await expect(dialog).toContainText('Your setup agent connects Cloudflare');
-  await expect(dialog).toContainText('GitHub');
+  await expect(dialog).toContainText('Set up a phone connection');
+  await expect(dialog.getByRole('button', { name: 'Check this computer' })).toBeVisible();
+  await dialog.getByRole('radio', { name: 'Use a domain I already have' }).check();
+  await expect(dialog).toContainText('Your setup agent can connect a domain you control');
   await expect(dialog).not.toContainText(/pnpm|API token|credit card|payment details/);
-  await expect(dialog.getByRole('button', { name: 'Check setup again' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Check existing-domain setup' })).toBeVisible();
 });
 
 test('phone connection offers an optional QR or manual address and a fifteen-minute code', async ({

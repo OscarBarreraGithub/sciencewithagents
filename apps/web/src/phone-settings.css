@@ -1,0 +1,149 @@
+.phone-settings {
+  width: 100%;
+  min-width: 0;
+  container: phone-settings / inline-size;
+}
+.phone-settings-dialog {
+  width: min(680px, calc(100vw - 24px));
+}
+.phone-settings-layout,
+.phone-settings-copy,
+.phone-settings-controls {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  align-items: start;
+}
+.phone-settings-layout {
+  gap: 24px;
+}
+.phone-settings-wide,
+.phone-settings-error {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.phone-settings-panel {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 22px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+.phone-settings h3 {
+  margin: 0;
+  font-size: var(--text-reading);
+  line-height: 1.4;
+}
+.phone-settings p {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.phone-settings .muted {
+  font-size: var(--text-small);
+}
+.phone-settings button {
+  justify-self: start;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 10px 15px;
+  font-size: var(--text-small);
+  line-height: 1.4;
+  white-space: normal;
+  border-radius: 10px;
+}
+.home-shell .phone-settings .primary {
+  color: #fff;
+  background: var(--home-blue);
+  border-color: var(--home-blue);
+}
+.home-shell .phone-settings .secondary {
+  color: var(--home-ink);
+  background: #fff;
+  border-color: var(--home-line);
+}
+.phone-settings .phone-code {
+  gap: 12px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.phone-settings .phone-code > strong {
+  font-size: clamp(1rem, 3.5cqi, 1.5rem);
+}
+.phone-settings .phone-code p strong {
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: normal;
+}
+.phone-settings .phone-code small {
+  font-size: var(--text-small);
+  line-height: 1.5;
+}
+.phone-settings .phone-qr {
+  margin: 0 auto;
+  max-width: 100%;
+}
+.phone-settings .phone-qr svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.phone-settings .phone-devices {
+  margin: 0;
+  padding: 0 4px;
+  max-height: min(42dvh, 28rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.phone-settings .phone-devices li {
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-body);
+}
+.phone-settings .phone-devices li:first-child {
+  padding-top: 0;
+}
+.phone-settings .phone-devices li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.phone-settings .phone-devices li span {
+  flex: 1 1 10rem;
+}
+.phone-settings-install .phone-install-guide {
+  display: grid;
+  gap: 16px;
+}
+.phone-settings-install .phone-install-guide :is(ol, details) {
+  margin: 0;
+}
+.phone-settings-install .phone-install-guide summary {
+  cursor: pointer;
+  padding: 10px 0;
+  min-height: 44px;
+}
+@container phone-settings (min-width: 54rem) {
+  .phone-settings-layout,
+  .phone-settings .phone-connection-setup,
+  .phone-settings-connection {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  }
+}
+@container phone-settings (max-width: 34rem) {
+  .phone-settings-panel {
+    padding: 16px;
+  }
+  .phone-settings-layout {
+    gap: 16px;
+  }
+}

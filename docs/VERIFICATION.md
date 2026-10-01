@@ -1,5 +1,26 @@
 # Verification
 
+## 2026-10-01 — full-width Phone access panels
+
+Connection status, pairing and connected devices replace the narrow embedded dialog layout.
+Desktop uses columns; phones and enlarged text stack the panels. First connection choices
+and remote Home Screen help use the same spacing. Connected-device lists have their own
+bounded scroll area. Pairing handlers and backend authentication are unchanged.
+
+- Production web build and formatting pass. All 53 selected browser cases pass across
+  desktop, 412×915, 360×800, 915×412 and iPhone WebKit, including the phone flows and nearby
+  Settings journeys. Checks cover full-width panels, card insets, doubled text, long device
+  lists, QR creation, confirmation, removal, on/off, first setup, lost replies and retry.
+- All twelve selected classic-dialog checks pass: initial connection choices, exact QR
+  content, cancellation, invitation expiry and hiding stale codes after lost responses or
+  a failed connection. Rendered desktop/phone layouts and installation help were inspected.
+  After correcting the first-setup choice text size/contrast, all ten setup/layout cases pass
+  again across the five browser profiles. Owned test servers and browser children are closed.
+- Isolated demo fixtures only; no owner connection, enrollment, passkey or device was changed.
+  The running app serves the new CSS without a backend restart. Evidence is under ignored
+  `data/phone-layout-*` and browser screenshot directories. No physical-phone acceptance is
+  claimed by these simulated browser checks.
+
 ## 2026-10-01 — bounded recovery lists and full-width layout
 
 Recovery uses desktop columns for saved copies and update/restore help, stacking on phones.
