@@ -3,17 +3,14 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowUpRight, Activity, TriangleAlert } from 'lucide-react';
 import {
   policyProvider,
-  snapshotSchema,
   type ResourceCheck,
   type ResourceJob,
   type ResourceSample,
 } from '@dock/shared';
 import { apiScope } from '../api';
-import { useReading, type HomeData } from './useHomeData';
-import { automaticResourceChat, resourceAssistantOf } from './resource-chat';
+import type { HomeData } from './useHomeData';
 import { useScrollHints } from './useScrollHints';
 import { HealthAssistant, useHealthModels, type HealthModels } from './HealthAssistant';
-import { HealthHistory, type HistoryRequest } from './HealthHistory';
 import { HealthPlots } from './HealthPlots';
 import { AssistantFullscreen } from './AssistantFullscreen';
 import {
@@ -267,11 +264,6 @@ function Apps({ sample }: { sample: ResourceSample | null }) {
       <div className="health-panel-hint" aria-hidden={!hint}>
         {hint}
       </div>
-      <p className="health-footnote">
-        The busiest app groups in the current reading. CPU is a share of the whole computer.
-        Resident memory is an estimate that can count shared pages more than once. Many browser
-        helpers are normal; a count alone is not a runaway.
-      </p>
     </section>
   );
 }
@@ -491,22 +483,7 @@ function Settings({
 
 export function Resources({ reading }: { reading: HomeData['resources'] }) {
   const status = reading.data;
-  const snapshot = useReading('/snapshot', snapshotSchema.parse);
-  const olderConversations = (snapshot.data?.agents ?? []).filter(
-    (a) =>
-      (resourceAssistantOf(a) || a.projectId === status?.projectId) &&
-      !status?.checks.some((c) => c.agentId === a.id),
-  );
-  const [archiveQuery, setArchiveQuery] = useState('');
-  const archived = olderConversations.filter((a) =>
-    `${a.name} ${a.model ?? a.provider} ${new Date(a.createdAt).toLocaleString()}`
-      .toLowerCase()
-      .includes(archiveQuery.toLowerCase().trim()),
-  );
-  const [archiveLimit, setArchiveLimit] = useState(10);
   const [now, setNow] = useState(Date.now);
-  const [historyRequest, setHistoryRequest] = useState<HistoryRequest | null>(null);
-  const [select, setSelect] = useState<{ check: ResourceCheck; nonce: number } | null>(null);
   const target = () => location.hash.split('/')[2] ?? '';
   const [chatTarget, setChatTarget] = useState(target);
   useEffect(() => {
@@ -544,7 +521,7 @@ export function Resources({ reading }: { reading: HomeData['resources'] }) {
       <section className="health-section assistant-launch" aria-label="Ask about computer health">
         <div>
           <h2>Resource assistant</h2>
-          <p>Ask about this computer in a full-screen conversation. Past checks stay in History.</p>
+          <p>Ask about this computer or have the assistant look through past readings.</p>
         </div>
         <button
           className="flow-button primary"
@@ -566,83 +543,18 @@ export function Resources({ reading }: { reading: HomeData['resources'] }) {
             stale={!!stale}
             modelsState={modelsState}
             refresh={reading.retry}
-            select={select}
             agentId={chatTarget === 'chat' ? undefined : chatTarget}
-            showHistory={() => {
-              closeChat();
-              setHistoryRequest({ kind: 'list', nonce: Date.now() });
-            }}
             onStop={stopCheck}
             stopping={!!stop.busy}
             stopError={stopError}
           />
         </AssistantFullscreen>
       )}
-      <HealthPlots
-        samples={status?.history ?? []}
-        now={now}
-        open={(sample) =>
-          setHistoryRequest({ kind: 'reading', at: sample.observedAt, nonce: Date.now() })
-        }
-      />
+      <HealthPlots samples={status?.history ?? []} now={now} />
       <div className="health-activity">
-        <Apps sample={status?.latest ?? null} />
         <Projects sample={status?.latest ?? null} />
+        <Apps sample={status?.latest ?? null} />
       </div>
-      <HealthHistory
-        checks={status?.checks ?? []}
-        samples={status?.history ?? []}
-        modelName={modelsState.name}
-        request={historyRequest}
-        onContinue={(check) => {
-          setSelect({ check, nonce: Date.now() });
-          location.hash = `#/resources/${check.agentId}`;
-        }}
-        onStop={stopCheck}
-        stopping={!!stop.busy}
-        stopError={stopError}
-      />
-      {olderConversations.length > 0 && (
-        <details className="health-section health-older-checks">
-          <summary>Older resource conversations ({olderConversations.length})</summary>
-          <p>
-            Retained conversations outside the recent diagnosis window. Opening reads their saved
-            evidence.
-          </p>
-          <label>
-            Find a saved resource conversation
-            <input
-              type="search"
-              value={archiveQuery}
-              onChange={(event) => {
-                setArchiveQuery(event.target.value);
-                setArchiveLimit(10);
-              }}
-            />
-          </label>
-          <ul className="health-history-list">
-            {archived.slice(0, archiveLimit).map((a) => (
-              <li key={a.id}>
-                <a className="flow-person" href={`#/resources/${a.id}`}>
-                  <span>
-                    <strong>
-                      {automaticResourceChat(a) ? 'Automatic check' : a.name} ·{' '}
-                      {new Date(a.createdAt).toLocaleString()}
-                    </strong>
-                    <small>{a.model ?? a.provider}</small>
-                  </span>
-                </a>
-              </li>
-            ))}
-          </ul>
-          {!archived.length && <p>No saved conversations match.</p>}
-          {archived.length > archiveLimit && (
-            <button className="flow-button" onClick={() => setArchiveLimit((n) => n + 10)}>
-              Show more saved checks
-            </button>
-          )}
-        </details>
-      )}
       <Settings reading={reading} modelsState={modelsState} />
     </section>
   );

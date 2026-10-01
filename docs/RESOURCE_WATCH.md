@@ -4,7 +4,10 @@ sciencewithagents is the central app. QUARK schedules work. **Computer health** 
 small IT desk: a local watcher plus a resource assistant that wakes only for a diagnosis.
 Open the computer card on Home, then **Open Resource assistant** for a full-screen
 conversation. Add a symptom, read the findings, stop a pending check or return to the charts.
-All resource conversations stay in Computer health history instead of filling the normal chat list. This includes questions you asked, automatic reports and consultations. Older conversations remain in a collapsed, searchable archive.
+Projects and jobs appear above Apps and processes. Past readings are inspected through the
+graphs; the page has no history list or conversation archive browser. Resource conversations,
+reports and their evidence remain saved and available to the resource assistant and history
+APIs, outside the normal chat list. Existing saved-conversation links still work.
 Model settings and the other core workspace destinations are connected; see FEATURES.md.
 
 ## What matters
@@ -65,9 +68,10 @@ No provider/model is silently substituted.
 
 Existing snapshot conversations keep their original restrictions. An explicit follow-up to
 an older owner-requested diagnosis upgrades that same conversation to native assistance;
-merely opening history does not. Automatic reports and grad consultations stay bounded.
+merely opening a saved conversation does not. Automatic reports and grad consultations stay bounded.
 Durable origin metadata separates automatic reports from owner conversations, including
-older reports outside the recent history window. Resource-owned records with unknown origins also stay in Computer health; no conversation is deleted.
+older reports outside the recent history window. Resource-owned records with unknown origins
+also remain saved outside the normal chat list; no conversation is deleted.
 
 Automatic checks are configurable and off on a fresh installation. The owner requested
 them for this computer. Defaults: checkpoint every **6 hours**, plus persistent CPU ≥85%,

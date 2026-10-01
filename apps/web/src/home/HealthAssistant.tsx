@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { History, Plus, RefreshCw, Square } from 'lucide-react';
+import { Plus, RefreshCw, Square } from 'lucide-react';
 import {
   agentSchema,
   snapshotSchema,
@@ -21,8 +21,13 @@ import { useWorkspaceState } from '../useWorkspaceState';
 import { useBrowserNotepad } from '../useBrowserNotepad';
 import { useReading } from './useHomeData';
 import { resourceAssistantOf } from './resource-chat';
-import { reportFallback } from './HealthHistory';
-import { activeCheck, providerNames, useResourceActions, when } from './health-shared';
+import {
+  activeCheck,
+  providerNames,
+  reportFallback,
+  useResourceActions,
+  when,
+} from './health-shared';
 
 type Catalog = { models: Model[]; error: string; loading: boolean };
 /** Cached central policy on mount; a live catalog only for the provider being shown. */
@@ -142,9 +147,7 @@ export function HealthAssistant({
   stale,
   modelsState,
   refresh,
-  select,
   agentId,
-  showHistory,
   onStop,
   stopping,
   stopError,
@@ -153,9 +156,7 @@ export function HealthAssistant({
   stale: boolean;
   modelsState: HealthModels;
   refresh: () => void;
-  select: { check: ResourceCheck; nonce: number } | null;
   agentId?: string;
-  showHistory: () => void;
   onStop: (check: ResourceCheck) => void;
   stopping: boolean;
   stopError: string;
@@ -185,13 +186,6 @@ export function HealthAssistant({
     const latest = checks.find((c) => c.reason === 'asked' && !c.escalatedFrom);
     update({ selection: latest ? { kind: 'thread', id: latest.agentId } : { kind: 'new' } });
   }, [status, saved.selection.kind]);
-  useEffect(() => {
-    if (select) {
-      update({ selection: { kind: 'thread', id: rootOf(select.check) } });
-      ask.clear();
-      setNotice('');
-    }
-  }, [select]);
   useEffect(() => {
     if (agentId) update({ selection: { kind: 'thread', id: agentId } });
   }, [agentId]);
@@ -298,7 +292,7 @@ export function HealthAssistant({
     ask.clear();
     if (threadId && next === threadProvider) return;
     update({ selection: { kind: 'new' }, provider: next, model: '', effort: '' });
-    setNotice(threadId ? 'New conversation. The earlier conversation stays in History.' : '');
+    setNotice(threadId ? 'New conversation. The earlier conversation remains saved.' : '');
   };
   const startNew = () => {
     ask.clear();
@@ -308,7 +302,7 @@ export function HealthAssistant({
       model: '',
       effort: '',
     });
-    setNotice('The previous conversation stays in History.');
+    setNotice('The previous conversation remains saved.');
   };
   const started = thread?.runs[0]?.createdAt ?? primaryCheck?.createdAt;
   const placeholder = agentSchema.parse({
@@ -353,9 +347,6 @@ export function HealthAssistant({
               <Plus size={16} /> New diagnosis
             </button>
           )}
-          <button onClick={showHistory}>
-            <History size={16} /> Past diagnoses
-          </button>
         </div>
       </div>
       <details className="health-chat-controls" open={!threadId} key={threadId ?? 'new'}>

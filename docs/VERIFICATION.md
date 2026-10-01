@@ -1,5 +1,16 @@
 # Verification
 
+## 2026-10-01 — Computer health presentation cleanup
+
+The production frontend build and strict TypeScript check passed. Thirty focused resource
+journey cases pass across desktop 1440×1000, 412×915, 360×800, 915×412 and iPhone WebKit
+(25 on the first run, five after correcting an obsolete Back-link test label). They verify
+Projects and jobs above Apps and processes, removed history controls and footer text,
+chart inspection/time ranges, retained API records and saved-conversation links, diagnostic
+follow-ups/lost-response retries, and automatic-check Stop receipts. Backend resource
+sampling, retention and agent context were unchanged; no live model turn was used.
+Native Safari confirmed the updated live page headings and assistant copy.
+
 ## 2026-10-01 — conversation width and full-page writing area
 
 The notepad follow-up removes the permanent footer and inset paper card. The writing

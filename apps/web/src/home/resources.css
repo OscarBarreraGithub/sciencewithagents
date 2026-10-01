@@ -222,7 +222,6 @@
 .health-snapshot,
 .health-panel,
 .health-assistant,
-.health-history,
 .health-settings,
 .health-plot {
   background: #fff;
@@ -413,8 +412,7 @@
   gap: 4px;
 }
 .health-model-pick label > span,
-.health-field > span,
-.health-history-filters label > span {
+.health-field > span {
   font-size: 12px;
   font-weight: 600;
   color: var(--health-muted);
@@ -842,7 +840,7 @@
 /* App activity and project attribution. */
 .health-activity {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 .health-panel {
@@ -924,37 +922,6 @@
   background: #fbfbf9;
 }
 
-/* History. */
-.health-history {
-  overflow: hidden;
-}
-.health-history-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 12px;
-  border-bottom: 1px solid var(--health-line);
-}
-.health-history-filters > label {
-  display: grid;
-  gap: 4px;
-  flex: 1 1 150px;
-}
-.health-history-filters > .health-search {
-  position: relative;
-  flex: 2 1 240px;
-}
-.health-search svg {
-  position: absolute;
-  left: 12px;
-  bottom: 16px;
-  color: var(--health-muted);
-}
-.health-page .health-search input {
-  min-height: 48px;
-  padding: 0 12px 0 36px;
-}
 .health-check {
   display: flex !important;
   align-items: center;
@@ -972,193 +939,6 @@
   font-size: 13px !important;
   color: inherit !important;
   font-weight: 600;
-}
-.health-history-body {
-  height: clamp(300px, 56dvh, 480px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 8px 12px;
-}
-.health-history-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 4px;
-}
-.health-page .health-history-list button {
-  display: grid;
-  justify-content: stretch;
-  gap: 2px;
-  width: 100%;
-  min-height: 60px;
-  padding: 10px 12px;
-  border-color: transparent;
-  text-align: left;
-  font-weight: 400;
-}
-.health-page .health-history-list button:hover {
-  background: var(--health-soft);
-}
-.health-row-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
-.health-row-top strong {
-  font-size: 13px;
-}
-.health-history-list small {
-  font-size: 12px;
-  color: var(--health-muted);
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-.health-row-preview {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--health-muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-}
-.health-state {
-  flex: none;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  background: #eef0f3;
-  color: #4d5564;
-}
-.health-state.is-completed,
-.health-state.is-normal {
-  background: #e7f0ea;
-  color: #2f6147;
-}
-.health-state.is-queued,
-.health-state.is-running {
-  background: #e8ebfb;
-  color: #3444a5;
-}
-.health-state.is-failed,
-.health-state.is-interrupted,
-.health-state.is-cancelled,
-.health-state.is-critical {
-  background: #f7e6e4;
-  color: #8a2f27;
-}
-.health-state.is-warning {
-  background: #fbf0d9;
-  color: #6f4a0c;
-}
-.health-history-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  min-height: 56px;
-  padding: 6px 12px;
-  border-top: 1px solid var(--health-line);
-}
-.health-hint {
-  font-size: 12px;
-  color: var(--health-muted);
-}
-.health-pager {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--health-muted);
-  font-variant-numeric: tabular-nums;
-}
-.health-history-detail {
-  display: grid;
-  gap: 8px;
-  padding: 4px 0 8px;
-}
-.health-history-detail > .health-text-button {
-  justify-self: start;
-}
-.health-history-detail h3 {
-  font-size: 16px;
-}
-.health-history-detail h4 {
-  margin: 8px 0 0;
-  font-size: 13px;
-}
-.health-history-detail > p {
-  font-size: 13px;
-  line-height: 1.55;
-}
-.health-meta {
-  font-size: 12px !important;
-  color: var(--health-muted);
-  overflow-wrap: anywhere;
-}
-.health-wait {
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #eef0fb;
-}
-.health-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
-  margin: 0;
-}
-.health-detail-grid div {
-  padding: 8px 10px;
-  border: 1px solid var(--health-line);
-  border-radius: 8px;
-}
-.health-detail-grid dt {
-  font-size: 12px;
-  color: var(--health-muted);
-}
-.health-detail-grid dd {
-  margin: 2px 0 0;
-  font-size: 14px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.health-detail-grid dd.is-missing {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--health-muted);
-}
-.health-detail-jobs {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.health-detail-jobs li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 52px 72px;
-  gap: 8px;
-  align-items: center;
-  padding: 7px 0;
-  border-bottom: 1px solid #eef0f1;
-  font-size: 13px;
-}
-.health-detail-jobs li > span:not(:first-child) {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.health-detail-jobs strong,
-.health-detail-jobs small {
-  display: block;
-  overflow-wrap: anywhere;
-}
-.health-detail-jobs small {
-  font-size: 12px;
-  color: var(--health-muted);
 }
 
 /* Automatic check settings. */
@@ -1197,11 +977,6 @@
 @media (max-width: 960px) {
   .health-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-@media (max-width: 860px) {
-  .health-activity {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 700px) {
@@ -1263,8 +1038,5 @@
 @media (max-height: 520px) {
   .health-transcript {
     height: 230px;
-  }
-  .health-history-body {
-    height: 300px;
   }
 }

@@ -1,5 +1,13 @@
 # Resume here — current continuation only
 
+## Latest Computer health cleanup
+
+Projects and jobs now sit above Apps and processes on desktop and phones. The explanatory
+app-group footer and both human history browsers are removed. Graphs retain time ranges
+and reading inspection without navigating into a list. Resource readings, reports and saved
+conversations remain available through the existing backend; saved conversation links,
+assistant follow-ups and automatic-check controls are preserved.
+
 ## Latest chat-space correction
 
 Managed and shared chat timelines no longer have narrow desktop width caps. QUARK and

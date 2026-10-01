@@ -299,6 +299,9 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   const projects = page.getByRole('region', { name: 'Projects and jobs' });
   await expect(apps.getByText('Google Chrome', { exact: true })).toBeVisible();
   await expect(projects.getByText('Research project', { exact: true })).toBeVisible();
+  const projectBounds = (await projects.boundingBox())!;
+  expect(projectBounds.y + projectBounds.height).toBeLessThanOrEqual((await apps.boundingBox())!.y);
+  await expect(page.getByText('The busiest app groups', { exact: false })).toHaveCount(0);
   await projects.getByText('Research project', { exact: true }).click();
   await expect(
     projects.getByText('Literature worker and its helpers', { exact: true }),
@@ -310,6 +313,7 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   await page.getByRole('button', { name: 'Open Resource assistant' }).click();
   const full = page.getByRole('dialog', { name: 'Resource assistant conversation' });
   await expect(full).toBeVisible();
+  await expect(full.getByRole('button', { name: 'Past diagnoses', exact: true })).toHaveCount(0);
   const geometry = await full.boundingBox();
   expect(geometry!.width).toBe(page.viewportSize()!.width);
   expect(geometry!.height).toBeGreaterThanOrEqual(page.viewportSize()!.height - 2);
@@ -404,7 +408,10 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
     fullPage: true,
     scale: 'css',
   });
-  await page.getByRole('link', { name: 'Back to home', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Computer health', exact: true })
+    .getByRole('link', { name: 'Back', exact: true })
+    .click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
 });
 
@@ -457,7 +464,7 @@ for (const state of ['missing', 'stale'] as const) {
   });
 }
 
-test('History pages and searches saved diagnoses and readings without starting agents', async ({
+test('graphs inspect retained readings without a human history browser or starting agents', async ({
   page,
 }) => {
   const now = Date.now();
@@ -477,42 +484,34 @@ test('History pages and searches saved diagnoses and readings without starting a
   const conversations = new Map(status.checks.map((check) => [check.agentId, conversation(check)]));
   const { writes } = await fixture(page, status, conversations);
   await page.goto('/#/resources');
-  const history = page.getByRole('region', { name: 'History', exact: true });
-  const rows = history.getByRole('listitem');
-  await expect(rows).toHaveCount(6);
-  await expect(history.getByText('1–6 of 20', { exact: true })).toBeVisible();
-  await history.getByRole('button', { name: 'Older', exact: true }).click();
-  await expect(rows).toHaveCount(6);
-  await expect(history.getByText('7–12 of 20', { exact: true })).toBeVisible();
-  await history.getByRole('searchbox', { name: 'Search reports' }).fill('distinctive archive');
-  await expect(rows).toHaveCount(1);
-  await rows.getByRole('button').click();
-  await expect(
-    history.getByText('Diagnosis 19: distinctive archive answer.', { exact: true }),
-  ).toBeVisible();
-  await expect(history.getByRole('button', { name: 'Continue in chat' })).toBeVisible();
-  await history.getByRole('button', { name: 'Back to the list' }).click();
-  await history.getByRole('searchbox', { name: 'Search reports' }).fill('');
-  await history.getByRole('button', { name: 'Readings (96)', exact: true }).click();
-  await expect(rows).toHaveCount(8);
-  await expect(history.getByText('1–8 of 96', { exact: true })).toBeVisible();
-  await history.getByRole('button', { name: 'Older', exact: true }).click();
-  await expect(history.getByText('9–16 of 96', { exact: true })).toBeVisible();
-  await history.getByLabel('Only busy readings').check();
-  await expect(rows).toHaveCount(8);
-  await expect(history.getByText('1–8 of 24', { exact: true })).toBeVisible();
-  await rows.first().getByRole('button').click();
-  await expect(history.getByText('Whole-computer CPU', { exact: true })).toBeVisible();
-  await expect(
-    history.getByText('App-by-app breakdowns are kept only for the current reading.', {
-      exact: false,
-    }),
-  ).toBeVisible();
+  const trends = page.getByRole('region', { name: 'Trends', exact: true });
+  await expect(trends.locator('.health-plot')).toHaveCount(4);
+  await expect(page.getByRole('region', { name: 'History', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Open this reading', exact: true })).toHaveCount(0);
+  const cpu = trends.getByRole('img', { name: /^Whole-computer CPU,/ });
+  await cpu.focus();
+  await cpu.press('Home');
+  await expect(trends.locator('.health-readout')).toContainText('Reading at');
+  await expect(trends.locator('.health-plot').first().locator('header strong')).toHaveText('20%');
+  await cpu.press('ArrowRight');
+  await expect(trends.locator('.health-readout')).toContainText('Reading at');
+  await cpu.press('Escape');
+  await expect(trends.locator('.health-readout')).toContainText('Latest reading');
+  await trends.getByRole('button', { name: '1 hour', exact: true }).click();
+  await expect(trends.getByRole('button', { name: '1 hour', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await trends.getByRole('button', { name: '24 hours', exact: true }).click();
+  await expect(trends.getByText('96 saved readings', { exact: false })).toBeVisible();
+  const retained = await page.evaluate(async () => (await fetch('/api/resources')).json());
+  expect(retained.history).toHaveLength(96);
+  expect(retained.checks).toHaveLength(20);
   expect(writes).toEqual([]);
   await noHorizontalOverflow(page);
 });
 
-test('all resource conversations leave Chats and remain searchable under Computer health', async ({
+test('resource conversations stay out of lists while saved conversation links remain readable', async ({
   page,
 }) => {
   const created = await page.request.post('/api/projects', {
@@ -603,22 +602,11 @@ test('all resource conversations leave Chats and remain searchable under Compute
     list.getByRole('link', { name: /Automatic resource (?:[1-9]|[12][0-9])\b/ }),
   ).toHaveCount(0);
   await page.goto('/#/resources');
-  const archive = page.locator('.health-older-checks');
-  await expect(archive).not.toHaveAttribute('open', '');
-  await expect(archive.locator('li')).toHaveCount(10);
-  await expect(archive.locator('li').first()).not.toBeVisible();
-  await archive.locator('summary').click();
-  const search = archive.getByRole('searchbox', { name: 'Find a saved resource conversation' });
-  for (const name of [
-    'My resource question',
-    'Older resource question',
-    'Legacy resource consultation',
-  ]) {
-    await search.fill(name);
-    await expect(archive.getByRole('link')).toHaveCount(1);
-    await expect(archive.getByRole('link')).toContainText(name);
-  }
-  await archive.getByRole('link').click();
+  await expect(page.locator('.health-older-checks')).toHaveCount(0);
+  await expect(
+    page.getByRole('searchbox', { name: 'Find a saved resource conversation' }),
+  ).toHaveCount(0);
+  await page.goto(`/#/resources/${legacy.id}`);
   const chat = page.getByRole('dialog', { name: 'Resource assistant conversation' });
   await expect(chat.getByText('Retained old automatic evidence.', { exact: true })).toBeVisible();
   await chat.getByRole('button', { name: 'Computer health', exact: true }).click();

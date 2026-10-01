@@ -11,19 +11,6 @@ import { api, apiScope, ApiError } from '../api';
 const ReactMarkdown = lazy(() => import('react-markdown'));
 
 export const providerNames: Record<ProviderId, string> = { codex: 'Codex', claude: 'Claude' };
-export const reasonLabels: Record<ResourceCheck['reason'], string> = {
-  asked: 'Your question',
-  pressure: 'Pressure check',
-  checkpoint: 'Routine check',
-};
-export const stateLabels: Record<ResourceCheck['state'], string> = {
-  queued: 'Queued',
-  running: 'Running',
-  completed: 'Answered',
-  failed: 'Did not finish',
-  interrupted: 'Stopped',
-  cancelled: 'Cancelled',
-};
 export const pressureLabels: Record<ResourceSample['memoryPressure'], string> = {
   normal: 'Normal',
   warning: 'Elevated',
@@ -31,6 +18,16 @@ export const pressureLabels: Record<ResourceSample['memoryPressure'], string> = 
   unknown: 'Not measured',
 };
 export const activeCheck = (check: ResourceCheck) => ['queued', 'running'].includes(check.state);
+
+export function reportFallback(check: ResourceCheck) {
+  return check.state === 'queued'
+    ? 'Waiting for its turn in QUARK.'
+    : check.state === 'running'
+      ? 'Looking at the saved readings and current work…'
+      : check.state === 'completed'
+        ? 'This check finished without a written report.'
+        : 'This check did not finish. It was not replayed; you can ask again.';
+}
 
 export const gb = (n: number | null | undefined) =>
   n == null ? null : `${(n / 1024 ** 3).toFixed(n >= 100 * 1024 ** 3 ? 0 : 1)} GB`;

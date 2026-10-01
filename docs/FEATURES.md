@@ -61,7 +61,9 @@ checks cover xhigh selection, explicit effort preservation and catalog-only fall
 The VS Code button at the top of Chats opens connection status and extension setup instructions.
 Shared native Codex sessions remain under Chats. Resource diagnoses, automatic checks,
 consultations and internal service contexts no longer become separate main-list rows;
-Computer health retains their history, including a searchable archive of older conversations.
+Their history remains saved for the resource assistant and history APIs. Computer health
+uses graphs and the assistant instead of a human-facing history browser; saved conversation
+links still work. Projects and jobs appear above Apps and processes on every screen size.
 The unrequested phone bottom navigation is removed. Chat search uses one compact row with
 readable text. No personal-assistant feature is advertised in Settings while it is deferred.
 
@@ -161,8 +163,8 @@ the recovery-copy preparation without the current manual UI step remains planned
 ## Drawn interface — implemented slices, release acceptance in progress
 
 The [Home/detail-panel requirements](HOME_UI_REQUIREMENTS.md) are connected through the
-new Home, icon-grid Apps and setup prompts, Computer health snapshot/charts, bounded searchable
-history and prominent Codex/Claude diagnostic chat with live model choices. Home surfaces
+new Home, icon-grid Apps and setup prompts, Computer health snapshot/charts and prominent
+Codex/Claude diagnostic chat with live model choices and retained evidence. Home surfaces
 human action items; Subagents opens retained work and separate follow-up discussions. The
 QUARK conversation/status board is described above. Native unattended controls are implemented
 with the provider and device acceptance limits below; older saved restrictions remain.
@@ -328,8 +330,8 @@ See RESOURCE_WATCH.md for scope; this is observation, not a new process-control 
 
 Explicitly requested resource assistance now uses native diagnostic tools under ordinary
 workspace permissions and QUARK supervision. Automatic checks remain bounded snapshot-only
-reports, hidden from the main chat list by their durable origin metadata and retained in
-Computer health history. Merely opening a report never starts work or grants permissions.
+reports, hidden from the main chat list by their durable origin metadata and retained as
+saved resource-assistant evidence. Merely opening a report never starts work or grants permissions.
 An owner follow-up to an old requested diagnosis can resume the same history with native
 capabilities. CPU readings alone are not evidence that a login or service works.
 

@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import type { ResourceSample } from '@dock/shared';
 import { clock, gb, mbps, percent, pressureLabels } from './health-shared';
 
@@ -107,7 +107,6 @@ function Plot({
   hover,
   setHover,
   pick,
-  open,
   totalMemory,
 }: {
   spec: Series;
@@ -117,10 +116,8 @@ function Plot({
   hover: number | null;
   setHover: (index: number | null) => void;
   pick: (clientX: number, rect: DOMRect) => number;
-  open: (sample: ResourceSample) => void;
   totalMemory: number | null;
 }) {
-  const pointer = useRef('mouse');
   const values = samples.map(spec.value);
   const present = values.filter((v): v is number => v !== null);
   const max = scaleMax(spec, present, totalMemory);
@@ -160,8 +157,7 @@ function Plot({
     if (next !== null) {
       event.preventDefault();
       setHover(next);
-    } else if (event.key === 'Enter' && samples[current]) open(samples[current]);
-    else if (event.key === 'Escape') setHover(null);
+    } else if (event.key === 'Escape') setHover(null);
   };
   return (
     <article className="health-plot">
@@ -185,21 +181,13 @@ function Plot({
           className="health-plot-area"
           role="img"
           tabIndex={0}
-          aria-label={`${summary} Arrow keys inspect readings; Enter opens one in History.`}
+          aria-label={`${summary} Arrow keys inspect readings; Escape returns to the latest.`}
           onPointerDown={(event) => {
-            pointer.current = event.pointerType;
             setHover(pick(event.clientX, event.currentTarget.getBoundingClientRect()));
           }}
           onPointerMove={(event) =>
             setHover(pick(event.clientX, event.currentTarget.getBoundingClientRect()))
           }
-          onClick={(event) => {
-            // A tap inspects; a mouse click opens the reading directly.
-            if (pointer.current !== 'mouse') return;
-            const sample =
-              samples[pick(event.clientX, event.currentTarget.getBoundingClientRect())];
-            if (sample) open(sample);
-          }}
           onKeyDown={keys}
         >
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden>
@@ -245,15 +233,7 @@ function Plot({
   );
 }
 
-export function HealthPlots({
-  samples: all,
-  now,
-  open,
-}: {
-  samples: ResourceSample[];
-  now: number;
-  open: (sample: ResourceSample) => void;
-}) {
+export function HealthPlots({ samples: all, now }: { samples: ResourceSample[]; now: number }) {
   const [hours, setHours] = useState(6);
   const [hover, setHover] = useState<number | null>(null);
   const samples = all.filter((s) => Date.parse(s.observedAt) >= now - hours * 3600_000);
@@ -315,7 +295,6 @@ export function HealthPlots({
               {shown === null ? 'Latest reading' : 'Reading at'}{' '}
               <strong>{clock(inspected.observedAt)}</strong>
             </span>
-            <button onClick={() => open(inspected)}>Open this reading</button>
           </div>
           <div
             className="health-plot-grid"
@@ -332,7 +311,6 @@ export function HealthPlots({
                 hover={shown}
                 setHover={setHover}
                 pick={pick}
-                open={open}
                 totalMemory={totalMemory}
               />
             ))}
