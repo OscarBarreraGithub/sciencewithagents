@@ -2,9 +2,11 @@ import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { snapshotSchema } from '@dock/shared';
 
-test('attention keeps questions usable without listing every stopped background check', async ({
+test('attention and to-dos grow from compact panels to independently scrolling sections', async ({
   page,
-}) => {
+}, info) => {
+  let questionCount = 0,
+    todoCount = 0;
   let managerId = '',
     projectId = '';
   await page.route('**/api/snapshot', async (route) => {
@@ -30,7 +32,7 @@ test('attention keeps questions usable without listing every stopped background 
         name: `Routine check ${n}`,
         status: 'interrupted' as const,
       })),
-      ...Array.from({ length: 5 }, (_, n) => ({
+      ...Array.from({ length: questionCount ? 5 : 0 }, (_, n) => ({
         ...manager,
         id: randomUUID(),
         role: 'implementer' as const,
@@ -49,14 +51,14 @@ test('attention keeps questions usable without listing every stopped background 
     const now = new Date().toISOString();
     await route.fulfill({
       json: {
-        items: Array.from({ length: 4 }, (_, n) => ({
+        items: Array.from({ length: questionCount + todoCount }, (_, n) => ({
           id: randomUUID(),
-          projectId,
-          managerId,
+          projectId: n < questionCount ? projectId : null,
+          managerId: n < questionCount ? managerId : null,
           taskId: null,
-          kind: 'human',
-          status: 'waiting',
-          title: `Question ${n + 1}`,
+          kind: n < questionCount ? 'human' : 'general',
+          status: n < questionCount ? 'waiting' : 'open',
+          title: n < questionCount ? `Question ${n + 1}` : `Saved to-do ${n - questionCount + 1}`,
           detail: 'Choose the input needed to continue this task.',
           revision: 1,
           humanReply: null,
@@ -71,20 +73,63 @@ test('attention keeps questions usable without listing every stopped background 
     });
   });
   await page.goto('/#/home');
+  const panel = page.locator('.overview-side');
   const attention = page.locator('.overview-attention');
-  await expect(attention.locator('.attention-item')).toHaveCount(3);
+  const todos = page.locator('.overview-todo');
+  await expect(attention).toContainText('Nothing needs you right now.');
+  await expect(todos.locator('.overview-count')).toHaveText('0');
+  const emptyHeight = (await panel.boundingBox())!.height;
+  expect(emptyHeight).toBeLessThan(320);
+  const editor = todos.getByRole('textbox', { name: 'New to-do' });
+  expect((await editor.boundingBox())!.height).toBeLessThan(100);
+  await panel.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath('compact-empty.png') });
+
+  questionCount = 4;
+  await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
+  await expect(attention.locator('.attention-item')).toHaveCount(5);
+  expect((await panel.boundingBox())!.height).toBeGreaterThan(emptyHeight);
   await expect(attention).not.toContainText('Routine check');
   await expect(attention.getByRole('link', { name: /Question 1/ })).toHaveAttribute(
     'href',
     `#/chat/${managerId}`,
   );
-  await attention.getByRole('button', { name: 'Show 2 more requests' }).click();
-  await expect(attention.locator('.attention-item')).toHaveCount(5);
   await expect(attention.locator('a[href="#/work"]')).toHaveCount(1);
-  const list = attention.locator('.overview-attention-list');
-  expect(await list.evaluate((e) => e.scrollHeight <= e.clientHeight + 1)).toBe(true);
-  await attention.getByRole('button', { name: 'Show fewer' }).click();
-  await expect(attention.locator('.attention-item')).toHaveCount(3);
+
+  questionCount = 30;
+  todoCount = 30;
+  await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
+  await expect(attention.locator('.attention-item')).toHaveCount(31);
+  await expect(todos.locator('.todo-list > li')).toHaveCount(30);
+  const visibleHeight = await page.evaluate(() => window.visualViewport!.height);
+  expect((await panel.boundingBox())!.height).toBeLessThan(visibleHeight);
+  await panel.scrollIntoViewIfNeeded();
+  const panes = panel.locator('.overview-section-body');
+  for (const pane of await panes.all()) {
+    expect(await pane.evaluate((e) => e.scrollHeight > e.clientHeight + 40)).toBe(true);
+    expect((await pane.boundingBox())!.height).toBeGreaterThan(20);
+    await pane.evaluate((e) => e.scrollTo(0, 0));
+  }
+  const mainScroll = await page.locator('.home-content').evaluate((e) => e.scrollTop);
+  await panes.nth(0).evaluate((e) => e.scrollTo(0, e.scrollHeight));
+  expect(await panes.nth(0).evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
+  expect(await panes.nth(1).evaluate((e) => e.scrollTop)).toBe(0);
+  const attentionScroll = await panes.nth(0).evaluate((e) => e.scrollTop);
+  await panes.nth(1).evaluate((e) => e.scrollTo(0, e.scrollHeight));
+  expect(await panes.nth(1).evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
+  expect(await panes.nth(0).evaluate((e) => e.scrollTop)).toBe(attentionScroll);
+  expect(await page.locator('.home-content').evaluate((e) => e.scrollTop)).toBe(mainScroll);
+  await expect(todos.getByText('Saved to-do 30', { exact: true })).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('full-independent-scroll.png') });
+
+  questionCount = 0;
+  todoCount = 0;
+  await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
+  await expect(attention.locator('.attention-item')).toHaveCount(0);
+  await expect(todos.locator('.todo-list > li')).toHaveCount(0);
+  await expect
+    .poll(async () => (await panel.boundingBox())!.height)
+    .toBeLessThanOrEqual(emptyHeight + 1);
 });
 
 test('main pages use the browser width and mobile allowances scroll away', async ({ page }) => {

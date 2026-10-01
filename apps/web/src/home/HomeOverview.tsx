@@ -581,8 +581,6 @@ function AttentionPanel({
   known: boolean;
   error: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? needs : needs.slice(0, 3);
   return (
     <section className="overview-attention" aria-labelledby="attention-heading">
       <div className="overview-panel-head">
@@ -591,33 +589,37 @@ function AttentionPanel({
           {known ? needs.length : '—'}
         </span>
       </div>
-      {!known ? (
-        <p className="overview-empty">
-          {error ? 'Requests will appear when the computer reconnects.' : 'Checking for requests…'}
-        </p>
-      ) : needs.length ? (
-        <ul className="overview-attention-list">
-          {visible.map((need) => (
-            <li key={need.key}>
-              <a href={need.href} className="attention-item">
-                <span className="attention-meta">
-                  <span>{need.project}</span>
-                  <span>{need.label}</span>
-                </span>
-                <strong>{need.title}</strong>
-                <span className="attention-detail">{need.detail}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="overview-empty">Nothing needs you right now.</p>
-      )}
-      {needs.length > 3 && (
-        <button className="attention-more" onClick={() => setExpanded(!expanded)}>
-          {expanded ? 'Show fewer' : `Show ${needs.length - 3} more requests`}
-        </button>
-      )}
+      <div
+        className="overview-section-body"
+        role="region"
+        aria-label="Attention items"
+        tabIndex={0}
+      >
+        {!known ? (
+          <p className="overview-empty">
+            {error
+              ? 'Requests will appear when the computer reconnects.'
+              : 'Checking for requests…'}
+          </p>
+        ) : needs.length ? (
+          <ul className="overview-attention-list">
+            {needs.map((need) => (
+              <li key={need.key}>
+                <a href={need.href} className="attention-item">
+                  <span className="attention-meta">
+                    <span>{need.project}</span>
+                    <span>{need.label}</span>
+                  </span>
+                  <strong>{need.title}</strong>
+                  <span className="attention-detail">{need.detail}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="overview-empty">Nothing needs you right now.</p>
+        )}
+      </div>
     </section>
   );
 }
@@ -735,132 +737,139 @@ function TodoPanel({
         <h2 id="todo-heading">To-do · General</h2>
         <span className="overview-count">{reading.data ? open.length : '—'}</span>
       </div>
-      <form className="todo-add" onSubmit={add}>
-        <label className="home-sr-only" htmlFor="todo-new">
-          New to-do
-        </label>
-        <textarea
-          ref={notepad}
-          id="todo-new"
-          value={text}
-          rows={4}
-          maxLength={8000}
-          autoComplete="off"
-          placeholder="Write a to-do…"
-          disabled={unavailable || busy === 'add'}
-          onChange={(event) => updateText(event.target.value)}
-        />
-        <button type="submit" disabled={!text.trim() || !!busy || unavailable}>
-          <Plus size={17} />
-          {busy === 'add' ? 'Adding…' : 'Add'}
-        </button>
-      </form>
-      {error?.id === 'add' && (
-        <p className="todo-error" role="alert">
-          {error.message} Your text is kept; try again.
-        </p>
-      )}
-      {unavailable ? (
-        <p className="overview-empty">
-          Could not load your to-dos.{' '}
-          <button type="button" className="todo-inline-button" onClick={reading.retry}>
-            Try again
-          </button>
-        </p>
-      ) : !reading.data ? (
-        <p className="overview-empty">Reading your to-dos…</p>
-      ) : open.length ? (
-        <ul className="todo-list">
-          {open.map((item) => (
-            <li key={item.id}>
-              <div className="todo-row">
-                {item.managerId ? (
-                  <span className="todo-sent" aria-hidden="true">
-                    <ArrowUpRight size={16} />
+      <div
+        className="overview-section-body"
+        role="region"
+        aria-label="General to-dos and editor"
+        tabIndex={0}
+      >
+        <form className="todo-add" onSubmit={add}>
+          <label className="home-sr-only" htmlFor="todo-new">
+            New to-do
+          </label>
+          <textarea
+            ref={notepad}
+            id="todo-new"
+            value={text}
+            rows={2}
+            maxLength={8000}
+            autoComplete="off"
+            placeholder="Write a to-do…"
+            disabled={unavailable || busy === 'add'}
+            onChange={(event) => updateText(event.target.value)}
+          />
+          {text.trim() && (
+            <button type="submit" disabled={!!busy || unavailable}>
+              <Plus size={17} />
+              {busy === 'add' ? 'Adding…' : 'Add'}
+            </button>
+          )}
+        </form>
+        {error?.id === 'add' && (
+          <p className="todo-error" role="alert">
+            {error.message} Your text is kept; try again.
+          </p>
+        )}
+        {unavailable ? (
+          <p className="overview-empty">
+            Could not load your to-dos.{' '}
+            <button type="button" className="todo-inline-button" onClick={reading.retry}>
+              Try again
+            </button>
+          </p>
+        ) : !reading.data ? (
+          <p className="overview-empty">Reading your to-dos…</p>
+        ) : open.length ? (
+          <ul className="todo-list">
+            {open.map((item) => (
+              <li key={item.id}>
+                <div className="todo-row">
+                  {item.managerId ? (
+                    <span className="todo-sent" aria-hidden="true">
+                      <ArrowUpRight size={16} />
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="todo-done"
+                      disabled={!!busy}
+                      aria-label={`Mark “${item.title}” done`}
+                      onClick={() =>
+                        void run(item.id, async () => {
+                          await save(`done:${item.id}`, {
+                            id: item.id,
+                            expectedRevision: item.revision,
+                            status: 'done',
+                          });
+                        })
+                      }
+                    >
+                      <Check size={16} />
+                    </button>
+                  )}
+                  <span className="todo-text">
+                    <strong>{item.title}</strong>
+                    {item.detail && <span className="todo-detail">{item.detail}</span>}
+                    <small>
+                      {item.managerId
+                        ? `Sent to ${(item.projectId && names.get(item.projectId)) || 'a project'} · ${statusNames[item.status]}`
+                        : 'General'}
+                    </small>
                   </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="todo-done"
-                    disabled={!!busy}
-                    aria-label={`Mark “${item.title}” done`}
-                    onClick={() =>
-                      void run(item.id, async () => {
-                        await save(`done:${item.id}`, {
-                          id: item.id,
-                          expectedRevision: item.revision,
-                          status: 'done',
-                        });
-                      })
-                    }
-                  >
-                    <Check size={16} />
-                  </button>
+                  {item.managerId ? (
+                    <a className="todo-action" href={chat(item.managerId)}>
+                      Open chat
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      className="todo-action"
+                      aria-expanded={choosing === item.id}
+                      disabled={!projects.length}
+                      onClick={() => {
+                        setChoosing(choosing === item.id ? null : item.id);
+                        setTarget('');
+                      }}
+                    >
+                      Send to project
+                    </button>
+                  )}
+                </div>
+                {choosing === item.id && (
+                  <form className="todo-send" onSubmit={(event) => send(event, item)}>
+                    <label htmlFor={`todo-target-${item.id}`}>Send to</label>
+                    <select
+                      id={`todo-target-${item.id}`}
+                      value={target}
+                      required
+                      onChange={(event) => setTarget(event.target.value)}
+                    >
+                      <option value="">Choose a project</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button type="submit" disabled={!target || !!busy}>
+                      {busy === item.id ? 'Sending…' : 'Send'}
+                    </button>
+                    <button type="button" onClick={() => setChoosing(null)}>
+                      Cancel
+                    </button>
+                    <small>Its manager gets this to-do once. QUARK still schedules the work.</small>
+                  </form>
                 )}
-                <span className="todo-text">
-                  <strong>{item.title}</strong>
-                  {item.detail && <span className="todo-detail">{item.detail}</span>}
-                  <small>
-                    {item.managerId
-                      ? `Sent to ${(item.projectId && names.get(item.projectId)) || 'a project'} · ${statusNames[item.status]}`
-                      : 'General'}
-                  </small>
-                </span>
-                {item.managerId ? (
-                  <a className="todo-action" href={chat(item.managerId)}>
-                    Open chat
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    className="todo-action"
-                    aria-expanded={choosing === item.id}
-                    disabled={!projects.length}
-                    onClick={() => {
-                      setChoosing(choosing === item.id ? null : item.id);
-                      setTarget('');
-                    }}
-                  >
-                    Send to project
-                  </button>
+                {error?.id === item.id && (
+                  <p className="todo-error" role="alert">
+                    {error.message} The to-do is kept; try again.
+                  </p>
                 )}
-              </div>
-              {choosing === item.id && (
-                <form className="todo-send" onSubmit={(event) => send(event, item)}>
-                  <label htmlFor={`todo-target-${item.id}`}>Send to</label>
-                  <select
-                    id={`todo-target-${item.id}`}
-                    value={target}
-                    required
-                    onChange={(event) => setTarget(event.target.value)}
-                  >
-                    <option value="">Choose a project</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="submit" disabled={!target || !!busy}>
-                    {busy === item.id ? 'Sending…' : 'Send'}
-                  </button>
-                  <button type="button" onClick={() => setChoosing(null)}>
-                    Cancel
-                  </button>
-                  <small>Its manager gets this to-do once. QUARK still schedules the work.</small>
-                </form>
-              )}
-              {error?.id === item.id && (
-                <p className="todo-error" role="alert">
-                  {error.message} The to-do is kept; try again.
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="overview-empty">No open to-dos. Add one above.</p>
-      )}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </section>
   );
 }

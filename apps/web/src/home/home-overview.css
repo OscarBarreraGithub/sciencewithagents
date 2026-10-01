@@ -350,28 +350,46 @@
 /* For your attention + to-do */
 .overview-side {
   padding: 0;
+  align-self: start;
+  max-height: max(200px, calc(var(--home-visible-height, 100dvh) - 136px));
+  overflow: hidden;
 }
 .overview-attention,
 .overview-todo {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  padding: 14px 18px 12px;
-}
-.overview-attention {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-height: 84px;
+  padding: 10px 14px;
 }
 .overview-todo {
-  flex: 1 1 45%;
   border-top: 1px solid var(--home-line);
+}
+.overview-side .overview-panel-head {
+  flex-shrink: 0;
+  min-height: 36px;
+  margin-bottom: 4px;
+}
+.overview-side .overview-empty {
+  padding: 4px 0;
+}
+.overview-section-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding: 3px;
+  margin: 0 -3px;
+}
+.overview-section-body:focus-visible {
+  outline: 2px solid var(--home-blue);
+  outline-offset: -2px;
+  border-radius: 6px;
 }
 .overview-attention-list,
 .todo-list {
-  flex: 1;
-  min-height: 0;
-  overflow: visible;
-  margin: 0 -4px;
-  padding: 0 4px;
+  margin: 0;
+  padding: 0;
   list-style: none;
 }
 .overview-attention-list {
@@ -434,8 +452,8 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 132px;
-  padding: 12px 14px;
+  min-height: 72px;
+  padding: 8px 12px;
   border: 1px solid #d9d2c5;
   border-radius: 10px;
   background: var(--home-paper);
@@ -667,12 +685,13 @@
     display: block;
   }
   .overview-side {
-    contain: none;
+    max-height: max(200px, calc(var(--home-visible-height, 100dvh) - 64px));
   }
-  .overview-panel,
-  .overview-attention,
-  .overview-todo {
+  .overview-panel {
     padding: 12px 14px 10px;
+  }
+  .overview-side {
+    padding: 0;
   }
   .running-sort {
     display: flex;
@@ -745,11 +764,4 @@
     gap: 8px;
     padding: 12px 14px;
   }
-}
-
-.attention-more {
-  align-self: flex-start;
-  min-height: 44px;
-  color: var(--home-blue);
-  font-weight: 650;
 }

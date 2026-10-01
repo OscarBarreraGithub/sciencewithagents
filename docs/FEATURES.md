@@ -76,12 +76,15 @@ are unchanged.
 ## Home and space cleanup — implemented, 2026-09-30
 
 The Chats, Apps and QUARK tiles together occupy about 42% of the visible phone viewport,
-with compact labels and icons. Desktop tiles and panels expand to fill the available window
-height; the attention/to-do column reaches the same bottom edge. Longer content still
-scrolls normally. Verified at desktop, 412×915, 360×800, 915×412 and iPhone WebKit.
+with compact labels and icons. Desktop tiles and resource/running panels expand to fill
+the available window height. Attention and general to-dos stay compact when empty, grow
+with their content, and stop at the available screen height. Each section then scrolls
+independently below its heading. Clearing items shrinks the panel again. The to-do editor
+starts with two lines, expands as you type and shows Add when there is text. Verified at
+desktop, 412×915, 360×800, 915×412 and iPhone WebKit, including retained drafts and save retries.
 
 Pages use the browser width. Mobile allowance readings are at the top of Home and scroll
-away. Attention shows three concise requests, with more available explicitly; automatic
+away. Attention shows concise requests in its scrolling section; automatic
 health reports and completed-worker interruptions stay out, and stopped work groups by
 project. General to-dos use an expanding multiline editor with immediate local draft saving.
 QUARK starts with active work; completed work is searchable and shown ten at a time.
