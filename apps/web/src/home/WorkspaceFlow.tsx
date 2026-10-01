@@ -50,7 +50,7 @@ export const flowPages = new Set([
   'chat',
   'task',
 ]);
-const stateNames: Record<string, string> = {
+export const stateNames: Record<string, string> = {
   idle: 'Ready',
   queued: 'Waiting in QUARK',
   running: 'Working',

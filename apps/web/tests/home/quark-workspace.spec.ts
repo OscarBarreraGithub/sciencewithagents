@@ -8,7 +8,7 @@ test('QUARK shows chat entry, real queue columns and forecasts without starting 
     if (r.url().includes('/coordinator/start')) starts++;
   });
   await page.goto('/#/work');
-  await expect(page.getByRole('heading', { name: 'QUARK' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'QUARK', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Talk to QUARK', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open QUARK conversation' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Waiting', exact: true })).toBeVisible();
@@ -25,7 +25,7 @@ test('QUARK shows chat entry, real queue columns and forecasts without starting 
       el.scrollTop = 0;
     })
     .catch(() => {});
-  await page.getByRole('heading', { name: 'QUARK' }).scrollIntoViewIfNeeded();
+  await page.getByRole('heading', { name: 'QUARK', exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({
     path: `../../data/screenshots/quark-board/${info.project.name}.png`,
     fullPage: true,
@@ -58,4 +58,75 @@ test('usage opens provider actions with explicit connection and update results',
   await expect(card.getByRole('status')).toContainText('Up to date');
   expect(updates).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('one task card groups worker turns and only task completion moves it to Completed', async ({
+  page,
+}) => {
+  const state = await (await page.request.get('/api/snapshot')).json();
+  const coordinator = await (await page.request.get('/api/quark/coordinator')).json();
+  const project = state.projects.find((p: { internal?: boolean }) => !p.internal);
+  const template = state.tasks.find((t: { projectId: string }) => t.projectId === project.id);
+  const ids = Array.from({ length: 3 }, () => crypto.randomUUID());
+  state.tasks = [
+    { ...template, id: ids[0], title: 'Several workers one task', status: 'working' },
+    { ...template, id: ids[1], title: 'Review still pending', status: 'review' },
+    { ...template, id: ids[2], title: 'Finished task with retries', status: 'done' },
+  ];
+  const agent = state.agents.find((a: { id: string }) => a.id === project.managerId);
+  agent.status = 'idle';
+  coordinator.agentId = null;
+  coordinator.projects = coordinator.projects.filter((p: { id: string }) => p.id === project.id);
+  coordinator.projects[0].policy.paused = false;
+  coordinator.localJobs = [];
+  const job = (taskId: string, status: string) => ({
+    runId: crypto.randomUUID(),
+    agentId: agent.id,
+    taskId,
+    projectName: project.name,
+    agentName: 'Fixture worker',
+    provider: 'codex',
+    status,
+    estimate: {
+      priority: 'normal',
+      expectedTokens: 10000,
+      tokenBudget: 100000,
+      quotaPercent: 1,
+      expectedSeconds: 120,
+      cpuCores: 1,
+      memoryMb: 512,
+      estimatedCostUsd: null,
+      estimateNote: 'Fixture estimate',
+      deadline: null,
+    },
+    held: false,
+    override: false,
+    reason: 'Fixture turn',
+    eligible: false,
+    expectedFinishAt: null,
+    tokensCharged: 200,
+    tokenBasis: 'measured',
+  });
+  coordinator.queue.jobs = [job(ids[0], 'running'), job(ids[0], 'queued')];
+  coordinator.queue.history = [
+    job(ids[0], 'completed'),
+    job(ids[1], 'completed'),
+    job(ids[2], 'completed'),
+    job(ids[2], 'interrupted'),
+  ];
+  await page.route('**/api/snapshot', (route) => route.fulfill({ json: state }));
+  await page.route('**/api/quark/coordinator', (route) => route.fulfill({ json: coordinator }));
+  await page.goto('/#/work');
+  const working = page.getByRole('region', { name: 'Working', exact: true });
+  await expect(working.locator('.quark-ticket')).toHaveCount(1);
+  await expect(working.locator('.quark-ticket')).toHaveAttribute('href', `#/task/${ids[0]}`);
+  await expect(working.locator('.quark-ticket')).toContainText('3 recent turns');
+  await expect(page.getByRole('region', { name: 'Waiting', exact: true })).toContainText(
+    'Review still pending',
+  );
+  await expect(page.locator('.quark-ticket')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Completed', exact: true }).click();
+  await expect(page.locator('.quark-ticket')).toHaveCount(1);
+  await expect(page.locator('.quark-ticket')).toContainText('Finished task with retries');
+  await expect(page.locator('.quark-ticket')).toHaveAttribute('href', `#/task/${ids[2]}`);
 });

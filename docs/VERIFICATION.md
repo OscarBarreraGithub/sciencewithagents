@@ -1,5 +1,45 @@
 # Verification
 
+## 2026-09-30 — real new-install onboarding and task-oriented QUARK
+
+A fresh public-source clone completed dependency installation, production builds, the usage
+reader and Mac launcher build in an isolated data directory. Real native Codex 0.159.2 found
+its sign-in and eight models; a separate Claude-only configuration found its sign-in and
+15 models. Each created a project without a turn, retained its notepad draft, then completed
+one authorized native reply. Both retained history after browser reload; Codex also retained
+it after a server restart. These checks reused this Mac's native sign-ins, without copying
+credentials, and do not certify another person's sign-in or physical phone.
+
+The initial Codex failure exposed macOS's Unix-socket path bound in deeply nested clones.
+Only an overlong ephemeral socket now uses a short account-private directory; project data
+and native history stay in their original locations. Two socket checks pass, alongside the
+real native turn. The initial Claude-only form exposed an incorrect Codex worker default;
+untouched forms now inherit enabled providers and the shared preset, while saved choices
+and independent manager selections remain intact. Missing policy reads have an explicit retry.
+
+New-manager instructions now receive the project's effective worker families and saved pins
+from the central resolver. Removed the obsolete instruction assigning all Codex-heavy
+workers to Claude. Runtime/model-policy checks pass 53 cases. The setup request, README,
+contributor guide and website now agree on optional integrations, independent providers,
+autosaved first briefs and Applications opening. Ordinary installs do not run developer tests.
+
+The retained native Opus 5.5 xhigh patch groups QUARK worker turns under their task and adds
+collapsed recent turns on task detail. A finished worker turn cannot complete its task.
+Task caps come from accounting rather than adding bounded history. Opus was quota-paused;
+root collected, reviewed and tested its edits without increasing that cap or the shared reserve.
+Notepad and draft-recovery controls now meet the existing touch-target check.
+
+Thirty focused browser cases pass across desktop, 412×915, 360×800, 915×412 and iPhone WebKit.
+Five send cases initially waited behind stale allowance in a reused demo store; all five
+passed against a fresh isolated store, with no source or assertion changes. The earlier CI
+failures in model-setting copy, QUARK heading selection and the WebKit reconnect navigation
+were corrected; 35 focused settings/reconnect cases also pass. Full public CI is pending this
+source checkpoint, so the earlier green run is not current-release acceptance.
+
+The revised public setup prompt passed five local and five live browser profiles, including
+copy/fallback, graph navigation, legacy redirects and six datasets. It is deployed on both
+sciencewithagents.com domains. Private checks and screenshots remain under ignored data/.
+
 ## 2026-09-30 — correct chat clutter, editor navigation and phone shell
 
 Re-read the last 30 original owner prompts and original Home/chat drawings. Private prompt

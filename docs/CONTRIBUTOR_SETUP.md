@@ -10,6 +10,19 @@ Your choices are private GitHub backup, optional phone access, and the phone con
 Your agent handles the technical work; you complete your account sign-ins and, if pairing,
 save the phone passkey and confirm its matching number on the computer.
 
+Copyable setup request (use this after opening the clone):
+
+> Set up sciencewithagents on this computer using docs/CONTRIBUTOR_SETUP.md. Check this
+> computer's supported platform and prerequisites, and use my own Codex or Claude account.
+> Keep existing files and any existing installation. Let me choose my provider and team
+> defaults; do not require both providers. Install the Mac Applications launcher when
+> supported, open Welcome, check accounts and available models, and help me create my first
+> project. Ask for its description before sending a model prompt. Keep phone access,
+> VS Code sharing and private GitHub backup optional. Handle technical setup yourself;
+> tell me only which sign-in, device or preference steps need me. Do not run the full
+> developer test suite for an ordinary installation. Finish by showing me how to open the
+> app next time and identifying anything that is still incomplete.
+
 ## Setup agent
 
 The current interface connects projects, conversations, tasks, reviews, shared editor chats,
@@ -98,7 +111,10 @@ be described as a failed core installation. Browser-test downloads are developer
    this app's started server; closing a browser leaves agents running. Installation does
    not start the app or phone connector. On other platforms retain the existing source
    entry; a packaged cross-platform launcher is not claimed.
-6. Start the app only when the person is ready to use it. Open the local address for them.
+6. Start the app only when the person is ready to use it. On Mac, open the installed
+   **sciencewithagents** app from Applications. For a source launch use
+   `sh scripts/pnpm start` and `sh scripts/pnpm dock open` in this clone. The latter
+   opens its private browser handoff; a bare localhost link is not the authenticated entry.
    Have them use **Welcome and setup → Choose team defaults**, keep or save their provider
    choice, return to **Check accounts and setup**, then **Check this computer → Create first
    project**. If the saved defaults already match their provider, continue directly to the
@@ -107,6 +123,28 @@ be described as a failed core installation. Browser-test downloads are developer
    remote authentication boundary before exposure. Private source backups follow SOURCE_BACKUPS.md.
    Other computer/account connections follow MULTI_COMPUTER_SETUP.md. Share that guide with
    the setup agent on each machine; the person should not need to type its technical steps.
+
+### First project and manager handoff
+
+Ask for the project name and description, a new folder or an existing local project, and
+the manager's provider/model. Its worker provider mix and spending level are separate,
+with defaults and optional exact model overrides. Show actual available model names.
+Use the latest family defaults unless the person picks an exact version. A Codex-only or
+Claude-only choice must work without installing/signing into the other provider. Untouched
+worker defaults follow enabled providers and the shared preset; saved or explicit choices
+are retained. If model-default loading fails, use its retry before creating the project.
+
+The first brief opens as an autosaving notepad. Let the person review it; **Send** starts
+work and opens the normal conversation. Do not invent a project assignment merely to
+prove login. After an authorized first message, confirm a reply, retained history, and
+the ability to reopen the project. Explain **Open notepad** and steering/queued follow-ups.
+
+New managers receive their instructions automatically: durable internal and human work
+lists, independent manager and worker choices, current worker defaults, native capabilities,
+QUARK usage/leases/caps, small independent reviews and the project's application policy.
+There is no separate prompt or global hook the person must install. Outside coding agents
+can read [the shipped QUARK skill](../skills/quark/SKILL.md) when asked to inspect usage or
+dispatch work. Never paste provider credentials or private client files into a prompt.
 
 ## Optional VS Code companion
 

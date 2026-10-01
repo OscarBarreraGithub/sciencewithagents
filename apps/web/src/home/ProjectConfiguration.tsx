@@ -69,6 +69,7 @@ export function useCatalogs() {
   const empty = { models: [], error: '', loaded: false };
   const [catalogs, setCatalogs] = useState<Catalogs>({ codex: empty, claude: empty });
   const [policy, setPolicy] = useState<ModelPolicy | null>(null);
+  const [policyError, setPolicyError] = useState('');
   const load = () => {
     for (const provider of ['codex', 'claude'] as const)
       void models(undefined, provider)
@@ -89,13 +90,16 @@ export function useCatalogs() {
           })),
         );
     void api('/model-policy')
-      .then((value) => setPolicy(modelPolicyStatusSchema.parse(value).policy))
+      .then((value) => {
+        setPolicy(modelPolicyStatusSchema.parse(value).policy);
+        setPolicyError('');
+      })
       .catch(() => {
-        /* Provider choices still work without the central summary. */
+        setPolicyError('Could not read your model defaults. Try reading them again.');
       });
   };
   useEffect(load, []);
-  return { catalogs, policy, reload: load };
+  return { catalogs, policy, policyError, reload: load };
 }
 
 function resolved(choice: WorkerChoice, catalogs: Catalogs) {
@@ -498,6 +502,7 @@ type Spawn = {
   managerModel: string | null;
   managerEffort: string | null;
   workflow: ProjectWorkflow;
+  workflowChosen: boolean;
   project?: { id: string; managerId: string; existing: boolean };
   tracking?: { key: string; name: string };
   trackingPending?: boolean;
@@ -524,6 +529,7 @@ function freshSpawn(): Spawn {
     managerModel: null,
     managerEffort: null,
     workflow: blankWorkflow(),
+    workflowChosen: false,
     quark: blankQuarkPlan(),
   };
 }
@@ -540,6 +546,8 @@ function readSpawn(): Spawn {
         ...freshSpawn(),
         ...raw,
         workflow: parseWorkflow(raw.workflow ?? {}),
+        // Older saved drafts already contain the user's choices. Keep them on upgrade.
+        workflowChosen: raw.workflowChosen ?? !!raw.workflow,
         quark: readQuarkPlan(raw.quark),
         tracking: raw.tracking ? projectTrackingSchema.parse(raw.tracking) : undefined,
       } as Spawn;
@@ -557,7 +565,7 @@ export function ProjectConfiguration({
   onCreated: (managerId: string, fresh: boolean) => void;
   heading: ReactNode;
 }) {
-  const { catalogs, policy, reload } = useCatalogs();
+  const { catalogs, policy, policyError, reload } = useCatalogs();
   const coordinator = useCoordinator();
   const [spawn, setSpawn] = useState(readSpawn);
   const [busy, setBusy] = useState(false);
@@ -595,6 +603,22 @@ export function ProjectConfiguration({
       ...(identity && !locked ? { createKey: crypto.randomUUID() } : {}),
     });
   };
+  useEffect(() => {
+    if (!policy || spawn.workflowChosen || locked || spawn.workflowRequest) return;
+    const providerMix =
+      policy.enabledProviders.length === 1
+        ? policy.enabledProviders[0] === 'claude'
+          ? 'claude-only'
+          : 'codex-only'
+        : policy.preset === 'pick'
+          ? 'balanced'
+          : policy.preset;
+    persist({
+      ...spawn,
+      workflow: { ...spawn.workflow, providerMix },
+      workflowChosen: true,
+    });
+  }, [policy, spawn.workflowChosen, locked]);
   useEffect(() => {
     // After the shell focuses the page heading on navigation, select the proposed name.
     const frame = requestAnimationFrame(() => {
@@ -980,7 +1004,7 @@ export function ProjectConfiguration({
           workflow={spawn.workflow}
           catalogs={catalogs}
           disabled={workerDisabled}
-          onChange={(workflow) => edit({ workflow })}
+          onChange={(workflow) => edit({ workflow, workflowChosen: true })}
         />
         <QuarkControls
           coordinator={coordinator}
@@ -995,6 +1019,16 @@ export function ProjectConfiguration({
           }
         />
         <div className="config-actions">
+          {!policy && !locked && (
+            <p role={policyError ? 'alert' : 'status'}>
+              {policyError || 'Reading your model defaults…'}
+              {policyError && (
+                <button type="button" className="config-link-button" onClick={reload}>
+                  Read defaults again
+                </button>
+              )}
+            </p>
+          )}
           {error && (
             <p className="config-error" role="alert">
               {error}
@@ -1009,7 +1043,12 @@ export function ProjectConfiguration({
             <button
               type="submit"
               className="flow-button primary config-spawn"
-              disabled={busy || capsInvalid || (!spawn.project && !spawn.name.trim())}
+              disabled={
+                busy ||
+                (!policy && !locked) ||
+                capsInvalid ||
+                (!spawn.project && !spawn.name.trim())
+              }
             >
               <Sparkles size={17} />
               {busy ? 'Setting up…' : spawn.project ? 'Finish setup' : 'Spawn'}
@@ -1019,7 +1058,7 @@ export function ProjectConfiguration({
               <button
                 type="button"
                 className="flow-button primary config-spawn"
-                disabled={busy || !canChooseFolder}
+                disabled={busy || !policy || !canChooseFolder}
                 onClick={() => void connect()}
               >
                 <FolderOpen size={17} />

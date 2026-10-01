@@ -93,6 +93,21 @@ it('gives managers a compact shared-budget view while retaining full task eviden
   );
   expect(context).not.toHaveProperty('recent');
   expect(context.execution).not.toHaveProperty('models');
+  expect(context.workerModelDefaults).toBeNull();
+  store.setSetting(`project-workflow:${project}`, {
+    providerMix: 'codex-heavy',
+    spending: 'light',
+    overrides: { review: { provider: 'claude', family: 'opus', model: 'opus', effort: 'high' } },
+  });
+  const configured = JSON.parse(
+    runtime.context(store.agent(manager)).split('\n').slice(1).join('\n'),
+  );
+  expect(configured.workerModelDefaults).toMatchObject({
+    research: { provider: 'codex', family: 'terra', model: null },
+    review: { provider: 'claude', family: 'opus', model: 'opus', effort: 'high' },
+    bulk: { provider: 'codex', family: 'luna', model: null },
+  });
+  expect(configured.execution.model).toBe(store.agent(manager).model);
   await expect(
     managerTool(runtime, manager, randomUUID(), 'dock_inspect', { taskId: t.id }),
   ).resolves.toMatchObject({ task: { acceptance: original.acceptance, goal: original.goal } });

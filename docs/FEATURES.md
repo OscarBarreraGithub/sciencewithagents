@@ -1,5 +1,20 @@
 # Feature map
 
+## New-install prompts and first project — implemented, 2026-09-30
+
+The website and repository offer a copyable setup request. An agent installs the local app,
+checks the person's chosen native provider and models, and opens the first project setup.
+Phone access, VS Code sharing and private backup remain optional. Single-provider worker
+defaults follow the enabled provider; saved preferences are preserved. Managers automatically
+receive the project's actual worker defaults, QUARK instructions and durable work-list rules.
+Real isolated Codex-only and Claude-only first replies pass on this Mac. Another person's
+account sign-in and physical phone still require that person's device/account steps.
+
+QUARK shows one card per saved task, with worker turns grouped behind task detail. Task
+completion determines the Completed column; recent finished turns are collapsed separately.
+Allowance caps use the accounting ledger, not an incomplete sum of displayed turn history.
+Standalone runs and local jobs retain their own entries.
+
 ## Chat navigation and phone refresh — implemented, 2026-09-30
 
 Home's VS Code button opens editor conversations directly, independent of filters saved in

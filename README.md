@@ -126,11 +126,15 @@ in this repository.
 
 You can give your setup agent this request:
 
-> Set up sciencewithagents from this clone using docs/CONTRIBUTOR_SETUP.md. Use my own
-> installed Codex or Claude sign-in and let me choose which provider to use. Preserve my
-> existing accounts and files. Open the app and walk me through Welcome and my first
-> project. Leave phone access and private source backup optional. Tell me which steps
-> need my sign-in or device; ordinary setup does not need the full developer test suite.
+> Set up sciencewithagents from this clone using docs/CONTRIBUTOR_SETUP.md. Preserve any
+> existing installation, accounts and files. Check platform support and prerequisites;
+> let me choose Codex or Claude without requiring both. Install the Mac Applications
+> launcher when supported, open Welcome, check my models and help me create my first
+> project. Keep the manager choice separate from worker defaults, and let me review the
+> saved brief before sending. Keep phone access, VS Code sharing and private backup
+> optional. Handle technical setup and tell me which sign-in or device steps need me,
+> how to open the app next time, and anything still incomplete. Ordinary setup does not
+> need the full developer test suite.
 
 On a configured Mac, open **sciencewithagents** from Applications. It opens the app in your
 browser through a private, one-use handoff. Older open tabs reconnect automatically when
@@ -149,8 +153,7 @@ Source setup requires Node 24+ and Git. It checks installed Codex/Claude executa
 installing dependencies; either provider can be used independently. The app can also open
 before either is installed, but agents need a connected provider before starting work. Prefer a local Developer folder over cloud-synced Documents/iCloud. Setup still
 needs an agent/developer environment; this is not a packaged installer
-or automatic updater. Sharing the public repository and publishing a promotional website
-remain separate steps.
+or automatic updater. Publishing your own source fork or promotional website is separate from local setup.
 
 Apple Silicon macOS is the verified desktop target. Linux CI verifies the source build;
 Intel Mac, Windows and native integrations on other platforms have separate limits. See

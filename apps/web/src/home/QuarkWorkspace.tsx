@@ -1,19 +1,73 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Layers3, MessageCircle, Settings2, Clock3 } from 'lucide-react';
+import { ArrowUpRight, Layers3, MessageCircle, Settings2, Clock3, Users } from 'lucide-react';
 import {
   quarkCoordinatorStatusSchema,
   quarkDefaultFamilies,
   type Model,
   type QuarkCoordinatorStatus,
+  type Task,
 } from '@dock/shared';
 import { api, models } from '../api';
 import { SchedulerPanel } from '../SchedulerPanel';
 import { useReading, type HomeData } from './useHomeData';
-import { ChatPage, FlowHeading, FlowEmpty } from './WorkspaceFlow';
+import { ChatPage, FlowHeading, FlowEmpty, stateNames } from './WorkspaceFlow';
 import { AssistantFullscreen } from './AssistantFullscreen';
 import './quark-workspace.css';
 
 const columns = ['Waiting', 'Working', 'Paused / needs input', 'Completed'] as const;
+type Column = (typeof columns)[number];
+type Job = QuarkCoordinatorStatus['queue']['jobs'][number];
+type Card = {
+  id: string;
+  column: Column;
+  project: string;
+  title: string;
+  model: string;
+  href: string;
+  reason: string;
+  priority: string;
+  weight: number;
+  estimate: string;
+  resources: string;
+  actual: string;
+  budgets: string[];
+  team: string;
+};
+const live = (j: Job) => j.status === 'queued' || j.status === 'running';
+const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const providerName = (p: string) => (p === 'claude' ? 'Claude' : 'Codex');
+
+/** The task's own status decides completion; a finished turn only says that turn ended.
+ *  Turns are ordered active first, then newest finished first. */
+function placeTask(
+  task: Task | undefined,
+  turns: Job[],
+  asking: string | undefined,
+  projectPaused: boolean,
+): [Column, string] {
+  const active = turns.filter(live);
+  const lead = active.find((j) => j.status === 'running') ?? active[0];
+  const held = active.find((j) => j.held);
+  const latest = turns.find((j) => !live(j));
+  if (!active.length && task && ['done', 'integrated', 'split'].includes(task.status))
+    return [columns[3], ''];
+  if (task?.status === 'needs_decision') return [columns[2], 'Your manager needs input.'];
+  if (asking) return [columns[2], `${asking} is waiting for your answer.`];
+  if (held) return [columns[2], held.reason];
+  if (projectPaused) return [columns[2], lead?.reason ?? 'This project is paused in QUARK.'];
+  if (lead) return [lead.status === 'running' ? columns[1] : columns[0], lead.reason];
+  if (latest && ['failed', 'interrupted'].includes(latest.status))
+    return [columns[2], latest.reason];
+  return [
+    columns[0],
+    task?.status === 'review'
+      ? 'Being reviewed. Open the task for its review and changes.'
+      : task?.status === 'working'
+        ? 'Between turns. Open the task for its plan and team.'
+        : 'Open the task for its plan and team.',
+  ];
+}
+
 export function QuarkWorkspace({ data }: { data: HomeData }) {
   const reading = useReading('/quark/coordinator', quarkCoordinatorStatusSchema.parse);
   const [error, setError] = useState('');
@@ -46,13 +100,15 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
     }
   }
   const state = data.snapshot.data;
-  const jobs = s
+  const runs = s
     ? [...s.queue.jobs, ...s.queue.history].filter((j) => j.agentId !== s.agentId)
     : [];
-  const jobCards = jobs.map((j) => {
-    const agent = state?.agents.find((a) => a.id === j.agentId);
-    const task = state?.tasks.find((t) => t.id === j.taskId);
-    const project = s?.projects.find((p) => p.id === agent?.projectId);
+  const agentOf = (id: string) => state?.agents.find((a) => a.id === id);
+  const projectOf = (id: string | undefined) => s?.projects.find((p) => p.id === id);
+  // Turns outside any task stay individual cards and open their job details.
+  const runCard = (j: Job): Card => {
+    const agent = agentOf(j.agentId);
+    const project = projectOf(agent?.projectId);
     const paused =
       j.held ||
       project?.policy.paused ||
@@ -69,7 +125,7 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
       id: j.runId,
       column,
       project: j.projectName,
-      title: task?.title ?? j.agentName,
+      title: j.agentName,
       model: agent?.model ?? j.provider,
       href: `#/job/${j.runId}`,
       reason: j.reason,
@@ -78,58 +134,110 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
       estimate: `~${j.estimate.quotaPercent}% allowance · ~${Math.ceil(j.estimate.expectedSeconds / 60)} min`,
       resources: `${j.estimate.cpuCores} CPU cores · ${j.estimate.memoryMb} MB`,
       actual: `${j.tokensCharged.toLocaleString()} tokens · ${j.tokenBasis}`,
+      budgets: [],
+      team: '',
     };
-  });
-  const backlog = (state?.tasks ?? [])
-    .filter((t) => !jobs.some((j) => j.taskId === t.id))
-    .map((t) => {
-      const project = s?.projects.find((p) => p.id === t.projectId);
-      return {
-        id: t.id,
-        column: ['done', 'integrated', 'split'].includes(t.status)
-          ? columns[3]
-          : t.status === 'needs_decision' || project?.policy.paused
-            ? columns[2]
-            : columns[0],
-        project: project?.name ?? 'Project',
-        title: t.title,
-        model: 'Manager planning',
-        href: `#/task/${t.id}`,
-        reason:
-          t.status === 'needs_decision'
-            ? 'Your manager needs input.'
-            : 'Open the task for its plan and team.',
-        priority: t.scheduling?.priority ?? 'normal',
+  };
+  // One card per task, however many workers, managers or retries took turns on it. The task
+  // page keeps its team, current jobs and recent finished turns.
+  const taskCard = (taskId: string, turns: Job[]): Card[] => {
+    const task = state?.tasks.find((t) => t.id === taskId);
+    const active = turns.filter(live);
+    // Without the saved task status, a finished turn says nothing about completion.
+    if (!task && !active.length) return [];
+    const lead = active.find((j) => j.status === 'running') ?? active[0];
+    const recent = lead ?? turns[0];
+    const team = state?.agents.filter((a) => a.taskId === taskId) ?? [];
+    const asking = [...team, ...active.map((j) => agentOf(j.agentId))].find(
+      (a) => a?.status === 'waiting',
+    );
+    const project = projectOf(task?.projectId ?? (lead && agentOf(lead.agentId)?.projectId));
+    const [column, reason] = placeTask(task, turns, asking?.name, !!project?.policy.paused);
+    const plan = lead?.estimate ?? task?.scheduling;
+    return [
+      {
+        id: taskId,
+        column,
+        project: project?.name ?? recent?.projectName ?? 'Project',
+        title: task?.title ?? recent?.agentName ?? 'Task',
+        model: [
+          task && stateNames[task.status],
+          recent && (agentOf(recent.agentId)?.model ?? recent.provider),
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        href: `#/task/${taskId}`,
+        reason,
+        priority: plan?.priority ?? 'normal',
         weight: project?.policy.weight ?? 1,
-        estimate: t.scheduling
-          ? `~${t.scheduling.quotaPercent}% allowance · ~${Math.ceil(t.scheduling.expectedSeconds / 60)} min`
+        estimate: plan
+          ? `~${plan.quotaPercent}% allowance · ~${Math.ceil(plan.expectedSeconds / 60)} min per turn`
           : 'Awaiting a manager estimate',
-        resources: '',
-        actual: '',
-      };
-    });
-  const localCards = (s?.localJobs ?? []).map((j) => ({
-    id: j.id,
-    column:
-      j.status === 'running'
-        ? columns[1]
-        : j.status === 'queued'
-          ? columns[0]
-          : ['paused', 'failed', 'interrupted'].includes(j.status)
-            ? columns[2]
-            : columns[3],
-    project: s?.projects.find((p) => p.id === j.projectId)?.name ?? 'This computer',
-    title: 'Video transcription',
-    model: 'Local Whisper',
-    href: '#/transcribe',
-    reason: j.message,
-    priority: j.resources.priority,
-    weight: j.projectId ? (s?.projects.find((p) => p.id === j.projectId)?.policy.weight ?? 1) : 1,
-    estimate: `~${Math.ceil(j.resources.expectedSeconds / 60)} min · no AI allowance`,
-    resources: `${j.resources.cpuCores} CPU cores · ${j.resources.memoryMb} MB`,
-    actual: j.phase,
-  }));
-  const cards = [...jobCards, ...backlog, ...localCards];
+        resources: lead ? `${lead.estimate.cpuCores} CPU cores · ${lead.estimate.memoryMb} MB` : '',
+        actual: lead
+          ? `Current turn: ${lead.tokensCharged.toLocaleString()} tokens · ${lead.tokenBasis}`
+          : '',
+        // Allowance caps come from QUARK's accounting; bounded turn history is never summed.
+        budgets: (s?.accounting.budgets ?? [])
+          .filter((b) => b.taskId === taskId)
+          .map(
+            (b) =>
+              `${providerName(b.provider)}: ${b.remainingPercent.toFixed(1)}% left of ${b.limitPercent}% allocated${b.reason ? ' · waiting' : ''}`,
+          ),
+        team:
+          team.length > 1 || turns.length > 1
+            ? [team.length && count(team.length, 'agent'), count(turns.length, 'recent turn')]
+                .filter(Boolean)
+                .join(' · ')
+            : '',
+      },
+    ];
+  };
+  const groups = new Map<string, Job[]>();
+  const order: (Job | string)[] = [];
+  for (const j of runs) {
+    const group = j.taskId ? groups.get(j.taskId) : undefined;
+    if (!j.taskId) order.push(j);
+    else if (group) group.push(j);
+    else {
+      groups.set(j.taskId, [j]);
+      order.push(j.taskId);
+    }
+  }
+  for (const t of state?.tasks ?? [])
+    if (!groups.has(t.id)) {
+      groups.set(t.id, []);
+      order.push(t.id);
+    }
+  const workCards = order.flatMap((item) =>
+    typeof item === 'string' ? taskCard(item, groups.get(item) ?? []) : [runCard(item)],
+  );
+  const localCards = (s?.localJobs ?? []).map(
+    (j): Card => ({
+      id: j.id,
+      column:
+        j.status === 'running'
+          ? columns[1]
+          : j.status === 'queued'
+            ? columns[0]
+            : ['paused', 'failed', 'interrupted'].includes(j.status)
+              ? columns[2]
+              : columns[3],
+      project: s?.projects.find((p) => p.id === j.projectId)?.name ?? 'This computer',
+      title: 'Video transcription',
+      model: 'Local Whisper',
+      href: '#/transcribe',
+      reason: j.message,
+      priority: j.resources.priority,
+      weight: j.projectId ? (s?.projects.find((p) => p.id === j.projectId)?.policy.weight ?? 1) : 1,
+      estimate: `~${Math.ceil(j.resources.expectedSeconds / 60)} min · no AI allowance`,
+      resources: `${j.resources.cpuCores} CPU cores · ${j.resources.memoryMb} MB`,
+      actual: j.phase,
+      budgets: [],
+      team: '',
+    }),
+  );
+  const cards = [...workCards, ...localCards];
   const visibleCards = cards.filter(
     (c) =>
       c.column !== 'Completed' ||
@@ -388,12 +496,21 @@ export function QuarkWorkspace({ data }: { data: HomeData }) {
                               </span>
                               {c.resources && <span>{c.resources}</span>}
                               {c.actual && <span>{c.actual}</span>}
+                              {c.budgets.map((b, i) => (
+                                <span key={i}>{b}</span>
+                              ))}
+                              {c.team && (
+                                <span>
+                                  <Users size={13} />
+                                  {c.team}
+                                </span>
+                              )}
                             </div>
                           )}
                           <footer>
                             <span>
                               {column === 'Completed'
-                                ? c.actual || 'Open details'
+                                ? c.team || c.actual || 'Open details'
                                 : `${c.priority} · weight ${c.weight}`}
                             </span>
                             <ArrowUpRight size={15} />

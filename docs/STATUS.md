@@ -8,9 +8,17 @@ Drawings are not blocking the backend. Corrections for the owner's reported keyb
 Latest messages/composer overlap and hidden Send button are built. A later full run exposed
 a Safari scroll-before-resize race; the correction passes eight mobile viewport checks,
 including a deterministic reproduction of that event ordering. Actual phone confirmation remains. The UI is a connected first pass,
-not completed mobile acceptance. The latest complete release check passes. One earlier
+not completed mobile acceptance. An earlier complete release check passed; current public CI must be rerun after these corrections. One earlier
 iPhone WebKit project-brief failure did not recur in three fresh-data repetitions or the
 full rerun; its cause remains unconfirmed and failure diagnostics are retained. See [Verification](VERIFICATION.md).
+
+## Latest collaborator-setup corrections
+
+Fresh isolated native Codex-only and Claude-only first-project flows now pass. Fixed long
+installation paths exceeding the native socket limit and Claude-only projects selecting
+Codex workers by default. Updated setup prompts and automatic manager instructions to match
+current independent manager/worker choices. QUARK now groups turns by task. Focused backend
+and five-profile browser checks pass; the next public CI run remains pending.
 
 ## Latest owner-reported corrections
 

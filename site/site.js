@@ -18,7 +18,7 @@ document.querySelectorAll('[data-link]').forEach((el) => {
 
 // The setup prompt follows the repository README and is generated from the
 // GitHub address so the two never drift apart.
-const prompt = `Set up sciencewithagents on this computer. Clone ${links.github} into a local folder that is not synced to iCloud or another cloud service, then follow docs/CONTRIBUTOR_SETUP.md. Use my own installed Codex or Claude sign-in and let me choose which provider to use. Preserve my existing accounts and files. Open the app and walk me through Welcome and my first project. Leave phone access and private source backup optional. Tell me which steps need my sign-in or device; ordinary setup does not need the full developer test suite.`;
+const prompt = `Set up sciencewithagents on this computer from ${links.github}, following docs/CONTRIBUTOR_SETUP.md. First check for an existing installation and preserve it. For a new install, use a local folder outside iCloud or other cloud sync. Check platform support and prerequisites, and use my own Codex or Claude account; I do not need both. Install the Applications launcher on Mac, open Welcome, verify my models and help me create my first project. Let me choose its manager separately from worker defaults and review the saved project brief before sending. Keep phone access, VS Code sharing and private GitHub backup optional. Handle the technical setup; tell me which sign-in, device or preference steps need me and how to open the app next time. Do not run the full developer test suite for ordinary setup or claim completion while a required step is failing.`;
 document.querySelectorAll('[data-prompt]').forEach((el) => (el.textContent = prompt));
 
 const selectPrompt = () => {

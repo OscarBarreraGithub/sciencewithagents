@@ -99,7 +99,7 @@ share or put it in a prompt. It is not a Codex/Claude token. The typed client ro
 missing credentials and are unavailable on the phone entry or another-computer proxy.
 
 This capability trusts agents running as the installation's OS user. It is not a sandbox
-against a program that already reads that user's private files. The app's older browser and
-VS Code companion endpoints still need their broader local-authentication correction; this
-adapter does not claim to protect those routes. No global provider hooks or interception of
+against a program that already reads that user's private files. Browser access uses its native launcher handoff or phone pairing. The locally shared
+VS Code companion has no separate editor sign-in; its native sessions retain their original
+account permissions. No global provider hooks or interception of
 unrelated terminal/editor sessions is installed. The calling agent receives no manager lease.

@@ -59,7 +59,7 @@ test('model settings support mobile editing, exact versions, safe save retry and
     return route.fulfill({ json: state });
   });
   await page.goto('/#/models');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('The right mind');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Models and roles');
   await expect(page.getByRole('radio', { name: /Codex heavy/ })).toBeChecked();
   await page.getByRole('button', { name: 'Refresh available models' }).click();
   await expect(

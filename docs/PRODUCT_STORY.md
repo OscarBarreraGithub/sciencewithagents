@@ -1,5 +1,16 @@
 # sciencewithagents — functionality and website story
 
+## Bring your own account and describe your first project
+
+Give your setup agent the copyable website prompt. It checks your computer, prepares the app
+and helps you choose Codex, Claude or both. Phone access, editor sharing and private backups
+are optional. Choose your manager independently from its workers, then write the first brief
+in the autosaving notepad. Work starts when you send it. New managers already receive the
+team defaults, QUARK rules and instructions to keep next steps and human questions up to date.
+
+QUARK groups a task's workers and retries into one card. Open it to see the team and recent
+turns; a worker finishing a reply does not falsely mark the whole task complete.
+
 Current interface note (2026-09-30): Home, Projects, Chats, Apps, QUARK, project/task detail,
 health diagnostics, history, the prompt notepad, manager work lists and reviewed-change
 application are connected in the drawn interface. The inventory below describes current

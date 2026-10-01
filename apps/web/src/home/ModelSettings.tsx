@@ -182,12 +182,12 @@ export function ModelSettings() {
                 [
                   'codex-heavy',
                   'Codex heavy',
-                  'Codex postdoc managers. Claude workers, paced by QUARK.',
+                  'Codex defaults for managers and research/coding. Projects choose their worker mix separately.',
                 ],
                 [
                   'claude-heavy',
                   'Claude heavy',
-                  'Claude postdoc managers. Codex workers, paced by QUARK.',
+                  'Claude defaults for managers and research/coding. Projects choose their worker mix separately.',
                 ],
                 [
                   'pick',

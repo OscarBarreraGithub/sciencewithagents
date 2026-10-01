@@ -28,6 +28,7 @@ export function TaskProgress({ task, data }: { task: Task; data: HomeData }) {
       .map((agent) => agent.id),
   );
   const jobs = work.data?.jobs.filter((job) => job.taskId && family.has(job.taskId)) ?? [];
+  const finished = work.data?.history.filter((job) => job.taskId && family.has(job.taskId)) ?? [];
   const holds =
     accounting.data?.holds.filter((hold) => !hold.releasedAt && agents.has(hold.agentId)) ?? [];
   const budgets =
@@ -119,6 +120,18 @@ export function TaskProgress({ task, data }: { task: Task; data: HomeData }) {
                   ? 'Current work could not be confirmed.'
                   : 'No current jobs or pauses are reported for this task.'}
             </p>
+          )}
+          {finished.length > 0 && (
+            <details className="task-progress-item">
+              <summary>Finished turns in QUARK’s recent history ({finished.length})</summary>
+              {finished.map((job) => (
+                <p key={job.runId}>
+                  <a className="flow-button" href={`#/job/${job.runId}`}>
+                    {job.agentName} · {job.status} <ArrowUpRight size={16} />
+                  </a>
+                </p>
+              ))}
+            </details>
           )}
           <h3>Planning estimate</h3>
           <p>

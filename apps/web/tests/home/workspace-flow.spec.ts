@@ -1,5 +1,44 @@
 import { expect, test } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { defaultModelPolicy } from '@dock/shared';
+
+test('a Claude-only first project defaults its workers correctly and preserves an explicit saved choice', async ({
+  page,
+}) => {
+  let fail = true;
+  await page.route('**/api/model-policy', (route) =>
+    route.fulfill(
+      fail
+        ? { status: 503, json: { error: 'Temporarily unavailable' } }
+        : {
+            json: { policy: { ...defaultModelPolicy, enabledProviders: ['claude'] }, catalogs: [] },
+          },
+    ),
+  );
+  await page.goto('/#/new');
+  const spawn = page.getByRole('button', { name: 'Spawn', exact: true });
+  await expect(spawn).toBeDisabled();
+  await expect(
+    page.getByText('Could not read your model defaults. Try reading them again.'),
+  ).toBeVisible();
+  fail = false;
+  await page.getByRole('button', { name: 'Read defaults again', exact: true }).click();
+  const manager = page.getByRole('group', { name: 'Manager', exact: true });
+  await expect(manager.getByRole('combobox', { name: 'Provider', exact: true })).toHaveValue(
+    'claude',
+  );
+  const mix = page.getByRole('slider', { name: 'Provider mix', exact: true });
+  await expect(mix).toHaveAttribute('aria-valuetext', 'Claude only');
+  await expect(spawn).toBeEnabled();
+  await mix.focus();
+  await mix.press('ArrowLeft');
+  await expect(mix).toHaveAttribute('aria-valuetext', 'Claude heavy');
+  await page.reload();
+  await expect(mix).toHaveAttribute('aria-valuetext', 'Claude heavy');
+  await expect(manager.getByRole('combobox', { name: 'Provider', exact: true })).toHaveValue(
+    'claude',
+  );
+});
 
 test('spawn an independently configured manager, retain notepad versions and send once through the real demo API', async ({
   page,

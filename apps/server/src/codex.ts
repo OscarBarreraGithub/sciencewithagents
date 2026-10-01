@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, existsSync, unlinkSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { mkdirSync, existsSync, unlinkSync, lstatSync, rmdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import WebSocket from 'ws';
@@ -9,6 +10,13 @@ import { z } from 'zod';
 import { disabledMcpOverride } from './mcp.js';
 import type { Agent } from '@dock/shared';
 const responseByteLimit = 16 * 1024 * 1024; // Bounded provider output, including encoded images.
+
+/** macOS Unix socket names have a 104-byte bound, including the terminator. */
+export function providerSocketPath(requested: string) {
+  if (Buffer.byteLength(requested) < 100) return requested;
+  const identity = createHash('sha256').update(resolve(requested)).digest('hex').slice(0, 24);
+  return join('/tmp', `swa-rpc-${process.getuid?.() ?? 'local'}-${identity}`, 'rpc.sock');
+}
 
 const envelope = z.object({
   id: z.union([z.number(), z.string()]).optional(),
@@ -49,6 +57,8 @@ export interface Provider extends EventEmitter {
 }
 
 export class CodexRpc extends EventEmitter implements Provider {
+  readonly socketPath: string;
+  private readonly shortSocket: boolean;
   process: ChildProcess | null = null;
   socket: WebSocket | null = null;
   ready = false;
@@ -65,7 +75,7 @@ export class CodexRpc extends EventEmitter implements Provider {
   private stopping = false;
   constructor(
     readonly binary: string,
-    readonly socketPath: string,
+    socketPath: string,
     readonly cwd: string,
     readonly manager: boolean,
     readonly pluginsEnabled = false,
@@ -75,9 +85,22 @@ export class CodexRpc extends EventEmitter implements Provider {
     readonly inheritNative = false,
   ) {
     super();
+    this.socketPath = providerSocketPath(socketPath);
+    this.shortSocket = this.socketPath !== socketPath;
   }
   async start() {
     mkdirSync(dirname(this.socketPath), { recursive: true, mode: 0o700 });
+    if (this.shortSocket) {
+      const directory = lstatSync(dirname(this.socketPath));
+      if (
+        !directory.isDirectory() ||
+        directory.mode & 0o077 ||
+        (process.getuid && directory.uid !== process.getuid())
+      )
+        throw new Error(
+          'The private provider socket directory is not owned exclusively by this account.',
+        );
+    }
     // A socket belongs to this exact runtime. Do not delete a live listener.
     if (existsSync(this.socketPath)) {
       if (await this.connect(300)) {
@@ -267,5 +290,21 @@ export class CodexRpc extends EventEmitter implements Provider {
     }
     this.fail(new Error('Codex was stopped.'));
     this.removeAllListeners();
+    if (
+      this.shortSocket &&
+      this.process &&
+      (this.process.exitCode !== null || this.process.signalCode !== null)
+    ) {
+      try {
+        unlinkSync(this.socketPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return;
+      }
+      try {
+        rmdirSync(dirname(this.socketPath));
+      } catch {
+        // Never remove another runtime's files or a directory still in use.
+      }
+    }
   }
 }

@@ -7,7 +7,18 @@ verification on the owner operating a physical phone. Physical-device confirmati
 additional evidence, not proof supplied by emulation. Preserve native capabilities and simple QUARK supervision; do not restart the
 superseded tool-by-tool restriction approach or broad review loops.
 
-## Latest slice
+## Latest collaborator-setup slice
+
+A clean public clone with candidate fixes completed real native Codex-only and Claude-only
+first replies using separate app data and this Mac’s native sign-ins. Drafts/history survive
+reload; Codex history survives server restart. Fixed overlong Unix socket paths and incorrect
+Claude-only worker defaults. The shipped setup requests and manager charter match the actual
+provider/sliders workflow. QUARK task grouping and 44px notepad/recovery targets are reviewed
+and tested. The native Opus task was paused at its unchanged task cap; root retained its edits.
+The full public CI run for these corrections is still pending; older passing runs do not
+certify this new tree. See the newest VERIFICATION.md section for focused evidence.
+
+## Latest UI slice
 
 The owner's new feedback reopened phone acceptance. Read the original last 30 user prompts,
 not only prior agent summaries. Corrected the incomplete automatic-only chat filter: all

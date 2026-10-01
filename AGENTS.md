@@ -1,5 +1,9 @@
 # sciencewithagents
 
+For a new installation, follow docs/CONTRIBUTOR_SETUP.md for that person’s request.
+Do not resume the maintainer’s build goal or treat RESUME.md / OPERATIONS.md device history
+as permission over their computer. Existing installations and accounts must be preserved.
+
 The owner authorized implementing docs/SIMPLIFICATION_ACCOUNT.md and continuing the full
 build: preserve native agent capabilities; QUARK observes and supervises work. Do not
 resume the superseded tool-by-tool restriction/parity approach.
