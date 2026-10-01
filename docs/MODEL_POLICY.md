@@ -52,6 +52,12 @@ With both providers enabled:
   family in Settings updates its consumers. Exact pins can use any model the installed
   provider reports, including an older version outside the normal family.
 
+New managers whose central choice has no explicit effort prefer **xhigh** when the live
+catalog supports it (then max/high/medium, then a reported level). Setup displays this
+actual resolution; changing reasoning pins the displayed model and chosen effort so the
+saved launch agrees with the form. Existing explicit settings remain unchanged. The shared
+default resolver is used by both the setup form and backend policy.
+
 Claude's **Provider default** thinking choice leaves the optional native effort override
 unset. Models without reported thinking levels remain selectable with that choice;
 they are not hidden or assigned an invented level. Saved explicit unsupported levels

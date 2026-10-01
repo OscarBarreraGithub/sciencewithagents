@@ -5,11 +5,12 @@ import {
   type Role,
   quarkModelChoiceSchema,
   defaultModelPolicy,
-  effortSchema,
   modelPolicySaveSchema,
   modelPolicySchema,
   modelPolicyStatusSchema,
   policyProvider,
+  policyDefaultEffort,
+  workerDefaultEffort,
   taskTiers,
   tierLabels,
   type Assignment,
@@ -202,15 +203,7 @@ export class ModelPolicy {
       throw new Conflict(
         `${task} work requires ${tierLabels[minimum]} or above${request?.difficulty === 'high' ? ', and difficult work needs a grad student or postdoc' : ''}. Choose an appropriate model; a requested tier cannot promote a known lightweight model.`,
       );
-    const preferred = tier === 'uncle' || tier === 'undergrad' ? 'low' : 'high';
-    const effort =
-      request?.effort ??
-      choice.effort ??
-      (selected.efforts.includes(preferred)
-        ? preferred
-        : selected.efforts.includes('medium')
-          ? 'medium'
-          : selected.efforts.find((e) => effortSchema.safeParse(e).success));
+    const effort = request?.effort ?? choice.effort ?? policyDefaultEffort(selected.efforts, tier);
     if (!effort || !selected.efforts.includes(effort))
       throw new Conflict(
         `The selected thinking level is unavailable for ${selected.label}. Update Model settings.`,
@@ -277,11 +270,7 @@ export class ModelPolicy {
       throw new Conflict(
         'Use a reasoning model for reviews or difficult work. Light models are for explicit bulk work only.',
       );
-    const preferred = levels.indexOf(tier) < levels.indexOf('grad') ? 'medium' : 'high';
-    const effort =
-      request?.effort ??
-      choice.effort ??
-      (selected.efforts.includes(preferred) ? preferred : selected.efforts[0]);
+    const effort = request?.effort ?? choice.effort ?? workerDefaultEffort(selected.efforts, tier);
     if (!effort || !selected.efforts.includes(effort))
       throw new Conflict('Choose an available thinking level for this model.');
     return assignmentSchema.parse({

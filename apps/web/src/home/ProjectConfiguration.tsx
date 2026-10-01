@@ -10,7 +10,8 @@ import {
   projectOptionsSchema,
   projectSchema,
   projectTrackingSchema,
-  providerDefaultEffort,
+  policyDefaultEffort,
+  workerDefaultEffort,
   taskTiers,
   type Agent,
   type Model,
@@ -133,12 +134,6 @@ function WorkerSettings({
   const custom = workerPurposes.some((purpose) => workflow.overrides[purpose]);
   const mixIndex = providerMixes.indexOf(workflow.providerMix);
   const spendIndex = spendingLevels.indexOf(workflow.spending);
-  const summary = workerPurposes
-    .map((purpose) => {
-      const choice = workerDefault(workflow, purpose);
-      return `${purposeLabels[purpose]}: ${resolved(choice, catalogs)?.label ?? family(choice.family)}`;
-    })
-    .join(' · ');
   const setOverride = (purpose: WorkerPurpose, value: WorkerChoice | null) => {
     const overrides = { ...workflow.overrides };
     if (value) overrides[purpose] = value;
@@ -148,6 +143,50 @@ function WorkerSettings({
   return (
     <fieldset className="config-section" disabled={disabled}>
       <legend>Workers</legend>
+      <details className="config-defaults">
+        <summary>
+          See worker defaults <span aria-hidden="true">⌄</span>
+        </summary>
+        <p>
+          Each cell lists Research &amp; coding · Review · Bulk tasks. The mix slider tells your
+          manager which provider you would like it to lean on; it is not a metered percentage.
+        </p>
+        <div className="config-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Usage</th>
+                {providerMixes.map((mix) => (
+                  <th scope="col" key={mix}>
+                    {mixLabels[mix]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {spendingLevels.map((level) => (
+                <tr key={level}>
+                  <th scope="row">{spendingLabels[level]}</th>
+                  {providerMixes.map((mix) => (
+                    <td
+                      key={mix}
+                      className={
+                        mix === workflow.providerMix && level === workflow.spending ? 'current' : ''
+                      }
+                    >
+                      {workerDefaults[level][mix].map(family).join(' · ')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p>
+          If you have FAS Claude, I recommend Balanced or Claude heavy for default usage. I
+          personally use Balanced + Tokenmax.
+        </p>
+      </details>
       <p className="config-help">
         These describe the team your manager delegates to. They do not change the manager chosen
         above.
@@ -211,7 +250,17 @@ function WorkerSettings({
       <details className={`config-models ${custom ? 'is-custom' : ''}`} open={custom || undefined}>
         <summary>
           <strong>{custom ? 'Custom task models' : 'Task models'}</strong>
-          <small>{summary}</small>
+          <span className="config-task-summary">
+            {workerPurposes.map((purpose) => {
+              const choice = workerDefault(workflow, purpose);
+              return (
+                <small key={purpose}>
+                  {purposeLabels[purpose]}:{' '}
+                  {resolved(choice, catalogs)?.label ?? family(choice.family)}
+                </small>
+              );
+            })}
+          </span>
         </summary>
         {workerPurposes.map((purpose) => {
           const preset = workerDefault({ ...workflow, overrides: {} }, purpose);
@@ -266,12 +315,19 @@ function WorkerSettings({
                 <label>
                   Thinking
                   <select
-                    value={saved.effort ?? ''}
+                    value={
+                      saved.effort ??
+                      workerDefaultEffort(
+                        model.efforts,
+                        modelFamilies[familyFor(model, current.provider, current.family)]?.tier ??
+                          'grad',
+                      ) ??
+                      ''
+                    }
                     onChange={(event) =>
                       setOverride(purpose, { ...saved, effort: event.target.value || null })
                     }
                   >
-                    <option value="">Automatic</option>
                     {model.efforts.map((effort) => (
                       <option key={effort} value={effort}>
                         {effortLabel(effort)}
@@ -294,48 +350,7 @@ function WorkerSettings({
           exact choice keeps that model.
         </p>
       </details>
-      <details className="config-defaults">
-        <summary>See defaults</summary>
-        <p>
-          Each cell lists Research &amp; coding · Review · Bulk tasks. The mix slider tells your
-          manager which provider you would like it to lean on; it is not a metered percentage.
-        </p>
-        <div className="config-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Usage</th>
-                {providerMixes.map((mix) => (
-                  <th scope="col" key={mix}>
-                    {mixLabels[mix]}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {spendingLevels.map((level) => (
-                <tr key={level}>
-                  <th scope="row">{spendingLabels[level]}</th>
-                  {providerMixes.map((mix) => (
-                    <td
-                      key={mix}
-                      className={
-                        mix === workflow.providerMix && level === workflow.spending ? 'current' : ''
-                      }
-                    >
-                      {workerDefaults[level][mix].map(family).join(' · ')}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p>
-          If you have FAS Claude, I recommend Balanced or Claude heavy for default usage. I
-          personally use Balanced + Tokenmax.
-        </p>
-      </details>
+
       <label className="config-check">
         <input
           type="checkbox"
@@ -568,6 +583,7 @@ export function ProjectConfiguration({
   const { catalogs, policy, policyError, reload } = useCatalogs();
   const coordinator = useCoordinator();
   const [spawn, setSpawn] = useState(readSpawn);
+  const latestSpawn = useRef(spawn);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [canChooseFolder, setCanChooseFolder] = useState(false);
@@ -578,14 +594,21 @@ export function ProjectConfiguration({
   const provider =
     spawn.provider ?? (policy && policyProvider(policy, 'manager')) ?? enabled[0] ?? 'codex';
   const catalog = catalogs[provider];
-  const managerModel = catalog.models.find((m) => m.id === spawn.managerModel);
   const centralChoice = policy?.models[provider][taskTiers.manager];
   const centralModel = centralChoice
     ? centralChoice.model
       ? catalog.models.find((m) => m.id === centralChoice.model)
       : latestFamily(catalog.models, centralChoice.family)
     : undefined;
+  const managerModel = spawn.managerModel
+    ? catalog.models.find((m) => m.id === spawn.managerModel)
+    : centralModel;
+  const managerEffort =
+    spawn.managerEffort ??
+    centralChoice?.effort ??
+    (managerModel ? policyDefaultEffort(managerModel.efforts, taskTiers.manager) : undefined);
   const persist = (next: Spawn) => {
+    latestSpawn.current = next;
     setSpawn(next);
     try {
       localStorage.setItem(spawnKey(), JSON.stringify(next));
@@ -604,7 +627,15 @@ export function ProjectConfiguration({
     });
   };
   useEffect(() => {
-    if (!policy || spawn.workflowChosen || locked || spawn.workflowRequest) return;
+    const current = latestSpawn.current;
+    if (
+      !policy ||
+      current.workflowChosen ||
+      current.project ||
+      current.tracking ||
+      current.workflowRequest
+    )
+      return;
     const providerMix =
       policy.enabledProviders.length === 1
         ? policy.enabledProviders[0] === 'claude'
@@ -614,16 +645,18 @@ export function ProjectConfiguration({
           ? 'balanced'
           : policy.preset;
     persist({
-      ...spawn,
-      workflow: { ...spawn.workflow, providerMix },
+      ...current,
+      workflow: { ...current.workflow, providerMix },
       workflowChosen: true,
     });
   }, [policy, spawn.workflowChosen, locked]);
   useEffect(() => {
     // After the shell focuses the page heading on navigation, select the proposed name.
     const frame = requestAnimationFrame(() => {
-      nameInput.current?.focus();
-      nameInput.current?.select();
+      if (spawn.name === suggestedName) {
+        nameInput.current?.focus({ preventScroll: true });
+        nameInput.current?.select();
+      }
     });
     void api('/project-options')
       .then((value) =>
@@ -950,24 +983,22 @@ export function ProjectConfiguration({
             <label>
               Model
               <select
-                value={spawn.managerModel ?? ''}
+                value={managerModel?.id ?? ''}
                 onChange={(event) => {
                   const next = catalog.models.find((m) => m.id === event.target.value);
                   edit({
                     managerModel: next?.id ?? null,
                     managerEffort: next
-                      ? next.efforts.includes(providerDefaultEffort)
-                        ? providerDefaultEffort
-                        : next.efforts.includes('high')
-                          ? 'high'
-                          : (next.efforts[0] ?? null)
+                      ? (policyDefaultEffort(next.efforts, taskTiers.manager) ?? null)
                       : null,
                   });
                 }}
               >
-                <option value="">
-                  Central default{centralModel ? ` · ${centralModel.label}` : ''}
-                </option>
+                {!managerModel && (
+                  <option value="">
+                    {catalog.loaded ? 'Choose an available model' : 'Reading models…'}
+                  </option>
+                )}
                 {catalog.models.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
@@ -978,11 +1009,13 @@ export function ProjectConfiguration({
             <label>
               Reasoning
               <select
-                value={spawn.managerEffort ?? ''}
+                value={managerEffort ?? ''}
                 disabled={!managerModel}
-                onChange={(event) => edit({ managerEffort: event.target.value || null })}
+                onChange={(event) =>
+                  edit({ managerModel: managerModel!.id, managerEffort: event.target.value })
+                }
               >
-                {!managerModel && <option value="">Follows the central default</option>}
+                {!managerModel && <option value="">Read models first</option>}
                 {managerModel?.efforts.map((effort) => (
                   <option key={effort} value={effort}>
                     {effortLabel(effort)}

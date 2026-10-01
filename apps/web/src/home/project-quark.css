@@ -7,6 +7,7 @@
 }
 .config-section .quark-priority label {
   display: flex;
+  flex-direction: row;
   align-items: flex-start;
   gap: 10px;
   min-height: 56px;

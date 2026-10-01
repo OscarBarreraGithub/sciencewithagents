@@ -232,12 +232,21 @@ test('assisted search starts only explicitly, reloads its saved result and only 
   });
 
   await page.goto('/#/chats');
-  await page.getByRole('textbox', { name: 'Find a conversation', exact: true }).fill(query);
+  const filter = page.getByRole('textbox', { name: 'Find a conversation', exact: true });
+  await filter.fill('A different name filter');
   await page.getByRole('button', { name: 'Assisted search', exact: true }).click();
+  const prompt = page.getByRole('textbox', { name: 'What are you looking for?', exact: true });
+  await expect(prompt).toHaveValue('');
+  await prompt.fill(query);
+  await expect(filter).toHaveValue('A different name filter');
   const helper = page.getByRole('radiogroup', { name: 'Search helper' });
   await helper.getByRole('radio', { name: /^Codex/ }).click();
-  await page.getByRole('button', { name: 'Hide assisted search', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Assisted search', exact: true })
+    .getByRole('button', { name: 'Close dialog' })
+    .click();
   await page.getByRole('button', { name: 'Assisted search', exact: true }).click();
+  await expect(prompt).toHaveValue(query);
   expect(submissions).toEqual([]);
   expect(reads).toBe(0);
   expect(writes).toEqual([]);

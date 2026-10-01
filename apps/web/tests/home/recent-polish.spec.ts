@@ -37,7 +37,7 @@ function sharedChat(provider: 'codex' | 'claude' = 'codex'): MirrorState {
   });
 }
 
-test('Home VS Code button shows setup status and extension instructions without navigating to chats', async ({
+test('VS Code setup stays at the top of Chats and opens instructions without leaving the list', async ({
   page,
 }) => {
   const editor = sharedChat();
@@ -46,10 +46,12 @@ test('Home VS Code button shows setup status and extension instructions without 
     route.fulfill({ json: [editor, terminal].map((chat) => mirrorWindowSchema.parse(chat)) }),
   );
   await page.goto('/#/home');
+  await expect(page.getByRole('button', { name: /^VS Code on this computer:/ })).toHaveCount(0);
+  await page.locator('a[href="#/chats"]:visible').first().click();
   await page.getByRole('button', { name: /^VS Code on this computer:/ }).click();
   const setup = page.getByRole('dialog', { name: 'VS Code setup' });
   await expect(setup).toBeVisible();
-  await expect(page).toHaveURL(/#\/home$/);
+  await expect(page).toHaveURL(/#\/chats$/);
   await expect(setup).toContainText('The extension is connected');
   await expect(setup).toContainText('Install from VSIX');
   await expect(setup).toContainText('Chats → Shared');

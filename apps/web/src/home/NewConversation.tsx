@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MessageCircle, Terminal } from 'lucide-react';
-import { agentSchema, effortLabel, id as uuidSchema, type ProviderId } from '@dock/shared';
+import {
+  agentSchema,
+  effortLabel,
+  id as uuidSchema,
+  latestFamily,
+  policyDefaultEffort,
+  taskTiers,
+  type ProviderId,
+} from '@dock/shared';
 import { api, apiScope } from '../api';
 import { useCatalogs } from './ProjectConfiguration';
 
@@ -54,7 +62,17 @@ export function NewConversation({
   // Terminal-only sessions currently need Codex; saved chats support either provider.
   const provider: ProviderId = terminal ? 'codex' : (start.provider ?? enabled[0] ?? 'codex');
   const catalog = catalogs[provider];
-  const model = catalog.models.find((m) => m.id === start.model);
+  const centralChoice = policy?.models[provider][taskTiers.reasoning];
+  const centralModel = centralChoice?.model
+    ? catalog.models.find((m) => m.id === centralChoice.model)
+    : centralChoice
+      ? latestFamily(catalog.models, centralChoice.family)
+      : undefined;
+  const model = start.model ? catalog.models.find((m) => m.id === start.model) : centralModel;
+  const effort =
+    start.effort ??
+    centralChoice?.effort ??
+    (model ? policyDefaultEffort(model.efforts, taskTiers.reasoning) : undefined);
   const persist = (next: Start) => {
     setStart(next);
     try {
@@ -94,7 +112,7 @@ export function NewConversation({
           name,
           provider,
           ...(request.model ? { model: request.model } : {}),
-          ...(request.model && request.effort ? { effort: request.effort } : {}),
+          ...(request.effort ? { effort: request.effort } : {}),
           saveContact: !terminal,
         }),
       );
@@ -162,13 +180,22 @@ export function NewConversation({
             <label>
               Model
               <select
-                value={start.model ?? ''}
+                value={model?.id ?? ''}
                 onChange={(event) => {
                   const next = catalog.models.find((m) => m.id === event.target.value);
-                  edit({ model: next?.id ?? null, effort: null });
+                  edit({
+                    model: next?.id ?? null,
+                    effort: next
+                      ? (policyDefaultEffort(next.efforts, taskTiers.reasoning) ?? null)
+                      : null,
+                  });
                 }}
               >
-                <option value="">Central default</option>
+                {!model && (
+                  <option value="">
+                    {catalog.loaded ? 'Choose an available model' : 'Reading models…'}
+                  </option>
+                )}
                 {catalog.models.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
@@ -179,11 +206,11 @@ export function NewConversation({
             <label>
               Thinking
               <select
-                value={start.effort ?? ''}
+                value={effort ?? ''}
                 disabled={!model}
-                onChange={(event) => edit({ effort: event.target.value || null })}
+                onChange={(event) => edit({ model: model!.id, effort: event.target.value })}
               >
-                <option value="">{model ? 'Automatic' : 'Follows the central default'}</option>
+                {!model && <option value="">Read models first</option>}
                 {model?.efforts.map((effort) => (
                   <option key={effort} value={effort}>
                     {effortLabel(effort)}

@@ -17,7 +17,7 @@ an updated companion; no reload is needed for native archive cleanup or the app 
 **Chats → Shared** now also lists loaded conversations from an already-running Codex shared
 server. Select a **Codex session** to read, send, guide the observed active reply or request
 Stop. No companion, new sign-in, import or replacement agent is needed for this path. VS Code
-sharing still uses its existing companion. The Home VS Code status counts editor connections
+sharing still uses its existing companion. The Chats VS Code status counts editor connections
 only; the Chats card counts native Codex sessions separately.
 
 The app asks the installed CLI for its existing daemon socket, follows its managed link to

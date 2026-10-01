@@ -1,5 +1,6 @@
+import { BackLink } from './Navigation';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUpRight, Check, RefreshCw } from 'lucide-react';
+import { ArrowUpRight, Check, RefreshCw } from 'lucide-react';
 import {
   latestFamily,
   effortLabel,
@@ -103,9 +104,7 @@ export function ModelSettings() {
   const dirty = draft && saved && JSON.stringify(draft) !== JSON.stringify(saved.policy);
   return (
     <section className="model-settings">
-      <a href="#/home" className="home-back">
-        <ArrowLeft size={17} /> Back to home
-      </a>
+      <BackLink />
       <header className="model-heading">
         <p className="home-eyebrow">WORKSPACE SETTINGS</p>
         <h1 tabIndex={-1}>Models and roles</h1>

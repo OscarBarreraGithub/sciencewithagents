@@ -23,6 +23,23 @@ export const taskLabels = {
   orchestration: 'Delegated orchestration',
   bulk: 'Simple bulk text & image work',
 } as const;
+/** Concrete default shared by the launch policy and setup controls. Catalogs own support. */
+export function policyDefaultEffort(efforts: readonly string[], tier: keyof typeof tierLabels) {
+  const preferred =
+    tier === 'postdoc'
+      ? ['xhigh', 'max', 'high', 'medium']
+      : [tier === 'uncle' || tier === 'undergrad' ? 'low' : 'high', 'medium'];
+  return (
+    preferred.find((effort) => efforts.includes(effort)) ??
+    efforts.find((effort) => effortSchema.safeParse(effort).success)
+  );
+}
+
+export function workerDefaultEffort(efforts: readonly string[], tier: keyof typeof tierLabels) {
+  const preferred = tier === 'uncle' || tier === 'undergrad' ? 'medium' : 'high';
+  return efforts.includes(preferred) ? preferred : efforts[0];
+}
+
 const choice = z
   .object({
     family: z

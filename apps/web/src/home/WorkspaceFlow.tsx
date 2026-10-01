@@ -35,6 +35,8 @@ import { VscodeMirror } from '../VscodeMirror';
 import { ProjectConfiguration } from './ProjectConfiguration';
 import { NewConversation } from './NewConversation';
 import { AssistedSearch } from './AssistedSearch';
+import { EditorStatus } from './EditorStatus';
+import { BackLink } from './Navigation';
 import { surfaceOf } from './chat-contracts';
 import { ConfigPanel, NotesPanel, PanelFrame, SubagentsPanel, type ChatPanel } from './ChatPanels';
 import type { HomeData } from './useHomeData';
@@ -84,18 +86,7 @@ export function FlowHeading({
   return (
     <header className="flow-heading">
       <div>
-        <a
-          className="home-back"
-          href="#/home"
-          onClick={(event) => {
-            if (history.state?.swaNavigation) {
-              event.preventDefault();
-              history.back();
-            }
-          }}
-        >
-          <ArrowLeft size={16} /> Back
-        </a>
+        <BackLink />
         <p className="home-eyebrow">{label}</p>
         <h1 tabIndex={-1}>{title}</h1>
         <p className="flow-subtitle">{children}</p>
@@ -1118,6 +1109,9 @@ function MainChat({
             {menu && <NewMenu close={() => setMenu(false)} />}
           </div>
         </div>
+        <div className="chat-editor-setup">
+          <EditorStatus data={data} />
+        </div>
         <label className="flow-search chat-search">
           <Search size={17} />
           <input
@@ -1128,7 +1122,7 @@ function MainChat({
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        <AssistedSearch query={query} />
+        <AssistedSearch />
         <div className="flow-tabs chat-filters" role="group" aria-label="Conversation type">
           {filters.map(([value, label]) => (
             <button

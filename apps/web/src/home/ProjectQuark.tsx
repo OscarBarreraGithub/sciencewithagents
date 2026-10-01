@@ -221,6 +221,10 @@ export function QuarkControls({
   return (
     <fieldset className="config-section quark-controls" disabled={disabled}>
       <legend>Priority and usage</legend>
+      <p className="config-help">
+        You can leave these for later. Tell your manager more specific priorities and usage limits
+        as the work develops.
+      </p>
       <div className="quark-priority" role="radiogroup" aria-label="Project priority">
         {priorities.map(([value, label, hint]) => {
           const checked = plan.priority === value || (value === null && plan.priority === 'normal');
@@ -263,15 +267,16 @@ export function QuarkControls({
           <small>
             {saved.length
               ? 'Saved caps stay in place. You can change their limits here or in QUARK.'
-              : 'Off by default: QUARK shares room across projects without a fixed cap.'}
+              : 'Limit how much AI allowance this project can spend. At the cap, QUARK pauses its work; your files and progress stay saved.'}
           </small>
         </span>
       </label>
       {limitOn && (
         <div className="quark-caps">
           <p className="config-help">
-            A cap counts percentage points of the entire reported allowance, starting when it is
-            saved. Resets do not refill it.
+            For example, 10% of the weekly allowance lets this project spend up to 10 percentage
+            points of a full week’s allowance, not 10% of what remains. Usage is estimated across
+            running projects, starting when you save the cap. Resets do not refill it.
           </p>
           {providers.map((provider) => {
             const capacity = capacityOf(provider);

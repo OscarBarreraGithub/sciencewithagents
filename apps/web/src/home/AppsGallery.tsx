@@ -1,5 +1,6 @@
+import { BackLink } from './Navigation';
 import { useRef, useState } from 'react';
-import { ArrowLeft, ArrowUpRight, Check, Copy } from 'lucide-react';
+import { ArrowUpRight, Check, Copy } from 'lucide-react';
 import './apps-gallery.css';
 
 // Setup prompts are copied, never executed here. Each step is needed only by the
@@ -104,9 +105,7 @@ export function SetupGuide({ headingLevel = 3 }: { headingLevel?: 2 | 3 }) {
 export function AppsGallery() {
   return (
     <section className="apps-page" aria-labelledby="apps-heading">
-      <a href="#/home" className="home-back">
-        <ArrowLeft size={17} /> Home
-      </a>
+      <BackLink />
       <header className="apps-heading">
         <p className="home-eyebrow">APPS</p>
         <h1 id="apps-heading" tabIndex={-1}>

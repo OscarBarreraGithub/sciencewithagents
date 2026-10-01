@@ -126,10 +126,12 @@ test('drawn Home is read-only, responsive, and opens real destinations', async (
     await page.goBack();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
   }
+  await expect(page.getByRole('button', { name: /VS Code on this computer:/ })).toHaveCount(0);
+  await page.locator('a[href="#/chats"]:visible').first().click();
   await page.getByRole('button', { name: /VS Code on this computer:/ }).click();
   const editorSetup = page.getByRole('dialog', { name: 'VS Code setup' });
   await expect(editorSetup).toBeVisible();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Chats');
   await editorSetup.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('button', { name: 'Help and setup', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();

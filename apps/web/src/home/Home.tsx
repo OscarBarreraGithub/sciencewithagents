@@ -14,7 +14,6 @@ import {
   ArrowRight,
   ChevronRight,
   CircleHelp,
-  Code,
   Layers3,
   LayoutGrid,
   LockKeyhole,
@@ -29,7 +28,6 @@ import {
   type ProviderCapacity,
 } from '@dock/shared';
 import { apiScope } from '../api';
-import { mirrorDaemon } from '../useMirrorChats';
 import { Modal } from '../Modal';
 import { PhoneSettings, usePhoneLockAvailable } from '../PhoneAccess';
 import { useHomeData, useReading, type HomeData } from './useHomeData';
@@ -44,6 +42,7 @@ import { useScrollHints } from './useScrollHints';
 import { HomeOverview, ProviderMark, ago, providerName } from './HomeOverview';
 import { AppsGallery, SetupGuide } from './AppsGallery';
 import { AppUpdate } from './AppUpdate';
+import { Navigation, useNavigation } from './Navigation';
 
 // Document titles only. Every route below keeps its existing screen.
 const titles: Record<string, string> = {
@@ -251,88 +250,6 @@ function Allowances({ data, now }: { data: HomeData; now: number }) {
     </>
   );
 }
-function EditorStatus({ data }: { data: HomeData }) {
-  const [open, setOpen] = useState(false);
-  // Native Codex daemon sessions are not VS Code windows; Chats lists them separately.
-  const windows = (data.mirrors.data ?? []).filter((w) => !mirrorDaemon(w));
-  const live = windows.filter((w) => w.status !== 'offline');
-  const shared = live.filter((w) => w.threadId).length;
-  const [text, tone] = data.mirrors.error
-    ? ['Unavailable', 'muted']
-    : !data.mirrors.loaded
-      ? ['Checking', 'muted']
-      : !windows.length
-        ? ['Not connected', 'muted']
-        : !live.length
-          ? ['Offline', 'muted']
-          : live.some((w) => w.status === 'attention')
-            ? ['Needs input', 'warn']
-            : shared
-              ? [`${shared} shared`, 'ok']
-              : ['Connected', 'ok'];
-  return (
-    <>
-      <button
-        type="button"
-        className={`home-chip home-editor tone-${tone}`}
-        onClick={() => setOpen(true)}
-        aria-label={`VS Code on this computer: ${text}. Show setup status and extension instructions`}
-        aria-haspopup="dialog"
-      >
-        <Code size={15} aria-hidden="true" />
-        <span>VS Code</span>
-        <span className="home-editor-state">{text}</span>
-      </button>
-      {open && (
-        <Modal title="VS Code setup" close={() => setOpen(false)} className="home-editor-setup">
-          <p role="status">
-            <strong>{text}</strong>
-            {' · '}
-            {data.mirrors.error
-              ? 'Could not check the connection to this computer.'
-              : live.length
-                ? 'The extension is connected to sciencewithagents.'
-                : 'No connected extension is reporting yet. VS Code may be closed; this does not prove it is uninstalled.'}
-          </p>
-          <button className="flow-button" onClick={data.mirrors.retry}>
-            Check connection
-          </button>
-          <h3>Set up the extension</h3>
-          <ol>
-            <li>Open VS Code on this computer with Codex or Claude Code already working.</li>
-            <li>
-              Ask your setup agent to install the sciencewithagents companion using the setup guide
-              below. If you already have its VSIX file, choose{' '}
-              <strong>Extensions → … → Install from VSIX</strong>.
-            </li>
-            <li>
-              Click <strong>sciencewithagents</strong> in VS Code’s bottom bar, then choose{' '}
-              <strong>Share a Codex conversation</strong> or{' '}
-              <strong>Share a Claude Code conversation</strong>. First-time setup backs up and
-              updates the provider’s connection file. Only reload VS Code when your current work is
-              safe.
-            </li>
-            <li>
-              Choose the conversation to share. It appears in <strong>Chats → Shared</strong> on
-              your computer and paired phone.
-            </li>
-          </ol>
-          <p>
-            No separate editor login or connection code. Keep VS Code and sciencewithagents open.
-          </p>
-          <a
-            className="flow-button"
-            href="https://github.com/OscarBarreraGithub/sciencewithagents/blob/main/docs/CONTRIBUTOR_SETUP.md#optional-vs-code-companion"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Extension setup guide <ArrowRight size={16} />
-          </a>
-        </Modal>
-      )}
-    </>
-  );
-}
 
 function selectedHost(data: HomeData) {
   const scope = apiScope();
@@ -434,6 +351,7 @@ export function Home() {
   const [now, setNow] = useState(Date.now);
   const [dialog, setDialog] = useState<'help' | 'phone' | null>(null);
   const main = useRef<HTMLElement>(null);
+  const back = useNavigation(currentRoute, main);
   const scrollHint = useScrollHints(main, currentRoute);
   const previousRoute = useRef(currentRoute);
   const hasNavigated = useRef(false);
@@ -455,7 +373,7 @@ export function Home() {
       previousRoute.current = next;
       hasNavigated.current = true;
       setPage(next);
-      history.replaceState({ ...history.state, swaNavigation: true }, '');
+      if (next === 'home') scrollPositions.current.clear();
     };
     window.addEventListener('hashchange', change);
     const timer = window.setInterval(() => setNow(Date.now()), 10_000);
@@ -491,191 +409,193 @@ export function Home() {
     if ((event.target as HTMLElement).closest('a')) setDialog(null);
   };
   return (
-    <div
-      className="home-shell"
-      style={
-        visible
-          ? ({
-              position: 'fixed',
-              top: visible.top,
-              left: 0,
-              right: 0,
-              height: visible.height,
-              // Composer caps use the visible height; 100dvh ignores an open keyboard.
-              '--home-visible-height': `${visible.height}px`,
-            } as CSSProperties)
-          : undefined
-      }
-    >
-      <a
-        className="home-skip"
-        href="#home-content"
-        onClick={(event) => {
-          event.preventDefault();
-          main.current?.querySelector<HTMLElement>('h1')?.focus();
-          main.current?.scrollIntoView();
-        }}
+    <Navigation.Provider value={back}>
+      <div
+        className="home-shell"
+        style={
+          visible
+            ? ({
+                position: 'fixed',
+                top: visible.top,
+                left: 0,
+                right: 0,
+                height: visible.height,
+                // Composer caps use the visible height; 100dvh ignores an open keyboard.
+                '--home-visible-height': `${visible.height}px`,
+              } as CSSProperties)
+            : undefined
+        }
       >
-        Skip to content
-      </a>
-      <header className="home-header">
-        <div className="home-header-inner">
-          <a className="home-brand" href={href('home')} aria-label="sciencewithagents home">
-            <Mark />
-            <span>
-              science<span className="home-brand-light">with</span>agents
-            </span>
-          </a>
-          {page !== 'home' && (
-            <nav className="home-desktop-nav" aria-label="Main navigation">
-              {nav.map((item) => (
-                <a
-                  key={item.key}
-                  href={href(item.key)}
-                  aria-current={active === item.key ? 'page' : undefined}
-                >
-                  {item.label}
-                </a>
-              ))}
-            </nav>
-          )}
-          {!mobile && (
-            <div className="home-header-status" aria-label="Allowance and editor status">
-              <Allowances data={data} now={now} />
-              <EditorStatus data={data} />
-            </div>
-          )}
-          <div className="home-header-actions">
-            <button
-              type="button"
-              className="home-icon-button"
-              aria-label="Help and setup"
-              aria-haspopup="dialog"
-              onClick={() => setDialog('help')}
-            >
-              <CircleHelp size={20} />
-            </button>
-            {canLock && (
+        <a
+          className="home-skip"
+          href="#home-content"
+          onClick={(event) => {
+            event.preventDefault();
+            main.current?.querySelector<HTMLElement>('h1')?.focus();
+            main.current?.scrollIntoView();
+          }}
+        >
+          Skip to content
+        </a>
+        <header className="home-header">
+          <div className="home-header-inner">
+            <a className="home-brand" href={href('home')} aria-label="sciencewithagents home">
+              <Mark />
+              <span>
+                science<span className="home-brand-light">with</span>agents
+              </span>
+            </a>
+            {page !== 'home' && (
+              <nav className="home-desktop-nav" aria-label="Main navigation">
+                {nav.map((item) => (
+                  <a
+                    key={item.key}
+                    href={href(item.key)}
+                    aria-current={active === item.key ? 'page' : undefined}
+                  >
+                    {item.label}
+                  </a>
+                ))}
+              </nav>
+            )}
+            {!mobile && (
+              <div className="home-header-status" aria-label="Allowance">
+                <Allowances data={data} now={now} />
+              </div>
+            )}
+            <div className="home-header-actions">
               <button
                 type="button"
                 className="home-icon-button"
-                aria-label="Lock app"
-                onClick={() => window.dispatchEvent(new Event('dock:lock-phone'))}
+                aria-label="Help and setup"
+                aria-haspopup="dialog"
+                onClick={() => setDialog('help')}
               >
-                <LockKeyhole size={18} />
+                <CircleHelp size={20} />
               </button>
-            )}
-            <a href={href('settings')} className="home-icon-button" aria-label="Settings">
-              <Settings2 size={19} />
-            </a>
-          </div>
-        </div>
-      </header>
-      <AppUpdate />
-      <div className="home-topline">
-        <ComputerLink data={data} />
-        <button
-          type="button"
-          className={`home-phone tone-${phoneTone}`}
-          aria-haspopup="dialog"
-          aria-label={`Phone access: ${phoneText}. Open phone setup and devices`}
-          onClick={() => setDialog('phone')}
-        >
-          <Smartphone size={16} aria-hidden="true" />
-          <span>Phone:</span>
-          <strong>{phoneText}</strong>
-        </button>
-      </div>
-      <main className="home-content" id="home-content" ref={main}>
-        {mobile && page === 'home' && (
-          <div className="home-mobile-status" aria-label="Computer and allowances">
-            <ComputerLink data={data} />
-            <Allowances data={data} now={now} />
-            <EditorStatus data={data} />
-          </div>
-        )}
-        {page === 'welcome' ? (
-          <Welcome data={data} />
-        ) : page === 'home' ? (
-          <HomeOverview data={data} now={now} />
-        ) : page === 'apps' ? (
-          <AppsGallery />
-        ) : flowPages.has(page) ? (
-          <WorkspaceFlow route={currentRoute} data={data} />
-        ) : activityPages.has(page) ? (
-          <ActivityFlow currentRoute={currentRoute} data={data} />
-        ) : page === 'advanced' ? (
-          <AdvancedFlow route={currentRoute} data={data} />
-        ) : connectionPages.has(page) ? (
-          <ConnectionFlow route={currentRoute} data={data} />
-        ) : page === 'models' ? (
-          <ModelSettings />
-        ) : page === 'resources' ? (
-          <Resources reading={data.resources} />
-        ) : page === 'usage' ? (
-          <Quark key={currentRoute} data={data} now={now} taskId={currentRoute.split('/')[1]} />
-        ) : (
-          <section className="home-placeholder">
-            <a href={href('home')} className="home-back">
-              <ArrowLeft size={17} /> Home
-            </a>
-            <div className="home-placeholder-content">
-              <h1 tabIndex={-1}>This page is not available</h1>
-              <p>This address does not match a page in this version of the app. Nothing changed.</p>
-              <a href={href('home')} className="home-placeholder-return">
-                Go to Home <ArrowRight size={17} />
+              {canLock && (
+                <button
+                  type="button"
+                  className="home-icon-button"
+                  aria-label="Lock app"
+                  onClick={() => window.dispatchEvent(new Event('dock:lock-phone'))}
+                >
+                  <LockKeyhole size={18} />
+                </button>
+              )}
+              <a href={href('settings')} className="home-icon-button" aria-label="Settings">
+                <Settings2 size={19} />
               </a>
             </div>
-          </section>
-        )}
-      </main>
-      <div className="home-scroll-hint" aria-hidden={!scrollHint}>
-        {scrollHint}
-      </div>
-      {dialog === 'help' && (
-        <Modal title="Help and setup" close={() => setDialog(null)} className="home-help-dialog">
-          <div className="home-help" onClickCapture={closeOnLink}>
-            <section>
-              <h3>App display</h3>
-              <p>Reload to load the latest interface. Work running on your computer continues.</p>
-              <button type="button" className="setup-link" onClick={() => location.reload()}>
-                Reload app
-              </button>
-            </section>
-            <section>
-              <h3>Check this computer</h3>
-              <p>Check provider sign-in and available models. This does not send a prompt.</p>
-              <a className="setup-link" href={href('welcome')}>
-                Open setup checks <ArrowRight size={16} />
-              </a>
-            </section>
-            <section>
-              <h3>Phone access</h3>
-              <p>Pair a phone or manage paired devices. Existing pairing is kept.</p>
-              <button type="button" className="setup-link" onClick={() => setDialog('phone')}>
-                Open phone access <ArrowRight size={16} />
-              </button>
-            </section>
-            <section>
-              <h3>Accounts for apps that publish online</h3>
-              <SetupGuide />
-            </section>
-            <p className="home-help-more">
-              Also: <a href={href('settings')}>Settings</a> ·{' '}
-              <a href={href('computers')}>Computers and accounts</a> ·{' '}
-              <a href={href('usage')}>Usage and allowances</a>
-            </p>
           </div>
-        </Modal>
-      )}
-      {dialog === 'phone' && (
-        <PhoneSettings
-          close={() => {
-            setDialog(null);
-            phone.retry();
-          }}
-        />
-      )}
-    </div>
+        </header>
+        <AppUpdate />
+        <div className="home-topline">
+          <ComputerLink data={data} />
+          <button
+            type="button"
+            className={`home-phone tone-${phoneTone}`}
+            aria-haspopup="dialog"
+            aria-label={`Phone access: ${phoneText}. Open phone setup and devices`}
+            onClick={() => setDialog('phone')}
+          >
+            <Smartphone size={16} aria-hidden="true" />
+            <span>Phone:</span>
+            <strong>{phoneText}</strong>
+          </button>
+        </div>
+        <main className="home-content" id="home-content" ref={main}>
+          {mobile && page === 'home' && (
+            <div className="home-mobile-status" aria-label="Computer and allowances">
+              <ComputerLink data={data} />
+              <Allowances data={data} now={now} />
+            </div>
+          )}
+          {page === 'welcome' ? (
+            <Welcome data={data} />
+          ) : page === 'home' ? (
+            <HomeOverview data={data} now={now} />
+          ) : page === 'apps' ? (
+            <AppsGallery />
+          ) : flowPages.has(page) ? (
+            <WorkspaceFlow route={currentRoute} data={data} />
+          ) : activityPages.has(page) ? (
+            <ActivityFlow currentRoute={currentRoute} data={data} />
+          ) : page === 'advanced' ? (
+            <AdvancedFlow route={currentRoute} data={data} />
+          ) : connectionPages.has(page) ? (
+            <ConnectionFlow route={currentRoute} data={data} />
+          ) : page === 'models' ? (
+            <ModelSettings />
+          ) : page === 'resources' ? (
+            <Resources reading={data.resources} />
+          ) : page === 'usage' ? (
+            <Quark key={currentRoute} data={data} now={now} taskId={currentRoute.split('/')[1]} />
+          ) : (
+            <section className="home-placeholder">
+              <a href={href('home')} className="home-back">
+                <ArrowLeft size={17} /> Home
+              </a>
+              <div className="home-placeholder-content">
+                <h1 tabIndex={-1}>This page is not available</h1>
+                <p>
+                  This address does not match a page in this version of the app. Nothing changed.
+                </p>
+                <a href={href('home')} className="home-placeholder-return">
+                  Go to Home <ArrowRight size={17} />
+                </a>
+              </div>
+            </section>
+          )}
+        </main>
+        <div className="home-scroll-hint" aria-hidden={!scrollHint}>
+          {scrollHint}
+        </div>
+        {dialog === 'help' && (
+          <Modal title="Help and setup" close={() => setDialog(null)} className="home-help-dialog">
+            <div className="home-help" onClickCapture={closeOnLink}>
+              <section>
+                <h3>App display</h3>
+                <p>Reload to load the latest interface. Work running on your computer continues.</p>
+                <button type="button" className="setup-link" onClick={() => location.reload()}>
+                  Reload app
+                </button>
+              </section>
+              <section>
+                <h3>Check this computer</h3>
+                <p>Check provider sign-in and available models. This does not send a prompt.</p>
+                <a className="setup-link" href={href('welcome')}>
+                  Open setup checks <ArrowRight size={16} />
+                </a>
+              </section>
+              <section>
+                <h3>Phone access</h3>
+                <p>Pair a phone or manage paired devices. Existing pairing is kept.</p>
+                <button type="button" className="setup-link" onClick={() => setDialog('phone')}>
+                  Open phone access <ArrowRight size={16} />
+                </button>
+              </section>
+              <section>
+                <h3>Accounts for apps that publish online</h3>
+                <SetupGuide />
+              </section>
+              <p className="home-help-more">
+                Also: <a href={href('settings')}>Settings</a> ·{' '}
+                <a href={href('computers')}>Computers and accounts</a> ·{' '}
+                <a href={href('usage')}>Usage and allowances</a>
+              </p>
+            </div>
+          </Modal>
+        )}
+        {dialog === 'phone' && (
+          <PhoneSettings
+            close={() => {
+              setDialog(null);
+              phone.retry();
+            }}
+          />
+        )}
+      </div>
+    </Navigation.Provider>
   );
 }

@@ -1,5 +1,15 @@
 # Resume here — current continuation only
 
+## Latest UI correction — project setup and navigation
+
+VS Code connection/setup is now a compact control at the top of Chats, removed from
+Home/global status. Assisted search has its own saved description prompt. Project setup
+shows resolved model/reasoning defaults (manager xhigh where supported); worker defaults
+are above the sliders, task models are separate lines, and review rows no longer inherit
+vertical checkbox layout. Priority/cap help uses whole-allowance percentage points.
+Back/right swipe keeps a short return trail, including QUARK detours; Home resets it.
+Project choices remain in the existing saved setup draft.
+
 ## Latest correction — helper/session clutter
 
 Development project classified internal in private data, with metadata honored by the API.
@@ -20,7 +30,7 @@ superseded tool-by-tool restriction approach or broad review loops.
 
 ## Latest owner correction — VS Code status and QUARK cleanup
 
-The owner clarified that the header’s VS Code button must open setup status and extension
+Historical correction: the owner clarified that the VS Code button must open setup status and extension
 instructions. It now does; conversations remain under Chats → Shared. The previous claim
 that an editor-only chat list satisfied that request was wrong. A real Safari reproduction
 also found that initial history polling was suppressed in a background browser, displaying
@@ -57,7 +67,7 @@ OWNER_CHECK_IN.md and are not agent implementation blockers.
 The owner's new feedback reopened phone acceptance. Read the original last 30 user prompts,
 not only prior agent summaries. Corrected the incomplete automatic-only chat filter: all
 resource-owned conversations now stay in Computer health, with searchable retained history.
-Home's VS Code entry now shows setup status/instructions, as clarified above. Removed the
+The VS Code entry shows setup status/instructions; it has since moved to the top of Chats. Removed the
 unrequested bottom navigation and redundant Resource assistant shortcut from Chats; fixed
 legacy search-label styling that wasted space. Outer-document scrolling is locked and
 full-height viewport bounce no longer moves the shell. Phone refresh offers a new-release

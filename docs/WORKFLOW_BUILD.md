@@ -74,6 +74,14 @@ They also collect current jobs, pause reasons, inherited caps, planning estimate
 readings and decisions. Job links open existing controls; budget links preselect the task.
 Opening these views creates no work. Missing readings stay visibly unavailable or stale.
 
+**Setup and finding chats:** Model and reasoning controls show their resolved values.
+Managers prefer xhigh when supported; explicit saved choices win. Worker defaults open
+above the sliders, and priority/usage can be refined later by talking to the manager.
+A cap is a share of the whole allowance, not the remaining balance. Back or a right swipe
+returns from a QUARK detour to the saved project setup. Home starts a fresh navigation
+trail. **Assisted search** opens its own description prompt, separate from the name filter;
+it only runs on Search. VS Code status and extension instructions are at the top of Chats.
+
 **Which conversation is which:** **Chats → Shared** contains your shared VS Code and
 compatible native Codex conversations. Sharing keeps the original conversation, history
 and agent; it does not create a manager. **Managers** lists managers for projects you

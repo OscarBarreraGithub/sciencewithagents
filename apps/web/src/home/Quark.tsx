@@ -1,5 +1,6 @@
+import { BackLink } from './Navigation';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, RefreshCw, Pause, ShieldCheck, Clock3 } from 'lucide-react';
+import { RefreshCw, Pause, ShieldCheck, Clock3 } from 'lucide-react';
 import { quarkStatusSchema, type QuarkStatus, type QuarkSettings } from '@dock/shared';
 import { api } from '../api';
 import type { HomeData } from './useHomeData';
@@ -86,9 +87,7 @@ export function Quark({ data, now, taskId }: { data: HomeData; now: number; task
   const valid = project && windowId && Number(limit) > 0 && Number(limit) <= 100;
   return (
     <section className="quark-page">
-      <a className="home-back" href="#/">
-        <ArrowLeft size={17} /> Back to home
-      </a>
+      <BackLink />
       <header className="quark-heading">
         <p className="home-eyebrow">QUARK · USAGE & WORK</p>
         <h1 tabIndex={-1}>Usage and allowances</h1>

@@ -37,8 +37,9 @@
   font-size: 13px;
   font-weight: 600;
   min-width: 0;
+  margin: 0;
+  color: var(--home-ink);
 }
-.config-section select,
 .config-section input:not([type='checkbox']):not([type='radio']):not([type='range']) {
   width: 100%;
   min-width: 0;
@@ -49,6 +50,12 @@
   background: white;
   color: var(--home-ink);
   font: inherit;
+  font-weight: 500;
+}
+.home-shell .config-section select {
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
   font-weight: 500;
 }
 .config-section :is(select, input, button):focus-visible {
@@ -63,6 +70,7 @@
 }
 .config-section .config-folder label {
   display: flex;
+  flex-direction: row;
   align-items: flex-start;
   gap: 10px;
   min-height: 64px;
@@ -171,6 +179,35 @@
   font-size: 14px;
   font-weight: 650;
 }
+.config-defaults {
+  border-top: 0;
+  padding: 0;
+  margin: 0 0 16px;
+}
+.config-defaults > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: fit-content;
+  min-height: 48px;
+  padding: 10px 16px;
+  border: 1px solid #c9cec5;
+  border-radius: 12px;
+  background: #f6f7f4;
+  color: var(--home-ink);
+}
+.config-defaults > summary::-webkit-details-marker {
+  display: none;
+}
+.config-defaults[open] > summary span {
+  transform: rotate(180deg);
+}
+.config-task-summary {
+  display: grid;
+  gap: 5px;
+  padding: 6px 0;
+}
 .config-models > summary small {
   font-weight: 500;
   font-size: 12px;
@@ -227,11 +264,18 @@
 }
 .config-section .config-check {
   display: flex;
-  align-items: center;
+  flex-direction: row;
+  align-items: flex-start;
   gap: 12px;
   min-height: 48px;
   font-weight: 500;
   border-top: 1px solid var(--home-line);
+  padding: 16px 0;
+  margin: 0;
+  line-height: 1.5;
+}
+.config-check > span {
+  min-width: 0;
 }
 .config-check input {
   width: 20px;

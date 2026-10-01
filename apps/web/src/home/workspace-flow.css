@@ -789,6 +789,18 @@
   font-size: 22px;
   line-height: 1.2;
 }
+.chat-editor-setup {
+  flex-shrink: 0;
+}
+.chat-editor-setup .home-editor {
+  min-height: 44px;
+  width: fit-content;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.chat-editor-setup .home-editor-state {
+  display: inline;
+}
 .chat-new {
   position: relative;
 }

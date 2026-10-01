@@ -14,7 +14,7 @@ or owner decision is required for the verified installation path.
 
 ## Latest owner correction
 
-The VS Code header control shows connection/setup status and extension instructions.
+The VS Code control at the top of Chats shows connection/setup status and extension instructions.
 Shared conversations remain in Chats. Initial shared history now loads even when the browser
 is in the background; returning to the foreground refreshes promptly. The actual live editor
 conversation was opened and confirmed Working with saved history.

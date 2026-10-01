@@ -63,6 +63,22 @@ const save = (edit: (p: Policy) => void) => {
   edit(p);
   return policy.save({ key: randomUUID(), expectedRevision: p.revision, policy: p });
 };
+it('uses xhigh for new managers when available, preserves explicit effort, and respects native catalogs', async () => {
+  const supported = ['low', 'medium', 'high', 'xhigh'];
+  policy = new ModelPolicy(store, async () => [{ ...model('gpt-6-astra'), efforts: supported }]);
+  expect((await policy.resolve('manager')).effort).toBe('xhigh');
+  await save((p) => {
+    p.models.codex.postdoc.effort = 'high';
+  });
+  expect((await policy.resolve('manager')).effort).toBe('high');
+  await save((p) => {
+    p.models.codex.postdoc.effort = null;
+  });
+  policy = new ModelPolicy(store, async () => [
+    { ...model('gpt-6-astra'), efforts: ['provider-default'] },
+  ]);
+  expect((await policy.resolve('manager')).effort).toBe('provider-default');
+});
 it('resolves an available bulk model with native default effort through the central policy', async () => {
   policy = new ModelPolicy(store, async () => [
     { ...model('luna-future'), efforts: ['provider-default'] },

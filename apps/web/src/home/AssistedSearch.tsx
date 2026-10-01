@@ -13,10 +13,11 @@ import {
 } from '@dock/shared';
 import { api, ApiError, apiScope } from '../api';
 import { ReportText } from './health-shared';
+import { Modal } from '../Modal';
 import './assisted-search.css';
 
 type Pending = { key: string; query: string; provider: ProviderId; at: string };
-type Saved = { pending: Pending | null; resultId: string | null };
+type Saved = { pending: Pending | null; resultId: string | null; draft: string; open: boolean };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const storageKey = () => `dock:assisted-search:${apiScope()}`;
 const providerNames: Record<ProviderId, string> = { codex: 'Codex', claude: 'Claude' };
@@ -33,9 +34,13 @@ function restore(): Saved {
     const value = JSON.parse(sessionStorage.getItem(storageKey()) ?? 'null') as {
       pending?: Record<string, unknown> | null;
       resultId?: unknown;
+      draft?: unknown;
+      open?: unknown;
     } | null;
     const p = value?.pending;
     return {
+      open: value?.open === true,
+      draft: typeof value?.draft === 'string' ? value.draft.slice(0, 500) : '',
       pending:
         p &&
         typeof p.key === 'string' &&
@@ -53,7 +58,7 @@ function restore(): Saved {
         typeof value?.resultId === 'string' && uuid.test(value.resultId) ? value.resultId : null,
     };
   } catch {
-    return { pending: null, resultId: null };
+    return { pending: null, resultId: null, draft: '', open: false };
   }
 }
 function persist(value: Saved) {
@@ -87,10 +92,17 @@ function Links({ items }: { items: ConversationSearchCandidate[] }) {
  * Explicit, owner-requested help finding a conversation. Typing and opening never start a
  * model turn; links only navigate and never message the matched conversation.
  */
-export function AssistedSearch({ query }: { query: string }) {
+export function AssistedSearch() {
   const [saved, setSaved] = useState(restore);
-  // A retained reply or unanswered request stays visible after a reload.
-  const [open, setOpen] = useState(() => !!saved.pending || !!saved.resultId);
+  // Reload an open prompt, but don't pop it back up after the owner closes it.
+  const open = saved.open;
+  const setOpen = (next: boolean) => {
+    setSaved((old) => {
+      const value = { ...old, open: next };
+      persist(value);
+      return value;
+    });
+  };
   const [policy, setPolicy] = useState<ModelPolicyStatus | null>(null);
   const [policyError, setPolicyError] = useState(false);
   const [choice, setChoice] = useState<ProviderId | null>(null);
@@ -150,7 +162,7 @@ export function AssistedSearch({ query }: { query: string }) {
     const id = slot.model ?? latestFamily(models, slot.family)?.id;
     return models.find((m) => m.id === id)?.label ?? id ?? `latest ${slot.family}`;
   };
-  const text = query.trim();
+  const text = saved.draft.trim();
   const send = async (request: Pending) => {
     // Save the exact receipt before any network side effect, including a fast reload.
     persist({ ...saved, pending: request });
@@ -167,7 +179,7 @@ export function AssistedSearch({ query }: { query: string }) {
       );
       if (!alive.current) return;
       setResult(value);
-      setSaved({ pending: null, resultId: value.id });
+      setSaved((old) => ({ ...old, pending: null, resultId: value.id }));
     } catch (reason) {
       if (!alive.current) return;
       const rejected = reason instanceof ApiError && reason.status >= 400 && reason.status < 500;
@@ -192,157 +204,183 @@ export function AssistedSearch({ query }: { query: string }) {
       <button
         type="button"
         className="chat-small-button assisted-search-toggle"
+        aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
       >
-        <Sparkles size={15} /> {open ? 'Hide assisted search' : 'Assisted search'}
+        <Sparkles size={15} /> Assisted search
         {!open && shown && ['queued', 'running'].includes(shown.status) ? ' · searching' : ''}
       </button>
       {open && (
-        <div className="assisted-search-panel">
-          <p className="assisted-search-note">
-            The name filter above stays literal. Assisted search asks a small model to match your
-            description against saved conversations. It runs only when you press Search, and opening
-            a result does not send anything.
-          </p>
-          <div className="assisted-search-row" role="radiogroup" aria-label="Search helper">
-            {(['codex', 'claude'] as const).map((p) => (
-              <button
-                key={p}
-                type="button"
-                role="radio"
-                aria-checked={provider === p}
-                className="chat-small-button"
-                disabled={busy}
-                onClick={() => setChoice(p)}
-              >
-                {providerNames[p]}
-                {modelLabel(p) ? ` · ${modelLabel(p)}` : ''}
-              </button>
-            ))}
-          </div>
-          {policyError && !policy && (
+        <Modal
+          title="Assisted search"
+          close={() => setOpen(false)}
+          className="assisted-search-dialog"
+        >
+          <div
+            className="assisted-search-panel"
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest('a[href^="#/"]')) setOpen(false);
+            }}
+          >
             <p className="assisted-search-note">
-              Model settings could not be read; choose a provider. The central default for it will
-              be used.
+              Describe what you remember. A small model searches your saved conversations when you
+              press Search. Your chat list filter stays unchanged.
             </p>
-          )}
-          {pending ? (
-            <div className="assisted-search-pending" role="status">
-              <p>
-                Your search for “{pending.query}” with {providerNames[pending.provider]} was sent
-                but no answer arrived. Checking sends the same request, so it cannot start a second
-                search.
-              </p>
-              <div className="assisted-search-row">
+            <label className="assisted-search-prompt">
+              What are you looking for?
+              <textarea
+                autoFocus
+                rows={4}
+                maxLength={500}
+                placeholder="For example, the chat where we discussed the telescope budget…"
+                value={saved.draft}
+                onChange={(event) => {
+                  const next = { ...saved, draft: event.target.value };
+                  persist(next);
+                  setSaved(next);
+                }}
+              />
+            </label>
+            <div className="assisted-search-row" role="radiogroup" aria-label="Search helper">
+              {(['codex', 'claude'] as const).map((p) => (
                 <button
+                  key={p}
                   type="button"
-                  className="chat-small-button primary"
-                  disabled={busy}
-                  onClick={() => void send(pending)}
-                >
-                  {busy ? 'Checking…' : 'Check this search'}
-                </button>
-                <button
-                  type="button"
+                  role="radio"
+                  aria-checked={provider === p}
                   className="chat-small-button"
                   disabled={busy}
-                  onClick={() => {
-                    setSaved((old) => ({ ...old, pending: null }));
-                    setError(null);
-                  }}
+                  onClick={() => setChoice(p)}
                 >
-                  Forget it
+                  {providerNames[p]}
+                  {modelLabel(p) ? ` · ${modelLabel(p)}` : ''}
                 </button>
-              </div>
+              ))}
             </div>
-          ) : (
-            <button
-              type="button"
-              className="chat-small-button primary"
-              disabled={busy || !text || !provider}
-              onClick={() =>
-                provider &&
-                void send({
-                  key: crypto.randomUUID(),
-                  query: text.slice(0, 500),
-                  provider,
-                  at: new Date().toISOString(),
-                })
-              }
-            >
-              {busy
-                ? 'Sending…'
-                : !text
-                  ? 'Type what you remember above'
-                  : `Search for “${text.length > 40 ? `${text.slice(0, 40)}…` : text}”`}
-            </button>
-          )}
-          {error && (
-            <p className="chat-panel-error" role="alert">
-              {error.message}
-              {error.uncertain
-                ? ' The search is saved on this device; check it instead of searching again.'
-                : ' No search was started.'}
-            </p>
-          )}
-          {shown && (
-            <section className="assisted-search-result" aria-label="Assisted search result">
-              <header>
-                <p>
-                  <strong>“{shown.query}”</strong>
-                  {statusNames[shown.status]} · {providerNames[shown.provider]} · {shown.model}
-                </p>
-                <button
-                  type="button"
-                  className="chat-icon-button"
-                  aria-label="Clear this result"
-                  onClick={() => {
-                    setSaved((old) => ({ ...old, resultId: null }));
-                    setResult(null);
-                  }}
-                >
-                  <X size={16} />
-                </button>
-              </header>
-              {shown.message && <p className="assisted-search-note">{shown.message}</p>}
-              {shown.report ? (
-                <>
-                  <ReportText text={shown.report} fallback="" />
-                  {shown.reportTruncated && (
-                    <a className="chat-small-button" href={`#/chat/${shown.agentId}`}>
-                      Full reply in the helper’s conversation <ArrowUpRight size={15} />
-                    </a>
-                  )}
-                </>
-              ) : (
-                <p className="assisted-search-note">
-                  {['queued', 'running'].includes(shown.status)
-                    ? 'The helper’s reply will appear here.'
-                    : 'No written reply was saved.'}
-                </p>
-              )}
-              {named.length > 0 && (
-                <>
-                  <h3 className="assisted-search-heading">Conversations named in the reply</h3>
-                  <Links items={named} />
-                </>
-              )}
-              {shown.candidates.length > 0 && (
-                <details className="assisted-search-pool">
-                  <summary>
-                    All {shown.candidates.length} conversations the helper was shown
-                  </summary>
-                  <Links items={shown.candidates} />
-                </details>
-              )}
+            {policyError && !policy && (
               <p className="assisted-search-note">
-                {shown.coverage.notice ||
-                  `Partial search: ${shown.coverage.projectsConsidered} of ${shown.coverage.projectsAvailable} projects, ${shown.coverage.managedCandidates} saved and ${shown.coverage.editorCandidates} VS Code conversations (titles only).`}
+                Model settings could not be read; choose a provider. The central default for it will
+                be used.
               </p>
-            </section>
-          )}
-        </div>
+            )}
+            {pending ? (
+              <div className="assisted-search-pending" role="status">
+                <p>
+                  Your search for “{pending.query}” with {providerNames[pending.provider]} was sent
+                  but no answer arrived. Checking sends the same request, so it cannot start a
+                  second search.
+                </p>
+                <div className="assisted-search-row">
+                  <button
+                    type="button"
+                    className="chat-small-button primary"
+                    disabled={busy}
+                    onClick={() => void send(pending)}
+                  >
+                    {busy ? 'Checking…' : 'Check this search'}
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-small-button"
+                    disabled={busy}
+                    onClick={() => {
+                      setSaved((old) => ({ ...old, pending: null }));
+                      setError(null);
+                    }}
+                  >
+                    Forget it
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="chat-small-button primary"
+                disabled={busy || !text || !provider}
+                onClick={() =>
+                  provider &&
+                  void send({
+                    key: crypto.randomUUID(),
+                    query: text.slice(0, 500),
+                    provider,
+                    at: new Date().toISOString(),
+                  })
+                }
+              >
+                {busy
+                  ? 'Sending…'
+                  : !text
+                    ? 'Search conversations'
+                    : `Search for “${text.length > 40 ? `${text.slice(0, 40)}…` : text}”`}
+              </button>
+            )}
+            {error && (
+              <p className="chat-panel-error" role="alert">
+                {error.message}
+                {error.uncertain
+                  ? ' The search is saved on this device; check it instead of searching again.'
+                  : ' No search was started.'}
+              </p>
+            )}
+            {shown && (
+              <section className="assisted-search-result" aria-label="Assisted search result">
+                <header>
+                  <p>
+                    <strong>“{shown.query}”</strong>
+                    {statusNames[shown.status]} · {providerNames[shown.provider]} · {shown.model}
+                  </p>
+                  <button
+                    type="button"
+                    className="chat-icon-button"
+                    aria-label="Clear this result"
+                    onClick={() => {
+                      setSaved((old) => ({ ...old, resultId: null }));
+                      setResult(null);
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                </header>
+                {shown.message && <p className="assisted-search-note">{shown.message}</p>}
+                {shown.report ? (
+                  <>
+                    <ReportText text={shown.report} fallback="" />
+                    {shown.reportTruncated && (
+                      <a className="chat-small-button" href={`#/chat/${shown.agentId}`}>
+                        Full reply in the helper’s conversation <ArrowUpRight size={15} />
+                      </a>
+                    )}
+                  </>
+                ) : (
+                  <p className="assisted-search-note">
+                    {['queued', 'running'].includes(shown.status)
+                      ? 'The helper’s reply will appear here.'
+                      : 'No written reply was saved.'}
+                  </p>
+                )}
+                {named.length > 0 && (
+                  <>
+                    <h3 className="assisted-search-heading">Conversations named in the reply</h3>
+                    <Links items={named} />
+                  </>
+                )}
+                {shown.candidates.length > 0 && (
+                  <details className="assisted-search-pool">
+                    <summary>
+                      All {shown.candidates.length} conversations the helper was shown
+                    </summary>
+                    <Links items={shown.candidates} />
+                  </details>
+                )}
+                <p className="assisted-search-note">
+                  {shown.coverage.notice ||
+                    `Partial search: ${shown.coverage.projectsConsidered} of ${shown.coverage.projectsAvailable} projects, ${shown.coverage.managedCandidates} saved and ${shown.coverage.editorCandidates} VS Code conversations (titles only).`}
+                </p>
+              </section>
+            )}
+          </div>
+        </Modal>
       )}
     </div>
   );

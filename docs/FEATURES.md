@@ -10,7 +10,7 @@ verified supported hide-active-helper setting in the installed version; separate
 active helpers can remain visible there until archived. Companion 0.2.7 includes the picker
 filter and activates on the next normal editor restart.
 
-**Latest owner corrections:** Home’s VS Code control opens connection/setup status and
+**Latest owner corrections:** The VS Code control at the top of Chats opens connection/setup status and
 extension instructions, without navigating to a chat list. Shared chats load their first
 history in background browsers and refresh on returning to the foreground. QUARK tasks
 can be closed with a saved reason when no more work is needed: cancel queued task replies,
@@ -33,9 +33,32 @@ completion determines the Completed column; recent finished turns are collapsed 
 Allowance caps use the accounting ledger, not an incomplete sum of displayed turn history.
 Standalone runs and local jobs retain their own entries.
 
+## Project setup and navigation — implemented, 2026-09-30
+
+Assisted search opens a separate prompt dialog; its description and saved result do not
+change the chat-name filter. Typing, closing and reopening do not start a model turn.
+Project setup shows resolved models and thinking levels rather than a blank default
+choice. Unpinned manager defaults prefer xhigh when reported by the catalog; explicit
+central/user settings remain authoritative. Worker defaults are a prominent disclosure
+above the sliders, with each task model on its own line. Selects have larger touch targets;
+review rows keep their controls and wrapped text inside padded boundaries.
+
+Priority/cap help explains that finer choices can be given to the manager later. A 10%
+cap measures ten percentage points of the full chosen allowance, from the moment it is
+saved; it does not mean ten percent of what remains. Existing quota pauses retain work.
+Back returns to the previous screen, including a project setup → QUARK detour, and the
+setup draft survives reload. A short navigation trail resets at Home. Right swipes go back;
+vertical scrolling, inputs, sliders and horizontally scrollable panels retain their gestures.
+Native browser history remains under the browser's control.
+
+Verified with focused browser journeys at 412×915, 360×800, 915×412, desktop and iPhone
+WebKit, plus a live Safari check. Chromium phone tests exercise native touch swipes; the
+WebKit swipe check exercises the DOM handler, not a physical iPhone gesture. Backend policy
+checks cover xhigh selection, explicit effort preservation and catalog-only fallback.
+
 ## Chat navigation and phone refresh — implemented, 2026-09-30
 
-Home's VS Code button opens connection status and extension setup instructions.
+The VS Code button at the top of Chats opens connection status and extension setup instructions.
 Shared native Codex sessions remain under Chats. Resource diagnoses, automatic checks,
 consultations and internal service contexts no longer become separate main-list rows;
 Computer health retains their history, including a searchable archive of older conversations.
@@ -130,7 +153,7 @@ Resource assistant open full-screen conversations with a return control, keeping
 and health charts available underneath instead of squeezing chat into a small panel.
 
 The [Home drawing requirements](HOME_UI_REQUIREMENTS.md) include implemented general to-do
-dispatch, reusable setup prompts, sortable project allowance rates and header editor status.
+dispatch, reusable setup prompts, sortable project allowance rates and editor setup status in Chats.
 Rate readings retain their allowance window and measurement limits. The connected
 Sketchcoded board distinguishes actual drawings from undrawn destination frames.
 
