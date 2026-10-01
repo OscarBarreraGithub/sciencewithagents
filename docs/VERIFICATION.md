@@ -1,5 +1,14 @@
 # Verification
 
+## 2026-10-01 — Back navigation loop regression
+
+The existing navigation handler already truncates its trail when a page is revisited. A new
+browser regression follows Welcome → Settings → Phone access → Settings → Phone access,
+reloads, and presses the app's Back control: Settings → Welcome → Home. All five cases pass
+on desktop, 412×915, 360×800, 915×412 and iPhone WebKit. No application behavior or owner
+state changed. This verifies app navigation; native browser history remains browser-managed.
+Evidence: ignored `data/navigation-loop-tests.log`. Owned browser/test processes are closed.
+
 ## 2026-10-01 — full-width Phone access panels
 
 Connection status, pairing and connected devices replace the narrow embedded dialog layout.

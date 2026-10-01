@@ -92,7 +92,9 @@ cap measures ten percentage points of the full chosen allowance, from the moment
 saved; it does not mean ten percent of what remains. Existing quota pauses retain work.
 Back stays in the top bar while general pages scroll, with a 44px minimum touch target.
 It returns to the previous screen and scroll position, including a project setup → QUARK
-detour, and the setup draft survives reload. A short navigation trail resets at Home. Right swipes go back;
+detour, and the setup draft survives reload. Revisiting a screen trims the trail to that screen:
+A → B → C → B → C goes Back to B, then A, including after a reload. Home resets the trail.
+Right swipes use the same trail;
 vertical scrolling, inputs, sliders and horizontally scrollable panels retain their gestures.
 Native browser history remains under the browser's control.
 

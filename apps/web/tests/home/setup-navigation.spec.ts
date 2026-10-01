@@ -21,6 +21,32 @@ async function models(page: Page) {
   );
 }
 
+test('revisiting a page trims the Back trail instead of replaying a navigation loop', async ({
+  page,
+}) => {
+  // A → B → C → B → C must return C → B → A, including after a reload.
+  await page.goto('/#/welcome');
+  await expect(page.locator('main h1')).toBeVisible();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await page.getByRole('link', { name: /Phone access/ }).click();
+  await expect(page).toHaveURL(/#\/phone$/);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await page.getByRole('link', { name: /Phone access/ }).click();
+  await expect(page).toHaveURL(/#\/phone$/);
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Phone access');
+  const back = page.getByRole('link', { name: 'Back', exact: true });
+  await back.click();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+  await back.click();
+  await expect(page).toHaveURL(/#\/welcome$/);
+  await back.click();
+  await expect(page).toHaveURL(/#\/home$/);
+});
+
 test('project setup shows real defaults, comfortable controls and retained choices after a QUARK detour', async ({
   page,
 }, info) => {
