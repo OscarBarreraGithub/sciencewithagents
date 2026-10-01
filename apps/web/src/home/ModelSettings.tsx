@@ -19,8 +19,10 @@ import {
 import { api } from '../api';
 import './ModelSettings.css';
 
+const tiersHighToLow = modelTierSchema.options.slice().reverse();
 const descriptions = {
-  uncle: 'Simple, clearly bounded batches of text or images.',
+  uncle:
+    'They sound confident, but also believe whatever they read. Be careful trusting them. Use for cheap, bulk work',
   undergrad: 'Routine checks and recurring monitoring. Can ask a grad student for help.',
   grad: 'Research, implementation, review, calculations and difficult questions.',
   postdoc: 'Project managers and your overarching personal agent.',
@@ -252,7 +254,7 @@ export function ModelSettings() {
                 ),
               )}
             <div className="model-tier-grid">
-              {modelTierSchema.options.map((tier, index) => (
+              {tiersHighToLow.map((tier, index) => (
                 <article className="model-tier" key={tier}>
                   <header>
                     <span className="model-tier-number">0{index + 1}</span>

@@ -6,10 +6,10 @@ computer and paired phone; each selected computer keeps its own policy and sign-
 
 | Level        | Codex family | Claude family | Default work                                                                                    |
 | ------------ | ------------ | ------------- | ----------------------------------------------------------------------------------------------- |
-| Bulk default | Luna         | Sonnet        | Explicitly simple batches of text or images                                                     |
-| Undergrad    | Terra        | Sonnet        | Routine checks, recurring monitoring                                                            |
-| Grad student | Sol          | Opus          | Research, implementation, review, calculations, difficult questions and delegated orchestration |
 | Postdoc      | Astra        | Fable         | Project/module managers and the personal agent                                                  |
+| Grad student | Sol          | Opus          | Research, implementation, review, calculations, difficult questions and delegated orchestration |
+| Undergrad    | Terra        | Sonnet        | Routine checks, recurring monitoring                                                            |
+| Uncle        | Luna         | Sonnet        | They sound confident, but also believe whatever they read. Be careful trusting them. Use for cheap, bulk work |
 
 These are the owner's work preferences, not measured intelligence ratings or accuracy
 guarantees. The uncle name recalls a confident relative whose answers need checking.
