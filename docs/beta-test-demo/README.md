@@ -1,6 +1,6 @@
 # Beta test demo
 
-These phone screenshots show the beta interface on October 1, 2026. They are temporary
+These screenshots show the beta interface on October 1, 2026. They are temporary
 previews for beta testers: layouts and controls will move and improve, and several screens
 have empty or incomplete data. These images are not final product or launch artwork and
 must be replaced for the final presentation. Conversation text is an example from that
@@ -51,3 +51,12 @@ prompts, I often use **Open notepad**: a full-page editor with autosaved local v
 Minimize it back into chat without sending or losing the draft.
 
 <img src="05-phone-chat.png" alt="Phone conversation with collapsed tool activity, Stop reply, message input and Open notepad" width="360">
+
+## 6. Manage multiple computers
+
+Use the computer selector to switch between connected sciencewithagents installations
+from the same app, including on your phone. Each computer keeps its own projects,
+conversations and Codex or Claude sign-ins. A selected computer must be awake, reachable
+and running the app; switching views does not move running jobs between computers.
+
+<img src="06-connected-computers.png" alt="This computer selector with online status beneath the sciencewithagents heading" width="270">
