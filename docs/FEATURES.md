@@ -1,5 +1,11 @@
 # Feature map
 
+**Additional-computer prompts (2026-10-01): implemented.** Computers and accounts provides a
+copyable installation/preparation prompt to run on the new computer and a second prompt to
+finish linking from the main computer. Both follow the existing setup guides, preserve separate
+accounts/history, and offer selectable text if copying fails. This is agent-assisted setup,
+not automatic device discovery or one-click linking.
+
 **Phone access layout (2026-10-01): implemented.** Connection, pairing and connected-device
 panels use the full desktop width and stack on phones. First-time connection choices and
 instructions share the same layout; paired phones get spaced Home Screen help. Long device

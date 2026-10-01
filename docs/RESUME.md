@@ -1,5 +1,15 @@
 # Resume here — current continuation only
 
+## Latest setup prompt and public-site correction
+
+Computers and accounts now has copyable prompts for the new computer and the main computer
+that links it. The shared prompt component retains clipboard fallback and existing account
+setup prompts. The sciencewithagents landing no longer links to SyllabusGraph or Sketchcoded;
+legacy graph routes/datasets stay available. Real project screenshots are the next site-design
+input. Read STATUS.md's release-readiness check: the latest CI has six backend failures and
+the requested automatic FAS utilization/offloading mode is not implemented. Do not repeat the
+older blanket release-ready claim based only on focused frontend checks.
+
 ## Latest Phone access layout correction
 
 Phone access now uses full-width responsive panels instead of embedding the narrow dialog form.

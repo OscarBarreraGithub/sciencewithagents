@@ -6,9 +6,6 @@ window.SCIENCEWITHAGENTS_LINKS = {
   github: repo,
   features: `${repo}/blob/main/docs/FEATURES.md`,
   machines: `${repo}/blob/main/docs/CONTRIBUTOR_SETUP.md#check-the-machine-first`,
-  // Sibling projects. SyllabusGraph is served from this site under its own prefix.
-  syllabusgraph: '/syllabusgraph/',
-  sketchcoded: 'https://sketchcoded.com',
 };
 const links = window.SCIENCEWITHAGENTS_LINKS;
 document.querySelectorAll('[data-link]').forEach((el) => {

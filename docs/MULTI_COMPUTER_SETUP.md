@@ -1,7 +1,11 @@
 # Connect your computers — setup-agent guide
 
-For the person: ask your setup agent to connect your other Agent Dock computers. Tell it
-which computer uses which account. Complete sign-in and any operating-system permission
+For the person: open **Settings → Computers and accounts → Connect another computer**.
+Copy **On the new computer** into Codex or Claude there. It installs sciencewithagents
+using the contributor guide, checks that computer’s provider/models and supplies a non-secret
+handoff. Then expand **Then finish linking from your main computer** and paste its prompt
+into the setup agent on the computer you normally open the app from. Tell it which computer
+uses which account. Copying alone does not install or connect anything. Complete sign-in and any operating-system permission
 on that computer yourself. Afterwards, choose **Computer** in the app; projects, saved
 views, drafts and the native terminal follow that selection. No account switch or shell
 command is needed in the normal app journey.

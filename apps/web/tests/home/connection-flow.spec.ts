@@ -508,3 +508,66 @@ test('transient JSON and tunnel failures do not request phone authentication, wh
     .poll(() => page.evaluate(() => (window as unknown as { authRequests: number }).authRequests))
     .toBeGreaterThan(0);
 });
+
+test('another computer has copyable prompts for each machine without starting setup', async ({
+  page,
+}, info) => {
+  const writes: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST') writes.push(request.url());
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          sessionStorage.setItem('test:copied', text);
+        },
+      },
+    });
+  });
+  await page.goto('/#/computers');
+  await page.getByText('Connect another computer', { exact: true }).click();
+  const guide = page.locator('.host-connect-guide');
+  const install = guide.locator('.setup-prompt').first();
+  await expect(install.locator('pre')).toContainText(
+    'on this new computer from https://github.com/OscarBarreraGithub/sciencewithagents',
+  );
+  await expect(install.locator('pre')).toContainText('docs/CONTRIBUTOR_SETUP.md');
+  await expect(install.locator('pre')).toContainText('docs/MULTI_COMPUTER_SETUP.md');
+  await expect(install.locator('pre')).toContainText('Applications launcher');
+  await install.getByRole('button', { name: 'Copy', exact: true }).click();
+  expect(await page.evaluate(() => sessionStorage.getItem('test:copied'))).toBe(
+    await install.locator('pre').textContent(),
+  );
+  await expect(install.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath('new-computer-prompt.png') });
+  await page.getByText('Then finish linking from your main computer', { exact: true }).click();
+  const link = guide.locator('.setup-prompt').last();
+  await expect(link.locator('pre')).toContainText('on this main computer');
+  await link.getByRole('button', { name: 'Copy', exact: true }).click();
+  expect(await page.evaluate(() => sessionStorage.getItem('test:copied'))).toBe(
+    await link.locator('pre').textContent(),
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async () => {
+          throw new Error('unavailable');
+        },
+      },
+    });
+    document.documentElement.style.fontSize = '200%';
+  });
+  await link.getByRole('button').click();
+  await expect(link.getByRole('status')).toContainText('copy it by hand');
+  expect(await page.evaluate(() => getSelection()?.toString())).toBe(
+    await link.locator('pre').textContent(),
+  );
+  const fit = await page
+    .locator('.home-content')
+    .evaluate((el) => ({ width: el.clientWidth, content: el.scrollWidth }));
+  expect(fit.content).toBeLessThanOrEqual(fit.width + 1);
+  expect(writes).toEqual([]);
+});

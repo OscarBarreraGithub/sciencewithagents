@@ -1,5 +1,22 @@
 # Build status
 
+## Release-readiness check — 2026-10-01
+
+Do not describe the current source as fully release-ready. The latest checked
+[public CI run](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/36842768536)
+failed six backend checks in provider/model routing, Claude runtime defaults, a read-only review,
+and the asynchronous manager-lease recheck (plus its unhandled assertion). These need triage
+against the current intended model policy; neither obsolete expectations nor runtime defects
+have yet been established as the sole cause. The older green run below is historical evidence.
+Focused UI checks pass, and the owner's running app and both usage collectors were healthy.
+That is enough for controlled real-project use, not a replacement for resolving release checks.
+
+The requested **Make full use of Claude** mode is not implemented: shared reserves, measured
+usage, background pacing and concurrency limits exist, but no simple opt-in automatically
+adjusts utilization toward the five-hour reset and steers suitable new work away from Codex.
+Keep that distinction in website copy. Explicit model choices, applicable model windows,
+project caps, priorities and computer resources must remain respected when it is built.
+
 ## Latest QUARK simplification
 
 Spending limits are adjustable sliders alongside project/task cards on the QUARK board.

@@ -21,8 +21,8 @@ It is not part of the pnpm workspace.
 
 - Serve this directory as the web root. Asset URLs are root-absolute (`/styles.css`,
   `/site.js`, `/assets/...`), so opening `index.html` from disk will not load them.
-- `/syllabusgraph/` is served by the migrated SyllabusGraph site. The header, footer and
-  project card link there.
+- The landing is dedicated to sciencewithagents. There is no sibling-project navigation
+  or promotional card. `/syllabusgraph/` remains available for existing direct links.
 - GitHub links point at `https://github.com/OscarBarreraGithub/sciencewithagents`; the
   feature-map and machine-support links assume a public `main` branch with
   `docs/FEATURES.md` and `docs/CONTRIBUTOR_SETUP.md`. Change the addresses in `site.js`
@@ -44,4 +44,4 @@ with a scrolling reading panel and a **More below** hint on a reserved bottom ra
 
 For combined staging, Cloudflare preview, release and rollback, use the
 [public website deployment runbook](../deployment/README.md). Publishing this directory
-alone omits the graph; the production artifact must come from the combined build.
+alone omits the retained graph routes; the production artifact still comes from the combined build.

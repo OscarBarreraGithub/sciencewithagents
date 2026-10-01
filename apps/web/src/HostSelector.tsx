@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { hostsStatusSchema, type HostsStatus } from '@dock/shared';
 import { api } from './api';
+import { PromptCard } from './SetupPrompt';
+import './host-selector.css';
+
+const newComputerPrompt = `Set up sciencewithagents on this new computer from https://github.com/OscarBarreraGithub/sciencewithagents, following docs/CONTRIBUTOR_SETUP.md. Find and preserve any existing installation, accounts and files. For a new installation, use a local folder outside iCloud or other cloud sync. Check platform support and prerequisites. Use this computer's own Codex or Claude sign-in; I do not need both. Install the Applications launcher on Mac, open Welcome and verify the available models. Keep phone access, VS Code sharing and private GitHub backup optional. Do not start project work or run the full developer test suite for ordinary setup.
+
+I want to select this computer from an existing sciencewithagents installation. Read docs/MULTI_COMPUTER_SETUP.md and prepare this computer as the destination, preserving its own projects and history. Check whether an authorized private SSH route already exists. Ask only for the machine details, account sign-in or device steps you actually need. Do not copy another installation's data or provider credentials, expose the app port publicly, or print connection secrets in chat. Finish by telling me how to open this app and give me a short, non-secret handoff for the setup agent on my main computer. Distinguish installation complete from connection still needing setup.`;
+
+const connectComputerPrompt = `Connect my additional sciencewithagents computer to this main installation, following docs/MULTI_COMPUTER_SETUP.md. Ask me which computer to add and for its setup agent's non-secret handoff if needed. Preserve every existing connection, project, sign-in and saved conversation. Use the authorized private SSH route, verify the destination's identity, and transfer only the app-specific host credential privately as the guide describes; never request secrets in chat. If no working route exists, explain the device step needed rather than guessing or weakening security. Finish the connection record on this main computer, reopen only when active work can safely continue, and verify that selecting the new computer shows its own projects and accounts. Check reconnect and switching back without sending a project message. Tell me clearly if any step remains incomplete.`;
 
 /** Selection changes the UI scope, never the account, tools or files on either computer. */
 export function HostSelector({
@@ -106,16 +114,25 @@ export function HostSelector({
           )}
         </>
       )}
-      <details>
+      <details className="host-connect-guide">
         <summary>Connect another computer</summary>
         <p>
-          Ask your setup agent to connect this computer to your other sciencewithagents
-          installations. Each computer keeps its own Codex sign-in, tools, projects and
-          conversations.
+          Open Codex or Claude on the new computer and paste this prompt. Its setup agent installs
+          the app and prepares it to connect here.
         </p>
+        <PromptCard label="On the new computer" prompt={newComputerPrompt} />
+        <details className="host-connect-finish">
+          <summary>Then finish linking from your main computer</summary>
+          <p>
+            Once the new computer is ready, paste this into your setup agent on the computer you
+            normally open sciencewithagents from. Give it the new computer’s setup handoff.
+          </p>
+          <PromptCard label="On your main computer" prompt={connectComputerPrompt} />
+        </details>
         <p className="muted">
-          A selected computer must be on, signed in and running sciencewithagents. Switching
-          computers does not move work or share one account’s history with another.
+          Each computer keeps its own Codex and Claude sign-ins, tools, projects and conversations.
+          Both computers must be on and running the app. Copying a prompt does not start setup or
+          transfer any account or history.
         </p>
       </details>
     </section>

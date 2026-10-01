@@ -113,69 +113,6 @@
   color: var(--home-muted);
   line-height: 1.6;
 }
-.setup-prompt {
-  border-radius: 12px;
-  background: #1d2230;
-  color: #eef0f5;
-  overflow: hidden;
-  min-width: 0;
-}
-.setup-prompt-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 4px 6px 4px 14px;
-  border-bottom: 1px solid #353b4c;
-  font-size: var(--text-small);
-  font-weight: 700;
-  color: #c9cedb;
-}
-.setup-prompt-head button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 44px;
-  min-width: 88px;
-  justify-content: center;
-  padding: 0 14px;
-  border: 1px solid #4a5166;
-  border-radius: 9px;
-  background: #2a3042;
-  color: #fff;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-.setup-prompt-head button:hover {
-  background: #343b50;
-}
-.setup-prompt pre {
-  margin: 0;
-  padding: 14px;
-  background: #1d2230;
-  color: #eef0f5;
-  border: 0;
-  border-radius: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--text-small);
-  line-height: 1.6;
-  user-select: text;
-}
-.setup-prompt pre:focus-visible {
-  outline: 2px solid #8ea0ff;
-  outline-offset: -4px;
-}
-.setup-prompt-status:empty {
-  display: none;
-}
-.setup-prompt-status {
-  padding: 0 14px 12px;
-  font-size: var(--text-small);
-  color: #ffd98a;
-}
 .setup-link {
   display: inline-flex;
   align-items: center;

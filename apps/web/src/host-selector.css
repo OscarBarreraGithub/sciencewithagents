@@ -1,0 +1,34 @@
+.host-connect-guide {
+  margin-top: 20px;
+  min-width: 0;
+}
+.host-connect-guide summary {
+  cursor: pointer;
+  padding: 12px 0;
+  min-height: 44px;
+  line-height: 1.5;
+}
+.host-connect-guide > p,
+.host-connect-finish > p {
+  margin: 4px 0 16px;
+  line-height: 1.6;
+}
+.host-connect-guide .setup-prompt {
+  margin-bottom: 18px;
+}
+.host-connect-guide .setup-prompt pre {
+  max-height: min(45dvh, 24rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.host-connect-guide .setup-prompt-head {
+  flex-wrap: wrap;
+}
+.host-connect-guide .setup-prompt-head button {
+  color: #fff;
+  background: #2a3042;
+  border-color: #4a5166;
+}
+.host-connect-guide .setup-prompt-status {
+  color: #ffd98a;
+}

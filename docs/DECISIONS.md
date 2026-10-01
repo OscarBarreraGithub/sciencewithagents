@@ -1,5 +1,13 @@
 # Design decisions
 
+## 2026-10-01 — dedicate the public landing to sciencewithagents
+
+The owner removed the SyllabusGraph navigation. Remove sibling-project links from the header,
+footer and promotional cards; retain the GitHub source/setup path. Keep already published graph
+URLs and datasets working for existing links, without advertising them on the app's landing.
+The next visual design will use screenshots of real projects/dashboard activity; current
+illustration remains explicitly labelled. Do not advertise unfinished FAS utilization automation.
+
 ## 2026-10-01 — one QUARK screen, defer cache warming
 
 Remove the standalone usage screen and its technical accounting lists. Show remaining

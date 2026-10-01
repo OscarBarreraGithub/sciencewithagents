@@ -1,5 +1,29 @@
 # Verification
 
+## 2026-10-01 — additional-computer prompts and app-only public landing
+
+Connect another computer now provides a copyable prompt for installation on the new computer,
+followed by a separate linking prompt for the main computer. Both preserve existing accounts
+and data, refer to the supported setup guides, and distinguish installation from a completed
+connection. This is agent-assisted setup; no automatic discovery or new connection is claimed.
+
+- Production web build and formatting pass. Ten focused browser cases pass across desktop,
+  412×915, 360×800, 915×412 and iPhone WebKit. Checks cover both prompt copies, clipboard
+  failure with selected-text fallback, doubled text and no mutation on opening/copying, plus
+  the existing GitHub/Cloudflare guide. The small-phone screenshot was inspected.
+- The public landing page no longer promotes SyllabusGraph or Sketchcoded. Five local and
+  five production browser profiles pass: layout, setup-prompt copy, GitHub link, retained
+  graph routes, six datasets, legacy redirects and missing-page behavior. Both apex and www
+  serve the app-only landing. The graph export is unchanged except corrected graph 404 asset
+  and return URLs. Production version: `94075861-16de-4eec-abac-7d1d57d7059a`.
+- Read-only live checks found the app and both usage readers healthy, with QUARK scheduling
+  enabled and no active jobs. No projects, model turns, owner preferences or connections were
+  created. The latest checked public CI has six backend failures; this slice does not resolve
+  them or establish release readiness. See STATUS.md for the unresolved checks and FAS mode.
+- Evidence remains under ignored `data/computer-*`, `data/site-app-only-*` and browser result
+  directories. Owned preview and browser processes are closed; the owner's app stays running.
+  Browser emulation is not physical-phone acceptance.
+
 ## 2026-10-01 — Back navigation loop regression
 
 The existing navigation handler already truncates its trail when a page is revisited. A new

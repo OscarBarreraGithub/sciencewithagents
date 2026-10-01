@@ -32,7 +32,8 @@ The builder refuses to overwrite an existing directory. For a later release, use
 new directory and pass it to every Wrangler command with `--assets`; keep the last
 verified artifact until the replacement works. For example, use
 `--assets "$PWD/data/public-site-next"` after building `data/public-site-next`.
-Never deploy `site/` alone: that would remove the graph tab's destination.
+Never deploy `site/` alone: that would break existing graph links. The landing no longer
+links to sibling projects; keeping their routes does not add them to its navigation.
 
 ## Check the artifact locally
 
