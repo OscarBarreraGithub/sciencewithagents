@@ -449,7 +449,10 @@ test('Managed chat notepad shares the multiline draft and keeps edits through mi
   await editor.fill(revised);
   await expect(notepad.locator('.notepad-status')).toHaveText('Saved');
   await expect(notepad.getByRole('button', { name: 'Versions', exact: true })).toBeVisible();
+  await expect(notepad.getByRole('button', { name: 'Download', exact: true })).toHaveCount(0);
+  await notepad.getByRole('button', { name: 'Notepad options', exact: true }).click();
   await expect(notepad.getByRole('button', { name: 'Download', exact: true })).toBeVisible();
+  await notepad.getByRole('button', { name: 'Close options', exact: true }).click();
   await notepad.getByRole('button', { name: 'Minimize', exact: true }).click();
   await expect(composer).toHaveValue(revised);
   await page.reload();

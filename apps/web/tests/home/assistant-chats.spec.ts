@@ -91,7 +91,33 @@ test('QUARK opens the normal full-screen chat, retains its model controls and re
   const paper = (await notepad.locator('.notepad-paper').boundingBox())!;
   const editor = (await notepad.getByRole('textbox').boundingBox())!;
   expect(paper.width).toBeGreaterThan(page.viewportSize()!.width - 60);
-  expect(editor.height).toBeGreaterThan(paper.height - 55);
+  const padBounds = (await notepad.boundingBox())!;
+  expect(editor.height).toBeGreaterThan(padBounds.height * 0.8);
+  expect(editor.height).toBeGreaterThan(paper.height - 2);
+  expect(editor.y + editor.height).toBeGreaterThan(padBounds.y + padBounds.height - 2);
+  const writing = notepad.getByRole('textbox');
+  await writing.fill('A long document scrolls across the entire writing surface.\n'.repeat(90));
+  await writing.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  // The lower part of the page is editable text, not an inert card or a separate page scroller.
+  const lowerPage = { x: editor.x + editor.width / 2, y: editor.y + editor.height - 25 };
+  expect(
+    await writing.evaluate(
+      (element, point) => document.elementFromPoint(point.x, point.y) === element,
+      lowerPage,
+    ),
+  ).toBe(true);
+  if (info.project.use.browserName === 'webkit') {
+    // Mobile WebKit exposes no wheel input; moving the end caret checks native text scrolling.
+    await writing.press('ArrowUp');
+  } else {
+    await page.mouse.move(lowerPage.x, lowerPage.y);
+    await page.mouse.wheel(0, 360);
+  }
+  await expect.poll(() => writing.evaluate((element) => element.scrollTop)).toBeGreaterThan(100);
+  expect(await notepad.evaluate((element) => element.scrollTop)).toBe(0);
+  await writing.fill('Keep this scheduling request unsent.');
   await page.screenshot({ path: info.outputPath('full-writing-area.png'), scale: 'css' });
   await notepad.getByRole('button', { name: 'Minimize', exact: true }).click();
   await expect(chat.getByRole('textbox', { name: /Message/ })).toHaveValue(

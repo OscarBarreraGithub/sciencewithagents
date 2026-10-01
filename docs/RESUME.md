@@ -5,7 +5,9 @@
 Managed and shared chat timelines no longer have narrow desktop width caps. QUARK and
 resource chats keep Send alongside the controls and bound long drafts on short screens.
 The full-page notepad renders outside the small composer's CSS ancestors and follows
-the visible viewport, so its lined writing area fills the page. Saved multiline drafts
+the visible viewport. Its writing surface now reaches the bottom edge below the compact
+header; scrolling anywhere on that surface scrolls text. The former footer controls live
+under Options, opening automatically for saving problems or conflicts. Saved multiline drafts
 remeasure when the conversation becomes visible, including background Safari. Verified
 on the live Safari QUARK chat without sending or changing the owner's draft, plus
 focused desktop/phone/WebKit checks. No server restart or model turn was needed.

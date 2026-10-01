@@ -2,6 +2,15 @@
 
 ## 2026-10-01 — conversation width and full-page writing area
 
+The notepad follow-up removes the permanent footer and inset paper card. The writing
+surface reaches the viewport's bottom edge, occupying over 80% of each tested screen.
+Priority, export and saved-draft details remain reachable through Options. Twenty-five
+focused cases pass across all five profiles, covering this geometry, Options, saved
+versions, minimize/reload, separate-tab drafts and first-project send. Chromium wheel
+input over the bottom of the page scrolls the text; mobile WebKit verifies native caret
+scrolling because its automation driver does not support wheel input. Native Safari
+visually confirmed the page-sized editor with the owner's draft retained and unsent.
+
 Production web build and strict TypeScript checks passed. The QUARK layout/retained-draft
 journey passes at desktop 1440×1000, 412×915, 360×800, 915×412 and iPhone WebKit. It checks
 the conversation width, full notepad writing area, return without sending, and restored

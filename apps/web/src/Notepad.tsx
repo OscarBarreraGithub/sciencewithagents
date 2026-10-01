@@ -1,6 +1,15 @@
 import { useEffect, useId, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, Copy, Download, History, Minimize2, RefreshCw, RotateCcw } from 'lucide-react';
+import {
+  ArrowUp,
+  Copy,
+  Download,
+  History,
+  Minimize2,
+  MoreHorizontal,
+  RefreshCw,
+  RotateCcw,
+} from 'lucide-react';
 import type { WorkspaceDraft } from '@dock/shared';
 import { api, ApiError } from './api';
 import { parseDraftHistory } from './home/chat-contracts';
@@ -59,7 +68,12 @@ export function Notepad({
   const editor = useRef<HTMLTextAreaElement>(null);
   const titleId = useId();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [exported, setExported] = useState('');
+  useEffect(() => {
+    // Saving and device-transfer problems must stay actionable, even with options tucked away.
+    if (draft.error || draft.conflict || notice) setOptionsOpen(true);
+  }, [draft.error, draft.conflict, notice]);
   useEffect(() => {
     const element = dialog.current;
     const viewport = window.visualViewport;
@@ -128,6 +142,10 @@ export function Notepad({
       onCancel={(event) => {
         // Escape keeps the draft and returns to chat; it never sends.
         event.preventDefault();
+        if (optionsOpen) {
+          setOptionsOpen(false);
+          return;
+        }
         remember();
         onMinimize();
       }}
@@ -143,12 +161,23 @@ export function Notepad({
         <div className="notepad-actions">
           <button
             type="button"
-            className="notepad-button"
+            className="notepad-button notepad-history-toggle"
+            aria-label="Versions"
             aria-expanded={historyOpen}
             aria-controls={`${titleId}-history`}
             onClick={() => setHistoryOpen((open) => !open)}
           >
             <History size={17} /> <span>Versions</span>
+          </button>
+          <button
+            type="button"
+            className="notepad-button notepad-options-toggle"
+            aria-label="Notepad options"
+            aria-expanded={optionsOpen}
+            aria-controls={`${titleId}-options`}
+            onClick={() => setOptionsOpen((open) => !open)}
+          >
+            <MoreHorizontal size={17} /> <span>Options</span>
           </button>
           <button
             type="button"
@@ -176,18 +205,17 @@ export function Notepad({
       </header>
       <div className="notepad-body">
         <div className="notepad-paper">
-          {mode === 'brief' && (
-            <p className="notepad-hint">
-              The goal, what you already know, and anything the manager should set up first. Nothing
-              is sent until you choose Send; Minimize keeps this draft in the chat.
-            </p>
-          )}
           <textarea
             ref={editor}
             aria-label={mode === 'brief' ? 'Project description' : `Long message to ${agentName}`}
             value={draft.text}
             maxLength={maxLength}
             readOnly={readOnly}
+            placeholder={
+              mode === 'brief'
+                ? 'Describe the goal, what you already know, and anything the manager should set up first. Minimize keeps your draft; Send starts the conversation.'
+                : undefined
+            }
             spellCheck
             onChange={(event) => {
               draft.setText(event.target.value);
@@ -208,9 +236,6 @@ export function Notepad({
               }
             }}
           />
-          <p className="notepad-count" aria-live="off">
-            {draft.text.length.toLocaleString()} / {maxLength.toLocaleString()} characters
-          </p>
         </div>
         {historyOpen && localOnly ? (
           <aside className="notepad-history" id={`${titleId}-history`} aria-label="Saved versions">
@@ -247,35 +272,46 @@ export function Notepad({
           )
         )}
       </div>
-      <footer className="notepad-foot">
-        {localOnly && draft.error && (
-          <p role="alert" className="notepad-notice">
-            {draft.error}
+      {optionsOpen && (
+        <section className="notepad-foot" id={`${titleId}-options`} aria-label="Notepad options">
+          <div className="notepad-options-head">
+            <strong>Notepad options</strong>
+            <button type="button" className="notepad-button" onClick={() => setOptionsOpen(false)}>
+              Close options
+            </button>
+          </div>
+          <p className="notepad-count" aria-live="off">
+            {draft.text.length.toLocaleString()} / {maxLength.toLocaleString()} characters
           </p>
-        )}
-        {notice && (
-          <p className="notepad-notice" role="alert">
-            {notice}
-          </p>
-        )}
-        {controls}
-        {!localOnly && <DraftHandoff draft={draft} />}
-        <div className="notepad-export">
-          <span>
-            {localOnly
-              ? 'This tab keeps its own draft. Browser-local recovery copies and versions survive closing the tab; reopen Versions to copy them. They do not sync to another device.'
-              : 'Autosaved in this browser as you type, then to this computer.'}{' '}
-            Clearing browser data or losing the device can remove unsent drafts.
-          </span>
-          <button type="button" className="notepad-button" onClick={() => void copy()}>
-            <Copy size={16} /> Copy text
-          </button>
-          <button type="button" className="notepad-button" onClick={download}>
-            <Download size={16} /> Download
-          </button>
-          {exported && <span role="status">{exported}</span>}
-        </div>
-      </footer>
+          {localOnly && draft.error && (
+            <p role="alert" className="notepad-notice">
+              {draft.error}
+            </p>
+          )}
+          {notice && (
+            <p className="notepad-notice" role="alert">
+              {notice}
+            </p>
+          )}
+          {controls}
+          {!localOnly && <DraftHandoff draft={draft} />}
+          <div className="notepad-export">
+            <span>
+              {localOnly
+                ? 'This tab keeps its own draft. Browser-local recovery copies and versions survive closing the tab; reopen Versions to copy them. They do not sync to another device.'
+                : 'Autosaved in this browser as you type, then to this computer.'}{' '}
+              Clearing browser data or losing the device can remove unsent drafts.
+            </span>
+            <button type="button" className="notepad-button" onClick={() => void copy()}>
+              <Copy size={16} /> Copy text
+            </button>
+            <button type="button" className="notepad-button" onClick={download}>
+              <Download size={16} /> Download
+            </button>
+            {exported && <span role="status">{exported}</span>}
+          </div>
+        </section>
+      )}
     </dialog>,
     document.body,
   );

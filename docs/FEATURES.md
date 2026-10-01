@@ -179,8 +179,10 @@ sync across devices, and clearing browser storage removes recovery copies. QUARK
 Resource assistant open full-screen conversations with a return control, keeping the board
 and health charts available underneath instead of squeezing chat into a small panel.
 Conversation timelines use the available width in managed and shared chats. Full-page
-notepads use the writing surface's full width and height, independently of the small
-composer's limits. On phones, the assistant composer stays bounded so long drafts leave
+notepads fill the screen below a compact top bar: the entire remaining surface edits and
+scrolls text. Priority, export and draft details open under **Options**, without reserving
+an empty footer. Saving failures and conflicts reveal those controls automatically.
+On phones, the assistant composer stays bounded so long drafts leave
 room for the conversation; saved multiline drafts resize when the conversation reopens.
 
 The [Home drawing requirements](HOME_UI_REQUIREMENTS.md) include implemented general to-do

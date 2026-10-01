@@ -31,7 +31,7 @@ dialog.notepad,
 }
 dialog.notepad[open] {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 dialog.notepad::backdrop {
   background: #20273840;
@@ -118,8 +118,8 @@ dialog.notepad::backdrop {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-height: 0;
-  padding: 18px 20px 0;
-  gap: 18px;
+  padding: 0;
+  gap: 0;
 }
 dialog.notepad.with-history .notepad-body {
   grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
@@ -128,17 +128,10 @@ dialog.notepad.with-history .notepad-body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid var(--pad-line);
-  border-radius: 14px;
+  border: 0;
+  border-radius: 0;
   background: var(--pad-paper);
   overflow: hidden;
-}
-.notepad-hint {
-  margin: 0;
-  padding: 14px 22px 0;
-  color: var(--pad-muted);
-  font-size: 13px;
-  max-width: 72ch;
 }
 .notepad .notepad-paper textarea {
   flex: 1;
@@ -166,14 +159,12 @@ dialog.notepad.with-history .notepad-body {
   font-size: 16px;
   line-height: 28px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .notepad-count {
   margin: 0;
-  padding: 6px 22px 8px;
-  border-top: 1px solid var(--pad-line);
   font-size: 12px;
   color: var(--pad-muted);
-  text-align: right;
 }
 .notepad-history {
   display: flex;
@@ -272,14 +263,27 @@ dialog.notepad.with-history .notepad-body {
   margin-bottom: 8px;
 }
 .notepad-foot {
+  position: absolute;
+  inset: auto 12px 12px auto;
+  z-index: 1;
   display: grid;
   gap: 8px;
-  max-height: calc(var(--notepad-height, 100dvh) * 0.26);
+  width: min(540px, calc(100% - 24px));
+  max-height: calc(var(--notepad-height, 100dvh) * 0.7);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 10px 20px calc(12px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--pad-line);
+  border: 1px solid var(--pad-line);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px #20273826;
   background: #fffdf5;
   font-size: 12px;
+}
+.notepad-options-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 .notepad-foot .draft-handoff {
   max-height: none;
@@ -334,8 +338,9 @@ dialog.notepad.with-history .notepad-body {
     font-size: 18px;
   }
   .notepad-status {
-    order: 3;
-    width: 100%;
+    max-width: 45%;
+    white-space: normal;
+    text-align: right;
   }
   .notepad-actions {
     width: 100%;
@@ -344,8 +349,11 @@ dialog.notepad.with-history .notepad-body {
     flex: 1;
     padding-inline: 8px;
   }
-  .notepad-body {
-    padding: 10px 12px 0;
+  .notepad-actions :is(.notepad-history-toggle, .notepad-options-toggle) {
+    flex: 0 0 44px;
+  }
+  :is(.notepad-history-toggle, .notepad-options-toggle) span {
+    display: none;
   }
   dialog.notepad.with-history .notepad-body {
     grid-template-columns: minmax(0, 1fr);
@@ -354,24 +362,16 @@ dialog.notepad.with-history .notepad-body {
   .notepad .notepad-paper textarea {
     padding: 10px 14px 20px;
   }
-  .notepad-hint {
-    padding: 10px 14px 0;
-  }
   .notepad-foot {
     padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-    max-height: calc(var(--notepad-height, 100dvh) * 0.26);
   }
 }
 @media (max-height: 500px) {
   .notepad-bar {
     padding-block: 6px;
   }
-  .notepad-title p,
-  .notepad-hint {
+  .notepad-title p {
     display: none;
-  }
-  .notepad-foot {
-    max-height: calc(var(--notepad-height, 100dvh) * 0.22);
   }
   dialog.notepad.with-history .notepad-body {
     grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
