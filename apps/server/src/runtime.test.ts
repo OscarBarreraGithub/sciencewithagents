@@ -1135,6 +1135,9 @@ describe('manager capabilities and task convergence', () => {
       role: 'reviewer',
       name: 'Read-only reviewer',
       instruction: 'Inspect the existing fixture without changing any files.',
+      // Use this suite's fake provider; review completion must not discover
+      // models through a locally installed Claude CLI or signed-in account.
+      execution: { provider: 'codex' },
     })) as { id: string };
     await managerTool(runtime, reviewer.id, randomUUID(), 'dock_review', {
       verdict: 'approve',
