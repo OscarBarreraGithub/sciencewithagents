@@ -31,6 +31,7 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 
 - [Design decisions](DECISIONS.md) and [interface requirements](DESIGN.md)
 - [Guide and presentation notes](PRODUCT_STORY.md)
+- [Beta demo screenshots](beta-test-demo/README.md) — temporary previews, not final artwork
 - [Repository instructions](../AGENTS.md), [public-site deployment](../deployment/README.md)
 
 Private conversations, drawings, device receipts, generated evidence and continuation notes

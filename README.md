@@ -3,6 +3,8 @@
 Run Codex and Claude project teams from your computer or phone. QUARK coordinates their
 queue, shared allowance and computer resources; conversations and worker records stay local.
 
+[Beta demo screenshots](docs/beta-test-demo/README.md) — temporary interface previews with incomplete data.
+
 ## Set up
 
 Paste this into Codex or Claude on the computer you want to use:
