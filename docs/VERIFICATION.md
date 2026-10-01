@@ -1,5 +1,23 @@
 # Verification
 
+## 2026-10-01 — conversation width and full-page writing area
+
+Production web build and strict TypeScript checks passed. The QUARK layout/retained-draft
+journey passes at desktop 1440×1000, 412×915, 360×800, 915×412 and iPhone WebKit. It checks
+the conversation width, full notepad writing area, return without sending, and restored
+multiline draft sizing after reload while retaining space for history. Earlier focused
+checks also passed shared-editor/notepad version recovery in separate tabs (ten cases),
+project creation/notepad flow (five cases) and managed/shared mobile keyboard and steering
+checks (eight cases; two desktop-only skips). These are simulated phones and keyboards.
+The short-screen check exposed and corrected a wrapped Send row and an oversized landscape
+composer before the final five-profile pass.
+
+Native Safari showed the live QUARK timeline spanning the window and the notepad filling
+its lined surface, with the owner's unsent draft intact. Its initial hidden-dialog draft
+measurement required a direct width-observer remeasure: an animation-frame callback could
+remain suspended in background Safari. Reopening now visibly expands the saved draft.
+No model message, backend change, pairing reset or manual service restart was required.
+
 ## 2026-10-01 — Home refresh, quiet orb and phone icon
 
 Production web build passed. Twenty focused checks passed across desktop, 412×915,

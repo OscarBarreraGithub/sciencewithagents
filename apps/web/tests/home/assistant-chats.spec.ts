@@ -7,7 +7,7 @@ async function fullscreen(page: Page, name: string) {
   const dialog = page.getByRole('dialog', { name, exact: true });
   await expect(dialog).toBeVisible();
   const box = await dialog.boundingBox();
-  const size = page.viewportSize()!;
+  const size = await page.evaluate(() => ({ width: innerWidth, height: visualViewport!.height }));
   expect(box!.width).toBe(size.width);
   expect(box!.height).toBeGreaterThanOrEqual(size.height - 2);
   await expect(dialog.locator('.composer textarea')).toBeInViewport();
@@ -33,6 +33,25 @@ test('QUARK opens the normal full-screen chat, retains its model controls and re
   });
   expect(created.ok()).toBe(true);
   const project = await created.json();
+  await page.route(`**/api/agents/${project.managerId}`, async (route) => {
+    const response = await route.fetch();
+    const detail = await response.json();
+    detail.entries = [
+      {
+        id: randomUUID(),
+        agentId: project.managerId,
+        runId: null,
+        kind: 'assistant',
+        title: 'QUARK',
+        status: 'completed',
+        createdAt: new Date().toISOString(),
+        text: 'A detailed scheduling explanation should use the available conversation width. '.repeat(
+          24,
+        ),
+      },
+    ];
+    await route.fulfill({ json: detail });
+  });
   await page.route('**/api/quark/coordinator', async (route) => {
     const response = await route.fetch();
     const status = await response.json();
@@ -54,6 +73,14 @@ test('QUARK opens the normal full-screen chat, retains its model controls and re
   await page.goto('/#/work');
   await page.getByRole('button', { name: 'Open QUARK conversation', exact: true }).click();
   const chat = await fullscreen(page, 'QUARK conversation');
+  const timeline = chat.locator('.conversation-inner');
+  await expect(timeline.locator('.message-body')).toBeVisible();
+  expect((await timeline.boundingBox())!.width).toBeGreaterThan(
+    (await chat.boundingBox())!.width - 60,
+  );
+  expect((await timeline.locator('.message-body').boundingBox())!.width).toBeGreaterThan(
+    (await timeline.boundingBox())!.width * 0.7,
+  );
   await chat.getByRole('button', { name: 'Model & settings', exact: true }).click();
   await expect(chat.getByRole('combobox', { name: 'Provider', exact: true })).toBeVisible();
   await chat.getByRole('button', { name: 'Model & settings', exact: true }).click();
@@ -61,6 +88,11 @@ test('QUARK opens the normal full-screen chat, retains its model controls and re
   await chat.getByRole('button', { name: 'Open notepad' }).click();
   const notepad = page.getByRole('dialog', { name: 'Write at length' });
   await expect(notepad.getByRole('textbox')).toHaveValue('Keep this scheduling request unsent.');
+  const paper = (await notepad.locator('.notepad-paper').boundingBox())!;
+  const editor = (await notepad.getByRole('textbox').boundingBox())!;
+  expect(paper.width).toBeGreaterThan(page.viewportSize()!.width - 60);
+  expect(editor.height).toBeGreaterThan(paper.height - 55);
+  await page.screenshot({ path: info.outputPath('full-writing-area.png'), scale: 'css' });
   await notepad.getByRole('button', { name: 'Minimize', exact: true }).click();
   await expect(chat.getByRole('textbox', { name: /Message/ })).toHaveValue(
     'Keep this scheduling request unsent.',
@@ -76,6 +108,21 @@ test('QUARK opens the normal full-screen chat, retains its model controls and re
   await expect(page.getByRole('textbox', { name: /Message/ })).toHaveValue(
     'Keep this scheduling request unsent.',
   );
+  const multiline = 'A retained line in the scheduling request.\n'.repeat(20);
+  const composer = chat.locator('.composer > textarea');
+  await composer.fill(multiline);
+  await expect(chat.locator('.composer')).toHaveClass(/draft-steady/);
+  await chat.getByRole('button', { name: 'Back to QUARK', exact: true }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Open QUARK conversation', exact: true }).click();
+  await expect(composer).toHaveValue(multiline);
+  await expect.poll(async () => (await composer.boundingBox())!.height).toBeGreaterThan(70);
+  expect((await composer.boundingBox())!.height).toBeLessThanOrEqual(221);
+  const conversation = chat.locator('.conversation');
+  expect((await conversation.boundingBox())!.height).toBeGreaterThan(
+    (await chat.boundingBox())!.height * 0.45,
+  );
+  expect(sends).toEqual([]);
 });
 
 for (const source of ['editor', 'codex-daemon'] as const) {

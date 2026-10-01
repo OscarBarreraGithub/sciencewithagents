@@ -68,8 +68,19 @@ dialog.assistant-fullscreen,
   max-height: none;
   overflow: visible;
 }
-.assistant-fullscreen .composer textarea {
+.assistant-fullscreen .flow-chat-main .composer > textarea {
   max-height: min(calc(var(--assistant-height, 100dvh) * 0.3), 220px);
+}
+.assistant-fullscreen .flow-chat-main .composer-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+.assistant-fullscreen .flow-chat-main .composer-toolbar > div {
+  min-width: 0;
+}
+.assistant-fullscreen .flow-chat-main .composer-toolbar > div:last-child {
+  flex-wrap: nowrap;
 }
 .assistant-fullscreen .quark-settings {
   overflow: auto;
@@ -158,14 +169,25 @@ dialog.assistant-fullscreen,
     padding: 6px;
     font-size: 12px;
   }
-  .assistant-fullscreen .composer {
+  .assistant-fullscreen .flow-chat-main .composer {
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
   }
   .assistant-fullscreen .conversation-inner {
     padding: 8px;
   }
-  .assistant-fullscreen .composer textarea {
+  .assistant-fullscreen .flow-chat-main .composer > textarea {
     font-size: 16px;
+  }
+  .assistant-fullscreen .flow-chat-main .composer-toolbar > div {
+    gap: 4px;
+  }
+  .assistant-fullscreen .flow-chat-main .composer-priority {
+    width: 118px;
+    padding-inline: 8px;
+  }
+  .assistant-fullscreen .composer-notepad {
+    padding-inline: 6px;
+    font-size: 12px;
   }
   .assistant-fullscreen .health-assistant-head p {
     display: none;
@@ -176,5 +198,10 @@ dialog.assistant-fullscreen,
   }
   .assistant-fullscreen .composer.draft-steady > .draft-handoff > p.muted:first-child {
     display: none;
+  }
+}
+@media (max-height: 500px) and (pointer: coarse) {
+  .assistant-fullscreen .flow-chat-main .composer > textarea {
+    max-height: min(calc(var(--assistant-height, 100dvh) * 0.24), 80px);
   }
 }

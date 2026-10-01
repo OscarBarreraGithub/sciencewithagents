@@ -1621,7 +1621,8 @@ button.chat-folder:disabled {
 .chat-pane .conversation-inner {
   display: flex;
   flex-direction: column;
-  max-width: 880px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   padding: 10px 16px 14px;
 }
@@ -1664,7 +1665,7 @@ button.chat-folder:disabled {
   flex-direction: column;
   flex: 0 1 auto;
   min-width: 64px;
-  max-width: min(84%, 680px);
+  max-width: 84%;
   padding: 7px 11px 5px;
   border: 1px solid #e6e8ea;
   border-radius: 14px 14px 14px 4px;
@@ -1721,7 +1722,7 @@ button.chat-folder:disabled {
 }
 .chat-pane .system-entry {
   align-self: center;
-  max-width: min(92%, 680px);
+  max-width: 92%;
   margin: 4px 0 8px;
   font-size: 12px;
 }

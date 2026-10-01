@@ -1,5 +1,15 @@
 # Resume here — current continuation only
 
+## Latest chat-space correction
+
+Managed and shared chat timelines no longer have narrow desktop width caps. QUARK and
+resource chats keep Send alongside the controls and bound long drafts on short screens.
+The full-page notepad renders outside the small composer's CSS ancestors and follows
+the visible viewport, so its lined writing area fills the page. Saved multiline drafts
+remeasure when the conversation becomes visible, including background Safari. Verified
+on the live Safari QUARK chat without sending or changing the owner's draft, plus
+focused desktop/phone/WebKit checks. No server restart or model turn was needed.
+
 ## Latest Home polish
 
 Home has pull-to-refresh with a wheel that tracks the actual cached-data reads and

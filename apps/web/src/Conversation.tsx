@@ -700,10 +700,23 @@ export function Composer({
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(resize);
     };
+    // A full-screen dialog mounts hidden before showModal. Remeasure when it
+    // becomes visible, and when a side panel changes the available writing width.
+    let width = -1;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width !== width) {
+        width = entry.contentRect.width;
+        // Height changes do not retrigger this width guard. Measure directly so
+        // restored drafts also size correctly when Safari suspends animation frames.
+        resize();
+      }
+    });
+    if (textarea.current) observer.observe(textarea.current);
     window.addEventListener('resize', resize);
     window.visualViewport?.addEventListener('resize', later);
     return () => {
       cancelAnimationFrame(frame);
+      observer.disconnect();
       window.removeEventListener('resize', resize);
       window.visualViewport?.removeEventListener('resize', later);
     };

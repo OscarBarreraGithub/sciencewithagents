@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowUp, Copy, Download, History, Minimize2, RefreshCw, RotateCcw } from 'lucide-react';
 import type { WorkspaceDraft } from '@dock/shared';
 import { api, ApiError } from './api';
@@ -61,6 +62,15 @@ export function Notepad({
   const [exported, setExported] = useState('');
   useEffect(() => {
     const element = dialog.current;
+    const viewport = window.visualViewport;
+    const resize = () => {
+      element?.style.setProperty('--notepad-height', `${viewport?.height ?? innerHeight}px`);
+      element?.style.setProperty('--notepad-top', `${viewport?.offsetTop ?? 0}px`);
+    };
+    resize();
+    viewport?.addEventListener('resize', resize);
+    viewport?.addEventListener('scroll', resize);
+    window.addEventListener('resize', resize);
     if (element && !element.open) element.showModal();
     const area = editor.current;
     if (area) {
@@ -69,6 +79,9 @@ export function Notepad({
       area.setSelectionRange(Math.min(start, area.value.length), Math.min(end, area.value.length));
     }
     return () => {
+      viewport?.removeEventListener('resize', resize);
+      viewport?.removeEventListener('scroll', resize);
+      window.removeEventListener('resize', resize);
       if (element?.open) element.close();
     };
   }, []);
@@ -106,7 +119,8 @@ export function Notepad({
     URL.revokeObjectURL(url);
     setExported('Downloaded a text copy of this draft.');
   };
-  return (
+  // Keep the full-page editor outside the small composer's CSS ancestors.
+  return createPortal(
     <dialog
       ref={dialog}
       className={`notepad ${historyOpen ? 'with-history' : ''}`}
@@ -262,7 +276,8 @@ export function Notepad({
           {exported && <span role="status">{exported}</span>}
         </div>
       </footer>
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }
 
