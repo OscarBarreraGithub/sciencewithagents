@@ -228,6 +228,7 @@ export function projectCatalog(store: Store, projectId: string, raw: unknown) {
     'done',
     'integrated',
     'split',
+    'cancelled',
   ];
   if (
     !['all', 'active', ...(query.kind === 'agents' ? agentStatuses : taskStatuses)].includes(

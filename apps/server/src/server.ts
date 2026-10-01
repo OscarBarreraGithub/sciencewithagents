@@ -1426,6 +1426,9 @@ export async function createServer(
       }),
     );
   });
+  app.post('/api/tasks/:id/cancel', async (request) =>
+    runtime.cancelTask(agentId(request.params), request.body),
+  );
   app.get('/api/tasks/:id/diff', async (request) => diff(store, agentId(request.params)));
   app.get('/api/tasks/:id/integration', async (request) =>
     integrationPreview(store, agentId(request.params)),

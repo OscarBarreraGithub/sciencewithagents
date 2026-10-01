@@ -1,5 +1,23 @@
 # Verification
 
+## 2026-09-30 — requested VS Code status and obsolete QUARK assignments
+
+Production build passed. Focused server, history, host-proxy, closed-worker and task-review
+checks passed. The two focused browser files passed 65 cases initially; the five new task
+closure cases failed because their test setup omitted the required Origin header. After
+correcting that fixture, all five closure cases passed. Together these cover desktop,
+412×915, 360×800, 915×412 and iPhone WebKit, including status/instructions without route
+changes, initial background history loading, drafts/notepads, short completed lists, and
+closure surviving reload with only the selected task's queue cancelled.
+
+Native Safari opened the actual shared conversation with its saved messages, Working status
+and guidance composer, then verified the Home VS Code setup panel. The live QUARK board
+showed Waiting 0, Working 0, Paused / needs input 0 after ten specifically identified obsolete
+development assignments were closed. No model messages were sent by these checks. Closure
+retained all 47 conversations and original task evidence; verified recovery copy first
+retained 4 projects and 2,046 entries. Browser-only closure fixtures used isolated data.
+The physical phone and other-platform boundaries below remain unchanged.
+
 ## 2026-09-30 — real new-install onboarding and task-oriented QUARK
 
 A fresh public-source clone completed dependency installation, production builds, the usage

@@ -12,6 +12,19 @@ behavior remain separate device checks; do not call those verified by emulation.
 platforms and account/device boundaries are listed in CONTRIBUTOR_SETUP.md. No new drawing
 or owner decision is required for the verified installation path.
 
+## Latest owner correction
+
+The VS Code header control shows connection/setup status and extension instructions.
+Shared conversations remain in Chats. Initial shared history now loads even when the browser
+is in the background; returning to the foreground refreshes promptly. The actual live editor
+conversation was opened and confirmed Working with saved history.
+
+QUARK supports closing obsolete task assignments with a saved reason and retained history.
+It cancels their queued agent turns, leaves quotas/reviews/files intact, and refuses running
+work or unresolved subtasks. Ten stale development assignments have been closed; the live
+queue and Active board are empty. This corrects the earlier premature completion claim
+while preserving evidence of what was implemented outside the in-app review flow.
+
 ## Latest collaborator-setup corrections
 
 Fresh isolated native Codex-only and Claude-only first-project flows now pass. Fixed long

@@ -447,15 +447,18 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
   }, []);
   useEffect(() => {
     let ended = false;
+    let received = false;
+    let pendingRead = false;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       // An attached editor can temporarily report its provider offline. Keep
       // reading that live bridge; only stop when discovery loses the connection.
-      if (!chat.online) return;
-      if (document.hidden) {
+      if (!chat.online || ended || pendingRead) return;
+      if (document.hidden && received) {
         timer = setTimeout(poll, 1500);
         return;
       }
+      pendingRead = true;
       try {
         const raw = mirrorStateSchema.parse(
           await api(`/vscode/windows/${chat.windowId}${historyQuery}`),
@@ -464,6 +467,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           ? raw
           : mirrorPage(raw, Object.fromEntries(new URLSearchParams(historyQuery)));
         if (ended) return;
+        received = true;
         if (mirrorKey(value) !== identity) {
           setState((s) => (s ? { ...s, status: 'offline' } : null));
           setError(
@@ -481,11 +485,20 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           setState((s) => (s ? { ...s, status: 'offline' } : null));
         }
       } finally {
+        pendingRead = false;
         if (!ended) timer = setTimeout(poll, historyQuery ? 5000 : 1500);
       }
     };
+    const visible = () => {
+      if (!document.hidden) {
+        clearTimeout(timer);
+        void poll();
+      }
+    };
+    document.addEventListener('visibilitychange', visible);
     void poll();
     return () => {
+      document.removeEventListener('visibilitychange', visible);
       ended = true;
       clearTimeout(timer);
     };
@@ -541,6 +554,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
     setFollowing(true);
   }
   const status = chat.status === 'offline' ? 'offline' : (state?.status ?? 'offline');
+  const connecting = !!chat.online && !state && !error;
   const canSteer = status === 'busy' && !!state?.canSteer && !!state.steerToken;
   const canQueue = status === 'busy' && !!state?.canQueue;
   const canSend = status === 'idle' || canSteer || canQueue;
@@ -607,7 +621,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           <h1>{state?.title || chat.title || 'Untitled conversation'}</h1>
           <p>
             <span className={`mirror-presence ${status}`} />
-            {mirrorStatus({ ...chat, status })} ·{' '}
+            {connecting ? 'Connecting…' : mirrorStatus({ ...chat, status })} ·{' '}
             {daemon ? chat.label : `${provider} in ${chat.label}`}
           </p>
         </div>
@@ -642,19 +656,20 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           )}
         </details>
       </header>
-      {(error || status === 'offline' || status === 'attention' || state?.historyUnavailable) && (
-        <div className="mirror-notice" role="status">
-          {error ||
-            (state?.status === status && state.message) ||
-            (daemon
-              ? status === 'attention'
-                ? 'A request needs your attention on your computer. Approvals stay in the original Codex session there.'
-                : 'Offline. Reopen this Codex session on your computer to continue. Your draft stays here.'
-              : status === 'attention'
-                ? 'A request needs your attention in VS Code. Approvals remain on your computer.'
-                : 'Offline. Open VS Code and share this conversation to continue. Your draft stays here.')}
-        </div>
-      )}
+      {!connecting &&
+        (error || status === 'offline' || status === 'attention' || state?.historyUnavailable) && (
+          <div className="mirror-notice" role="status">
+            {error ||
+              (state?.status === status && state.message) ||
+              (daemon
+                ? status === 'attention'
+                  ? 'A request needs your attention on your computer. Approvals stay in the original Codex session there.'
+                  : 'Offline. Reopen this Codex session on your computer to continue. Your draft stays here.'
+                : status === 'attention'
+                  ? 'A request needs your attention in VS Code. Approvals remain on your computer.'
+                  : 'Offline. Open VS Code and share this conversation to continue. Your draft stays here.')}
+          </div>
+        )}
       {(state?.page?.before || state?.page?.after || historyQuery) && (
         <nav className="mirror-history" aria-label="Conversation history">
           <button type="button" disabled={!state?.page?.before} onClick={() => history('before')}>
@@ -721,11 +736,13 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           </DaemonSource.Provider>
           {!state?.entries.length && !state?.historyUnavailable && (
             <p className="mirror-empty">
-              {status === 'offline'
-                ? daemon
-                  ? 'Conversation history is kept on your computer. It will appear when connected.'
-                  : 'Conversation history is kept in VS Code. It will appear when connected.'
-                : 'No messages yet. Say hello when the conversation is ready.'}
+              {connecting
+                ? 'Loading conversation…'
+                : status === 'offline'
+                  ? daemon
+                    ? 'Conversation history is kept on your computer. It will appear when connected.'
+                    : 'Conversation history is kept in VS Code. It will appear when connected.'
+                  : 'No messages yet. Say hello when the conversation is ready.'}
             </p>
           )}
           {status === 'busy' && (

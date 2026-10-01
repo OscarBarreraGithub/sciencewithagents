@@ -1,9 +1,38 @@
+import { useRef, useState } from 'react';
+import { api, ApiError } from '../api';
+import { Modal } from '../Modal';
 import { ArrowUpRight } from 'lucide-react';
 import { quarkStatusSchema, type Task } from '@dock/shared';
 import { useReading, type HomeData } from './useHomeData';
 
 /** A view of the existing ledgers; opening a task starts no model work. */
 export function TaskProgress({ task, data }: { task: Task; data: HomeData }) {
+  const [closing, setClosing] = useState(false);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const pending = useRef<{ key: string; reason: string } | null>(null);
+  const closed = ['done', 'integrated', 'split', 'cancelled'].includes(task.status);
+  async function closeTask() {
+    const request = pending.current ?? { key: crypto.randomUUID(), reason: reason.trim() };
+    pending.current = request;
+    setBusy(true);
+    try {
+      await api(`/tasks/${task.id}/cancel`, request);
+      pending.current = null;
+      setClosing(false);
+      window.dispatchEvent(new Event('swa:refresh-home'));
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) pending.current = null;
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Could not confirm closure. Retry the same request.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   const accounting = useReading('/quark', quarkStatusSchema.parse);
   const state = data.snapshot.data!;
   const work = data.work;
@@ -30,7 +59,9 @@ export function TaskProgress({ task, data }: { task: Task; data: HomeData }) {
   const jobs = work.data?.jobs.filter((job) => job.taskId && family.has(job.taskId)) ?? [];
   const finished = work.data?.history.filter((job) => job.taskId && family.has(job.taskId)) ?? [];
   const holds =
-    accounting.data?.holds.filter((hold) => !hold.releasedAt && agents.has(hold.agentId)) ?? [];
+    accounting.data?.holds.filter(
+      (hold) => !closed && !hold.releasedAt && agents.has(hold.agentId),
+    ) ?? [];
   const budgets =
     accounting.data?.budgets.filter(
       (budget) =>
@@ -48,6 +79,48 @@ export function TaskProgress({ task, data }: { task: Task; data: HomeData }) {
   const usageLink = `#/usage/${task.id}`;
   return (
     <section className="flow-panel task-progress" aria-label="Task progress and spending">
+      {task.closure && (
+        <p role="status">
+          <strong>Closed:</strong> {task.closure.reason} Files, conversations and spending records
+          are retained.
+        </p>
+      )}
+      {!closed && (
+        <button className="flow-button" onClick={() => setClosing(true)}>
+          Close task…
+        </button>
+      )}
+      {closing && (
+        <Modal title="Close this task" close={() => !busy && setClosing(false)}>
+          <p>
+            Use this when no more work is needed on this assignment. Queued replies are cancelled.
+            Files, conversations, reviews and allowance records stay saved. This does not mark
+            changes reviewed or applied.
+          </p>
+          <label>
+            Reason
+            <textarea
+              aria-label="Reason for closing task"
+              rows={4}
+              value={reason}
+              disabled={busy || !!pending.current}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </label>
+          {error && <p role="alert">{error}</p>}
+          <button
+            className="flow-button"
+            disabled={busy || !reason.trim()}
+            onClick={() => void closeTask()}
+          >
+            {busy
+              ? 'Closing…'
+              : pending.current
+                ? 'Retry closure'
+                : 'Close task and retain history'}
+          </button>
+        </Modal>
+      )}
       <div className="flow-section-title">
         <h2>Work and spending</h2>
         <a className="flow-button" href={usageLink}>

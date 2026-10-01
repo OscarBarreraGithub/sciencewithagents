@@ -184,7 +184,11 @@ export const taskStatusSchema = z.enum([
   'done',
   'integrated',
   'split',
+  'cancelled',
 ]);
+export const taskCancelSchema = z
+  .object({ key: id, reason: z.string().trim().min(1).max(2000) })
+  .strict();
 export const taskSchema = z.object({
   id,
   projectId: id,
@@ -195,6 +199,7 @@ export const taskSchema = z.object({
   acceptance: z.string(),
   scheduling: jobEstimateSchema.default(() => jobEstimateSchema.parse({})),
   status: taskStatusSchema,
+  closure: z.object({ reason: z.string(), closedAt: z.string().datetime() }).optional(),
   revisions: z.number(),
   review: z.string().nullable(),
   // A reviewed commit beyond the task's base; integration still needs a fresh preview.

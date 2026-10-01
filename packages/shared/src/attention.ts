@@ -75,6 +75,11 @@ export function attention(snapshot: Snapshot): z.infer<typeof attentionSchema> {
   }
   for (const agent of snapshot.agents) {
     if (!['failed', 'interrupted'].includes(agent.status)) continue;
+    if (
+      agent.taskId &&
+      snapshot.tasks.some((task) => task.id === agent.taskId && task.status === 'cancelled')
+    )
+      continue;
     const controller = agent.nativeRootId ? agents.get(agent.nativeRootId) : agent;
     if (!controller || controller.projectId !== agent.projectId) continue;
     add({

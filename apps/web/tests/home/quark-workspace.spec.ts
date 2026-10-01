@@ -155,3 +155,59 @@ test('one task card groups worker turns and only task completion moves it to Com
   await expect(page.locator('.quark-ticket')).toContainText('Finished task with retries');
   await expect(page.locator('.quark-ticket')).toHaveAttribute('href', `#/task/${ids[2]}`);
 });
+
+test('closing obsolete work cancels its queue and keeps the saved task and reason after reload', async ({
+  page,
+  baseURL,
+}) => {
+  const headers = { Origin: baseURL! };
+  const scheduler = await (await page.request.get('/api/scheduler')).json();
+  const pause = await page.request.post('/api/scheduler/settings', {
+    headers,
+    data: { key: crypto.randomUUID(), settings: { ...scheduler.settings, paused: true } },
+  });
+  expect(pause.ok()).toBe(true);
+  try {
+    const snapshot = await (await page.request.get('/api/snapshot')).json();
+    const project = snapshot.projects.find((p: { internal?: boolean }) => !p.internal);
+    const response = await page.request.post(`/api/projects/${project.id}/tasks`, {
+      headers,
+      data: {
+        key: crypto.randomUUID(),
+        task: {
+          title: 'Obsolete queue fixture',
+          goal: 'Retain this saved brief',
+          acceptance: 'Retain all records',
+          parentId: null,
+        },
+      },
+    });
+    expect(response.ok()).toBe(true);
+    const task = await response.json();
+    await page.goto(`/#/task/${task.id}`);
+    await page.getByRole('button', { name: 'Close task…', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Close this task' });
+    await dialog
+      .getByRole('textbox', { name: 'Reason for closing task' })
+      .fill('This work was handled elsewhere. Keep its history.');
+    await dialog.getByRole('button', { name: 'Close task and retain history' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole('status')).toContainText('This work was handled elsewhere.');
+    await page.reload();
+    await expect(page.getByRole('status')).toContainText('This work was handled elsewhere.');
+    await expect(page.getByText('Retain this saved brief', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Close task…' })).toHaveCount(0);
+    const queue = await (await page.request.get('/api/pulsar')).json();
+    expect(queue.jobs.some((j: { taskId: string }) => j.taskId === task.id)).toBe(false);
+    await page.goto('/#/work');
+    await expect(page.locator('.quark-board')).not.toContainText('Obsolete queue fixture');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  } finally {
+    await page.request.post('/api/scheduler/settings', {
+      headers,
+      data: { key: crypto.randomUUID(), settings: scheduler.settings },
+    });
+  }
+});

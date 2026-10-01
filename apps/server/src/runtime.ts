@@ -17,6 +17,7 @@ import {
   reviewSchema,
   effortSchema,
   taskCreateSchema,
+  taskCancelSchema,
   mcpFormSchema,
   mcpUrlRequestSchema,
   parseMcpFormValues,
@@ -3550,7 +3551,7 @@ export class Runtime {
           throw new Conflict(
             'This task belongs to another manager. Message its manager to coordinate.',
           );
-        if (['split', 'integrated', 'done'].includes(task.status))
+        if (['split', 'integrated', 'done', 'cancelled'].includes(task.status))
           throw new Conflict('This task is closed. Create a new bounded task.');
         if (task.status === 'needs_decision')
           throw new Conflict('Record a manager decision on the review before another delegation.');
@@ -3673,7 +3674,7 @@ export class Runtime {
           throw new Conflict(
             'Only this task’s responsible manager can change its scheduling estimate.',
           );
-        if (['done', 'integrated', 'split'].includes(task.status))
+        if (['done', 'integrated', 'split', 'cancelled'].includes(task.status))
           throw new Conflict('This task is closed.');
         return publicTask(this.store.updateTask(task.id, { scheduling: value.estimate }));
       }
@@ -3687,7 +3688,7 @@ export class Runtime {
             .filter(
               (t) =>
                 t.projectId === agent.projectId &&
-                !['done', 'integrated', 'split'].includes(t.status),
+                !['done', 'integrated', 'split', 'cancelled'].includes(t.status),
             ).length >= 12
         )
           throw new Conflict('Finish or split existing tasks before opening more.');
@@ -3710,7 +3711,7 @@ export class Runtime {
             throw new Conflict(
               'Record a manager review disposition before continuing this task’s worker. Messages cannot bypass the revision limit.',
             );
-          if (['split', 'integrated', 'done'].includes(task.status))
+          if (['split', 'integrated', 'done', 'cancelled'].includes(task.status))
             throw new Conflict(
               'This task is closed. Inspect its saved history or create a new bounded task for further work.',
             );
@@ -3807,7 +3808,7 @@ export class Runtime {
           throw new Conflict(
             'This task belongs to another manager. Message its manager to coordinate.',
           );
-        if (['integrated', 'split'].includes(task.status))
+        if (['integrated', 'split', 'cancelled'].includes(task.status))
           throw new Conflict('This task is closed.');
         if (value.kind === 'revise') {
           if (task.revisions >= 2)
@@ -4038,6 +4039,64 @@ export class Runtime {
     });
     client.respond(approval.requestId, result);
     this.store.updateAgent(approval.agentId, { status: 'running' });
+  }
+  /** Close obsolete work without claiming review/application or releasing allowance holds. */
+  cancelTask(taskId: string, raw: unknown) {
+    const input = taskCancelSchema.parse(raw);
+    return this.store.operation(input.key, { kind: 'task.cancel', taskId, ...input }, () => {
+      const task = this.store.task(taskId);
+      if (['done', 'integrated', 'split', 'cancelled'].includes(task.status))
+        throw new Conflict('This task is already closed. Its saved work remains available.');
+      const workers = this.store.agents().filter((a) => a.taskId === taskId);
+      const jobs = this.pulsar.status(task.projectId).jobs.filter((job) => job.taskId === taskId);
+      if (
+        jobs.some((job) => job.status === 'running') ||
+        workers.some(
+          (a) =>
+            a.turnId ||
+            ['running', 'waiting'].includes(a.status) ||
+            this.executing.has(a.id) ||
+            this.externalControl.has(a.id),
+        ) ||
+        this.localJobs
+          .all()
+          .some(
+            (job) => job.taskId === taskId && ['queued', 'running', 'paused'].includes(job.status),
+          )
+      )
+        throw new Conflict(
+          'Stop this task’s running work or local jobs before closing it. Queued agent replies can be cancelled here.',
+        );
+      if (
+        this.store
+          .tasks()
+          .some(
+            (t) =>
+              t.parentId === taskId &&
+              !['done', 'integrated', 'split', 'cancelled'].includes(t.status),
+          )
+      )
+        throw new Conflict(
+          'Close the remaining subtasks first. Other tasks are never closed automatically.',
+        );
+      for (const job of jobs) {
+        this.store.updateRun(job.runId, { status: 'cancelled' });
+        if (
+          !this.store
+            .runs()
+            .some(
+              (run) => run.agentId === job.agentId && ['running', 'queued'].includes(run.status),
+            )
+        )
+          this.store.updateAgent(job.agentId, { status: 'idle' });
+      }
+      const result = this.store.updateTask(taskId, {
+        status: 'cancelled',
+        closure: { reason: input.reason, closedAt: now() },
+      });
+      this.store.event('task.cancelled', task.projectId, null, { taskId, reason: input.reason });
+      return publicTask(result);
+    });
   }
   async interrupt(
     agentId: string,

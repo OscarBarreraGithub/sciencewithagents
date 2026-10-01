@@ -467,7 +467,8 @@ export function SubagentsPanel({ state, manager }: { state: Snapshot; manager: A
       <ul className="chat-item-list">
         {team.slice(0, limit).map((agent) => {
           const task = state.tasks.find((t) => t.id === agent.taskId);
-          const closed = !!task && ['done', 'integrated', 'split'].includes(task.status);
+          const closed =
+            !!task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status);
           const reading = tokens.get(agent.id);
           const summary =
             task?.title ??
@@ -556,7 +557,7 @@ export function ConfigPanel({
     60_000,
   );
   const task = state.tasks.find((t) => t.id === agent.taskId);
-  const closed = !!task && ['done', 'integrated', 'split'].includes(task.status);
+  const closed = !!task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status);
   const team = state.agents.filter(
     (a) => a.projectId === agent.projectId && a.id !== agent.id && a.role !== 'manager',
   );

@@ -32,6 +32,131 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 describe('local application boundary', () => {
+  it('closes an obsolete task by receipt, retaining work and cancelling only its queued replies', async () => {
+    const project = store.agent(manager).projectId;
+    const task = store.addTask(project, {
+      title: 'Superseded',
+      goal: 'Old assignment',
+      acceptance: 'Recorded',
+      parentId: null,
+    });
+    const worker = store.addAgent({
+      projectId: project,
+      parentId: manager,
+      taskId: task.id,
+      role: 'implementer',
+      name: 'Saved worker',
+      cwd: root,
+    });
+    store.updateTask(task.id, {
+      status: 'review',
+      review: 'original review',
+      reviewedCommit: 'retained-commit',
+      worktree: root,
+    });
+    const workerRun = store.enqueue(worker.id, randomUUID(), 'Queued worker prompt');
+    const managerRun = store.enqueue(
+      manager,
+      randomUUID(),
+      'Queued follow-up',
+      'message',
+      worker.id,
+    );
+    const unrelated = store.enqueue(manager, randomUUID(), 'Unrelated owner request');
+    const held = runtime.quark.hold(
+      store.run(workerRun.id),
+      'Retained budget pause',
+      false,
+      'budget',
+    );
+    const before = store.entries(worker.id);
+    const payload = {
+      key: randomUUID(),
+      reason: 'Handled in another assignment; no further work needed.',
+    };
+    const request = {
+      method: 'POST' as const,
+      url: `/api/tasks/${task.id}/cancel`,
+      headers,
+      payload,
+    };
+    const response = await app.inject(request);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: 'cancelled',
+      review: 'original review',
+      closure: { reason: payload.reason },
+    });
+    expect(store.task(task.id)).toMatchObject({
+      worktree: root,
+      reviewedCommit: 'retained-commit',
+    });
+    expect(store.run(workerRun.id).status).toBe('cancelled');
+    expect(store.run(managerRun.id).status).toBe('cancelled');
+    expect(store.run(unrelated.id).status).toBe('queued');
+    expect(store.entries(worker.id)).toEqual(before);
+    expect(store.getSetting(`quark:hold:${workerRun.id}`)).toEqual(held);
+    expect(runtime.pulsar.status().jobs.map((j) => j.runId)).toEqual([unrelated.id]);
+    const head = store.head;
+    expect((await app.inject(request)).json()).toEqual(response.json());
+    expect(store.head).toBe(head);
+    expect(
+      (await app.inject({ ...request, payload: { ...payload, reason: 'Different reason' } }))
+        .statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/agents/${worker.id}/commands`,
+          headers,
+          payload: { key: randomUUID(), command: 'resume' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const snapshot = (await app.inject({ url: '/api/snapshot', headers })).json();
+    expect(snapshot.tasks.find((t: { id: string }) => t.id === task.id).closure.reason).toBe(
+      payload.reason,
+    );
+  });
+  it('refuses to close running work or silently close another subtask', async () => {
+    const project = store.agent(manager).projectId;
+    const task = store.addTask(project, {
+      title: 'Active',
+      goal: 'Work',
+      acceptance: 'Checked',
+      parentId: null,
+    });
+    const worker = store.addAgent({
+      projectId: project,
+      parentId: manager,
+      taskId: task.id,
+      role: 'researcher',
+      name: 'Active worker',
+      cwd: root,
+    });
+    store.updateAgent(worker.id, { status: 'running', turnId: 'active-turn' });
+    const payload = { key: randomUUID(), reason: 'No longer needed.' };
+    const request = {
+      method: 'POST' as const,
+      url: `/api/tasks/${task.id}/cancel`,
+      headers,
+      payload,
+    };
+    expect((await app.inject(request)).statusCode).toBe(409);
+    expect(store.task(task.id).status).toBe('open');
+    store.updateAgent(worker.id, { status: 'idle', turnId: null });
+    const child = store.addTask(project, {
+      title: 'Child',
+      goal: 'Separate work',
+      acceptance: 'Checked',
+      parentId: task.id,
+    });
+    expect((await app.inject(request)).statusCode).toBe(409);
+    expect(store.task(child.id).status).toBe('open');
+    expect(store.task(task.id).closure).toBeUndefined();
+  });
+
   it('migrates an idle saved Codex context only explicitly, preserving identity and old-client tool saves', async () => {
     const { threadId } = await runtime.attach(manager);
     const settings = { model: 'demo', effort: 'medium', permission: 'read-only' };

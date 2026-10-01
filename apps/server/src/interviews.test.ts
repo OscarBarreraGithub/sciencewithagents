@@ -292,7 +292,7 @@ it('creates one explicit read-only discussion, without model work or altering th
 });
 
 it('refuses reopening finished workers, including old queued work and explicit resume', async () => {
-  for (const status of ['done', 'integrated', 'split'] as const) {
+  for (const status of ['done', 'integrated', 'split', 'cancelled'] as const) {
     store.updateTask(worker.taskId!, { status });
     expect(
       (await post(`/agents/${worker.id}/messages`, { key: randomUUID(), text: 'Why?' })).statusCode,

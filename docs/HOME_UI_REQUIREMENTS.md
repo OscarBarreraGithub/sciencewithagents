@@ -18,8 +18,9 @@ the existing chat drawings and their [requirements](CHAT_UI_REQUIREMENTS.md).
       Available accounts/meters determine the content; support local customizations
       without assuming exactly two providers or fixed five-hour/weekly windows.
 - [ ] Show VS Code connection/sharing status in the header. It is connection status,
-      not a separate VS Code subscription allowance. Open the existing Chats view
-      filtered to shared editor conversations, preserving their original identity.
+      not a separate VS Code subscription allowance. Clicking opens connection/setup
+      status and extension instructions. Shared conversations are reached through
+      Chats → Shared. This corrects the earlier AI-added chat-list navigation.
 - [ ] The question-mark control opens useful help/setup instructions.
 - [ ] **This computer** shows connection status and opens account/computer checks and
       management. Keep different computers' accounts, jobs and conversations separate.

@@ -37,35 +37,54 @@ function sharedChat(provider: 'codex' | 'claude' = 'codex'): MirrorState {
   });
 }
 
-test('Home VS Code button opens only editor conversations even after using a manager filter', async ({
+test('Home VS Code button shows setup status and extension instructions without navigating to chats', async ({
   page,
 }) => {
   const editor = sharedChat();
   const terminal = { ...sharedChat(), source: 'codex-daemon', title: 'Separate native session' };
-  await page.addInitScript(() =>
-    sessionStorage.setItem(
-      'dock:chat-list',
-      JSON.stringify({ query: 'old search', filter: 'manager' }),
-    ),
-  );
   await page.route('**/api/vscode/windows', (route) =>
     route.fulfill({ json: [editor, terminal].map((chat) => mirrorWindowSchema.parse(chat)) }),
+  );
+  await page.goto('/#/home');
+  await page.getByRole('button', { name: /^VS Code on this computer:/ }).click();
+  const setup = page.getByRole('dialog', { name: 'VS Code setup' });
+  await expect(setup).toBeVisible();
+  await expect(page).toHaveURL(/#\/home$/);
+  await expect(setup).toContainText('The extension is connected');
+  await expect(setup).toContainText('Install from VSIX');
+  await expect(setup).toContainText('Chats → Shared');
+  await expect(setup.getByRole('link', { name: 'Extension setup guide' })).toHaveAttribute(
+    'href',
+    /CONTRIBUTOR_SETUP.md#optional-vs-code-companion$/,
+  );
+  await expect(setup).not.toContainText('Shared polish conversation');
+  await expect(setup).not.toContainText('Separate native session');
+  const bounds = await setup.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(bounds!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  await page.screenshot({ path: test.info().outputPath('vscode-setup.png') });
+  await setup.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(setup).toHaveCount(0);
+  await noOverflow(page);
+});
+
+test('A connected shared chat reads its first history even when opened in a background browser', async ({
+  page,
+}) => {
+  const editor = sharedChat();
+  await page.addInitScript(() =>
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }),
+  );
+  await page.route('**/api/vscode/windows', (route) =>
+    route.fulfill({ json: [mirrorWindowSchema.parse(editor)] }),
   );
   await page.route(`**/api/vscode/windows/${editor.windowId}`, (route) =>
     route.fulfill({ json: editor }),
   );
-  await page.goto('/#/home');
-  await page.getByRole('link', { name: /^VS Code on this computer:/ }).click();
-  await expect(page).toHaveURL(/#\/vscode$/);
-  await expect(page.getByRole('heading', { name: 'VS Code chats', exact: true })).toBeVisible();
-  await expect(
-    page.getByRole('region', { name: 'VS Code conversations', exact: true }),
-  ).toBeVisible();
-  await expect(page.locator('.chat-list')).toHaveCount(0);
-  await expect(page.getByText('Separate native session', { exact: true })).toHaveCount(0);
-  await page.getByRole('button').filter({ hasText: 'Shared polish conversation' }).click();
-  await expect(page.locator('.mirror-conversation')).toBeVisible();
+  await page.goto(`/#/vscode/${encodeURIComponent(`codex:${editor.threadId}`)}`);
   await expect(page.getByText('Retained shared reply.', { exact: true })).toBeVisible();
+  await expect(page.locator('.mirror-header')).toContainText('Connected');
   await expect(page.getByRole('button', { name: 'Open notepad', exact: true })).toBeVisible();
 });
 

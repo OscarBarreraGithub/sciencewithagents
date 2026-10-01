@@ -4,7 +4,8 @@ import { Conflict, type Store, type PrivateAgent } from './store.js';
 
 export function closedAssignment(store: Store, agent: PrivateAgent) {
   return (
-    !!agent.taskId && ['done', 'integrated', 'split'].includes(store.task(agent.taskId).status)
+    !!agent.taskId &&
+    ['done', 'integrated', 'split', 'cancelled'].includes(store.task(agent.taskId).status)
   );
 }
 

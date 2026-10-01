@@ -1,5 +1,13 @@
 # Feature map
 
+**Latest owner corrections:** Home’s VS Code control opens connection/setup status and
+extension instructions, without navigating to a chat list. Shared chats load their first
+history in background browsers and refresh on returning to the foreground. QUARK tasks
+can be closed with a saved reason when no more work is needed: cancel queued task replies,
+retain files/conversations/reviews/allowance records, and keep the closed task out of Active
+work. Running work and open subtasks must be resolved first; closure does not approve or
+apply changes or release a spending cap.
+
 ## New-install prompts and first project — implemented, 2026-09-30
 
 The website and repository offer a copyable setup request. An agent installs the local app,

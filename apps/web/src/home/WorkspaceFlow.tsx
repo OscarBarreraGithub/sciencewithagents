@@ -64,8 +64,10 @@ export const stateNames: Record<string, string> = {
   done: 'Completed',
   integrated: 'Changes applied',
   split: 'Split into smaller tasks',
+  cancelled: 'Closed',
 };
-const closed = (task?: Task) => !!task && ['done', 'integrated', 'split'].includes(task.status);
+const closed = (task?: Task) =>
+  !!task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status);
 const go = (page: string, id?: string) => `#/${page}${id ? `/${encodeURIComponent(id)}` : ''}`;
 
 export function FlowHeading({
@@ -401,7 +403,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
             </p>
           </section>
         </div>
-        <TaskProgress task={task} data={data} />
+        <TaskProgress key={task.id} task={task} data={data} />
       </section>
     );
   }

@@ -202,7 +202,9 @@ function Attention({ state }: { state: Snapshot }) {
   );
 }
 function Results({ state, data }: { state: Snapshot; data: HomeData }) {
-  const tasks = state.tasks.filter((t) => ['done', 'integrated', 'split'].includes(t.status));
+  const tasks = state.tasks.filter((t) =>
+    ['done', 'integrated', 'split', 'cancelled'].includes(t.status),
+  );
   const local = data.local.data?.jobs.filter((j) => j.status === 'completed') ?? [];
   return (
     <section className="flow-page activity-page">
@@ -229,13 +231,15 @@ function Results({ state, data }: { state: Snapshot; data: HomeData }) {
               <div className="activity-card-top">
                 <span className="activity-kind">
                   <CheckCheck size={17} />
-                  {task.reconciliationTaskId
-                    ? 'Update in progress'
-                    : task.status === 'integrated'
-                      ? 'Applied to project'
-                      : task.hasReviewedChanges
-                        ? 'Reviewed changes'
-                        : 'Saved result'}
+                  {task.status === 'cancelled'
+                    ? 'Closed · history retained'
+                    : task.reconciliationTaskId
+                      ? 'Update in progress'
+                      : task.status === 'integrated'
+                        ? 'Applied to project'
+                        : task.hasReviewedChanges
+                          ? 'Reviewed changes'
+                          : 'Saved result'}
                 </span>
                 <span>{state.projects.find((p) => p.id === task.projectId)?.name}</span>
               </div>

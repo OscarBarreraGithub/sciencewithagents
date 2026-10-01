@@ -1065,7 +1065,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
               <Layers3 size={15} />
             </div>
             {tasks
-              .filter((t) => !['integrated', 'split'].includes(t.status))
+              .filter((t) => !['integrated', 'split', 'cancelled'].includes(t.status))
               .slice(-4)
               .map((task) => (
                 <button

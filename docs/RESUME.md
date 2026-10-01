@@ -7,6 +7,25 @@ verification on the owner operating a physical phone. Physical-device confirmati
 additional evidence, not proof supplied by emulation. Preserve native capabilities and simple QUARK supervision; do not restart the
 superseded tool-by-tool restriction approach or broad review loops.
 
+## Latest owner correction — VS Code status and QUARK cleanup
+
+The owner clarified that the header’s VS Code button must open setup status and extension
+instructions. It now does; conversations remain under Chats → Shared. The previous claim
+that an editor-only chat list satisfied that request was wrong. A real Safari reproduction
+also found that initial history polling was suppressed in a background browser, displaying
+Offline indefinitely there. First reads now run regardless of visibility; later background
+polls pause and foregrounding refreshes. Actual saved editor history now loads as Working.
+
+Added explicit task closure with a retained reason, receipt-safe cancellation of its queued
+replies and no fabricated review/application. Running work or open subtasks prevent closure;
+finished workers cannot restart their old assignment. Ten obsolete development tasks were
+closed through this API; the redundant budget-blocked manager follow-up was cancelled.
+Live QUARK shows zero queued/running/paused task cards. All 47 conversations, worktrees,
+reviews and allowance holds/spend remain retained. Recovery copy before cleanup verified
+4 projects and 2,046 entries. No budget increase, model turn or editor reload was needed.
+Focused backend checks and five-profile browser verification cover these changes; see
+VERIFICATION.md. Preserve this behavior; do not restore header-to-chat-list navigation.
+
 ## Latest collaborator-setup slice
 
 A clean public clone with candidate fixes completed real native Codex-only and Claude-only
@@ -27,7 +46,7 @@ OWNER_CHECK_IN.md and are not agent implementation blockers.
 The owner's new feedback reopened phone acceptance. Read the original last 30 user prompts,
 not only prior agent summaries. Corrected the incomplete automatic-only chat filter: all
 resource-owned conversations now stay in Computer health, with searchable retained history.
-Home's VS Code entry is editor-only and unaffected by main-list filters. Removed the
+Home's VS Code entry now shows setup status/instructions, as clarified above. Removed the
 unrequested bottom navigation and redundant Resource assistant shortcut from Chats; fixed
 legacy search-label styling that wasted space. Outer-document scrolling is locked and
 full-height viewport bounce no longer moves the shell. Phone refresh offers a new-release

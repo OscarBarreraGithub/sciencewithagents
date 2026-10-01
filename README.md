@@ -66,7 +66,8 @@ an optional private Tailscale connection without a domain: check readiness, conf
 turn it on and pair. Tailscale installation/sign-in and HTTPS consent remain with the person;
 the existing domain route remains available. See [phone setup and acceptance limits](docs/PHONE_SETUP.md).
 Initial source installation still needs its setup steps. Retained backend capabilities are not
-proof that those screens work here. Phone pairing, unlocking and manual locking remain. Shared VS Code conversations connect
+proof that those screens work here. Phone pairing, unlocking and manual locking remain. The header’s VS Code button opens setup status and extension instructions;
+shared conversations stay under Chats → Shared. Shared VS Code conversations connect
 locally without a separate editor code. Long histories open in bounded sections, with older
 messages and large tool results available on demand; original conversations are retained.
 See [connected workflow and guide notes](docs/WORKFLOW_BUILD.md) for the current slice.
@@ -101,7 +102,9 @@ provider's usage card to refresh usage, check connection or check/install CLI up
 its recognized installer. See [QUARK conversation and guide notes](docs/QUARK_COORDINATOR.md).
 
 Open **All usage** or **Work** to give projects/tasks a share of a reported allowance,
-inspect tokens per agent, and continue work paused by QUARK. Automatic guards retain files,
+inspect tokens per agent, and continue work paused by QUARK. Obsolete assignments can be closed from the task page with a saved reason; queued
+replies are cancelled while files, conversations, reviews and spending records stay saved.
+Closing does not approve or apply changes. Automatic guards retain files,
 queued messages and conversations; only the owner can increase a saved cap. Cache timers
 and bounded refreshes help reuse eligible task contexts. Percentage attribution and cache
 lifetimes are estimates; 2–3 percentage-point accuracy and guaranteed cache retention are

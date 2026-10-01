@@ -777,3 +777,19 @@ dialog.home-help-dialog {
     scroll-behavior: auto !important;
   }
 }
+
+.home-editor-setup {
+  width: min(620px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+.home-editor-setup p,
+.home-editor-setup li {
+  line-height: 1.55;
+}
+.home-editor-setup li + li {
+  margin-top: 12px;
+}
+.home-editor-setup .flow-button {
+  min-height: 44px;
+}

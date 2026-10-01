@@ -46,7 +46,7 @@ export function AdvancedFlow({ route, data }: { route: string; data: HomeData })
     if (native && native !== target) setNative(null);
   }, [target]);
   const task = state?.tasks.find((t) => t.id === agent?.taskId);
-  const archived = !!task && ['done', 'integrated', 'split'].includes(task.status);
+  const archived = !!task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status);
   return (
     <section className="flow-page connection-page advanced-page">
       <FlowHeading

@@ -384,7 +384,7 @@ describe('peer messages preserve the manager’s bounded review disposition gate
     expect(store.runs().filter((run) => run.agentId === implementer)).toEqual([]);
   });
 
-  it.each(['split', 'done', 'integrated'] as const)(
+  it.each(['split', 'done', 'integrated', 'cancelled'] as const)(
     'does not restart a %s task through an existing worker, while reporting remains possible',
     async (status) => {
       store.updateTask(taskId, { status });

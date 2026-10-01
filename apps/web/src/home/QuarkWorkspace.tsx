@@ -50,8 +50,8 @@ function placeTask(
   const lead = active.find((j) => j.status === 'running') ?? active[0];
   const held = active.find((j) => j.held);
   const latest = turns.find((j) => !live(j));
-  if (!active.length && task && ['done', 'integrated', 'split'].includes(task.status))
-    return [columns[3], ''];
+  if (!active.length && task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status))
+    return [columns[3], task.closure?.reason ?? ''];
   if (task?.status === 'needs_decision') return [columns[2], 'Your manager needs input.'];
   if (asking) return [columns[2], `${asking} is waiting for your answer.`];
   if (quotaReason) return [columns[2], quotaReason];

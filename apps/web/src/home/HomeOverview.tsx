@@ -502,7 +502,8 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
       if (internal.has(item.projectId)) return false;
       if (['failed', 'interrupted'].includes(item.kind)) {
         const task = item.taskId ? tasks.get(item.taskId) : undefined;
-        if (task && ['done', 'integrated', 'split'].includes(task.status)) return false;
+        if (task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status))
+          return false;
         if (!stopped.has(item.projectId))
           stopped.set(item.projectId, {
             key: `stopped:${item.projectId}`,

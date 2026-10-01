@@ -1,5 +1,18 @@
 # Design decisions
 
+## 2026-09-30 — setup status and obsolete task closure
+
+The owner clarified that Home’s VS Code button shows setup status and extension
+instructions. It must not navigate to a chat list. Existing conversations stay in Chats.
+A missing live connection does not establish that the extension is uninstalled.
+
+Add an owner task-closing action for assignments superseded outside the normal manager
+flow. Save a reason, cancel only that task’s queued agent replies and retain the task,
+worktree, conversations, review and quota history. Refuse running work and unresolved
+subtasks. Closed workers cannot resume their old implementation; a saved-evidence discussion
+remains available. This is an explicit closed disposition, never a fabricated independent
+review or source integration. Reuse the existing receipt, task status and event mechanisms.
+
 ## 2026-09-30 — supported existing Codex shared sessions
 
 Use the current native daemon’s supported Unix WebSocket protocol for already-running Codex
