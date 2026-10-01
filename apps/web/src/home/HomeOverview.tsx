@@ -916,3 +916,12 @@ export function HomeOverview({ data, now }: { data: HomeData; now: number }) {
     </div>
   );
 }
+
+export function resetLabel(value: string | null, now: number) {
+  if (!value) return 'Reset time not reported';
+  const minutes = Math.ceil((Date.parse(value) - now) / 60_000);
+  if (minutes <= 0) return 'Reset time passed · waiting for a new reading';
+  if (minutes >= 1440)
+    return `Resets in ${Math.floor(minutes / 1440)}d ${Math.floor((minutes % 1440) / 60)}h`;
+  return `Resets in ${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)}h ` : ''}${minutes % 60}m`;
+}

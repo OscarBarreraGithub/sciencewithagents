@@ -1,5 +1,15 @@
 # Design decisions
 
+## 2026-10-01 — one QUARK screen, defer cache warming
+
+Remove the standalone usage screen and its technical accounting lists. Show remaining
+allowances/reset times and account recovery above the work board; keep budgets and pauses
+with the work. Old usage URLs redirect to QUARK, including task destinations. Preserve the
+ledger and agent-query access. Disable cache-only model turns for existing and new installs,
+remove their UI and scheduling code, cancel old queued nudges, and reject stale re-enabling.
+Preserve historical evidence and ordinary provider caching/compaction. Future opt-in work
+is [issue #1](https://github.com/OscarBarreraGithub/sciencewithagents/issues/1).
+
 ## 2026-10-01 — spending belongs with the QUARK board
 
 Replace the separate spending form with sliders on project/task cards, reusing existing

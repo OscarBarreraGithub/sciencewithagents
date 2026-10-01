@@ -867,8 +867,8 @@ export function ChatPage({
                     Original worker <ArrowUpRight size={16} />
                   </a>
                 )}
-                <a className="flow-button" href="#/usage">
-                  Usage and allowances <ArrowUpRight size={16} />
+                <a className="flow-button" href="#/work">
+                  QUARK budgets <ArrowUpRight size={16} />
                 </a>
                 <a className="flow-button" href="#/chats">
                   All conversations <ArrowUpRight size={16} />

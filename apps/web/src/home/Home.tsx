@@ -1,6 +1,5 @@
 import { ProviderActions } from './ProviderActions';
 import { ModelSettings } from './ModelSettings';
-import { Quark } from './Quark';
 import {
   useEffect,
   useRef,
@@ -38,7 +37,7 @@ import { ConnectionFlow, connectionPages } from './ConnectionFlow';
 import { AdvancedFlow } from './AdvancedFlow';
 import { Welcome } from './Welcome';
 import { useScrollHints } from './useScrollHints';
-import { HomeOverview, ProviderMark, ago, providerName } from './HomeOverview';
+import { HomeOverview, ProviderMark, ago, providerName, resetLabel } from './HomeOverview';
 import { AppsGallery, SetupGuide } from './AppsGallery';
 import { AppUpdate } from './AppUpdate';
 import { HomeOrb } from './HomeOrb';
@@ -57,7 +56,6 @@ const titles: Record<string, string> = {
   'assistant-settings': 'Assistant privacy',
   work: 'QUARK',
   job: 'QUARK job',
-  usage: 'Usage and allowances',
   attention: 'For your attention',
   activity: 'Recent results',
   review: 'Reviewed changes',
@@ -77,7 +75,7 @@ const titles: Record<string, string> = {
 const href = (page: string) => `#/${page}`;
 const route = () =>
   window.location.hash.startsWith('#/')
-    ? window.location.hash.slice(2) || 'home'
+    ? (window.location.hash.slice(2) || 'home').replace(/^usage(?=\/|$)/, 'work')
     : new URLSearchParams(window.location.search).has('mirror')
       ? 'vscode'
       : 'home';
@@ -100,29 +98,12 @@ const section = (page: string) =>
     'new',
   ].includes(page)
     ? 'chats'
-    : [
-          'work',
-          'job',
-          'usage',
-          'attention',
-          'activity',
-          'review',
-          'transcribe',
-          'resources',
-        ].includes(page)
+    : ['work', 'job', 'attention', 'activity', 'review', 'transcribe', 'resources'].includes(page)
       ? 'work'
       : page;
 
 function Mark({ className = '' }: { className?: string }) {
   return <img className={className} src="/dock.svg?v=drawn-alien" alt="" width="36" height="32" />;
-}
-function resetLabel(value: string | null, now: number) {
-  if (!value) return 'Reset time not reported';
-  const minutes = Math.ceil((Date.parse(value) - now) / 60_000);
-  if (minutes <= 0) return 'Reset time passed · waiting for a new reading';
-  if (minutes >= 1440)
-    return `Resets in ${Math.floor(minutes / 1440)}d ${Math.floor((minutes % 1440) / 60)}h`;
-  return `Resets in ${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)}h ` : ''}${minutes % 60}m`;
 }
 // The most constrained general window is the headline; model windows stay in detail.
 function headline(provider: ProviderCapacity) {
@@ -226,7 +207,7 @@ function Allowances({ data, now }: { data: HomeData; now: number }) {
   const usage = data.capacity.data;
   if (!usage)
     return data.capacity.error ? (
-      <a className="home-chip" href={href('usage')}>
+      <a className="home-chip" href={href('work')}>
         Allowance unavailable
       </a>
     ) : (
@@ -234,7 +215,7 @@ function Allowances({ data, now }: { data: HomeData; now: number }) {
     );
   if (!usage.providers.length)
     return (
-      <a className="home-chip" href={href('usage')}>
+      <a className="home-chip" href={href('work')}>
         No accounts reported
       </a>
     );
@@ -347,6 +328,14 @@ export function Home() {
   const data = useHomeData();
   const phone = useReading('/phone/status', phoneStatusSchema.parse);
   const [currentRoute, setPage] = useState(route);
+  useEffect(() => {
+    if (/^#\/usage(?:\/|$)/.test(location.hash))
+      history.replaceState(
+        history.state,
+        '',
+        `${location.pathname}${location.search}#/${currentRoute}`,
+      );
+  }, [currentRoute]);
   const page = currentRoute.split('/')[0]!;
   const [now, setNow] = useState(Date.now);
   const [dialog, setDialog] = useState<'help' | 'phone' | null>(null);
@@ -527,8 +516,6 @@ export function Home() {
             <ModelSettings />
           ) : page === 'resources' ? (
             <Resources reading={data.resources} />
-          ) : page === 'usage' ? (
-            <Quark key={currentRoute} data={data} now={now} />
           ) : (
             <section className="home-placeholder">
               <a href={href('home')} className="home-back">

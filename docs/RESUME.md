@@ -1,12 +1,16 @@
 # Resume here — current continuation only
 
-## Latest owner request — simpler spending controls
+## Latest owner request — one QUARK screen, cache warming deferred
 
 QUARK project/task cards now hold saved-budget sliders with live estimated spending.
 Managers are instructed to set initial task caps before delegation. Owner edits save on
 release, retain spending, handle lost replies/concurrent edits, and survive column moves.
-The separate allowance form and Help/setup’s extra three links are removed. Focused checks
-pass; see VERIFICATION.md. No owner budget was changed and no real model work was launched.
+The whole separate usage screen and Help/setup’s extra three links are removed. Old usage
+URLs open QUARK; account remaining/reset readings and account actions now sit above its board.
+Automatic cache-only turns are disabled, existing preferences migrate off, old queued nudges
+are cancelled before provider startup and stale clients cannot re-enable them. Keep recorded
+cache tokens/history and compaction. Future work: https://github.com/OscarBarreraGithub/sciencewithagents/issues/1.
+Focused checks pass; see VERIFICATION.md. No owner budget was changed and no real model work was launched.
 Do not create another scheduling system or broad review for this UI change.
 
 ## Latest phone simplification

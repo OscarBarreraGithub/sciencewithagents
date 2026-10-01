@@ -4,7 +4,9 @@ Open **QUARK** for its conversation, shared status board and live spending slide
 Managers set the starting task caps; the owner can raise or lower them on the cards. Tell it which project to
 pause, prioritize or allocate allowance to. Its typed controls save each decision; hard
 limits remain independently enforced by the host. See [conversation, controls and guide
-notes](QUARK_COORDINATOR.md). **Allowance details** retains the detailed accounting view.
+notes](QUARK_COORDINATOR.md). Remaining allowances and reset times appear on the board. Detailed accounting remains
+queryable by agents; the separate usage screen is removed. Automatic context-cache
+refreshes are disabled; [issue #1](https://github.com/OscarBarreraGithub/sciencewithagents/issues/1) tracks future work.
 
 Managers receive a compact current QUARK view at managed turn start and coalesced updates on
 existing coordination replies for both providers. Claude also receives updates through its
@@ -21,9 +23,9 @@ central admission scheduler. It extends the existing durable work queue across p
 managers, Codex, Claude and owned local transcription jobs. Jira is unnecessary for this:
 tasks, branches, receipts and results already live together in the app.
 
-**2026-09-27:** QUARK also watches active managed turns. **All usage** and **Work** now open
-working allowance-budget, token-ledger, pause/continue and estimated-cache controls in the
-new interface. Read [automatic accounting](QUARK_ACCOUNTING.md) for this addition; it
+**2026-10-01:** QUARK watches active managed turns and exposes budgets and pause/continue
+on its shared board. The backend retains its token ledger; the older technical usage page
+and cache controls are removed. Read [automatic accounting](QUARK_ACCOUNTING.md) for this addition; it
 supersedes the older admission-only and interactive headroom exceptions below. Older
 priority/local-compute controls are also available from Work in the new interface.
 
@@ -34,7 +36,7 @@ The owner selected QUARK on 2026-09-25, replacing the PULSAR working name. Inter
 
 A new empty installation starts with shared pacing enabled. Existing workspaces and saved
 choices are preserved. Welcome shows the current setting and missing/stale usage readings,
-with links to Work and All usage. Unknown usage may hold protected work; inspect the reason
+with a link to QUARK. Unknown usage may hold protected work; inspect the reason
 there. Merely opening setup does not change policy or start a conversation. Explicit caps
 and manager leases remain active even if the owner turns optional shared pacing off.
 

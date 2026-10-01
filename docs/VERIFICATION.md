@@ -1,5 +1,31 @@
 # Verification
 
+## 2026-10-01 — consolidate usage into QUARK, defer cache warming
+
+Removed the usage component/styles and technical lists. QUARK now shows remaining allowance,
+reset times, read freshness and account recovery actions alongside its existing budget board.
+Old usage URLs redirect, including task links. The backend ledger remains available to agents.
+Automatic cache scheduling code is removed; upgrades turn saved settings off, stale clients
+cannot re-enable warming, and queued cache-only turns cancel before provider startup. Normal
+provider caching, token attribution, handoffs and compaction are retained.
+
+- Shared/server/web builds pass. Sixteen focused backend cases pass, including old-enabled
+  preference migration/reopen without cap changes, enable rejection and old queued-turn
+  cancellation without creating a provider thread or finishing the task.
+- Sixty focused browser cases pass across desktop, 412×915, 360×800, 915×412 and iPhone
+  WebKit: redirects, remaining/reset labels, stale-read retry, provider actions, slider saves,
+  concurrent edits, task grouping, project-setup navigation and Welcome’s consolidated link.
+  No real provider work was launched. Narrow portrait screenshots were inspected.
+- The idle installed app restarted successfully. Native Safari follows the old usage URL
+  to QUARK and shows real allowance/reset readings; its existing phone stays paired.
+  All four projects, 49 agents, 2,052 entries, nine saved budgets and device records match
+  the pre-update copy. No test listener or browser child remains.
+- Future cache-warming work is recorded in public issue #1. Current feature and guide notes
+  no longer claim enabled cache refreshes or a standalone human accounting screen.
+
+Evidence stays in ignored `data/quark-unified-*.log`, browser screenshots and the pre-update
+SQLite recovery copy. These are browser simulations, not physical iPhone acceptance.
+
 ## 2026-10-01 — spending sliders on the QUARK board
 
 Replaced the allowance page’s budget form/list with project/task card sliders. They reuse

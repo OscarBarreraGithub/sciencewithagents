@@ -6,8 +6,11 @@ import {
   type Model,
   type QuarkCoordinatorStatus,
   type Task,
+  type ProviderCapacity,
 } from '@dock/shared';
 import { api, models } from '../api';
+import { ProviderActions } from './ProviderActions';
+import { ago, resetLabel } from './HomeOverview';
 import { SchedulerPanel } from '../SchedulerPanel';
 import { useReading, type HomeData } from './useHomeData';
 import { ChatPage, FlowHeading, FlowEmpty, stateNames } from './WorkspaceFlow';
@@ -69,6 +72,47 @@ function placeTask(
         ? 'Between turns. Open the task for its plan and team.'
         : 'Open the task for its plan and team.',
   ];
+}
+
+function QuarkAllowance({ provider, forecast }: { provider: ProviderCapacity; forecast: string }) {
+  const [open, setOpen] = useState(false);
+  const stale = provider.stale || provider.state !== 'ready';
+  const now = Date.now();
+  return (
+    <div className="quark-account" aria-label={`${provider.label} allowance`}>
+      <h2>{provider.label}</h2>
+      {provider.windows.length ? (
+        provider.windows.map((window) => (
+          <div className="quark-account-window" key={window.id}>
+            <span>{window.label}</span>
+            <strong>{Math.round(100 - window.usedPercent)}% left</strong>
+            <small>{resetLabel(window.resetsAt, now)}</small>
+          </div>
+        ))
+      ) : (
+        <p>Allowance hasn’t been reported yet.</p>
+      )}
+      <small>
+        {stale ? 'Last reading' : 'Updated'} {ago(provider.observedAt, now) ?? 'not available'}
+      </small>
+      <p>{forecast}</p>
+      <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+        <summary>{stale ? 'Reading needs attention' : 'Account actions'}</summary>
+        {stale && <p>{provider.message}</p>}
+        {stale && provider.nextRefreshAt && (
+          <small>
+            Next automatic check:{' '}
+            {new Date(provider.nextRefreshAt).toLocaleTimeString([], {
+              hour: 'numeric',
+              minute: '2-digit',
+            })}
+            . Refresh uses the same waiting period.
+          </small>
+        )}
+        {open && <ProviderActions provider={provider.provider} showQuarkLink={false} />}
+      </details>
+    </div>
+  );
 }
 
 export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: string }) {
@@ -308,15 +352,7 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
   );
   return (
     <section className="flow-page activity-page quark-workspace">
-      <FlowHeading
-        label="QUARK"
-        title="QUARK"
-        action={
-          <a className="flow-button" href="#/usage">
-            Allowance details <ArrowUpRight size={16} />
-          </a>
-        }
-      >
+      <FlowHeading label="QUARK" title="QUARK">
         Tell QUARK what comes first. It coordinates the queue, protects your allowance and keeps
         your decisions.
       </FlowHeading>
@@ -370,17 +406,17 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                 .filter((j) => j.provider === provider.provider && j.agentId !== s.agentId)
                 .reduce((n, j) => n + j.estimate.quotaPercent, 0);
               return (
-                <div key={provider.provider}>
-                  <span>
-                    {provider.provider === 'claude' ? 'Claude' : 'Codex'} · queue forecast
-                  </span>
-                  <strong>{room === null ? 'Unknown' : `${Math.round(room)}%`}</strong>
-                  <small>
-                    {room === null
-                      ? 'Needs a fresh allowance reading'
-                      : `${demand.toFixed(1)}% forecast · ${demand <= room ? 'within shared headroom' : 'some work must wait'}`}
-                  </small>
-                </div>
+                <QuarkAllowance
+                  key={provider.provider}
+                  provider={provider}
+                  forecast={
+                    room === null
+                      ? 'Waiting for a fresh reading before starting more work.'
+                      : demand <= room
+                        ? 'The queued work fits the available allowance.'
+                        : 'Some queued work will need to wait for more allowance.'
+                  }
+                />
               );
             })}
           </div>

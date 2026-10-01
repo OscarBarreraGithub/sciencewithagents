@@ -389,28 +389,29 @@ it('does not invent a weekly window or treat stale unknown usage as permission',
   advance(7 * 60000);
   expect(quark.reason(store.run(f.run.id))).toContain('fresh');
 });
-it('cache refreshes are bounded, idempotent, use the same model and never wake a quota-paused worker', () => {
+it('turns cache warming off for new and existing installs without changing caps or history', () => {
+  expect(quark.settings().cacheEnabled).toBe(false);
   const f = fixture();
-  launch(f);
-  claude(f, 100);
-  store.updateRun(f.run.id, { status: 'completed' });
-  store.updateAgent(f.agent.id, { status: 'idle', turnId: null, model: 'owner-exact-model' });
-  quark.sync();
-  advance(55 * 60000);
-  usage(6);
-  quark.sync();
-  quark.queueNudges(new Set());
-  quark.queueNudges(new Set());
-  const nudges = store.runs().filter((r) => quark.isNudge(r.id));
-  expect(nudges).toHaveLength(1);
-  expect(store.agent(f.agent.id).model).toBe('owner-exact-model');
-  expect(store.getSetting(`model-policy:run:${nudges[0]!.id}`)).toBeTruthy();
-  store.updateRun(nudges[0]!.id, { status: 'cancelled' });
-  store.updateAgent(f.agent.id, { status: 'idle' });
-  quark.hold(store.run(f.run.id), 'Quota pause');
-  quark.queueNudges(new Set());
-  expect(store.runs()).toHaveLength(2);
-  expect(quark.cacheStatus()[0]!.estimatedExpiresAt).not.toBeNull();
+  const cap = budget(f);
+  const previous = { ...quark.settings(), cacheEnabled: true, bufferPercent: 3, revision: 7 };
+  store.setSetting('quark:settings', previous);
+  const restarted = new Quark(store, pulsar);
+  expect(restarted.settings()).toEqual({ ...previous, cacheEnabled: false, revision: 8 });
+  expect(restarted.budgets()[0]).toMatchObject({ id: cap.id, limitPercent: 10 });
+  expect(store.task(f.task.id).title).toBe(f.task.title);
+  expect(() =>
+    restarted.saveSettings({
+      key: randomUUID(),
+      settings: { ...restarted.settings(), cacheEnabled: true },
+    }),
+  ).toThrow('deferred');
+  store.close();
+  store = new Store(join(root, 'dock.sqlite'));
+  expect(new Quark(store, new Pulsar(store, () => null)).settings()).toMatchObject({
+    cacheEnabled: false,
+    bufferPercent: 3,
+    revision: 8,
+  });
 });
 it('Codex cache expiry stays unknown until configured and cache settings preserve concurrent-device protection', () => {
   const f = fixture('Codex', 'codex');
@@ -502,26 +503,6 @@ it('leaves long sampling gaps unattributed instead of charging a returning proje
   const w = quark.status().windows.find((w) => w.provider === 'claude')!;
   expect(w.unattributedPercent).toBe(20);
   expect(w.projects).toEqual([]);
-});
-
-it('warms an idle manager with unfinished work and charges its unambiguous task', () => {
-  const f = fixture('Manager');
-  store.updateAgent(f.p.managerId, { provider: 'claude', model: 'owner-manager-model' });
-  const run = store.enqueue(f.p.managerId, randomUUID(), 'Coordinate the task');
-  const manager = { ...f, agent: store.agent(f.p.managerId), run };
-  launch(manager);
-  claude(manager, 100);
-  store.updateRun(run.id, { status: 'completed' });
-  store.updateAgent(f.p.managerId, { status: 'idle', turnId: null });
-  quark.sync();
-  advance(55 * 60000);
-  usage(6);
-  quark.sync();
-  quark.queueNudges(new Set());
-  const nudge = store.runs().find((r) => quark.isNudge(r.id))!;
-  expect(nudge.agentId).toBe(f.p.managerId);
-  expect(quark.taskIds(store.run(nudge.id))).toEqual([f.task.id]);
-  expect(store.agent(f.p.managerId).model).toBe('owner-manager-model');
 });
 
 it('requires admission and a signed manager lease, rejects tampering, and fences leases on restart', () => {

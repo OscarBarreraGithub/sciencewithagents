@@ -323,8 +323,8 @@ adjustment. The board refreshes automatically. Changing a cap keeps the spending
 recorded, and conflicting edits from another device are surfaced. Help/setup stays focused
 on its copyable setup prompts, without unrelated settings, computer or allowance shortcuts.
 
-Open the details to see provider-reported tokens per run, agent and project, including
-cache use and missing readings. Percentage shares are estimates, not a bill; 2–3 percentage-
+Managers can query provider-reported tokens per run, agent and project, including
+cache use and missing readings. The board keeps the human view focused on allowance and work. Percentage shares are estimates, not a bill; 2–3 percentage-
 point accuracy has not been validated. Claude now feeds QUARK input/cache activity while it
 works, then team totals including helpers where reported. Replayed messages and restored
 session totals are not counted again as new work. Incomplete readings are labelled, and
@@ -332,11 +332,10 @@ separate spending records for each native Claude helper remain in progress.
 
 Other activity on the account can affect the estimated project shares.
 
-**Implemented with limits:** Keep useful task conversations warm with estimated cache
-timers and a small, bounded refresh before expiry. Refreshes use the same model and respect
-the same budgets. Expiry never deletes the conversation. Claude starts with a configurable
-60-minute estimate; Codex expiry is unknown until configured. The app cannot guarantee
-provider cache retention. [Exact scope and controls](QUARK_ACCOUNTING.md).
+**Deferred:** Automatic context-cache refreshes and their settings are turned off. The app
+does not spend allowance just to keep conversations warm. Saved chats, handoffs, compaction
+and cache-token accounting remain. A future opt-in feature needs evidence that it helps;
+[issue #1](https://github.com/OscarBarreraGithub/sciencewithagents/issues/1) tracks that work.
 
 **Implemented:** Managers need QUARK's permission to orchestrate. The app grants a short
 lease and checks it again when a manager dispatches work; the model cannot approve its own

@@ -83,7 +83,6 @@ export class Quark {
   // model prompt, API response, repository or provider credential store.
   private readonly leaseSigner = randomBytes(32);
   private spentCache = new Map<string, { sequence: number; percent: number }>();
-  private lastCacheCheck = 0;
   constructor(
     readonly store: Store,
     readonly pulsar: Pulsar,
@@ -92,6 +91,13 @@ export class Quark {
     if (!store.getSetting('quark:since')) store.setSetting('quark:since', stamp(clock()));
     // Do not invent historical run baselines from today's context/model.
     if (store.getSetting('quark:cursor') === null) store.setSetting('quark:cursor', store.head);
+    // Cache warming is deferred. Upgrade existing installs without touching caps or history.
+    const settings = this.settings();
+    if (settings.cacheEnabled) {
+      const next = { ...settings, cacheEnabled: false, revision: settings.revision + 1 };
+      store.setSetting('quark:settings', next);
+      store.event('quark.settings', null, null, next);
+    }
   }
   settings() {
     return quarkSettingsSchema.parse(this.store.getSetting('quark:settings') ?? {});
@@ -179,6 +185,8 @@ export class Quark {
   }
   saveSettings(raw: unknown) {
     const input = quarkSettingsUpdateSchema.parse(raw);
+    if (input.settings.cacheEnabled)
+      throw new Conflict('Automatic context-cache refreshes are deferred and cannot be enabled.');
     return this.store.operation(input.key, { kind: 'quark.settings', ...input }, () => {
       if (input.settings.revision !== this.settings().revision)
         throw new Conflict('Settings changed on another device. Reload before saving.');
@@ -1016,87 +1024,6 @@ export class Quark {
                   : 'Estimated timer, not a provider guarantee.',
         };
       });
-  }
-  queueNudges(external: ReadonlySet<string>) {
-    const settings = this.settings();
-    if (!settings.cacheEnabled) return;
-    if (this.clock() - this.lastCacheCheck < 30_000) return;
-    this.lastCacheCheck = this.clock();
-    if (!this.store.agents().some((a) => (a.taskId || a.role === 'manager') && a.status === 'idle'))
-      return;
-    for (const c of this.cacheStatus()) {
-      const a = this.store.agent(c.agentId),
-        expires = c.estimatedExpiresAt ? Date.parse(c.estimatedExpiresAt) : null;
-      if (
-        !expires ||
-        expires <= this.clock() ||
-        expires - this.clock() >
-          Math.min(5, (settings.cacheMinutes[a.provider] ?? 60) / 5) * 60_000 ||
-        c.nudgesToday >= settings.maxNudgesPerAgentDay
-      )
-        continue;
-      if (
-        a.interview ||
-        a.status !== 'idle' ||
-        external.has(a.id) ||
-        this.holds().some((h) => h.agentId === a.id) ||
-        this.store
-          .runs()
-          .some((r) => r.agentId === a.id && ['queued', 'running'].includes(r.status))
-      )
-        continue;
-      // Managers are eligible only while responsible for unfinished work, not
-      // merely because an old conversation is still saved.
-      const ownedTasks =
-        a.role === 'manager'
-          ? this.store
-              .tasks()
-              .filter(
-                (t) =>
-                  t.projectId === a.projectId &&
-                  t.managerId === a.id &&
-                  ['open', 'working'].includes(t.status),
-              )
-          : [];
-      const taskId = a.taskId ?? (ownedTasks.length === 1 ? ownedTasks[0]!.id : null);
-      if (
-        a.taskId
-          ? !['open', 'working'].includes(this.store.task(a.taskId).status)
-          : !ownedTasks.length
-      )
-        continue;
-      const cap = readCapacity(this.store, a.provider, this.clock());
-      if (cap.stale || cap.state !== 'ready') continue;
-      const key = `quark:cache:${a.id}:${c.observedAt}`;
-      if (this.store.runs().some((r) => r.key === key)) continue;
-      this.store.transaction(() => {
-        const run = this.store.enqueue(
-          a.id,
-          key,
-          'QUARK cache refresh only. Reply with “Ready”. Do not use tools, delegate, change files, or continue the task. The saved task and approvals remain unchanged.',
-          'message',
-        );
-        this.store.setSetting(`quark:nudge:${run.id}`, true);
-        if (taskId) this.store.setSetting(`pulsar:task:${run.id}`, taskId);
-        this.store.setSetting(`quark:nudge-expiry:${run.id}`, c.estimatedExpiresAt);
-        // Preserve the original model/effort and prompt prefix, rather than invoking a cheaper model.
-        this.store.setSetting(`model-policy:run:${run.id}`, a.assignment ?? { cacheRefresh: true });
-        this.store.setSetting(`pulsar:estimate:${run.id}`, {
-          ...this.pulsar.estimate(this.store.run(run.id)),
-          priority: 'background',
-          expectedTokens: Math.min(
-            10_000_000,
-            Math.max(100, (this.snapshot(a.id)?.last.cachedInputTokens ?? 2000) + 100),
-          ),
-          quotaPercent: 0.25,
-          expectedSeconds: 20,
-        });
-        this.store.event('quark.cache_refresh', a.projectId, a.id, {
-          runId: run.id,
-          estimatedExpiresAt: c.estimatedExpiresAt,
-        });
-      });
-    }
   }
   projectRates() {
     const cutoff = stamp(this.clock() - 3600_000);

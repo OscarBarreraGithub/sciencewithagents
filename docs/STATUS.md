@@ -3,9 +3,12 @@
 ## Latest QUARK simplification
 
 Spending limits are adjustable sliders alongside project/task cards on the QUARK board.
-Managers are instructed to supply the starting whole-task estimates; owner changes save on
-release while retaining prior spending and existing enforcement. Removed the duplicate form
-and Help/setup’s extra navigation row. Focused backend and five-profile browser checks pass.
+Managers supply starting whole-task estimates; owner changes save on release while retaining
+prior spending and enforcement. Remaining allowances/reset times and account actions now
+live on QUARK too. The separate usage page and Help/setup’s extra links are removed; old
+usage URLs redirect. Automatic context-cache refreshes are off for new/existing installs,
+with old queued nudges cancelled. Future controls are [issue #1](https://github.com/OscarBarreraGithub/sciencewithagents/issues/1).
+Detailed accounting remains available to agents. Focused backend and five-profile checks pass.
 
 ## Latest phone simplification
 

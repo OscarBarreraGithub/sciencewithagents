@@ -13,7 +13,7 @@ See docs/UI_REBUILD.md and docs/WORKFLOW_BUILD.md for the connected screens, ver
 See docs/RESOURCE_WATCH.md for the lightweight watcher and bounded resource assistant.
 See docs/QUARK_CHECKLIST.md for the scheduling brief and docs/QUARK.md for controls.
 Outside-agent cached reads and capped requests: docs/AGENT_USAGE_ACCESS.md and skills/quark/SKILL.md.
-See docs/QUARK_ACCOUNTING.md for automatic token attribution, owner-controlled allowance caps, durable quota pauses and bounded cache refreshes. Never promise validated 2–3% accuracy or guaranteed cache retention.
+See docs/QUARK_ACCOUNTING.md for automatic token attribution, owner-controlled allowance caps, durable quota pauses and the deferred cache-refresh work. Never promise validated 2–3% accuracy or guaranteed cache retention.
 See docs/STATUS.md for the current verified slices and the next bounded v1 work.
 See docs/VSCODE_MIRROR.md for central Codex/Claude editor chats and pinned bridge maintenance.
 Use docs/MODEL_POLICY.md and the central policy for every new app-managed model launch;

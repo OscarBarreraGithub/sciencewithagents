@@ -443,7 +443,7 @@ export function Welcome({ data }: { data: HomeData }) {
                     );
                   }) && (
                     <p className="welcome-problem" role="status">
-                      Some usage readings are missing or out of date. Inspect usage to see which
+                      Some usage readings are missing or out of date. Open QUARK to see which
                       provider needs attention. Protected work may wait.
                     </p>
                   )}
@@ -451,10 +451,7 @@ export function Welcome({ data }: { data: HomeData }) {
             )}
             <div className="welcome-actions">
               <a className="flow-button" href="#/work">
-                Review pacing
-              </a>
-              <a className="flow-button" href="#/usage">
-                Inspect usage
+                Open QUARK
               </a>
             </div>
           </article>

@@ -102,8 +102,8 @@ export function TaskModal({
     >
       <p>
         Describe one outcome. Creating the task queues a request for its manager through QUARK.
-        Estimates guide scheduling; set a project allowance cap in All usage before starting if you
-        need a spending limit.
+        Estimates guide scheduling; set a project allowance cap in QUARK before starting if you need
+        a spending limit.
       </p>
       <form
         onSubmit={(event) => {

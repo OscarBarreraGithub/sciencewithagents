@@ -502,7 +502,6 @@ export class Runtime {
         ]),
       );
       this.coordinator.tick();
-      this.quark.queueNudges(this.externalControl);
       const waiting = this.pulsar.ordered(this.store.runs().filter((r) => r.status === 'queued'));
       const priority = { interactive: 3, high: 2, normal: 1, background: 0 };
       const local = this.localJobs.candidates();
@@ -548,20 +547,15 @@ export class Runtime {
         }
         const run = candidate.run!;
         if (this.quark.isNudge(run.id)) {
-          const expiry = this.store.getSetting(`quark:nudge-expiry:${run.id}`);
+          // Retire queued cache-only turns from older versions without starting the provider.
+          this.store.updateRun(run.id, { status: 'cancelled' });
           if (
-            !this.quark.settings().cacheEnabled ||
-            (typeof expiry === 'string' && Date.parse(expiry) <= Date.now())
-          ) {
-            this.store.updateRun(run.id, { status: 'cancelled' });
-            if (
-              !this.store
-                .runs()
-                .some((r) => r.agentId === run.agentId && ['queued', 'running'].includes(r.status))
-            )
-              this.store.updateAgent(run.agentId, { status: 'idle' });
-            continue;
-          }
+            !this.store
+              .runs()
+              .some((r) => r.agentId === run.agentId && ['queued', 'running'].includes(r.status))
+          )
+            this.store.updateAgent(run.agentId, { status: 'idle' });
+          continue;
         }
         if (
           this.executing.has(run.agentId) ||

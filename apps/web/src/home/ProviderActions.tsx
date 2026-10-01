@@ -3,7 +3,13 @@ import { RefreshCw, PlugZap, Download, ArrowUpRight } from 'lucide-react';
 import { providerMaintenanceStateSchema, setupStatusSchema, type ProviderId } from '@dock/shared';
 import { api } from '../api';
 import { useReading } from './useHomeData';
-export function ProviderActions({ provider }: { provider: ProviderId }) {
+export function ProviderActions({
+  provider,
+  showQuarkLink = true,
+}: {
+  provider: ProviderId;
+  showQuarkLink?: boolean;
+}) {
   const reading = useReading(
     `/providers/${provider}/maintenance`,
     providerMaintenanceStateSchema.parse,
@@ -76,9 +82,11 @@ export function ProviderActions({ provider }: { provider: ProviderId }) {
             ? 'Update waiting for active work'
             : 'Check & install updates'}
       </button>
-      <a href="#/usage">
-        Allowance details <ArrowUpRight size={13} />
-      </a>
+      {showQuarkLink && (
+        <a href="#/work">
+          Open QUARK <ArrowUpRight size={13} />
+        </a>
+      )}
       {(message || update?.checkedAt) && <p role="status">{message || update?.message}</p>}
       {update && !['idle', 'waiting', 'updating'].includes(update.state) && message && (
         <p role="status">{update.message}</p>

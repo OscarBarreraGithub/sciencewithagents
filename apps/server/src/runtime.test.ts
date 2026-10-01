@@ -466,7 +466,7 @@ it('manager allowance tools are retry-safe and cannot increase or replace an exi
   expect(runtime.quark.budgets()[0]!.limitPercent).toBe(8);
 });
 
-it('a cache refresh retains the chosen model and task status without generating a manager report', async () => {
+it('cancels an old queued cache refresh without waking a provider or changing task progress', async () => {
   const taskId = (await task()).id;
   store.updateTask(taskId, { status: 'working' });
   const worker = store.addAgent({
@@ -489,7 +489,8 @@ it('a cache refresh retains the chosen model and task status without generating 
   store.setSetting(`quark:nudge-expiry:${run.id}`, new Date(Date.now() + 60000).toISOString());
   store.setSetting(`model-policy:run:${run.id}`, { cacheRefresh: true });
   runtime.kick();
-  await vi.waitFor(() => expect(store.run(run.id).status).toBe('completed'));
+  await vi.waitFor(() => expect(store.run(run.id).status).toBe('cancelled'));
+  expect(store.agent(worker.id).threadId).toBeNull();
   expect(store.agent(worker.id).model).toBe('demo');
   expect(store.task(taskId).status).toBe('working');
   expect(store.runs().filter((r) => r.agentId === worker.id)).toHaveLength(1);

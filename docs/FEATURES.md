@@ -281,8 +281,8 @@ remain distinct; see [connection behavior and limits](LOCAL_ACCESS.md).
 
 **Native Claude helper totals:** completed Agent/Task responses now add the provider-reported
 run total and delivered report to the existing helper record. Late transcript writes and
-replay preserve attribution; helpers remain excluded from inclusive project totals. All usage
-explains when the total is reported but the breakdown is incomplete. Only recognized results
+replay preserve attribution; helpers remain excluded from inclusive project totals. The backend distinguishes a reported total from an incomplete breakdown; these records
+remain available to agents without a separate technical usage screen. Only recognized results
 for already observed helpers are linked; no new provider tool, polling service or model turn
 is required. Input/output detail and missing native results can still be partial.
 
@@ -494,10 +494,11 @@ provider windows. Owner adjustments save on release, retain spending already rec
 retry lost replies idempotently and report conflicting device edits. The board refreshes
 its ledger readings every ten seconds while visible; provider data and attribution remain
 estimated/delayed. Explicit **Continue work** resumes quota-held jobs when allowed.
-The detailed allowance page retains accounting/cache controls but removes its duplicate
-spending form. Help/setup no longer adds the three unrelated navigation links.
+The separate allowance page is removed; old links open QUARK. Remaining allowances,
+reset times and connection actions sit above the board. Detailed accounting stays queryable
+by managers; cache-warming controls are removed and automatic refreshes are disabled. Help/setup no longer adds the three unrelated navigation links.
 
-Implemented: All usage explains Claude read failures, retains the last successful time and
+Implemented: QUARK’s account actions explain Claude read failures, retains the last successful time and
 shows the next automatic check. Provider retry hints and the existing cooldown are shared
 across callers and survive restarts. Throttled usage checks are distinct from exhausted
 allowances; failure details contain no provider response bodies or credentials.
@@ -505,7 +506,7 @@ allowances; failure details contain no provider response bodies or credentials.
 Implemented for a new empty installation: shared usage/resource pacing starts enabled before
 work can be created. Existing projects, model configuration and saved pacing choices retain
 legacy behavior. Welcome shows the current setting, stale/missing provider readings and links
-to Work/All usage. Opening it never toggles policy or starts a model. Unknown readings can
+to QUARK. Opening it never toggles policy or starts a model. Unknown readings can
 hold protected work; explicit task/project caps and manager leases also apply when optional
 shared pacing is off.
 
@@ -533,16 +534,17 @@ outcomes. Local public YouTube transcription uses verified Whisper and shares ca
 owned local processes can pause/resume. The new [allowance guard](QUARK_ACCOUNTING.md)
 adds automatic per-run token accounting, agent/project rollups, estimated allowance shares,
 owner-controlled project/task caps, active-turn interruption with durable holds, explicit
-continuation and bounded cache refreshes. Monitoring/reset/headroom holds can recover after
+continuation. Automatic context-cache refreshes are disabled and deferred in
+[issue #1](https://github.com/OscarBarreraGithub/sciencewithagents/issues/1). Monitoring/reset/headroom holds can recover after
 confirmed stopping and a fresh successful reading; exhausted grants, deliberate pauses and
 uncertain restarts stay explicit. Running work gets at most the remaining three-minute
-last-reading lifetime during a collector error; new admission waits immediately. **All usage** and **Work** provide these controls
+last-reading lifetime during a collector error; new admission waits immediately. **QUARK** provides budget and pause controls
 in the current phone/desktop interface. Ordinary background pacing still yields at turn
 boundaries; quota guards can interrupt the original managed turn/group.
 
 Limits: native child overlap is separated from project totals; external account activity
-can distort attribution; 2–3 percentage-point accuracy is unvalidated. Cache timers are
-estimates, Codex expiry is unknown by default, and refreshes cannot guarantee retention.
+can distort attribution; 2–3 percentage-point accuracy is unvalidated. Native cache-token
+accounting remains; no automatic cache warming or guaranteed retention is offered.
 
 Real cross-provider work, real YouTube/Whisper output and the updated owner installation
 are verified; detailed rollout evidence is recorded separately. See [QUARK](QUARK.md) for defaults and limits. This supersedes

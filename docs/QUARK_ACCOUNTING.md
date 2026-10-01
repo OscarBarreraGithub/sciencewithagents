@@ -1,10 +1,10 @@
-# Automatic accounting, allowance caps and cache refreshes
+# Automatic accounting and allowance caps
 
 Open **QUARK** from Home, on the computer or paired phone, for the conversation, shared
-work board and spending sliders. **Allowance details** opens remaining account allowances,
-estimated project shares, project/agent/run token counters, quota pauses and estimated cache
-timers. Opening these views makes no model calls. Projects, tasks and managed Conversations open from Home;
-each uses the same saved work and QUARK state.
+work board, remaining allowances/reset times and spending sliders. Old usage links redirect
+there. The separate technical accounting page is removed; managers retain detailed
+project/agent/run token counters and pause evidence through the shared backend. Opening the
+board makes no model calls.
 
 Managers also need a signed, host-renewed QUARK lease before orchestration. The lease and
 owned-worker pause hook are described in [QUARK](QUARK.md#managers-need-a-quark-lease). Workers
@@ -152,32 +152,16 @@ There is no ground-truth per-project subscription meter to certify it. The contr
 conservative host enforcement based on estimates, not a provider-enforced exact spending cap
 or a monetary billing ledger. Periods with missing reports or external activity need extra care.
 
-## Cache timers and bounded refreshes
+## Context-cache refreshes — deferred
 
-Cache expiry does **not** erase conversation history. It can change the cost and latency
-of reprocessing a saved prompt. The UI shows reported cached tokens and an estimated
-countdown. Claude defaults to the owner's 60-minute included-subscription assumption;
-the lifetime is editable or can be cleared. Codex's current adapter exposes cache token
-counters but no authoritative expiry timestamp, so its timer defaults to unknown; an owner
-may supply an estimate. API retention documentation is not proof of a Codex session's TTL.
+Automatic cache-only turns are disabled for new and existing installations. The scheduler
+no longer creates them; queued refreshes from older versions are cancelled before provider
+startup. Old settings are migrated off, preserving caps, records and other settings. A stale
+client cannot turn them back on. The UI has no cache controls or countdown list.
 
-Automatic refreshes are enabled by default, limited to two per eligible agent per rolling
-24 hours. They target idle workers on unfinished tasks and idle managers responsible for
-unfinished work, with a recent saved context; never archived/finished work, interrupted
-work or quota-held conversations. A manager refresh is charged to its sole unfinished
-task when unambiguous, otherwise to project overhead. They
-queue shortly before estimated expiry and expire if not admitted in time. Each refresh
-uses the existing provider/model/effort and a small fixed reply instruction, shares QUARK
-admission and budgets, and is stopped if still running after 30 seconds. Host coordination
-tools are refused during it; native provider permissions remain in force. No task completion,
-worktree checkpoint or manager report is generated merely for a successful refresh.
-
-A nudge is a best-effort cache reuse attempt, not proof every prompt prefix was retained.
-It consumes tokens, can be denied by quota/resource pacing, and does not run while the
-app/computer is off or asleep. Stale nudges are not replayed on wake. The watcher never
-spends past a pause just to preserve a cache.
-
-Provider references: [Codex App Server usage events](https://learn.chatgpt.com/docs/app-server),
-[OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching), and
-[Claude usage, cache and subagent accounting](https://code.claude.com/docs/en/agent-sdk/cost-tracking).
-Exact checks and rollout evidence belong in [VERIFICATION.md](VERIFICATION.md).
+Future work is tracked in [issue #1](https://github.com/OscarBarreraGithub/sciencewithagents/issues/1).
+Reintroduction would require evidence of savings and reliable provider behavior, explicit
+opt-in, budgets and bounded execution. No cache-retention guarantee or authoritative
+subscription countdown is claimed. Cache expiry does **not** erase saved history. Normal
+provider caching, reported cache-token accounting, handoffs and compaction remain separate
+and unchanged. Historical refresh records remain readable for accurate accounting.

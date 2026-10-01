@@ -25,7 +25,7 @@ export const quarkSettingsSchema = z
   .object({
     revision: z.number().int().nonnegative().default(0),
     bufferPercent: percent.max(10).default(2),
-    cacheEnabled: z.boolean().default(true),
+    cacheEnabled: z.boolean().default(false),
     cacheMinutes: z
       .object({
         claude: z.number().int().min(5).max(1440).nullable().default(60),

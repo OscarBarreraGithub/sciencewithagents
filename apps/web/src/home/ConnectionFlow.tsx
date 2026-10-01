@@ -101,8 +101,8 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
           <SettingsCard to="workspace" title="Open conversations" icon={<MessageCircle />}>
             Return to saved views and deliberately continue from another browser.
           </SettingsCard>
-          <SettingsCard to="usage" title="QUARK allowances" icon={<Monitor />}>
-            Adjust project caps, inspect tokens and understand why work is waiting.
+          <SettingsCard to="work" title="QUARK" icon={<Monitor />}>
+            See remaining allowance, adjust budgets and manage waiting work.
           </SettingsCard>
           <SettingsCard to="search" title="Saved history" icon={<BookOpen />}>
             Find conversations, results and the recorded decisions behind them.

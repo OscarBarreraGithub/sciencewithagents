@@ -328,7 +328,7 @@ test('setup makes pacing and stale usage visible without changing saved choices'
   const card = page.getByRole('article', { name: 'QUARK setup' });
   await expect(card).toContainText('Shared pacing on');
   await expect(card).toContainText('readings are missing or out of date');
-  const control = card.getByRole('link', { name: 'Review pacing' });
+  const control = card.getByRole('link', { name: 'Open QUARK' });
   await control.scrollIntoViewIfNeeded();
   await expect(control).toBeInViewport();
   await page.screenshot({ path: `../../data/screenshots/welcome/${info.project.name}-pacing.png` });
@@ -339,8 +339,8 @@ test('setup makes pacing and stale usage visible without changing saved choices'
   await page.goto('/#/welcome');
   await expect(card).toContainText('Shared pacing off');
   await expect(card).toContainText('Tasks still obey saved allowance caps');
-  await card.getByRole('link', { name: 'Inspect usage' }).click();
-  await expect(page).toHaveURL(/#\/usage$/);
+  await card.getByRole('link', { name: 'Open QUARK' }).click();
+  await expect(page).toHaveURL(/#\/work$/);
   mode = 'error';
   await page.goto('/#/welcome');
   await page.reload();

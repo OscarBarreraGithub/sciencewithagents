@@ -104,14 +104,14 @@ Automatic checks wake for relevant work changes with bounded frequency and durat
 provider's usage card to refresh usage, check connection or check/install CLI updates through
 its recognized installer. See [QUARK conversation and guide notes](docs/QUARK_COORDINATOR.md).
 
-Open **All usage** or **Work** to give projects/tasks a share of a reported allowance,
-inspect tokens per agent, and continue work paused by QUARK. Obsolete assignments can be closed from the task page with a saved reason; queued
+Open **QUARK** to see remaining allowances and reset times, adjust project/task budget
+sliders, and continue paused work. Detailed token records remain available to managers. Obsolete assignments can be closed from the task page with a saved reason; queued
 replies are cancelled while files, conversations, reviews and spending records stay saved.
 Closing does not approve or apply changes. Automatic guards retain files,
-queued messages and conversations; only the owner can increase a saved cap. Cache timers
-and bounded refreshes help reuse eligible task contexts. Percentage attribution and cache
-lifetimes are estimates; 2–3 percentage-point accuracy and guaranteed cache retention are
-not established. Codex expiry is unknown by default. See [accounting and cache controls](docs/QUARK_ACCOUNTING.md).
+queued messages and conversations; only the owner can increase a saved cap. Automatic context-cache refreshes are off and deferred to
+[future work](https://github.com/OscarBarreraGithub/sciencewithagents/issues/1). Saved chats,
+token/cache accounting and normal compaction remain. Percentage attribution is estimated;
+2–3 percentage-point accuracy is not established. See [accounting](docs/QUARK_ACCOUNTING.md).
 
 Open a project’s **Private source backup** card to preview and connect a private GitHub
 destination. Confirm the exact address before creating or connecting it. The same card shows

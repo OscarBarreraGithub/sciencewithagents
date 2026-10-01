@@ -673,8 +673,8 @@ export function ConfigPanel({
           <a className="chat-small-button" href="#/workspace">
             Open conversations <ArrowUpRight size={15} />
           </a>
-          <a className="chat-small-button" href="#/usage">
-            Usage and allowances <ArrowUpRight size={15} />
+          <a className="chat-small-button" href="#/work">
+            QUARK budgets <ArrowUpRight size={15} />
           </a>
         </div>
       </section>
