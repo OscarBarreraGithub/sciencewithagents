@@ -295,6 +295,34 @@
   color: var(--home-muted);
   font-weight: 500;
 }
+.running-needs {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  max-width: 24rem;
+}
+.running-need {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-height: 44px;
+  padding-block: 4px;
+  color: var(--home-ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.running-need strong {
+  font-weight: 550;
+  line-height: 1.4;
+}
+.running-need:hover strong {
+  text-decoration: underline;
+}
+.running-needs summary {
+  padding-block: 8px;
+  cursor: pointer;
+  color: var(--home-blue);
+}
 .running-flag {
   display: inline-block;
   padding: 2px 9px;
@@ -303,7 +331,7 @@
   color: #7c3710;
   font-size: var(--text-small);
   font-weight: 750;
-  white-space: nowrap;
+  white-space: normal;
 }
 .running-no {
   color: var(--home-muted);
@@ -708,6 +736,12 @@
   }
   .running-rate-col {
     display: none;
+  }
+  .running-table th:first-child {
+    min-width: 6em;
+  }
+  .running-table thead th:nth-last-child(2) {
+    white-space: normal;
   }
   .running-inline-rates {
     display: flex;

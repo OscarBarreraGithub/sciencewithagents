@@ -13,6 +13,8 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 - Keep For your attention and General to-do compact when empty, growing with content up to
   a bounded height. Their lists then scroll independently. To-do entry is multiline.
 - Human items have a short explanation, project context and a direct route to answer.
+  The running-project table shows the actual request; both its link and arrow open that item.
+  Human questions open their answer form in Notes, with the request above the other notes.
   Internal manager work is separate. Display unresolved questions, not a wall of status boxes.
 - Running projects show usage-rate estimates, activity and manager links, with sortable
   columns. Use readable precision and the title “% usage / hour”; avoid a redundant rate legend.

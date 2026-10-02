@@ -280,7 +280,15 @@ function RateCell({
 }
 const useRates = () => useReading('/project-rates', parseProjectRates);
 
-function RunningPanel({ data, needs }: { data: HomeData; needs: Map<string, number> }) {
+function RunningPanel({
+  data,
+  needs,
+  known,
+}: {
+  data: HomeData;
+  needs: Map<string, Need[]>;
+  known: boolean;
+}) {
   const state = data.snapshot.data;
   const rates = useRates();
   const [sort, setSort] = useState(savedSort);
@@ -316,7 +324,7 @@ function RunningPanel({ data, needs }: { data: HomeData; needs: Map<string, numb
     .filter((p) => active.has(p.id))
     .map((p) => ({
       ...p,
-      needs: needs.get(p.id) ?? 0,
+      needs: needs.get(p.id) ?? [],
       rates: new Map(
         providers.map((provider) => [
           provider,
@@ -329,7 +337,7 @@ function RunningPanel({ data, needs }: { data: HomeData; needs: Map<string, numb
         sort.key === 'name'
           ? a.name.localeCompare(b.name)
           : sort.key === 'attention'
-            ? a.needs - b.needs
+            ? a.needs.length - b.needs.length
             : peak(a.rates.get(sort.key.slice(5)) ?? []) -
               peak(b.rates.get(sort.key.slice(5)) ?? []);
       return (
@@ -409,9 +417,9 @@ function RunningPanel({ data, needs }: { data: HomeData; needs: Map<string, numb
                     'running-rate-col',
                   ),
                 )}
-                {header('attention', 'Needs attention?')}
+                {header('attention', 'Needs your attention')}
                 <th scope="col">
-                  <span className="home-sr-only">Open manager chat</span>
+                  <span className="home-sr-only">Open request or manager chat</span>
                 </th>
               </tr>
             </thead>
@@ -435,17 +443,34 @@ function RunningPanel({ data, needs }: { data: HomeData; needs: Map<string, numb
                     </td>
                   ))}
                   <td>
-                    {row.needs ? (
-                      <span className="running-flag">Yes · {row.needs}</span>
+                    {row.needs.length ? (
+                      <div className="running-needs">
+                        <RunningNeed need={row.needs[0]!} />
+                        {row.needs.length > 1 && (
+                          <details>
+                            <summary>
+                              {row.needs.length - 1} more{' '}
+                              {row.needs.length === 2 ? 'request' : 'requests'}
+                            </summary>
+                            {row.needs.slice(1).map((need) => (
+                              <RunningNeed key={need.key} need={need} />
+                            ))}
+                          </details>
+                        )}
+                      </div>
                     ) : (
-                      <span className="running-no">No</span>
+                      <span className="running-no">{known ? 'None' : 'Checking requests…'}</span>
                     )}
                   </td>
                   <td className="running-open-cell">
                     <a
                       className="running-open"
-                      href={chat(row.managerId)}
-                      aria-label={`Open the ${row.name} manager chat`}
+                      href={row.needs[0]?.href ?? chat(row.managerId)}
+                      aria-label={
+                        row.needs.length
+                          ? `Open request for ${row.name}: ${row.needs[0]!.title}`
+                          : `Open the ${row.name} manager chat`
+                      }
                     >
                       <ChevronRight size={19} />
                     </a>
@@ -468,8 +493,18 @@ function RunningPanel({ data, needs }: { data: HomeData; needs: Map<string, numb
   );
 }
 
+function RunningNeed({ need }: { need: Need }) {
+  return (
+    <a className="running-need" href={need.href} title={need.detail}>
+      <span className="running-flag">{need.label}</span>
+      <strong>{need.title}</strong>
+    </a>
+  );
+}
+
 type Need = {
   key: string;
+  projectId: string | null;
   href: string;
   project: string;
   label: string;
@@ -498,6 +533,7 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
         if (!stopped.has(item.projectId))
           stopped.set(item.projectId, {
             key: `stopped:${item.projectId}`,
+            projectId: item.projectId,
             href: '#/work',
             project: item.projectName,
             label: 'Stopped work',
@@ -512,10 +548,15 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
       const approval = item.kind === 'approval' ? approvals.get(item.id) : undefined;
       return {
         key: `${item.kind}:${item.id}`,
+        projectId: item.projectId,
         href:
           item.destination === 'workspace' && item.taskId
             ? `#/review/${encodeURIComponent(item.taskId)}`
-            : chat(item.agentId),
+            : item.kind === 'backup'
+              ? `#/project/${item.projectId}`
+              : item.kind === 'decision' && item.taskId
+                ? `#/task/${item.taskId}`
+                : chat(item.agentId),
         project: item.projectName,
         label: approval
           ? approval.kind === 'input'
@@ -539,7 +580,8 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
   const asks = items.filter(needsHumanAnswer).map(
     (i): Need => ({
       key: `ask:${i.id}`,
-      href: chat(i.managerId!),
+      projectId: i.projectId,
+      href: `${chat(i.managerId!)}/answer/${i.id}`,
       project: (i.projectId && projects.get(i.projectId)) || 'Project',
       label: 'Question',
       title: i.title,
@@ -551,6 +593,7 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
     .map(
       (j): Need => ({
         key: `local:${j.id}`,
+        projectId: j.projectId,
         href: '#/transcribe',
         project: (j.projectId && projects.get(j.projectId)) || 'Local work',
         label: 'Stopped local job',
@@ -573,6 +616,7 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
     const target = job.budgetBlock.targetId;
     budgets.set(target, {
       key: `budget:${target}`,
+      projectId: agent.projectId,
       href: `#/work/${target}`,
       project: projects.get(agent.projectId) ?? job.projectName,
       label: 'Budget needs attention',
@@ -906,12 +950,13 @@ export function HomeOverview({ data, now }: { data: HomeData; now: number }) {
   const state = data.snapshot.data;
   const workItems = useWorkItems();
   const needs = needsFor(state, workItems.data?.items ?? [], data);
-  const needsByProject = new Map<string, number>();
-  for (const item of state ? attention(state).items : [])
-    needsByProject.set(item.projectId, (needsByProject.get(item.projectId) ?? 0) + 1);
-  for (const item of workItems.data?.items ?? [])
-    if (needsHumanAnswer(item) && item.projectId)
-      needsByProject.set(item.projectId, (needsByProject.get(item.projectId) ?? 0) + 1);
+  const needsByProject = new Map<string, Need[]>();
+  for (const need of needs) {
+    if (!need.projectId) continue;
+    const list = needsByProject.get(need.projectId) ?? [];
+    list.push(need);
+    needsByProject.set(need.projectId, list);
+  }
   const attentionError =
     data.snapshot.error || workItems.error || data.local.error || data.work.error;
   const known =
@@ -940,7 +985,7 @@ export function HomeOverview({ data, now }: { data: HomeData; now: number }) {
           <AttentionPanel needs={needs} known={known} error={attentionError} />
           <TodoPanel data={data} reading={workItems} />
         </aside>
-        <RunningPanel data={data} needs={needsByProject} />
+        <RunningPanel data={data} needs={needsByProject} known={known} />
         <ResourcePanel data={data} now={now} />
       </div>
     </div>

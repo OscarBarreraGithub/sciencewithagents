@@ -97,10 +97,12 @@ export function NotesPanel({
   project,
   managerId,
   onReference,
+  answerId,
 }: {
   project: Project;
   managerId: string;
   onReference: (text: string) => void;
+  answerId?: string;
 }) {
   const [notes, setNotes] = useState<ProjectNotes | null>(null);
   const [items, setItems] = useState<WorkItem[] | null>(null);
@@ -108,6 +110,9 @@ export function NotesPanel({
   const [itemsError, setItemsError] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [replying, setReplying] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (answerId) setReplying((old) => ({ ...old, [answerId]: old[answerId] ?? '' }));
+  }, [answerId]);
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState('');
   const [actionError, setActionError] = useState('');
@@ -172,7 +177,8 @@ export function NotesPanel({
     .map((part) => part.trim())
     .filter(Boolean);
   const open = (items ?? []).filter((item) => item.status !== 'done');
-  const human = open.filter((item) => item.kind !== 'internal');
+  const selected = items?.find((item) => item.id === answerId);
+  const human = open.filter((item) => item.kind !== 'internal' && item.id !== selected?.id);
   const internal = open.filter((item) => item.kind === 'internal');
   const done = (items ?? []).filter((item) => item.status === 'done').slice(0, listLimit);
   const reference = (item: WorkItem) =>
@@ -191,7 +197,7 @@ export function NotesPanel({
         <button type="button" className="chat-small-button" onClick={() => reference(item)}>
           <Quote size={15} /> Reference
         </button>
-        {item.kind === 'human' && !item.humanReply && item.managerId && (
+        {item.kind === 'human' && item.status !== 'done' && !item.humanReply && item.managerId && (
           <button
             type="button"
             className="chat-small-button"
@@ -205,7 +211,7 @@ export function NotesPanel({
               })
             }
           >
-            Reply
+            {item.id in replying ? 'Hide answer' : 'Reply'}
           </button>
         )}
         {item.kind === 'general' && !item.managerId && (
@@ -226,49 +232,73 @@ export function NotesPanel({
           </button>
         )}
       </div>
-      {item.id in replying && (
-        <form
-          className="chat-reply"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const text = replying[item.id]?.trim();
-            if (!text) return;
-            void act(
-              `reply:${item.id}`,
-              `reply:${item.id}:${item.revision}:${text}`,
-              { id: item.id, expectedRevision: item.revision, humanReply: text },
-              '/work-items',
-            ).then((sent) => {
-              if (sent)
-                setReplying((old) => {
-                  const next = { ...old };
-                  delete next[item.id];
-                  return next;
-                });
-            });
-          }}
-        >
-          <label>
-            Your answer
-            <textarea
-              value={replying[item.id]}
-              maxLength={8000}
-              rows={3}
-              onChange={(event) =>
-                setReplying((old) => ({ ...old, [item.id]: event.target.value }))
-              }
-            />
-          </label>
-          <p>Sends this answer to the manager once, linked to this to-do.</p>
-          <button type="submit" className="chat-small-button primary" disabled={!!busy}>
-            {busy === `reply:${item.id}` ? 'Sending…' : 'Send answer'}
-          </button>
-        </form>
-      )}
+      {item.id in replying &&
+        item.kind === 'human' &&
+        item.status !== 'done' &&
+        !item.humanReply &&
+        item.managerId && (
+          <form
+            className="chat-reply"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const text = replying[item.id]?.trim();
+              if (!text) return;
+              void act(
+                `reply:${item.id}`,
+                `reply:${item.id}:${item.revision}:${text}`,
+                { id: item.id, expectedRevision: item.revision, humanReply: text },
+                '/work-items',
+              ).then((sent) => {
+                if (sent)
+                  setReplying((old) => {
+                    const next = { ...old };
+                    delete next[item.id];
+                    return next;
+                  });
+              });
+            }}
+          >
+            <label>
+              Your answer
+              <textarea
+                value={replying[item.id]}
+                maxLength={8000}
+                rows={3}
+                onChange={(event) =>
+                  setReplying((old) => ({ ...old, [item.id]: event.target.value }))
+                }
+              />
+            </label>
+            <p>Sends this answer to the manager once, linked to this to-do.</p>
+            <button type="submit" className="chat-small-button primary" disabled={!!busy}>
+              {busy === `reply:${item.id}` ? 'Sending…' : 'Send answer'}
+            </button>
+          </form>
+        )}
     </li>
   );
   return (
     <div className="chat-notes">
+      {answerId && (
+        <section aria-label="Selected request">
+          <div className="chat-side-section">
+            <h3>
+              {selected?.humanReply || selected?.status === 'done'
+                ? 'Request resolved'
+                : 'Needs your answer'}
+            </h3>
+          </div>
+          {selected ? (
+            <ul className="chat-item-list">{row(selected)}</ul>
+          ) : (
+            <p className="chat-side-empty">
+              {items
+                ? 'This request is no longer available in this project.'
+                : 'Loading the request…'}
+            </p>
+          )}
+        </section>
+      )}
       {actionError && (
         <p className="chat-panel-error" role="alert">
           {actionError}

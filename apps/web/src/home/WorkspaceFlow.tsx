@@ -452,6 +452,7 @@ type PaneContext = {
   panel: ChatPanel | null;
   setPanel: (panel: ChatPanel | null) => void;
   brief: boolean;
+  answerId?: string;
   data: HomeData;
   /** Personal-assistant and resource projects: their chats are Misc, not project managers. */
   special: Set<string>;
@@ -652,7 +653,14 @@ export function ChatPage({
   const sidePanel = pane && panel && (
     <PanelFrame panel={panel} close={() => pane.setPanel(null)}>
       {panel === 'notes' ? (
-        project && <NotesPanel project={project} managerId={agent.id} onReference={onReference} />
+        project && (
+          <NotesPanel
+            project={project}
+            managerId={agent.id}
+            onReference={onReference}
+            answerId={pane.answerId}
+          />
+        )
       ) : panel === 'subagents' ? (
         <SubagentsPanel state={state} manager={agent} />
       ) : (
@@ -961,6 +969,7 @@ function MainChat({
   const page = parts[0];
   const agentId = page === 'chat' ? (parts[1] ?? '') : '';
   const brief = page === 'chat' && parts[2] === 'brief';
+  const answerId = page === 'chat' && parts[2] === 'answer' ? parts[3] : undefined;
   let editorKey = '';
   if (page === 'chats' && parts[1] === 'vscode')
     try {
@@ -972,7 +981,10 @@ function MainChat({
   const [filter, setFilter] = useState<ChatFilter>(() =>
     page === 'managers' ? 'manager' : savedList().filter,
   );
-  const [panel, setPanel] = useState<ChatPanel | null>(null);
+  const [panel, setPanel] = useState<ChatPanel | null>(answerId ? 'notes' : null);
+  useEffect(() => {
+    setPanel(answerId ? 'notes' : null);
+  }, [agentId, answerId]);
   const [menu, setMenu] = useState(false);
   const mirrors = useMirrorChats();
   useEffect(() => {
@@ -1195,7 +1207,7 @@ function MainChat({
             state={state}
             refresh={refresh}
             personal={agentId === personalId}
-            pane={{ panel, setPanel, brief, data, special }}
+            pane={{ panel, setPanel, brief, answerId, data, special }}
           />
         ) : editorKey ? (
           <div className="chat-editor">
