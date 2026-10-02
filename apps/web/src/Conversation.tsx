@@ -351,7 +351,12 @@ export function Conversation({
                 working={!older && agent.status === 'running' && index === rows.length - 1}
               />
             );
-          const entry = row;
+          // The stored supervision event is still a message from the person. Render
+          // both existing and newly sent steering with the normal user bubble.
+          const entry: Entry =
+            row.kind === 'system' && row.title === 'Owner steering'
+              ? { ...row, kind: 'user', title: 'You' }
+              : row;
           return entry.image ? (
             <figure className="generated-image" key={entry.id}>
               <a

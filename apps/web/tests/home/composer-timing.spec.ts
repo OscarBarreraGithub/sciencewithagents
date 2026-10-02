@@ -14,6 +14,19 @@ test('running composer preserves steering, queuing and notepad choices without c
   const project = await response.json();
   const detail = await (await page.request.get(`/api/agents/${project.managerId}`)).json();
   detail.agent.status = 'running';
+  detail.entries = [
+    { kind: 'system', title: 'Workspace restored', text: 'The conversation is ready.' },
+    { kind: 'user', title: 'You', text: 'Check the project layout.' },
+    { kind: 'assistant', title: 'Assistant', text: 'I am checking the layout now.' },
+    { kind: 'system', title: 'Owner steering', text: 'Please check the phone layout first.' },
+  ].map((entry) => ({
+    ...entry,
+    id: randomUUID(),
+    agentId: project.managerId,
+    runId: null,
+    status: 'completed',
+    createdAt: new Date().toISOString(),
+  }));
   const snapshot = await (await page.request.get('/api/snapshot')).json();
   snapshot.agents.find((agent: { id: string }) => agent.id === project.managerId).status =
     'running';
@@ -32,6 +45,14 @@ test('running composer preserves steering, queuing and notepad choices without c
     );
   });
   await page.goto(`/#/chat/${project.managerId}`);
+  const steering = page
+    .locator('.message.user')
+    .filter({ hasText: 'Please check the phone layout first.' });
+  await expect(steering).toBeVisible();
+  await expect(steering.locator('.message-heading strong')).toHaveText('You');
+  await expect(page.getByText('Owner steering', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.system-entry')).toHaveCount(1);
+  await expect(page.locator('.system-entry')).toContainText('Workspace restored');
   const composer = page.locator('.composer');
   const input = composer.getByRole('textbox');
   const timing = composer.getByRole('combobox', { name: 'Send timing' });
