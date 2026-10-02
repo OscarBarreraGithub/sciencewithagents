@@ -10,6 +10,7 @@ import {
   modelPolicyStatusSchema,
   policyProvider,
   projectConnectionSchema,
+  projectFolderSelectionSchema,
   projectOptionsSchema,
   projectSchema,
   projectTrackingSchema,
@@ -567,6 +568,8 @@ type Spawn = {
   workflowChosen: boolean;
   project?: { id: string; managerId: string; existing: boolean };
   tracking?: { key: string; name: string };
+  selection?: { key: string; name: string; needsTracking: boolean };
+  connectionPending?: boolean;
   trackingPending?: boolean;
   managerSaved?: boolean;
   workflowRequest?: { key: string; expectedRevision: number; workflow: ProjectWorkflow };
@@ -612,6 +615,7 @@ function readSpawn(): Spawn {
         workflowChosen: raw.workflowChosen ?? !!raw.workflow,
         quark: readQuarkPlan(raw.quark),
         tracking: raw.tracking ? projectTrackingSchema.parse(raw.tracking) : undefined,
+        selection: raw.selection ? projectFolderSelectionSchema.parse(raw.selection) : undefined,
       } as Spawn;
   } catch {
     /* A readable new setup still works when storage holds an older shape. */
@@ -633,10 +637,12 @@ export function ProjectConfiguration({
   const latestSpawn = useRef(spawn);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [canChooseFolder, setCanChooseFolder] = useState(false);
+  const [errorAtFolder, setErrorAtFolder] = useState(false);
+  const [choosingFolder, setChoosingFolder] = useState(false);
+  const [canChooseFolder, setCanChooseFolder] = useState<boolean | null>(null);
   const nameInput = useRef<HTMLInputElement>(null);
   const running = useRef(false);
-  const locked = !!spawn.project || !!spawn.tracking;
+  const locked = !!spawn.project || !!spawn.tracking || !!spawn.connectionPending;
   const enabled = policy?.enabledProviders ?? (['codex', 'claude'] as ProviderId[]);
   const provider =
     spawn.provider ?? (policy && policyProvider(policy, 'manager')) ?? enabled[0] ?? 'codex';
@@ -707,7 +713,7 @@ export function ProjectConfiguration({
           apiScope() === 'local' && projectOptionsSchema.parse(value).canChooseFolder,
         ),
       )
-      .catch(() => {});
+      .catch(() => setCanChooseFolder(false));
     return () => cancelAnimationFrame(frame);
   }, []);
 
@@ -805,17 +811,21 @@ export function ProjectConfiguration({
       `${label} was not saved: ${reason.message} The project exists; change or turn off this choice, then finish setup.`,
     );
   };
-  const run = async (step: (current: Spawn) => Promise<void>) => {
+  const run = async (step: (current: Spawn) => Promise<void>, folder = false) => {
     if (running.current) return;
     running.current = true;
     setBusy(true);
     setError('');
+    setErrorAtFolder(folder);
+    setChoosingFolder(folder);
     try {
       await step(spawn);
     } catch (reason) {
       setError(
         reason instanceof TypeError
-          ? 'The connection was interrupted. Your choices are saved; retrying continues the same project.'
+          ? folder
+            ? 'The connection was interrupted. Choose a folder again to recover the saved selection.'
+            : 'The connection was interrupted. Your choices are saved; retrying continues the same project.'
           : reason instanceof Error
             ? reason.message
             : 'Could not finish setting up. Your choices are saved; try again.',
@@ -823,6 +833,7 @@ export function ProjectConfiguration({
     } finally {
       running.current = false;
       setBusy(false);
+      setChoosingFolder(false);
       void coordinator.load();
     }
   };
@@ -858,15 +869,40 @@ export function ProjectConfiguration({
       }
       await finish(next);
     });
+  const choose = () =>
+    run(async (current) => {
+      const next = persist({
+        ...current,
+        folder: 'connect',
+        selection: undefined,
+        tracking: undefined,
+        trackingPending: false,
+        connectionPending: false,
+        folderKey: current.selection || current.tracking ? crypto.randomUUID() : current.folderKey,
+      });
+      const value = projectConnectionSchema.parse(
+        await api('/projects/connect-folder', { key: next.folderKey, selectOnly: true }),
+      );
+      // Defaults may have loaded while the native picker was open. Keep those
+      // choices as well as the receipt, without creating or freezing a manager.
+      persist({ ...latestSpawn.current, selection: value.selection });
+    }, true);
   const connect = () =>
     run(async (current) => {
-      let next = persist({ ...current, provider: current.provider ?? provider });
+      if (!current.selection) return;
+      let next = persist({
+        ...current,
+        provider: current.provider ?? provider,
+        connectionPending: true,
+      });
       if (!next.project) {
         const value = projectConnectionSchema.parse(
           await api('/projects/connect-folder', { key: next.folderKey, provider: next.provider }),
         );
         if (value.tracking) {
-          persist({ ...next, tracking: value.tracking, trackingPending: false });
+          await trackSelected(
+            persist({ ...next, tracking: value.tracking, trackingPending: false }),
+          );
           return;
         }
         if (!value.project) throw new Error('No folder was connected. Choose a folder again.');
@@ -874,23 +910,29 @@ export function ProjectConfiguration({
       }
       await finish(next);
     });
-  const track = () =>
-    run(async (current) => {
-      if (!current.tracking) return;
-      const next = persist({ ...current, trackingPending: true });
-      try {
-        const value = projectConnectionSchema.parse(
-          await api('/projects/track-folder', { key: next.tracking!.key, confirmedTracking: true }),
-        );
-        if (!value.project)
-          throw new Error('The starting version is not ready. Check this same request again.');
-        await finish(adopt(next, value.project));
-      } catch (reason) {
-        if (reason instanceof ApiError && reason.status >= 400 && reason.status < 500)
-          persist({ ...next, trackingPending: false });
-        throw reason;
-      }
-    });
+  const trackSelected = async (current: Spawn) => {
+    if (!current.tracking) return;
+    const next = persist({ ...current, trackingPending: true });
+    try {
+      const value = projectConnectionSchema.parse(
+        await api('/projects/track-folder', { key: next.tracking!.key, confirmedTracking: true }),
+      );
+      if (!value.project)
+        throw new Error('The starting version is not ready. Check this same request again.');
+      await finish(adopt(next, value.project));
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status >= 400 && reason.status < 500)
+        persist({ ...latestSpawn.current, trackingPending: false });
+      throw reason;
+    }
+  };
+  const submit = () => {
+    if (busy || capsInvalid || needsManagerChoice || (!policy && !locked)) return;
+    if (spawn.folder === 'connect' && !spawn.project && !spawn.tracking && !canChooseFolder) return;
+    if (spawn.tracking) void run(trackSelected);
+    else if (spawn.folder === 'fresh' || spawn.project) void create();
+    else void connect();
+  };
   const workerDisabled = busy || !policy || !!spawn.workflowRequest;
   const quarkPending =
     (!!spawn.priorityRequest && !spawn.prioritySaved) ||
@@ -905,7 +947,7 @@ export function ProjectConfiguration({
         className="config-form"
         onSubmit={(event) => {
           event.preventDefault();
-          if (spawn.folder === 'fresh' || spawn.project) void create();
+          submit();
         }}
       >
         <fieldset className="config-section" disabled={busy || locked}>
@@ -913,8 +955,8 @@ export function ProjectConfiguration({
           <div className="config-folder" role="radiogroup" aria-label="Project files">
             {(
               [
-                ['fresh', 'Start fresh', 'A new, empty project folder on this computer.'],
-                ['connect', 'Connect a folder', 'Existing files stay where they are.'],
+                ['fresh', 'New folder', 'A new, empty project folder on this computer.'],
+                ['connect', 'Existing folder', 'Choose a folder; its files stay where they are.'],
               ] as const
             ).map(([value, label, hint]) => (
               <label key={value} className={spawn.folder === value ? 'selected' : ''}>
@@ -923,7 +965,11 @@ export function ProjectConfiguration({
                   name="project-folder"
                   value={value}
                   checked={spawn.folder === value}
-                  onChange={() => edit({ folder: value })}
+                  disabled={value === 'connect' && canChooseFolder === null}
+                  onChange={() => {
+                    if (value === 'connect' && canChooseFolder) void choose();
+                    else edit({ folder: value });
+                  }}
                 />
                 <span>
                   <strong>{label}</strong>
@@ -944,12 +990,35 @@ export function ProjectConfiguration({
               />
             </label>
           )}
-          {spawn.folder === 'connect' && !spawn.tracking && (
-            <p className="config-help">
-              {canChooseFolder
-                ? 'The project takes the folder’s name. An already connected folder keeps its existing manager and settings.'
-                : 'Choosing a folder opens a picker on the computer running sciencewithagents, so it is available only there. Start fresh works from any device.'}
-            </p>
+          {spawn.folder === 'connect' && (
+            <div className="config-folder-selection">
+              {spawn.selection && <strong>Selected folder: {spawn.selection.name}</strong>}
+              <p className="config-help">
+                {canChooseFolder
+                  ? 'The project takes the folder’s name. An already connected folder keeps its existing manager and settings.'
+                  : 'Choose an existing folder on the computer running sciencewithagents. New folder works from any device.'}
+              </p>
+              {!locked && (
+                <button
+                  type="button"
+                  className="flow-button"
+                  disabled={busy || !canChooseFolder}
+                  onClick={() => void choose()}
+                >
+                  <FolderOpen size={17} />
+                  {choosingFolder
+                    ? 'Waiting for the folder picker…'
+                    : spawn.selection
+                      ? 'Choose another folder'
+                      : 'Choose a folder'}
+                </button>
+              )}
+              {error && errorAtFolder && (
+                <p className="config-error" role="alert">
+                  {error}
+                </p>
+              )}
+            </div>
           )}
         </fieldset>
         {spawn.tracking && (
@@ -966,26 +1035,12 @@ export function ProjectConfiguration({
                 will be created.
               </p>
             )}
-            <button
-              type="button"
-              className="flow-button primary"
-              disabled={busy}
-              onClick={() => void track()}
-            >
-              {busy
-                ? 'Saving the starting version…'
-                : spawn.trackingPending
-                  ? 'Check tracking request'
-                  : 'Start tracking this folder'}
-            </button>
             {!spawn.trackingPending && (
               <button
                 type="button"
                 className="flow-button"
                 disabled={busy}
-                onClick={() =>
-                  persist({ ...spawn, tracking: undefined, folderKey: crypto.randomUUID() })
-                }
+                onClick={() => void choose()}
               >
                 Choose another folder
               </button>
@@ -1136,7 +1191,7 @@ export function ProjectConfiguration({
               )}
             </p>
           )}
-          {error && (
+          {error && !errorAtFolder && (
             <p className="config-error" role="alert">
               {error}
             </p>
@@ -1146,39 +1201,43 @@ export function ProjectConfiguration({
               The project exists. Finishing its settings will not create another one.
             </p>
           )}
-          {(spawn.folder === 'fresh' || spawn.project) && !spawn.tracking ? (
-            <button
-              type="submit"
-              className="flow-button primary config-spawn"
-              disabled={
-                busy ||
-                needsManagerChoice ||
-                (!policy && !locked) ||
-                capsInvalid ||
-                (!spawn.project && !spawn.name.trim())
-              }
-            >
-              <Sparkles size={17} />
-              {busy ? 'Setting up…' : spawn.project ? 'Finish setup' : 'Spawn'}
-            </button>
-          ) : (
-            !spawn.tracking && (
-              <button
-                type="button"
-                className="flow-button primary config-spawn"
-                disabled={busy || !policy || needsManagerChoice || !canChooseFolder}
-                onClick={() => void connect()}
-              >
-                <FolderOpen size={17} />
-                {busy ? 'Waiting for the folder picker…' : 'Use an existing project folder'}
-              </button>
-            )
+          {(spawn.tracking || (spawn.folder === 'connect' && spawn.selection?.needsTracking)) && (
+            <p className="config-help">
+              Spawn also saves a local starting version of this folder so your team can track
+              changes. Your files stay in place; nothing is uploaded.
+            </p>
           )}
+          <button
+            type="submit"
+            className="flow-button primary config-spawn"
+            disabled={
+              busy ||
+              needsManagerChoice ||
+              (!policy && !locked) ||
+              capsInvalid ||
+              (!spawn.project && spawn.folder === 'fresh' && !spawn.name.trim()) ||
+              (spawn.folder === 'connect' &&
+                !spawn.project &&
+                !spawn.tracking &&
+                (!spawn.selection || !canChooseFolder))
+            }
+          >
+            <Sparkles size={17} />
+            {busy
+              ? choosingFolder
+                ? 'Choose a folder first'
+                : 'Setting up…'
+              : spawn.project
+                ? 'Finish setup'
+                : spawn.trackingPending || spawn.connectionPending
+                  ? 'Retry Spawn'
+                  : 'Spawn'}
+          </button>
           <p className="config-help">
             Spawn creates the project and its manager, saves these settings, then opens a page to
             describe the work. No model work starts until you choose Send.
           </p>
-          {(spawn.project || spawn.tracking) && !busy && (
+          {(spawn.project || spawn.tracking || spawn.connectionPending) && !busy && (
             <button
               type="button"
               className="config-link-button"

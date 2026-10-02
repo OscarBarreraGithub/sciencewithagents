@@ -46,8 +46,10 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   Report bounded/partial coverage. No model call on each keystroke.
 - New can create a project manager or a saved Misc chat. The native terminal option preserves
   native ownership and does not create a misleading saved contact; current support is Codex-only.
-- New projects offer Start fresh or Connect a folder, a replaceable name, then separate manager
-  provider/model/reasoning choices. Use real catalog names, not academic role labels here.
+- New projects begin with New folder or Existing folder. Existing folder immediately opens the
+  computer's picker and shows the selection beside those choices, without creating a manager.
+  Then choose the manager/provider/reasoning and workers; one Spawn action sits at the bottom.
+  New folders have a replaceable name. Use real catalog names, not academic role labels here.
 - Worker provider mix and spending are separate sliders. Research/coding, Review and Bulk
   choices each occupy a readable line. Put the defaults explanation prominently above them.
   Exact model overrides remain available; edited choices must be visibly custom.
@@ -55,6 +57,7 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   preferences seed new projects; project customization does not overwrite those preferences.
   Restore recommended defaults is always available. [Model policy](MODEL_POLICY.md).
 - Priority and optional allowance caps can be refined later through the manager or QUARK.
+  Label the optional cap “Set token budget”; its amount is still a percentage of AI allowance.
   Explain that “10%” means a share of the full allowance, not 10% of the remaining balance.
 - Spawn saves the project and opens the initial brief; it does not send work. Preserve setup
   choices through errors. The first Send opens normal chat.

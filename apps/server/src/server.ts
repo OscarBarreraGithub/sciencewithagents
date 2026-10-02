@@ -897,11 +897,15 @@ export async function createServer(
       throw new Conflict(
         'Choose an existing folder on your computer. You can create a new project here.',
       );
-    const { key, provider } = projectFolderSchema.parse(request.body);
-    const project = await folders.connect(key, provider);
+    const { key, provider, selectOnly } = projectFolderSchema.parse(request.body);
+    const project = await folders.connect(key, provider, selectOnly);
     return projectConnectionSchema.parse({
       project,
-      ...(project ? {} : { tracking: folders.tracking(key) }),
+      ...(selectOnly
+        ? { selection: folders.selection(key) }
+        : project
+          ? {}
+          : { tracking: folders.tracking(key) }),
     });
   });
   app.post('/api/projects/track-folder', async (request) => {

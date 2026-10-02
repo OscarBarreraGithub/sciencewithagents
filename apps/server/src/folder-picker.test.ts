@@ -98,6 +98,76 @@ it('cancellation does not create a project or stop another user journey', async 
   expect((await post()).json().project.name).toBe('My project');
 });
 
+it.each([false, true])(
+  'selects first without creating a manager or history (needs tracking: %s)',
+  async (needsTracking) => {
+    const folder = needsTracking ? join(root, 'Untracked notes') : projectRoot;
+    if (needsTracking) {
+      mkdirSync(folder);
+      writeFileSync(join(folder, 'notes.txt'), 'Keep my notes.');
+    }
+    picker.mockResolvedValue(folder);
+    const key = randomUUID();
+    const select = () =>
+      app.inject({
+        method: 'POST',
+        url: '/api/projects/connect-folder',
+        headers,
+        payload: { key, selectOnly: true },
+      });
+    const selected = await select();
+    expect(selected.statusCode).toBe(200);
+    expect(selected.json()).toEqual({
+      project: null,
+      selection: { key, name: needsTracking ? 'Untracked notes' : 'My project', needsTracking },
+    });
+    expect(selected.body).not.toContain(folder);
+    expect(store.projects()).toEqual([]);
+    expect(store.agents()).toEqual([]);
+    if (needsTracking) expect(existsSync(join(folder, '.git'))).toBe(false);
+    // Selecting a folder survives restart without another picker, and does not
+    // pin the manager provider before the person finishes the setup form.
+    await app.close();
+    await open();
+    expect((await select()).json()).toEqual(selected.json());
+    expect(picker).toHaveBeenCalledTimes(1);
+    const spawn = () =>
+      app.inject({
+        method: 'POST',
+        url: '/api/projects/connect-folder',
+        headers,
+        payload: { key, provider: 'claude' },
+      });
+    let result = await spawn();
+    expect(result.statusCode).toBe(200);
+    if (needsTracking) {
+      expect(result.json().tracking.key).toBe(key);
+      expect(existsSync(join(folder, '.git'))).toBe(false);
+      result = await track(key);
+    }
+    expect(store.projects()).toHaveLength(1);
+    expect(store.agent(result.json().project.managerId).provider).toBe('claude');
+    expect((await spawn()).json()).toEqual(result.json());
+    expect(picker).toHaveBeenCalledTimes(1);
+    expect(store.runs()).toEqual([]);
+  },
+);
+
+it('does not submit a replacement for the folder selected earlier', async () => {
+  const key = randomUUID();
+  await app.inject({
+    method: 'POST',
+    url: '/api/projects/connect-folder',
+    headers,
+    payload: { key, selectOnly: true },
+  });
+  renameSync(projectRoot, join(root, 'Original'));
+  mkdirSync(projectRoot);
+  expect((await post(key)).statusCode).toBe(409);
+  expect(store.projects()).toEqual([]);
+  expect(existsSync(join(projectRoot, '.git'))).toBe(false);
+});
+
 it('pins a selected Claude manager to the folder receipt without changing existing projects or starting work', async () => {
   const key = randomUUID();
   const input = {

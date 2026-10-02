@@ -263,7 +263,7 @@ export function QuarkControls({
           }
         />
         <span>
-          Set max usage
+          Set token budget
           <small>
             {saved.length
               ? 'Saved caps stay in place. You can change their limits here or in QUARK.'

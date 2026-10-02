@@ -52,7 +52,8 @@ const identity = (root: string) => {
 export class FolderConnections {
   private active: {
     key: string;
-    provider: ProviderId;
+    provider: ProviderId | undefined;
+    selectOnly: boolean;
     promise: Promise<Project | null>;
     controller: AbortController;
   } | null = null;
@@ -61,7 +62,11 @@ export class FolderConnections {
     readonly dataDir: string,
     readonly picker: FolderPicker | null,
   ) {}
-  async connect(key: string, requestedProvider?: ProviderId): Promise<Project | null> {
+  async connect(
+    key: string,
+    requestedProvider?: ProviderId,
+    selectOnly = false,
+  ): Promise<Project | null> {
     id.parse(key);
     if (!this.picker)
       throw new Conflict(
@@ -69,25 +74,42 @@ export class FolderConnections {
       );
     const setting = `project-folder:${key}`;
     const previous = this.store.getSetting(setting) as Selection | null;
-    const provider = previous?.provider ?? this.store.defaultProvider('manager', requestedProvider);
+    const provider = selectOnly
+      ? undefined
+      : (previous?.provider ?? this.store.defaultProvider('manager', requestedProvider));
     if (previous) {
+      this.assertSelection(previous);
+      if (selectOnly) return null;
       if (
+        previous.provider &&
         (previous.requestedProvider ?? previous.provider ?? 'policy') !==
-        (requestedProvider ?? 'policy')
+          (requestedProvider ?? 'policy')
       )
         throw new Conflict(
           'This folder request already chose another provider. Reopen the form for a new connection.',
         );
+      // Picking a folder does not choose a model or create a manager. Pin the
+      // provider only when the person submits the completed setup form.
+      if (!previous.provider)
+        this.store.setSetting(setting, {
+          ...previous,
+          provider,
+          requestedProvider: requestedProvider ?? 'policy',
+        });
       const existing = this.store.projects().find((project) => project.root === previous.root);
       if (existing) return projectSchema.parse(existing);
       if (previous.needsTracking) {
-        this.assertSelection(previous);
         return null;
       }
-      return this.register(previous.root, provider);
+      return this.register(previous.root, provider!);
     }
     if (this.active) {
-      if (this.active.key === key && this.active.provider === provider) return this.active.promise;
+      if (
+        this.active.key === key &&
+        this.active.provider === provider &&
+        this.active.selectOnly === selectOnly
+      )
+        return this.active.promise;
       throw new Conflict('The folder chooser is already open. Choose a folder or cancel it first.');
     }
     const controller = new AbortController();
@@ -100,19 +122,24 @@ export class FolderConnections {
       this.store.transaction(() => {
         this.store.setSetting(setting, {
           ...selection,
-          provider,
-          requestedProvider: requestedProvider ?? 'policy',
+          ...(selectOnly ? {} : { provider, requestedProvider: requestedProvider ?? 'policy' }),
         });
         this.store.event('project.folder_selected', null, null, { key });
       });
-      return selection.needsTracking ? null : this.register(root, provider);
+      return selectOnly || selection.needsTracking ? null : this.register(root, provider!);
     })();
-    this.active = { key, provider, promise, controller };
+    this.active = { key, provider, selectOnly, promise, controller };
     try {
       return await promise;
     } finally {
       if (this.active?.promise === promise) this.active = null;
     }
+  }
+  selection(key: string) {
+    const saved = this.store.getSetting(`project-folder:${key}`) as Selection | null;
+    return saved
+      ? { key, name: basename(saved.root), needsTracking: !!saved.needsTracking }
+      : undefined;
   }
   tracking(key: string) {
     const saved = this.store.getSetting(`project-folder:${key}`) as Selection | null;

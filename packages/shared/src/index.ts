@@ -165,9 +165,12 @@ export const projectCreateSchema = z
   .strict();
 export const projectOptionsSchema = z.object({ canChooseFolder: z.boolean() }).strict();
 export const projectFolderSchema = z
-  .object({ key: id, provider: providerIdSchema.optional() })
+  .object({ key: id, provider: providerIdSchema.optional(), selectOnly: z.boolean().optional() })
   .strict();
 export const projectTrackingSchema = z.object({ key: id, name: z.string().max(255) }).strict();
+export const projectFolderSelectionSchema = projectTrackingSchema.extend({
+  needsTracking: z.boolean(),
+});
 export const projectTrackingRequestSchema = z
   .object({ key: id, confirmedTracking: z.literal(true) })
   .strict();
@@ -175,6 +178,7 @@ export const projectConnectionSchema = z
   .object({
     project: projectSchema.nullable(),
     tracking: projectTrackingSchema.optional(),
+    selection: projectFolderSelectionSchema.optional(),
   })
   .strict();
 export const taskStatusSchema = z.enum([

@@ -501,7 +501,11 @@ test('ordinary-folder tracking stays explicit and its uncertain confirmation sur
   let key = '';
   await page.route('**/api/projects/connect-folder', (route) => {
     key = route.request().postDataJSON().key;
-    return route.fulfill({ json: { project: null, tracking: { key, name: 'My research notes' } } });
+    return route.fulfill({
+      json: route.request().postDataJSON().selectOnly
+        ? { project: null, selection: { key, name: 'My research notes', needsTracking: true } }
+        : { project: null, tracking: { key, name: 'My research notes' } },
+    });
   });
   const confirmations: unknown[] = [];
   await page.route('**/api/projects/track-folder', async (route) => {
@@ -515,13 +519,13 @@ test('ordinary-folder tracking stays explicit and its uncertain confirmation sur
     });
   });
   await page.goto('/#/new');
-  await page.getByRole('radio', { name: /Connect a folder/ }).check();
-  await page.getByRole('button', { name: 'Use an existing project folder' }).click();
+  await page.getByRole('radio', { name: /Existing folder/ }).check();
+  await expect(page.getByText('Selected folder: My research notes', { exact: true })).toBeVisible();
   const region = page.getByRole('region', { name: 'Start tracking this folder' });
-  await expect(region).toContainText('My research notes');
+  await expect(region).toHaveCount(0);
   expect(confirmations).toHaveLength(0);
   await expect(page.getByLabel('Project name', { exact: true })).toBeHidden();
-  const start = region.getByRole('button', { name: 'Start tracking this folder', exact: true });
+  const start = page.getByRole('button', { name: 'Spawn', exact: true });
   await start.scrollIntoViewIfNeeded();
   await expect(start).toBeInViewport();
   await page.screenshot({
@@ -532,15 +536,16 @@ test('ordinary-folder tracking stays explicit and its uncertain confirmation sur
   await page.reload();
   await expect(region).toContainText('My research notes');
   await expect(region.getByRole('button', { name: 'Choose another folder' })).toHaveCount(0);
-  await region.getByRole('button', { name: 'Check tracking request' }).click();
+  await page.getByRole('button', { name: 'Retry Spawn', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('temporarily unavailable');
   expect(confirmations).toEqual([
     { key, confirmedTracking: true },
     { key, confirmedTracking: true },
   ]);
   await region.getByRole('button', { name: 'Choose another folder' }).click();
-  await expect(page.getByRole('button', { name: 'Use an existing project folder' })).toBeVisible();
-  await page.getByRole('radio', { name: /Start fresh/ }).check();
+  await expect(page.getByText('Selected folder: My research notes', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Spawn', exact: true })).toBeEnabled();
+  await page.getByRole('radio', { name: /New folder/ }).check();
   await expect(page.getByLabel('Project name', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

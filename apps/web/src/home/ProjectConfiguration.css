@@ -73,6 +73,15 @@
   gap: 10px;
   margin-bottom: 16px;
 }
+.config-folder-selection {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  overflow-wrap: anywhere;
+}
+.config-folder-selection .config-help {
+  margin: 0;
+}
 .config-section .config-folder label {
   display: flex;
   flex-direction: row;

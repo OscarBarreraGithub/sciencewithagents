@@ -206,7 +206,7 @@ for (const size of [
             await expect(
               page.getByRole('heading', { name: 'Start or connect a project', exact: true }),
             ).toBeVisible();
-            await page.getByRole('radio', { name: /Start fresh/ }).check();
+            await page.getByRole('radio', { name: /New folder/ }).check();
             const name = `Zoom ${size.width} ${factor}`;
             await page.getByLabel('Project name', { exact: true }).fill(name);
             const spawn = page.getByRole('button', { name: 'Spawn', exact: true });
@@ -245,9 +245,10 @@ for (const size of [
               route.fulfill({
                 json: {
                   project: null,
-                  tracking: {
+                  selection: {
                     key: route.request().postDataJSON().key,
                     name: 'Folder with existing research files',
+                    needsTracking: true,
                   },
                 },
               }),
@@ -256,12 +257,16 @@ for (const size of [
             await expect(
               page.getByRole('heading', { name: 'Start or connect a project', exact: true }),
             ).toBeVisible();
-            await page.getByRole('radio', { name: /Connect a folder/ }).check();
+            await page.getByRole('radio', { name: /Existing folder/ }).check();
           }
           if (route === 'new') {
-            await page.getByRole('button', { name: 'Use an existing project folder' }).click();
+            await expect(
+              page.getByText('Selected folder: Folder with existing research files', {
+                exact: true,
+              }),
+            ).toBeVisible();
             const tracking = page.getByRole('button', {
-              name: 'Start tracking this folder',
+              name: 'Spawn',
               exact: true,
             });
             await tracking.scrollIntoViewIfNeeded();
