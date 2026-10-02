@@ -936,12 +936,33 @@ small {
   color: #a0a795;
 }
 .composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  column-gap: 8px;
   border: 1px solid #dfe3d6;
   border-radius: 11px;
   box-shadow: 0 3px 13px #44512d05;
   background: #fffefa;
   overflow: hidden;
   transition: border-color 0.2s;
+}
+/* Keep Send beside the draft, independent of wrapping secondary tools. */
+.composer > * {
+  grid-column: 1 / -1;
+}
+.composer > textarea {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+.composer > .send-button {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+  justify-self: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 2px;
 }
 .composer:focus-within {
   border-color: #c1c9b2;
@@ -1005,20 +1026,6 @@ small {
   padding: 6px 8px;
   color: #80916f;
   font-size: var(--text-caption);
-}
-.steer-toggle {
-  display: flex !important;
-  align-items: center;
-  gap: 5px !important;
-  font-size: var(--text-caption) !important;
-  color: #8b987e;
-  margin: 0 !important;
-}
-.steer-toggle input {
-  padding: 0;
-  width: 12px;
-  height: 12px;
-  accent-color: #819475;
 }
 .composer-caption {
   display: flex;

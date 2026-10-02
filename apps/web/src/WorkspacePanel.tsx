@@ -164,11 +164,25 @@ export function WorkspacePanel({
   );
 }
 
-export function DraftHandoff({ draft }: { draft: SharedDraft }) {
+export function DraftHandoff({
+  draft,
+  compact = false,
+}: {
+  draft: SharedDraft;
+  compact?: boolean;
+}) {
   const [showOtherDrafts, setShowOtherDrafts] = useState(false);
   return (
     <div className="draft-handoff">
-      <p className="muted" role="status">
+      <p
+        className="muted"
+        role="status"
+        title={
+          compact
+            ? 'Drafts are saved separately for this browser. Other devices cannot overwrite them.'
+            : undefined
+        }
+      >
         {!draft.ready
           ? 'Connecting your saved draft…'
           : draft.saving
@@ -177,7 +191,9 @@ export function DraftHandoff({ draft }: { draft: SharedDraft }) {
               ? 'Your typing is kept here while the draft is saved to this computer.'
               : draft.state?.own.submitted
                 ? 'This draft has a delivery receipt. Retrying an unchanged copy will not send it twice.'
-                : 'Draft saved separately for this browser. Other devices cannot overwrite it.'}
+                : compact
+                  ? 'Draft saved'
+                  : 'Draft saved separately for this browser. Other devices cannot overwrite it.'}
       </p>
       {draft.error && (
         <div role="alert">

@@ -36,6 +36,34 @@ import { McpUrlLink } from './McpUrlLink';
 import { Notepad, type DraftSelection } from './Notepad';
 import { useScrollHints } from './home/useScrollHints';
 
+function SendTiming({
+  steer,
+  disabled,
+  onChange,
+}: {
+  steer: boolean;
+  disabled: boolean;
+  onChange: (steer: boolean) => void;
+}) {
+  return (
+    <select
+      className="composer-timing"
+      aria-label="Send timing"
+      title={
+        steer
+          ? 'Guide the reply Codex is working on now.'
+          : 'Send a separate message after the current reply finishes.'
+      }
+      value={steer ? 'steer' : 'queue'}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value === 'steer')}
+    >
+      <option value="steer">Steer now</option>
+      <option value="queue">Queue next</option>
+    </select>
+  );
+}
+
 export const time = (value: string) =>
   new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 export const roleLabel = {
@@ -747,7 +775,7 @@ export function Composer({
     area.style.height = `${capped ? limit : wanted}px`;
     area.style.overflowY = capped ? 'auto' : 'hidden';
   };
-  useLayoutEffect(resize, [text, expanded]);
+  useLayoutEffect(resize, [text, expanded, steer, canSteer]);
   useEffect(() => {
     // The phone cap follows the visible viewport, which a keyboard changes without a
     // window resize. Measure after the shell has applied the new visible height.
@@ -828,12 +856,14 @@ export function Composer({
         aria-label={`Message ${agent.name}`}
         placeholder={
           steer
-            ? 'Update the current task…'
-            : agent.provider === 'claude' && agent.status === 'running'
-              ? 'Add a follow-up…'
-              : agent.role === 'manager'
-                ? 'Describe an idea, ask a question, or move the work forward…'
-                : `Message ${agent.name}…`
+            ? 'Guide the reply in progress…'
+            : canSteer
+              ? 'Write the next message…'
+              : agent.provider === 'claude' && agent.status === 'running'
+                ? 'Add a follow-up…'
+                : agent.role === 'manager'
+                  ? 'Describe an idea, ask a question, or move the work forward…'
+                  : `Message ${agent.name}…`
         }
         value={text}
         onChange={(event) => {
@@ -856,7 +886,15 @@ export function Composer({
           }
         }}
       />
-      <DraftHandoff draft={draft} />
+      <button
+        className="send-button"
+        aria-label="Send message"
+        onClick={() => void submit()}
+        disabled={!canSend}
+      >
+        {sending ? <RefreshCw className="spin" size={18} /> : <ArrowUp size={20} />}
+      </button>
+      <DraftHandoff draft={draft} compact />
       {literalSlash && (
         <div className="draft-handoff">
           <p>
@@ -930,12 +968,21 @@ export function Composer({
       )}
       <div className="composer-toolbar">
         <div>
-          {!specialized && (
+          {canSteer && <SendTiming steer={steer} disabled={sending} onChange={setSteer} />}
+          <button
+            className="composer-notepad"
+            title="Open notepad"
+            aria-label="Open notepad"
+            onClick={() => openNotepad('message')}
+          >
+            <Maximize2 size={16} /> <span>Notepad</span>
+          </button>
+          {!specialized && !steer && (
             <select
               className="composer-priority"
               aria-label="Message priority"
               value={priority}
-              disabled={steer || sending}
+              disabled={sending}
               onChange={(e) => setPriority(e.target.value as JobEstimate['priority'])}
             >
               <option value="interactive">Do this soon</option>
@@ -944,6 +991,11 @@ export function Composer({
               <option value="background">Background</option>
             </select>
           )}
+          {!specialized && agent.provider === 'claude' && agent.status === 'running' && (
+            <span className="composer-mode">Follow-ups queue for Claude’s next step</span>
+          )}
+        </div>
+        <div>
           {!specialized && (
             <button
               className="icon-button"
@@ -954,51 +1006,16 @@ export function Composer({
               <span className="slash-icon">/</span>
             </button>
           )}
-          <button
-            className="composer-notepad"
-            title="Open notepad"
-            aria-label="Open notepad"
-            onClick={() => openNotepad('message')}
-          >
-            <Maximize2 size={16} /> <span>Open notepad</span>
-          </button>
-          {draftSteady && (
-            <details className="draft-saved">
-              <summary>Saved</summary>
-              <p>Draft saved separately for this browser. Other devices cannot overwrite it.</p>
-            </details>
-          )}
-          {canSteer && (
-            <label
-              className={`steer-toggle${steer ? ' on' : ''}`}
-              title="On: your message joins the task Codex is working on now. Off: it is sent as a separate message after this turn."
-            >
-              <input
-                type="checkbox"
-                checked={steer}
-                onChange={(event) => setSteer(event.target.checked)}
-              />{' '}
-              Update current task
-            </label>
-          )}
-          {!specialized && agent.provider === 'claude' && agent.status === 'running' && (
-            <span className="composer-mode">Follow-ups queue for Claude’s next step</span>
-          )}
-        </div>
-        <div>
           {!specialized && ['running', 'queued', 'waiting'].includes(agent.status) && (
-            <button className="stop-button" aria-label="Stop agent" onClick={onStop}>
-              <Square size={13} /> Stop
+            <button
+              className="stop-button"
+              aria-label="Stop agent"
+              title="Stop reply"
+              onClick={onStop}
+            >
+              <Square size={15} /> <span>Stop</span>
             </button>
           )}
-          <button
-            className="send-button"
-            aria-label="Send message"
-            onClick={() => void submit()}
-            disabled={!canSend}
-          >
-            {sending ? <RefreshCw className="spin" size={18} /> : <ArrowUp size={20} />}
-          </button>
         </div>
       </div>
       {expanded && (
@@ -1024,27 +1041,25 @@ export function Composer({
           controls={
             specialized ? undefined : (
               <div className="notepad-controls">
-                <label>
-                  Priority for this message{' '}
-                  <select
-                    value={priority}
-                    disabled={steer || sending}
-                    onChange={(e) => setPriority(e.target.value as JobEstimate['priority'])}
-                  >
-                    <option value="interactive">Do this soon</option>
-                    <option value="high">High priority</option>
-                    <option value="normal">Normal</option>
-                    <option value="background">Background</option>
-                  </select>
-                </label>
                 {canSteer && (
-                  <label className={`steer-toggle${steer ? ' on' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={steer}
-                      onChange={(event) => setSteer(event.target.checked)}
-                    />{' '}
-                    Update current task
+                  <label>
+                    Send timing
+                    <SendTiming steer={steer} disabled={sending} onChange={setSteer} />
+                  </label>
+                )}
+                {!steer && (
+                  <label>
+                    Priority for this message{' '}
+                    <select
+                      value={priority}
+                      disabled={sending}
+                      onChange={(e) => setPriority(e.target.value as JobEstimate['priority'])}
+                    >
+                      <option value="interactive">Do this soon</option>
+                      <option value="high">High priority</option>
+                      <option value="normal">Normal</option>
+                      <option value="background">Background</option>
+                    </select>
                   </label>
                 )}
                 {literalSlash && (

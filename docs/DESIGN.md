@@ -35,8 +35,9 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   Latest messages and attachment controls must not cover input or cause large scroll jumps.
   When zoomed text and a keyboard leave too little height, the composer tools fold into one
   sideways-scrolling row, then the message area gives way, so Back, input and Send stay visible.
-- Further instructions during work use supported steering or a labelled queue. Failed or
-  uncertain sends keep the draft and delivery receipt; do not show a blanket wait restriction.
+- During a running Codex reply, the composer offers “Steer now” or “Queue next”; priority
+  applies only to queued messages. The notepad uses the same choice. Claude follow-ups queue.
+  Failed or uncertain sends keep the draft and delivery receipt; do not show a blanket wait restriction.
 - Project shortcuts open its folder, configuration, Notes and Subagents. A worker row shows
   assignment, activity, timing and token evidence. Completed workers offer a separate
   Ask about this work discussion without reopening the task/review.

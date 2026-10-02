@@ -339,6 +339,11 @@ test('managed phone chat resizes its message pane for the keyboard and retains a
   expect(response.ok(), await response.text()).toBe(true);
   const project = await response.json();
   const detail = await (await page.request.get(`/api/agents/${project.managerId}`)).json();
+  detail.agent.status = 'running';
+  const snapshot = await (await page.request.get('/api/snapshot')).json();
+  snapshot.agents.find((agent: { id: string }) => agent.id === project.managerId).status =
+    'running';
+  await page.route('**/api/snapshot', (route) => route.fulfill({ json: snapshot }));
   detail.entries = Array.from({ length: 40 }, (_, i) => ({
     id: randomUUID(),
     agentId: project.managerId,
@@ -359,6 +364,9 @@ test('managed phone chat resizes its message pane for the keyboard and retains a
       messages.push(request.url());
   });
   await page.goto(`/#/chat/${project.managerId}`);
+  await expect(page.getByRole('combobox', { name: 'Send timing' })).toHaveValue('steer');
+  // The queue choice adds priority; exercise the taller toolbar with the keyboard open.
+  await page.getByRole('combobox', { name: 'Send timing' }).selectOption('queue');
   await checkKeyboard(
     page,
     {

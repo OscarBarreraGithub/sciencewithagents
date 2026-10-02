@@ -378,11 +378,15 @@
   font-size: var(--text-reading);
 }
 .flow-chat-main .composer-toolbar {
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   gap: 8px;
 }
 .flow-chat-main .composer-toolbar > div {
+  min-width: 0;
   flex-wrap: wrap;
+  gap: 6px;
 }
 .flow-chat-main .send-button {
   width: 44px;
@@ -424,9 +428,24 @@
 .flow-chat-main {
   height: clamp(440px, calc(100dvh - 405px), 740px);
 }
-.flow-chat-main .composer-priority {
+.composer .composer-priority,
+.composer .composer-timing {
+  flex-shrink: 0;
+  width: auto;
   min-height: 44px;
-  max-width: 150px;
+  max-width: none;
+  padding: 8px 34px 8px 12px;
+  border-radius: 10px;
+  font-size: var(--text-small);
+}
+.composer .composer-priority {
+  min-width: 10.5em;
+}
+.composer .composer-timing {
+  min-width: 8.5em;
+  border-color: #c9d2ec;
+  background-color: #f3f5ff;
+  color: #3246b8;
 }
 .flow-chat-main .tool-entry pre {
   white-space: pre-wrap;
@@ -1760,9 +1779,6 @@ button.chat-folder:disabled {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.draft-saved {
-  display: none;
-}
 .chat-pane .flow-chat-main .composer textarea:focus-visible {
   outline: 2px solid var(--home-blue);
   outline-offset: 1px;
@@ -1777,32 +1793,25 @@ button.chat-folder:disabled {
 .chat-pane .flow-chat-main .composer-toolbar {
   padding: 6px 0 0;
 }
-/* If the tool row wraps on a phone, Send stays on the trailing edge. */
+.flow-chat-main .stop-button {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+  border-radius: 10px;
+}
+@media (max-width: 700px), (max-height: 500px) and (pointer: coarse) {
+  .flow-chat-main .stop-button > span {
+    display: none;
+  }
+}
+/* Commands and Stop stay on the trailing edge while secondary tools wrap. */
 .flow-chat-main .composer-toolbar > div:last-child {
+  flex-wrap: nowrap;
   flex-shrink: 0;
   margin-inline-start: auto;
 }
 .chat-pane .flow-chat-main .send-button {
   border-radius: 50%;
-}
-.chat-pane .steer-toggle {
-  min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid #dde1e6;
-  border-radius: 999px;
-  color: #4d5566;
-  font-size: var(--text-small) !important;
-}
-.chat-pane .steer-toggle.on {
-  border-color: #b9c5f6;
-  background: #eef1ff;
-  color: #3246b8;
-  font-weight: 650;
-}
-.chat-pane .steer-toggle input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--home-blue);
 }
 .composer-mode {
   font-size: var(--text-small);
@@ -1925,39 +1934,6 @@ button.chat-folder:disabled {
     > p.muted:first-child {
     display: none;
   }
-  .main-chat.has-selection .chat-pane .composer.draft-steady .draft-saved {
-    display: inline-block;
-    position: relative;
-  }
-  .draft-saved > summary {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-    padding: 0 8px;
-    color: var(--home-muted);
-    font-size: var(--text-small);
-    list-style: none;
-    cursor: pointer;
-  }
-  .draft-saved > summary::-webkit-details-marker {
-    display: none;
-  }
-  .draft-saved > p {
-    position: absolute;
-    bottom: calc(100% + 4px);
-    left: 0;
-    z-index: 3;
-    width: min(260px, 70vw);
-    margin: 0;
-    padding: 8px 10px;
-    border: 1px solid var(--home-line);
-    border-radius: 10px;
-    background: white;
-    box-shadow: 0 6px 20px #2027381a;
-    color: var(--home-ink);
-    font-size: var(--text-small);
-    line-height: 1.4;
-  }
   .main-chat.has-selection .chat-editor {
     position: relative;
   }
@@ -1983,7 +1959,7 @@ button.chat-folder:disabled {
 }
 /* Conversation sets data-fit when Send would still sit below a short clipping pane with the
    textarea at its floor (zoomed text with an open keyboard). The tools stay on one row that
-   scrolls sideways with Stop and Send pinned at the end; next the message floor gives way. */
+   scrolls sideways with Stop pinned at the end; next the message floor gives way. */
 .flow-chat-main .composer[data-fit] .composer-toolbar {
   position: relative;
   flex-wrap: nowrap;
@@ -2007,10 +1983,6 @@ button.chat-folder:disabled {
 }
 .flow-chat-main .composer[data-fit] .composer-notepad > span {
   display: none;
-}
-/* The note opens above the toolbar instead of being clipped by the scrolling row. */
-.main-chat.has-selection .chat-pane .composer.draft-steady[data-fit] .draft-saved {
-  position: static;
 }
 .flow-chat-main:has(> .composer[data-fit='tight']) > .conversation.conversation {
   min-height: 0;
