@@ -419,6 +419,7 @@ export function Home() {
                 height: visible.height,
                 // Composer caps use the visible height; 100dvh ignores an open keyboard.
                 '--home-visible-height': `${visible.height}px`,
+                '--home-visible-top': `${visible.top}px`,
               } as CSSProperties)
             : undefined
         }

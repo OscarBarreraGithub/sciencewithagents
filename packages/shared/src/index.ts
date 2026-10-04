@@ -170,14 +170,43 @@ export const folderBrowseRequestSchema = z
   .object({
     folderId: id.optional(),
     offset: z.coerce.number().int().nonnegative().max(1000000).default(0),
+    query: z.string().trim().min(1).max(120).optional(),
+    scope: z.enum(['children', 'descendants']).default('descendants'),
+    hidden: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
   })
   .strict();
 export const folderBrowseSchema = z
   .object({
     current: z.object({ id, name: z.string().max(255), canSelect: z.boolean() }).strict(),
     parentId: id.nullable(),
-    folders: z.array(z.object({ id, name: z.string().max(255) }).strict()).max(100),
+    folders: z
+      .array(z.object({ id, name: z.string().max(255), location: z.string().optional() }).strict())
+      .max(100),
     nextOffset: z.number().int().nonnegative().nullable(),
+    breadcrumbs: z.array(z.object({ id, name: z.string() }).strict()).default([]),
+    locations: z
+      .array(
+        z
+          .object({
+            id,
+            name: z.string(),
+            kind: z.enum([
+              'home',
+              'desktop',
+              'documents',
+              'downloads',
+              'developer',
+              'computer',
+              'volumes',
+            ]),
+          })
+          .strict(),
+      )
+      .default([]),
+    search: z.object({ query: z.string(), partial: z.boolean() }).strict().nullable().default(null),
   })
   .strict();
 export const projectFolderSchema = z

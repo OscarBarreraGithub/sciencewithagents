@@ -481,7 +481,14 @@ export function proxyPath(method: string, path: string, socket = false) {
           params.getAll(name).length !== 1 ||
           !(
             (name === 'folderId' && new RegExp(`^${uuid}$`).test(value)) ||
-            (name === 'offset' && /^\d{1,7}$/.test(value) && Number(value) <= 1000000)
+            (name === 'offset' && /^\d{1,7}$/.test(value) && Number(value) <= 1000000) ||
+            (pathname === '/project-folders' &&
+              ((name === 'query' &&
+                value.trim().length > 0 &&
+                value.length <= 120 &&
+                !/[\x00-\x1f]/.test(value)) ||
+                (name === 'scope' && ['children', 'descendants'].includes(value)) ||
+                (name === 'hidden' && ['true', 'false'].includes(value))))
           )
         )
           return null;

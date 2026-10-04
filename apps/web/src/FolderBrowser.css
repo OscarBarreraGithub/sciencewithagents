@@ -1,76 +1,340 @@
 dialog.folder-browser {
+  position: fixed;
+  inset: var(--home-visible-top, 0px) 0 auto;
+  margin: max(12px, calc((var(--home-visible-height, 100dvh) - 740px) / 2)) auto;
   box-sizing: border-box;
-  width: min(38rem, calc(100vw - 24px));
+  width: min(960px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
-  max-height: calc(100dvh - 24px);
-  padding: clamp(12px, 3vw, 24px);
-  overflow: auto;
+  height: min(740px, calc(var(--home-visible-height, 100dvh) - 24px));
+  max-height: calc(var(--home-visible-height, 100dvh) - 24px);
+  padding: 20px;
+  overflow: hidden;
+}
+dialog.folder-browser[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.folder-browser .modal-heading {
+  margin-bottom: 0;
+  flex-shrink: 0;
 }
 .folder-browser .modal-heading h2 {
   font-size: 1.3rem;
 }
-.folder-browser > p {
-  color: var(--muted);
-  margin: 12px 0;
+.folder-browser > .folder-browser-description {
+  font-size: var(--text-small);
+  margin: 4px 0 16px;
 }
-.folder-browser-navigation,
-.folder-browser-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 12px 0;
+.folder-browser-workspace {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--home-line, #e4e0d6);
+  border-radius: 12px;
+  overflow: hidden;
 }
 .folder-browser button {
   min-height: 44px;
-  white-space: normal;
 }
-.folder-browser-navigation button {
+.folder-browser-places {
+  padding: 8px;
+  overflow: auto;
+  background: #f3f2ee;
+  border-right: 1px solid var(--home-line, #e4e0d6);
+}
+.folder-browser-places button {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 8px 10px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  white-space: nowrap;
 }
-.folder-browser-current {
-  display: block;
-  overflow-wrap: anywhere;
-  margin: 16px 0 10px;
+.folder-browser-places button[aria-current] {
+  color: var(--home-blue, #3f55d6);
+  background: #e5e9fb;
+  font-weight: 650;
 }
-.folder-browser label {
+.folder-browser svg {
+  flex-shrink: 0;
+}
+.folder-browser-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: white;
+}
+.folder-browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  flex-shrink: 0;
+}
+.folder-browser-history {
+  display: flex;
+  gap: 4px;
+}
+.folder-browser-history button,
+.folder-browser-search button {
   display: grid;
-  gap: 6px;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
-.folder-browser input {
+.folder-browser-search {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--home-line, #e4e0d6);
+  border-radius: 10px;
+}
+.folder-browser-search input {
+  flex: 1;
   width: 100%;
   min-width: 0;
-  box-sizing: border-box;
+  min-height: 44px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
   font-size: 16px;
+  padding: 8px 10px;
+}
+.folder-browser-search:focus-within {
+  outline: 2px solid var(--home-blue, #3f55d6);
+  outline-offset: 1px;
+}
+.folder-browser-search input:focus {
+  outline: none;
+}
+.folder-browser-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.folder-browser-path {
+  display: flex;
+  gap: 0;
+  flex-shrink: 0;
+  padding: 0 10px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--home-line, #e4e0d6);
+  overscroll-behavior-x: contain;
+}
+.folder-browser-path span {
+  display: flex;
+  align-items: center;
+}
+.folder-browser-path button {
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: var(--text-small);
+}
+.folder-browser-path button[aria-current] {
+  color: var(--home-ink, #202738);
+  font-weight: 650;
+}
+.folder-browser-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--home-line, #e4e0d6);
+}
+.folder-browser-options label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-small);
+  min-width: 0;
+  min-height: 44px;
+}
+.folder-browser-options input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+}
+.folder-browser-options select {
+  width: auto;
+  max-width: 100%;
+  font-size: var(--text-small);
+  padding: 6px 8px;
+  min-height: 44px;
 }
 .folder-browser-list {
-  margin-top: 12px;
-  max-height: 38dvh;
-  min-height: 70px;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
 }
-.folder-browser-list button {
+.folder-browser-list > button {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
+  min-height: 54px;
   text-align: left;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #e4e0d6;
+  border-bottom: 1px solid #f0eee8;
   border-radius: 0;
-  padding: 12px 4px;
+  padding: 10px 14px;
 }
-.folder-browser-list button svg {
-  flex-shrink: 0;
+.folder-browser-list > button:hover {
+  background: #f2f5fc;
 }
-.folder-browser-list button span:first-of-type {
+.folder-browser-list > button > svg:first-child {
+  color: #708bb9;
+}
+.folder-browser-list > button > span {
   flex: 1;
+  display: grid;
+  gap: 3px;
   overflow-wrap: anywhere;
   min-width: 0;
 }
+.folder-browser-list strong {
+  font-weight: 550;
+  font-size: var(--text-body);
+}
+.folder-browser-list small {
+  font-size: var(--text-small);
+  color: var(--home-muted, #656d7a);
+}
+.folder-browser-list > p {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: var(--text-small);
+}
+.folder-browser-list .folder-browser-empty {
+  padding: 32px 16px;
+  text-align: center;
+}
+.folder-browser-error {
+  padding: 8px 12px;
+  overflow: auto;
+  max-height: 40%;
+  flex-shrink: 0;
+}
+.folder-browser-error p {
+  margin: 0 0 8px;
+}
 .folder-browser-actions {
-  justify-content: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 0;
+  flex-shrink: 0;
+}
+.folder-browser-selection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  font-size: var(--text-small);
+}
+.folder-browser-selection span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 650px) {
+  dialog.folder-browser,
+  .home-shell dialog.folder-browser {
+    width: 100%;
+    max-width: 100%;
+    height: var(--home-visible-height, 100dvh);
+    max-height: var(--home-visible-height, 100dvh);
+    margin: 0;
+    padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+  .folder-browser > .folder-browser-description {
+    display: none;
+  }
+  .folder-browser .modal-heading {
+    margin-bottom: 8px;
+  }
+  .folder-browser-workspace {
+    display: flex;
+    flex-direction: column;
+  }
+  .folder-browser-places {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    padding: 4px;
+    border-right: 0;
+    border-bottom: 1px solid var(--home-line, #e4e0d6);
+    overflow-x: auto;
+  }
+  .folder-browser-places button {
+    flex: 0 0 auto;
+    width: auto;
+    gap: 6px;
+    padding: 8px;
+  }
+  .folder-browser-content {
+    flex: 1;
+  }
+  .folder-browser-toolbar {
+    padding: 6px;
+    gap: 4px;
+  }
+  .folder-browser-history {
+    gap: 0;
+  }
+  .folder-browser-history button {
+    width: 40px;
+    flex-basis: 40px;
+  }
+  .folder-browser-options {
+    padding-inline: 10px;
+  }
+  .folder-browser-actions {
+    display: grid;
+    grid-template-columns: minmax(max-content, 1fr) minmax(max-content, 1.3fr);
+    margin-top: 10px;
+    gap: 8px;
+  }
+  .folder-browser-selection {
+    grid-column: 1 / -1;
+  }
+  .folder-browser-actions button {
+    justify-content: center;
+    white-space: nowrap;
+    padding-inline: 12px;
+  }
+}
+@media (max-height: 540px) {
+  dialog.folder-browser {
+    padding: 8px 12px;
+  }
+  .folder-browser > .folder-browser-description {
+    display: none;
+  }
+  .folder-browser .modal-heading {
+    margin-bottom: 6px;
+  }
+  .folder-browser-actions {
+    margin-top: 6px;
+  }
 }

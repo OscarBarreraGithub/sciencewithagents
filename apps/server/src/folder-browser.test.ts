@@ -48,3 +48,62 @@ it('paginates directories and returns stable IDs while navigating', async () => 
   const child = await browser.browse(first.folders[0]!.id);
   expect(child.parentId).toBe(first.current.id);
 });
+
+it('provides direct locations and an ancestor path without accepting filesystem paths', async () => {
+  mkdirSync(join(root, 'Documents', 'Science', 'Analysis'), { recursive: true });
+  mkdirSync(join(root, 'Downloads'));
+  mkdirSync(join(root, 'Developer'));
+  const home = await browser.browse();
+  expect(home.locations.map((place) => place.name)).toEqual(
+    expect.arrayContaining(['Home', 'Documents', 'Downloads', 'Developer', 'This computer']),
+  );
+  const documents = home.locations.find((place) => place.name === 'Documents')!;
+  const science = (await browser.browse(documents.id)).folders.find(
+    (folder) => folder.name === 'Science',
+  )!;
+  const analysis = (await browser.browse(science.id)).folders[0]!;
+  const deep = await browser.browse(analysis.id);
+  expect(deep.breadcrumbs.slice(-3).map((part) => part.name)).toEqual([
+    'Documents',
+    'Science',
+    'Analysis',
+  ]);
+  expect(
+    (await browser.browse(deep.breadcrumbs.find((part) => part.name === 'Documents')!.id)).current
+      .id,
+  ).toBe(documents.id);
+  await expect(browser.resolve(join(root, 'Documents'))).rejects.toThrow('expired');
+});
+
+it('searches unlisted descendants, reports their locations and keeps hidden/private/link targets bounded', async () => {
+  mkdirSync(join(root, 'Documents', 'Nested', 'Measurements'), { recursive: true });
+  mkdirSync(join(root, '.hidden', 'Measurements'), { recursive: true });
+  mkdirSync(join(root, 'private', 'Measurements'));
+  symlinkSync(root, join(root, 'Documents', 'Nested', 'loop'));
+  symlinkSync(join(root, 'Documents', 'Nested', 'Measurements'), join(root, 'Measurements alias'));
+  const all = await browser.browse(undefined, 0, { query: 'measurements' });
+  expect(all.folders).toHaveLength(1); // One real folder, even when reached through aliases.
+  expect(all.folders[0]!.location).toBe(join('Documents', 'Nested'));
+  expect(await browser.resolve(all.folders[0]!.id)).toBe(
+    join(root, 'Documents', 'Nested', 'Measurements'),
+  );
+  const local = await browser.browse(undefined, 0, { query: 'Measurements', scope: 'children' });
+  expect(local.folders.map((folder) => folder.name)).toEqual(['Measurements alias']);
+  const hidden = await browser.browse(undefined, 0, { query: 'Measurements', hidden: true });
+  expect(hidden.folders).toHaveLength(2);
+  expect(hidden.folders.some((folder) => folder.location.startsWith('private'))).toBe(false);
+  expect((await browser.browse()).folders.some((folder) => folder.name === '.hidden')).toBe(false);
+  expect(
+    (await browser.browse(undefined, 0, { hidden: true })).folders.some(
+      (folder) => folder.name === '.hidden',
+    ),
+  ).toBe(true);
+});
+
+it('bounds broad searches and marks partial results rather than claiming every folder was searched', async () => {
+  for (let n = 0; n < 105; n++) mkdirSync(join(root, `Match ${n}`));
+  const result = await browser.browse(undefined, 0, { query: 'Match' });
+  expect(result.folders).toHaveLength(100);
+  expect(result.search?.partial).toBe(true);
+  expect(result.nextOffset).toBeNull();
+});

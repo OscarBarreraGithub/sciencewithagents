@@ -477,12 +477,23 @@ describe('isolated computer connections', () => {
     expect(proxyPath('GET', `/project-folders?folderId=${agentId}&offset=100`)).toBe(
       `/api/project-folders?folderId=${agentId}&offset=100`,
     );
+    expect(
+      proxyPath(
+        'GET',
+        `/project-folders?folderId=${agentId}&query=Research&scope=descendants&hidden=true`,
+      ),
+    ).toBe(`/api/project-folders?folderId=${agentId}&query=Research&scope=descendants&hidden=true`);
+    expect(proxyPath('GET', '/documents/browse?query=Research')).toBeNull();
     for (const query of [
       'path=/tmp',
       'folderId=bad',
       'offset=-1',
       'offset=1000001',
       'offset=0&offset=1',
+      'query=a&query=b',
+      'query=%00',
+      'scope=everywhere',
+      'hidden=yes',
     ])
       expect(proxyPath('GET', `/project-folders?${query}`)).toBeNull();
   });

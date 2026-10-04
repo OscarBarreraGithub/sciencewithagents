@@ -95,5 +95,7 @@ Source is MIT licensed. Runtime data, credentials, private conversations, drawin
 screenshots are excluded from the distributable repository. The public domain redirects to GitHub.
 
 Existing project folders can be selected in the app from a paired phone, desktop browser or
-connected-computer view. The browser lists directories on the selected host using opaque folder
-IDs. Selection creates no manager; Spawn connects the folder and preserves its files.
+connected-computer view. Familiar locations, clickable breadcrumbs, back/forward navigation
+and folder-name search make it possible to explore the selected computer. Search can include
+subfolders; broad searches are bounded and incomplete results are labelled. Hidden folders
+are optional. Selection creates no manager; Spawn connects the folder and preserves its files.

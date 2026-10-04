@@ -897,8 +897,8 @@ export async function createServer(
     projectOptionsSchema.parse({ canChooseFolder: true, folderBrowser: true }),
   );
   app.get('/api/project-folders', async (request) => {
-    const { folderId, offset } = folderBrowseRequestSchema.parse(request.query);
-    return folderBrowseSchema.parse(await folders.browser.browse(folderId, offset));
+    const { folderId, offset, ...options } = folderBrowseRequestSchema.parse(request.query);
+    return folderBrowseSchema.parse(await folders.browser.browse(folderId, offset, options));
   });
   app.post('/api/projects/connect-folder', async (request) => {
     const { key, provider, selectOnly, folderId } = projectFolderSchema.parse(request.body);

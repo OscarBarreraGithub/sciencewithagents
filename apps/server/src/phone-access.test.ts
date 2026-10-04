@@ -447,6 +447,15 @@ it('lets paired phones browse host folders while keeping unpaired requests and a
   const folders = await remote.inject({ url: '/api/project-folders', headers });
   expect(folders.statusCode).toBe(200);
   expect(folders.json().current.id).toMatch(/^[a-f0-9-]{36}$/);
+  expect(
+    folders.json().locations.some((location: { kind: string }) => location.kind === 'home'),
+  ).toBe(true);
+  const search = await remote.inject({
+    url: '/api/project-folders?query=swa-folder-fixture&scope=children&hidden=false',
+    headers,
+  });
+  expect(search.statusCode).toBe(200);
+  expect(search.json().search.query).toBe('swa-folder-fixture');
   expect((await remote.inject({ url: '/api/project-folders?path=/tmp', headers })).statusCode).toBe(
     400,
   );
