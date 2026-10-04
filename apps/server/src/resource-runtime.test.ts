@@ -136,6 +136,7 @@ it('delivers native Codex launch and turn settings only to requested resource as
   });
   expect(snapshot.config).not.toHaveProperty('sandbox_workspace_write.network_access');
   expect((snapshot.dynamicTools as { name: string }[]).map((tool) => tool.name)).toEqual([
+    'dock_inspect',
     'dock_escalate',
   ]);
 });
@@ -212,7 +213,10 @@ it('uses Claude native workspace controls for requested assistance and snapshot-
   const boundedArgs = claudeArguments(automatic.options);
   expect(boundedArgs).toContain('--restricted');
   expect(boundedArgs[boundedArgs.indexOf('--tools') + 1]).toBe('');
-  expect(automatic.options.tools.map((tool) => tool.name)).toEqual(['dock_escalate']);
+  expect(automatic.options.tools.map((tool) => tool.name)).toEqual([
+    'dock_inspect',
+    'dock_escalate',
+  ]);
   expect(automatic.options.charter).toContain('You have no execution');
 });
 
@@ -364,35 +368,42 @@ it('guards automatic models, permissions and direct controls while allowing inte
   );
 });
 
-it('starts an owner diagnosis alongside a full work queue without interrupting the ongoing project', async () => {
-  const { store, root } = fixture();
-  class BusyProvider extends DemoProvider {
-    override async request(method: string, raw?: unknown): Promise<unknown> {
-      if (method === 'turn/start') return { turn: { id: randomUUID(), status: 'inProgress' } };
-      return super.request(method, raw);
+it.each(['asked', 'pressure'] as const)(
+  'starts a %s diagnosis alongside a full work queue without interrupting the ongoing project',
+  async (reason) => {
+    const { store, root } = fixture();
+    class BusyProvider extends DemoProvider {
+      override async request(method: string, raw?: unknown): Promise<unknown> {
+        if (method === 'turn/start') return { turn: { id: randomUUID(), status: 'inProgress' } };
+        return super.request(method, raw);
+      }
     }
-  }
-  const runtime = new Runtime(store, root, 'unused', async () => new BusyProvider());
-  cleanups.push(() => runtime.close());
-  store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 1 });
-  const project = store.register(join(root, 'ongoing'), 'Ongoing project', '', 'codex');
-  const work = store.enqueue(project.managerId, randomUUID(), 'Existing work');
-  runtime.kick();
-  await vi.waitFor(() => expect(store.run(work.id).status).toBe('running'));
-  const other = store.register(join(root, 'other'), 'Other project', '', 'codex');
-  const waiting = store.enqueue(other.managerId, randomUUID(), 'Wait for a normal slot');
-  const check = (
-    await runtime.resources.ask({
-      key: randomUUID(),
-      provider: 'codex',
-      question: 'Why is it slow?',
-    })
-  ).checks[0]!;
-  runtime.kick();
-  await vi.waitFor(() => expect(store.run(check.runId).status).toBe('running'));
-  expect(store.run(work.id).status).toBe('running');
-  expect(store.run(waiting.id).status).toBe('queued');
-});
+    const runtime = new Runtime(store, root, 'unused', async () => new BusyProvider());
+    cleanups.push(() => runtime.close());
+    store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 1 });
+    const project = store.register(join(root, 'ongoing'), 'Ongoing project', '', 'codex');
+    const work = store.enqueue(project.managerId, randomUUID(), 'Existing work');
+    runtime.kick();
+    await vi.waitFor(() => expect(store.run(work.id).status).toBe('running'));
+    const other = store.register(join(root, 'other'), 'Other project', '', 'codex');
+    const waiting = store.enqueue(other.managerId, randomUUID(), 'Wait for a normal slot');
+    runtime.resources.save({ key: randomUUID(), settings: { automatic: true } });
+    const check = (
+      await runtime.resources.ask(
+        {
+          key: randomUUID(),
+          provider: 'codex',
+          question: 'Why is it slow?',
+        },
+        reason,
+      )
+    ).checks[0]!;
+    runtime.kick();
+    await vi.waitFor(() => expect(store.run(check.runId).status).toBe('running'));
+    expect(store.run(work.id).status).toBe('running');
+    expect(store.run(waiting.id).status).toBe('queued');
+  },
+);
 
 it.each(['interactive', 'snapshot'] as const)(
   'uses a stronger selected model in the same %s resource conversation',
@@ -454,3 +465,36 @@ it.each(['interactive', 'snapshot'] as const)(
     });
   },
 );
+
+it('lets resource checks inspect current evidence linked to named QUARK work without enabling project or process control', async () => {
+  const { store, root } = fixture();
+  const runtime = new Runtime(store, root, 'unused', async () => new DemoProvider());
+  cleanups.push(() => runtime.close());
+  const project = store.register(
+    join(root, 'simulation'),
+    'Simulation',
+    'Numerical parameter sweep',
+    'codex',
+  );
+  store.updateAgent(project.managerId, { scope: 'Run a numerical parameter sweep' });
+  const work = store.enqueue(project.managerId, randomUUID(), 'Run the simulation');
+  const asked = (await runtime.resources.ask({ key: randomUUID() })).checks[0]!;
+  const evidence = (await runtime.tool(asked.agentId, randomUUID(), 'dock_inspect', {
+    resources: true,
+  })) as { quark: { jobs: unknown[] } };
+  expect(evidence.quark.jobs).toContainEqual(
+    expect.objectContaining({
+      runId: work.id,
+      agentId: project.managerId,
+      projectId: project.id,
+      project: 'Simulation',
+      scope: 'Run a numerical parameter sweep',
+    }),
+  );
+  await expect(
+    runtime.tool(asked.agentId, randomUUID(), 'dock_inspect', { agentId: project.managerId }),
+  ).rejects.toThrow();
+  await expect(runtime.tool(asked.agentId, randomUUID(), 'dock_task_create', {})).rejects.toThrow(
+    'coordination',
+  );
+});

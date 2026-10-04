@@ -165,6 +165,12 @@ export class Pulsar {
       this.store.agent(run.agentId).resourceAssistant?.mode === 'interactive'
     );
   }
+  isUrgentDiagnostic(run: PrivateRun) {
+    return (
+      this.isInteractiveDiagnostic(run) ||
+      this.store.agent(run.agentId).resourceAssistant?.reason === 'pressure'
+    );
+  }
   ordered(runs: PrivateRun[]) {
     if (!this.policy().enabled)
       return [...runs].sort(
@@ -237,9 +243,9 @@ export class Pulsar {
           executing.has(this.store.run(l.runId).agentId)),
     );
     const sameProvider = active.filter((l) => l.provider === agent.provider);
-    const diagnostic = this.isInteractiveDiagnostic(run);
+    const diagnostic = this.isUrgentDiagnostic(run);
     const diagnosticSlot =
-      diagnostic && !active.some((l) => this.isInteractiveDiagnostic(this.store.run(l.runId)));
+      diagnostic && !active.some((l) => this.isUrgentDiagnostic(this.store.run(l.runId)));
     if (
       sameProvider.length >=
       (agent.provider === 'claude' ? policy.claudeConcurrent : policy.codexConcurrent) +

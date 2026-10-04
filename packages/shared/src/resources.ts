@@ -18,6 +18,20 @@ export const resourceJobSchema = resourceGroupSchema.extend({
   kind: z.enum(['agent', 'local']),
   status: z.string().max(40),
 });
+export const resourceProcessSchema = z
+  .object({
+    pid: z.number().int().positive(),
+    parentPid: z.number().int().nonnegative(),
+    startedAt: z.string().datetime(),
+    name: z.string().max(100),
+    entrypoint: z.string().max(200).nullable(),
+    parentName: z.string().max(100).nullable(),
+    cpuPercent: z.number().nonnegative().nullable(),
+    memoryBytes: z.number().nonnegative(),
+    jobId: z.string().uuid().nullable(),
+    projectId: z.string().uuid().nullable(),
+  })
+  .strict();
 export const resourceSampleSchema = z
   .object({
     observedAt: z.string().datetime(),
@@ -30,6 +44,7 @@ export const resourceSampleSchema = z
     diskTotalBytes: z.number().nonnegative().nullable(),
     groups: z.array(resourceGroupSchema).max(20),
     jobs: z.array(resourceJobSchema).max(100).default([]),
+    processes: z.array(resourceProcessSchema).max(20).default([]),
     processCount: z.number().int().nonnegative().nullable(),
     unavailable: z.array(z.string()).max(12),
   })
@@ -108,6 +123,7 @@ export const resourceStatusSchema = z
 export type ResourceSample = z.infer<typeof resourceSampleSchema>;
 export type ResourceGroup = z.infer<typeof resourceGroupSchema>;
 export type ResourceJob = z.infer<typeof resourceJobSchema>;
+export type ResourceProcess = z.infer<typeof resourceProcessSchema>;
 export type ResourceFinding = z.infer<typeof resourceFindingSchema>;
 export type ResourceCheck = z.infer<typeof resourceCheckSchema>;
 export type ResourceStatus = z.infer<typeof resourceStatusSchema>;

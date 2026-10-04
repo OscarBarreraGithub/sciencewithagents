@@ -412,9 +412,10 @@ function Settings({
           <span>Automatic check-ins</span>
         </label>
         <p>
-          Asks the assistant after sustained CPU, memory, swapping or disk pressure, plus a routine
-          checkpoint. One check at a time, at least 30 minutes apart, up to six automatic attempts
-          per rolling day. Brief spikes do not start an agent; nothing runs while idle.
+          Asks the assistant when CPU, available memory or an app group changes substantially, or
+          resource pressure persists. It checks the processes against QUARK’s current work. Brief
+          spikes do not start an agent. Distinct incidents are at least five minutes apart, with up
+          to six automatic attempts per rolling day; routine checkpoints are a fallback.
         </p>
         <label className="health-field">
           <span>Routine checkpoint</span>
@@ -469,15 +470,17 @@ function Settings({
             : ''}
         </small>
         <p>
-          Automatic checks join QUARK as background work; your questions get interactive priority.
-          Checks can wait for provider allowance or computer headroom, expire after 15 minutes in
-          the queue and stop after about three minutes of running.
+          Change-triggered checks get high priority and can inspect a busy CPU; routine checkpoints
+          stay in the background. Your questions go first. Checks still respect allowance and memory
+          limits, expire after 15 minutes in the queue and stop after about three minutes of
+          running.
         </p>
         <p>
-          We collect app names and resource counters, not command arguments, page URLs, environment
-          variables or file contents. Readings stay on this computer for 24 hours; reports and their
-          evidence stay with the assistant’s saved conversation. A diagnosis sends the selected
-          measurements to the provider you chose.
+          We keep app names, selected process identities, script or module names and resource
+          counters. Full command lines, script arguments, inline code, page URLs, environment
+          variables and file contents are not retained. Readings stay on this computer for 24 hours;
+          reports and their evidence stay with the assistant’s saved conversation. A diagnosis sends
+          the selected measurements to the provider you chose.
         </p>
         <p>
           Compressed memory: {gb(status?.latest?.compressedBytes) ?? 'not measured'}. Low free

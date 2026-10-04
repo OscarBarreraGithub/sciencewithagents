@@ -40,6 +40,11 @@ model and wakes for messages or bounded events rather than consuming tokens whil
 Saved estimated/actual timing examples help future forecasts; this is evidence, not model
 training. [QUARK](QUARK.md), [coordinator](QUARK_COORDINATOR.md), [accounting](QUARK_ACCOUNTING.md).
 
+Computer health links busy processes and script/module names to supervised QUARK projects
+and tasks. Sustained CPU, memory or process-group changes wake a bounded check; the assistant
+compares the change with expected work instead of treating high usage alone as a fault.
+Untracked processes remain distinguishable from app-owned work. See [resource monitoring](RESOURCE_WATCH.md).
+
 ## Native capabilities and saved evidence
 
 New managed agents inherit native tools, skills, hooks and configured integrations. Supported

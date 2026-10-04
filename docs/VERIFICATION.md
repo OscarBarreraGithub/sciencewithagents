@@ -6,6 +6,13 @@ Private logs, screenshots, disposable databases and native-session receipts stay
 
 ## Current focused checks — 2026-10-03
 
+Resource checks cover sustained-change triggers, transient spikes, sleep/restart, incident
+deduplication/cooldowns, QUARK admission and read-only evidence retrieval. A disposable real
+Python process on macOS verified script identification, CPU measurement, supervisor/project
+association and distinction from untracked work; raw arguments were omitted. Computer-health
+browser checks passed on desktop and all four emulated phone profiles. These checks do not
+validate GPU/temperature telemetry or certify the reasoning in every generated diagnosis.
+
 Folder browsing was checked through paired-phone authentication, selected-host forwarding,
 selection/tracking retries, private-directory exclusion and directory replacement. Fifteen browser
 checks passed at desktop, 412×915, 360×800, 915×412 and iPhone WebKit emulation. Manager permission

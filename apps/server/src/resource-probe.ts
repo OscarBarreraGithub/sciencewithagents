@@ -7,6 +7,7 @@ import {
   type ResourceSample,
   type ResourceGroup,
   type ResourceJob,
+  type ResourceProcess,
 } from '@dock/shared';
 export type ResourceRoot = Pick<
   ResourceJob,
@@ -16,6 +17,7 @@ export type ResourceRoot = Pick<
 const MiB = 1024 ** 2;
 type ProcessReading = {
   identity: string;
+  startedAt: string;
   pid: number;
   parentPid: number;
   name: string;
@@ -49,8 +51,11 @@ export function parseProcesses(raw: string): ProcessReading[] {
     const seconds = parts.reverse().reduce((sum, n, i) => sum + n * 60 ** i, 0);
     const app = /(?:^|\/)([^/]+)\.app\//.exec(executable)?.[1];
     const name = (app ?? basename(executable)).replace(/[\x00-\x1f\x7f]/g, '').slice(0, 100);
+    const started = Date.parse(start);
+    if (!Number.isFinite(started)) continue;
     result.push({
       identity: `${pid}:${start}`,
+      startedAt: new Date(started).toISOString(),
       pid: Number(pid),
       parentPid: Number(match[2]),
       name,
@@ -59,6 +64,38 @@ export function parseProcesses(raw: string): ProcessReading[] {
     });
   }
   return result;
+}
+/** Retain only an interpreter's entry point, never its options, code or data arguments. */
+export function processEntrypoint(command: string, name: string): string | null {
+  const python = /^python(?:\d+(?:\.\d+)*)?$/i.test(name);
+  const node = /^(?:node|nodejs|bun|deno)$/i.test(name);
+  const shell = /^(?:bash|zsh|sh|fish)$/i.test(name);
+  if (!python && !node && !shell) return null;
+  const tokens = (command.slice(0, 16384).match(/"[^"]*"|'[^']*'|[^\s]+/g) ?? []).map((v) =>
+    v.replace(/^(["'])(.*)\1$/, '$2'),
+  );
+  for (let i = 1; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (['-c', '-e', '--eval', '-p', '--print'].includes(token)) return `${name} inline code`;
+    if (python && token === '-m')
+      return /^[A-Za-z_][\w.]*$/.test(tokens[i + 1] ?? '')
+        ? `python -m ${tokens[i + 1]}`.slice(0, 200)
+        : null;
+    if (python && ['-W', '-X'].includes(token)) {
+      i++;
+      continue;
+    }
+    if (token === '--' || (python && /^-[uOBEIsSqvb]+$/.test(token))) continue;
+    if (node && /^--(?:max-old-space-size|stack-size)=\d+$/.test(token)) continue;
+    if (node && token === 'run') continue;
+    if (token.startsWith('-')) return null;
+    const script = basename(token);
+    const extension = python ? /\.py[wc]?$/i : node ? /\.(?:[cm]?js|[cm]?ts|tsx)$/i : /\.sh$/i;
+    return extension.test(script) && !/[\x00-\x1f\x7f?=]/.test(script)
+      ? script.slice(0, 200)
+      : null;
+  }
+  return null;
 }
 export function parseVm(raw: string) {
   const pageSize = Number(/page size of (\d+) bytes/.exec(raw)?.[1]);
@@ -94,6 +131,7 @@ const read = (file: string, args: string[], signal: AbortSignal) =>
   });
 
 export class ResourceProbe {
+  private entrypoints = new Map<string, { value: string | null; at: number }>();
   private previous: {
     at: number;
     processes: ProcessReading[] | null;
@@ -161,6 +199,7 @@ export class ResourceProbe {
       }
     };
     const groups = new Map<string, ResourceGroup>();
+    const detailed: ResourceProcess[] = [];
     for (const process of processes ?? []) {
       const group = groups.get(process.name) ?? {
         name: process.name,
@@ -182,6 +221,18 @@ export class ResourceProbe {
       group.processes++;
       groups.set(process.name, group);
       const root = owner(process);
+      detailed.push({
+        pid: process.pid,
+        parentPid: process.parentPid,
+        startedAt: process.startedAt,
+        name: process.name,
+        entrypoint: null,
+        parentName: byPid.get(process.parentPid)?.name ?? null,
+        cpuPercent,
+        memoryBytes: process.memoryBytes,
+        jobId: root?.id ?? null,
+        projectId: root?.projectId ?? null,
+      });
       if (root) {
         const { pid: _pid, ...identity } = root;
         const job = jobs.get(root.id) ?? {
@@ -212,6 +263,45 @@ export class ResourceProbe {
         [...ranked.slice(0, 10), ...byMemory.slice(0, 10)].map((g) => [g.name, g]),
       ).values(),
     ];
+    const selectedProcesses = [
+      ...new Map(
+        [
+          ...[...detailed].sort((a, b) => (b.cpuPercent ?? 0) - (a.cpuPercent ?? 0)).slice(0, 10),
+          ...[...detailed].sort((a, b) => b.memoryBytes - a.memoryBytes).slice(0, 10),
+        ].map((p) => [p.pid, p]),
+      ).values(),
+    ];
+    const keyFor = (p: ResourceProcess) => `${p.pid}:${p.startedAt}`;
+    const liveIdentities = new Set(detailed.map(keyFor));
+    for (const key of this.entrypoints.keys())
+      if (!liveIdentities.has(key)) this.entrypoints.delete(key);
+    const unknown = selectedProcesses.filter(
+      (p) =>
+        /^(?:python(?:\d+(?:\.\d+)*)?|node|nodejs|bun|deno|bash|zsh|sh|fish)$/i.test(p.name) &&
+        (!this.entrypoints.has(keyFor(p)) || now - this.entrypoints.get(keyFor(p))!.at >= 60_000),
+    );
+    if (mac && unknown.length) {
+      // Target only selected interpreters. Raw command lines exist only in this call;
+      // they are never returned, logged, persisted or supplied to a model.
+      const raw = await read(
+        '/bin/ps',
+        ['-ww', '-p', unknown.map((p) => p.pid).join(','), '-o', 'pid=,lstart=,command='],
+        signal,
+      ).catch(() => '');
+      for (const line of raw.split('\n')) {
+        const match = /^\s*(\d+)\s+(\w+\s+\w+\s+\d+\s+[\d:]+\s+\d+)\s+(.+)$/.exec(line);
+        if (!match) continue;
+        const p = unknown.find(
+          (p) => p.pid === Number(match[1]) && Date.parse(p.startedAt) === Date.parse(match[2]!),
+        );
+        if (p)
+          this.entrypoints.set(keyFor(p), { value: processEntrypoint(match[3]!, p.name), at: now });
+      }
+    }
+    for (const p of selectedProcesses) {
+      const cached = this.entrypoints.get(keyFor(p));
+      p.entrypoint = cached && now - cached.at < 60_000 ? cached.value : null;
+    }
     const base = shared.machine;
     const machine =
       base && now - Date.parse(base.observedAt) < 30_000
@@ -245,6 +335,7 @@ export class ResourceProbe {
         .sort((a, b) => (b.cpuPercent ?? 0) - (a.cpuPercent ?? 0))
         .slice(0, 100),
       processCount: processes?.length ?? null,
+      processes: selectedProcesses,
       unavailable: [
         !mac ? 'Detailed process and memory probes currently support macOS.' : '',
         mac && !processes ? 'App process readings unavailable.' : '',

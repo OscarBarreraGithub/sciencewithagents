@@ -50,7 +50,9 @@ trying to diagnose everything from a single CPU percentage.
 
 The lightweight watcher monitors continuously while the computer is awake and the app
 is running. The AI assistant wakes for your questions or optional automatic checks;
-it does not spend tokens continuously. The charts show how conditions change over time.
+it does not spend tokens continuously. Sustained resource changes can wake a check that
+connects busy processes and scripts to QUARK’s projects. The charts show how conditions
+change over time.
 
 <img src="docs/beta-test-demo/04-computer-health.png" alt="Resource assistant entry point and CPU trend charts" width="360">
 

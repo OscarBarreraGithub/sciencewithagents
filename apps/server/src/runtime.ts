@@ -302,16 +302,36 @@ export class Runtime {
           .status()
           .jobs.slice(0, 30)
           .map((j) => ({
+            runId: j.runId,
+            agentId: j.agentId,
+            projectId: store.agent(j.agentId).projectId,
             project: j.projectName,
+            agent: j.agentName,
+            taskId: j.taskId,
+            task: j.taskId ? store.task(j.taskId).title : null,
+            scope: store.agent(j.agentId).scope.slice(0, 1000),
             status: j.status,
             reason: j.reason,
             estimate: j.estimate,
+            expectedFinishAt: j.expectedFinishAt,
           })),
         localJobs: this.localJobs
           .all()
           .filter((j) => ['queued', 'running', 'paused'].includes(j.status))
           .slice(0, 20)
-          .map((j) => ({ status: j.status, resources: j.resources })),
+          .map((j) => ({
+            id: j.id,
+            projectId: j.projectId,
+            project: j.projectId ? store.project(j.projectId).name : null,
+            taskId: j.taskId,
+            task: j.taskId ? store.task(j.taskId).title : null,
+            kind: j.kind,
+            phase: j.phase,
+            status: j.status,
+            resources: j.resources,
+            startedAt: j.startedAt,
+            expectedFinishAt: j.expectedFinishAt,
+          })),
       }),
       waitReason: (id) =>
         schedulerSettings(store).paused
@@ -366,7 +386,16 @@ export class Runtime {
         ['dock_inspect', 'dock_checkpoint'].includes(tool.name),
       );
     const base = this.resources.isAgent(agent.id)
-      ? []
+      ? [
+          {
+            type: 'function' as const,
+            name: 'dock_inspect',
+            description:
+              'Read current processes, script entry points, resource changes and linked QUARK jobs. Read-only; no process control. Use once to verify supplied evidence, not for polling.',
+            inputSchema: z.toJSONSchema(z.object({ resources: z.literal(true) }).strict()),
+            deferLoading: false,
+          },
+        ]
       : this.frontdesk.isFrontdesk(agent.id)
         ? this.frontdesk.definitionsFor(agent.id)
         : toolsFor(agent.role);
@@ -546,8 +575,11 @@ export class Runtime {
         const candidate = candidates.shift()!;
         const diagnosticSlot =
           candidate.run &&
-          this.pulsar.isInteractiveDiagnostic(candidate.run) &&
-          ![...this.executing].some((id) => this.resources.isInteractive(id));
+          this.pulsar.isUrgentDiagnostic(candidate.run) &&
+          ![...this.executing].some((id) => {
+            const run = this.activeRun(id);
+            return run && this.pulsar.isUrgentDiagnostic(run);
+          });
         if (
           [...this.executing].filter((id) => !this.store.agent(id).nativeRootId).length +
             this.localJobs.runningCount() >=
@@ -3401,6 +3433,12 @@ export class Runtime {
     if (this.coordinator.isAgent(agentId))
       return this.coordinator.tool(agentId, key, name, raw, active ?? null);
     if (name === 'dock_escalate') return this.escalate(agent, key, raw);
+    if (this.resources.isAgent(agentId) && name === 'dock_inspect') {
+      z.object({ resources: z.literal(true) })
+        .strict()
+        .parse(raw);
+      return this.resources.context(agentId);
+    }
     if (this.resources.isAgent(agentId))
       throw new Conflict(
         this.resources.isSnapshot(agentId)

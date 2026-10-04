@@ -11,6 +11,8 @@ attention/QUARK layouts, keyboard composers, draft races and helper search filte
 Product work below remains outside this polish pass.
 Paired devices can browse existing folders on the selected host. New project managers have
 scoped project-folder writes; explicit read-only choices and reviewer restrictions are preserved.
+Computer health links selected process/script identities to QUARK jobs and wakes bounded
+diagnostics for sustained resource changes, with cooldowns and a daily attempt limit.
 
 ## Delivered, with acceptance limits
 

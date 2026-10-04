@@ -443,3 +443,23 @@ it('admits one direct diagnosis despite busy CPU and occupied provider slots, wi
   store.updateRun(question.id, { status: 'running' });
   expect(pulsar.decision(diagnostic('Second question')).eligible).toBe(false);
 });
+
+it('admits an incident check alongside busy projects while checkpoints stay in the background', () => {
+  for (const name of ['one', 'two']) {
+    const work = job(name);
+    expect(pulsar.reserve(work.run, new Set())).toBe(true);
+    store.updateRun(work.run.id, { status: 'running' });
+  }
+  machine.cpuUsedPercent = 99;
+  const check = diagnostic('Incident check');
+  store.updateAgent(check.agentId, { resourceAssistant: { mode: 'snapshot', reason: 'pressure' } });
+  store.setSetting(
+    `pulsar:estimate:${check.id}`,
+    jobEstimateSchema.parse({ priority: 'high', cpuCores: 0.1, memoryMb: 256, quotaPercent: 1 }),
+  );
+  expect(pulsar.decision(check).eligible).toBe(true);
+  store.updateAgent(check.agentId, {
+    resourceAssistant: { mode: 'snapshot', reason: 'checkpoint' },
+  });
+  expect(pulsar.decision(check).eligible).toBe(false);
+});

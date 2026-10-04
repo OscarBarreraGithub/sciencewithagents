@@ -6,7 +6,13 @@ import { join } from 'node:path';
 import { defaultModelPolicy, resourceSampleSchema, type ProviderId } from '@dock/shared';
 import { Store } from './store.js';
 import { ResourceWatch, resourceFindings } from './resource-watch.js';
-import { parsePressure, parseProcesses, parseSwap, parseVm } from './resource-probe.js';
+import {
+  parsePressure,
+  parseProcesses,
+  parseSwap,
+  parseVm,
+  processEntrypoint,
+} from './resource-probe.js';
 import { Runtime } from './runtime.js';
 import { DemoProvider } from './demo.js';
 import { createServer } from './server.js';
@@ -491,7 +497,7 @@ it('queues persistent pressure once per episode, coalesces checkpoints and persi
   const check = watch.status().checks[0]!;
   expect(check.reason).toBe('pressure');
   expect(store.getSetting(`pulsar:estimate:${check.runId}`)).toMatchObject({
-    priority: 'background',
+    priority: 'high',
   });
   store.updateRun(check.runId, { status: 'completed' });
   for (let i = 0; i < 121; i++) {
@@ -617,3 +623,117 @@ it.each(['queued', 'running'] as const)(
     ).rejects.toThrow('already queued or running');
   },
 );
+
+it('keeps interpreter entry points without retaining arguments, code, secrets or private paths', () => {
+  expect(
+    processEntrypoint(
+      '/usr/bin/python3 -u /private/project/analyze.py --token secret --url https://private.invalid',
+      'python3',
+    ),
+  ).toBe('analyze.py');
+  expect(processEntrypoint('python -m package.worker --password secret', 'python')).toBe(
+    'python -m package.worker',
+  );
+  expect(processEntrypoint('python -c "print(\"private code\")"', 'python')).toBe(
+    'python inline code',
+  );
+  expect(
+    processEntrypoint(
+      'node --max-old-space-size=8192 "/private/my project/server.mjs" --key secret',
+      'node',
+    ),
+  ).toBe('server.mjs');
+  expect(processEntrypoint('python --unknown-option secret.py', 'python')).toBeNull();
+  expect(processEntrypoint('app --token secret.py', 'app')).toBeNull();
+});
+
+it('detects sustained changes below fixed pressure thresholds without mistaking brief spikes or sleep for incidents', async () => {
+  const { watch, store, cpu, advance, root, dependencies, now } = fixture();
+  watch.save({ key: randomUUID(), settings: { automatic: true } });
+  await watch.tick();
+  cpu(65);
+  advance(15000);
+  await watch.tick();
+  expect(watch.status().findings).toMatchObject([{ id: 'change:cpu', sustained: false }]);
+  cpu(20);
+  advance(15000);
+  await watch.tick();
+  expect(store.runs()).toHaveLength(0);
+  cpu(65);
+  for (let i = 0; i < 5; i++) {
+    advance(15000);
+    await watch.tick();
+  }
+  const check = watch.status().checks[0]!;
+  expect(check.reason).toBe('pressure');
+  expect(store.getSetting(`pulsar:estimate:${check.runId}`)).toMatchObject({ priority: 'high' });
+  expect(watch.context(check.agentId).requestEvidence).toMatchObject({
+    baseline: { machine: { cpuUsedPercent: 20 } },
+    sample: { machine: { cpuUsedPercent: 65 } },
+    findings: [{ id: 'change:cpu', sustained: true }],
+    quark: { jobs: [] },
+  });
+  store.updateRun(check.runId, { status: 'completed' });
+  const restored = new ResourceWatch(store, root, dependencies, now);
+  for (let i = 0; i < 24; i++) {
+    advance(15000);
+    await restored.tick();
+  }
+  expect(store.runs()).toHaveLength(1);
+  // Waking after a gap establishes a new baseline, not a made-up CPU jump.
+  cpu(80);
+  advance(900000);
+  await restored.tick();
+  expect(restored.status().findings.filter((f) => f.id.startsWith('change:'))).toEqual([]);
+  expect(store.runs()).toHaveLength(1);
+  await restored.close();
+});
+
+it('detects memory and helper growth, retaining the earlier evidence for comparison', () => {
+  const now = Date.now(),
+    before = base(now),
+    after = base(now + 15000);
+  before.groups = [
+    {
+      name: 'Chrome',
+      processes: 10,
+      cpuPercent: 2,
+      memoryBytes: 2 * 1024 ** 3,
+      memoryChangeBytes: 0,
+    },
+  ];
+  after.groups = [{ ...before.groups[0]!, processes: 40, memoryBytes: 4 * 1024 ** 3 }];
+  after.machine!.memoryAvailableBytes -= 4 * 1024 ** 3;
+  const first = resourceFindings(after, [], now + 15000, true, before);
+  expect(first.map((f) => f.id)).toEqual(['change:memory', 'change:group:Chrome']);
+  expect(first.every((f) => !f.sustained)).toBe(true);
+  expect(resourceFindings(after, first, now + 75000, true, before).every((f) => f.sustained)).toBe(
+    true,
+  );
+  expect(resourceFindings(after, first, now + 75000, false, before)).toEqual([]);
+});
+
+it('lets a distinct sustained incident wake the assistant after five minutes instead of waiting for a checkpoint', async () => {
+  const { watch, store, cpu, advance, dependencies, now } = fixture();
+  watch.save({ key: randomUUID(), settings: { automatic: true } });
+  cpu(90);
+  for (let i = 0; i < 9; i++) {
+    await watch.tick();
+    if (i < 8) advance(15000);
+  }
+  const first = watch.status().checks[0]!;
+  store.updateRun(first.runId, { status: 'completed' });
+  cpu(20);
+  advance(15000);
+  await watch.tick();
+  dependencies.probe.sample = async () => ({ ...base(now(), 20), memoryPressure: 'critical' });
+  for (let i = 0; i < 18; i++) {
+    advance(15000);
+    await watch.tick();
+  }
+  expect(store.runs()).toHaveLength(1);
+  advance(15000);
+  await watch.tick();
+  expect(store.runs()).toHaveLength(2);
+  expect(watch.status().checks[0]!.reason).toBe('pressure');
+});
