@@ -221,8 +221,7 @@ export function PulsarPanel({
             <p>{job.reason}</p>
             <p className="muted">
               About {job.estimate.expectedTokens.toLocaleString()} tokens ·{' '}
-              {Math.ceil(job.estimate.expectedSeconds / 60)} min per turn · task budget{' '}
-              {job.estimate.tokenBudget.toLocaleString()} tokens
+              {Math.ceil(job.estimate.expectedSeconds / 60)} min per turn
               {job.estimate.estimatedCostUsd !== null
                 ? ` · estimated $${job.estimate.estimatedCostUsd.toFixed(2)}`
                 : ''}

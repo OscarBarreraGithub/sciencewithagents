@@ -35,8 +35,14 @@ layout and long chat history. They do not certify physical Home Screen retention
 reconnection, hardware keyboards or all OS/browser versions. Use [phone acceptance](PHONE_ACCEPTANCE.md)
 on the actual device. The companion is installed from source; no marketplace release is claimed.
 
+Routine work no longer stops at legacy raw-token estimates. Actual provider allowance caps,
+reserves, resource checks and saved pauses remain enforced. **Help → Report a bug** saves a
+private report and dispatches it to one maintenance manager through normal delegation/review.
+
 ## Outstanding product work
 
+- **Hourly allowance budgets:** per-provider `% usage / hour` is a measured estimate. Enforced
+  budgets are allocations within provider windows, not rolling hourly rate limits.
 - **Automatic five-hour utilization:** QUARK has shared reserves, caps, pacing and concurrency
   limits. It does not yet automatically target a reset window or shift suitable new work
   toward Claude to use spare capacity. Respect actual account/model windows and explicit choices.

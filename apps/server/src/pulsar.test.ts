@@ -303,7 +303,7 @@ it('holds task continuations at turn boundaries and does not cancel an already r
   pulsar.control({ key: randomUUID(), runId: followup.id, action: 'release' });
   expect(pulsar.decision(store.run(followup.id)).eligible).toBe(true);
 });
-it('charges unknown completed usage conservatively against the task token budget across restart', () => {
+it('retains conservative token accounting without blocking work on legacy token estimates across restart', () => {
   const value = job('Budget');
   store.updateTask(value.task.id, {
     scheduling: jobEstimateSchema.parse({ expectedTokens: 12_000, tokenBudget: 20_000 }),
@@ -318,7 +318,7 @@ it('charges unknown completed usage conservatively against the task token budget
     'message',
     value.project.managerId,
   );
-  expect(pulsar.decision(store.run(followup.id)).reason).toContain('Task token budget');
+  expect(pulsar.decision(store.run(followup.id)).eligible).toBe(true);
   expect(pulsar.status().jobs[0]!.runId).toBe(followup.id);
   store.close();
   store = new Store(join(root, 'dock.sqlite'));
@@ -327,9 +327,10 @@ it('charges unknown completed usage conservatively against the task token budget
     () => machine,
     () => clock,
   );
-  expect(pulsar.decision(store.run(followup.id)).reason).toContain('12,000');
+  expect(pulsar.decision(store.run(followup.id)).eligible).toBe(true);
+  expect(pulsar.status().history.find((j) => j.runId === value.run.id)?.tokensCharged).toBe(12000);
 });
-it('charges a worker completion report to its originating task and lets an owner revise that shared budget', () => {
+it('attributes worker completion reports without blocking them on a raw-token estimate', () => {
   const value = job('Report budget');
   store.updateTask(value.task.id, {
     scheduling: jobEstimateSchema.parse({ expectedTokens: 12000, tokenBudget: 20000 }),
@@ -344,7 +345,7 @@ it('charges a worker completion report to its originating task and lets an owner
     'report',
     value.worker.id,
   );
-  expect(pulsar.decision(store.run(report.id)).reason).toContain('Task token budget');
+  expect(pulsar.decision(store.run(report.id)).eligible).toBe(true);
   pulsar.control({
     key: randomUUID(),
     runId: report.id,

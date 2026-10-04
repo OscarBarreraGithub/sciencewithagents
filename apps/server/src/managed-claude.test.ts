@@ -89,6 +89,37 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+it('refreshes changed host instructions and tool definitions without replacing the saved conversation', async () => {
+  let charter = 'Original instructions';
+  let description = 'Original tool';
+  managed = new ManagedClaude(
+    store,
+    root,
+    {
+      ...callbacks(),
+      charter: () => charter,
+      tools: () =>
+        callbacks()
+          .tools()
+          .map((tool) => ({ ...tool, description })),
+    },
+    dependencies(),
+  );
+  const first = await managed.prepare(store.agent(managerId));
+  const id = first.options.sessionId;
+  store.setSetting(`claude:started:${id}`, true);
+  expect(await managed.prepare(store.agent(managerId))).toBe(first);
+  charter = 'Notes belong to the owner.';
+  const second = await managed.prepare(store.agent(managerId));
+  expect(first.close).toHaveBeenCalledOnce();
+  expect(second.options).toMatchObject({ charter, sessionId: id, resume: true });
+  description = 'Current tool';
+  const third = await managed.prepare(store.agent(managerId));
+  expect(second.close).toHaveBeenCalledOnce();
+  expect(third.options.sessionId).toBe(id);
+  expect(third.options.tools?.[0]?.description).toBe(description);
+});
+
 describe('managed Claude host lifecycle', () => {
   it.each(['workspace-write', 'read-only'] as const)(
     'keeps a standalone conversation in its private folder with %s permission',

@@ -584,3 +584,5 @@ export const agentTaskResultSchema = z
     allowances: z.array(allowanceSchema),
   })
   .strict();
+
+export * from './bug-reports.js';

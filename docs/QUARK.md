@@ -1,7 +1,7 @@
 # QUARK
 
 Open **QUARK** for its conversation, shared status board and live spending sliders.
-Managers set the starting task caps; the owner can raise or lower them on the cards. Tell it which project to
+Managers record owner-requested task caps; the owner can raise or lower them on the cards. Tell it which project to
 pause, prioritize or allocate allowance to. Its typed controls save each decision; hard
 limits remain independently enforced by the host. See [conversation, controls and guide
 notes](QUARK_COORDINATOR.md). Remaining allowances and reset times appear on the board. Detailed accounting remains
@@ -116,7 +116,7 @@ headroom and worker limits, or pause/release queued work. The message composer d
 **Do this soon — I’m waiting**. Task creation and **Change priority or budget** expose
 priority, rough tokens, task budget, allowance reservation, CPU, memory, time and optional
 planning cost/deadline. Editing a task-associated job also updates its task’s future budget.
-Queued work blocked by a task token budget or explicit allowance cap appears in Home’s
+Queued work blocked by an explicit allowance cap appears in Home’s
 **For your attention** and links to its QUARK budget card, even before its first admission.
 Ordinary capacity waits and deliberate queue pauses do not create budget attention items.
 Recent outcomes compare estimated and measured tokens; cache input counts can be large.
@@ -189,3 +189,8 @@ remain. Managers apply by default; the human-review policy requires confirmation
 Native interruption closes the owned provider process group before QUARK acknowledges the
 stop. A completed provider turn alone does not prove its terminal children stopped. Files,
 conversation identity and unsent messages remain available for explicit continuation.
+
+Raw token counts remain useful for attribution and estimates, but never block admission.
+A displayed percentage-per-hour is a measured rate, not an enforced rolling hourly budget.
+If ordinary work waits unexpectedly, **Help → Report a bug** preserves its queue reason and
+assigns a bounded investigation without raising the owner’s allowance limits.

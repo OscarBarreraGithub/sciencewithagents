@@ -49,6 +49,10 @@ Use a conversation plus a simple status board, with project/task budget sliders 
 Detailed accounting remains queryable by agents. Automatic five-hour utilization is unfinished.
 Context-cache warming is off and deferred; do not send keepalive prompts as routine behavior.
 
+Routine work uses shared headroom without a mandatory per-task budget ceremony. Raw-token
+counts (including cache reads) are estimates/accounting only, not admission limits. Explicit
+provider allowance caps, remaining reserves, resource guards and owner pauses still apply.
+
 ## Models and customization
 
 One central policy supplies all app-managed launches. Manager selection is independent of

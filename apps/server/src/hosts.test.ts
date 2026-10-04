@@ -414,6 +414,9 @@ describe('isolated computer connections', () => {
       `/projects/${agentId}/open-in-editor`,
     ])
       expect(proxyPath('POST', path)).toBe(`/api${path}`);
+    expect(proxyPath('GET', '/bug-reports')).toBe('/api/bug-reports');
+    expect(proxyPath('POST', '/bug-reports')).toBe('/api/bug-reports');
+    expect(proxyPath('GET', '/bug-reports?path=/tmp')).toBeNull();
     expect(proxyPath('GET', '/quark')).toBe('/api/quark');
     for (const action of ['settings', 'budgets', 'resume'])
       expect(proxyPath('POST', `/quark/${action}`)).toBe(`/api/quark/${action}`);

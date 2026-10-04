@@ -12,6 +12,9 @@ The README is the current public landing; a separate website and Guide/FAQ are d
 - **Shared capacity.** QUARK coordinates priorities, allowance reserves, project caps and
   computer resources across managers. Change allocations through its chat or board. Work can
   wait or pause without deleting progress. Attribution and completion times are estimates.
+- **Report problems in place.** Help saves a private report with queue evidence and assigns it
+  to one maintenance manager for a bounded fix and independent review. Retries do not duplicate
+  the work. Nothing is posted publicly or restarted automatically.
 - **Useful forecasts.** Saved examples compare estimated and actual work/time/usage so managers
   have concrete evidence for later planning. No model training or validated accuracy is implied.
 - **A configurable team.** Manager and worker choices are separate. Latest-family defaults,
@@ -19,7 +22,8 @@ The README is the current public landing; a separate website and Guide/FAQ are d
   Recommendations can be restored. New names can be remapped without changing each feature.
 - **Continuity.** Managers keep internal work separate from short human requests, continue
   unblocked work, and retain checkpoints across context changes. Claude's managed compaction
-  includes a handoff; Codex uses its native context management.
+  includes a handoff; Codex uses its native context management. Short previews and source
+  references let managers retrieve details when needed instead of rereading every saved to-do.
 - **Prompts worth keeping.** The full-page notepad autosaves local draft versions and minimizes
   back into chat. Sent app conversations remain searchable when older messages leave the screen.
   A bulk worker can recap requests, with source references for the manager to verify.

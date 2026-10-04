@@ -5,7 +5,15 @@ export const jobEstimateSchema = z
   .object({
     priority: jobPrioritySchema.default('normal'),
     expectedTokens: z.number().int().min(100).max(10_000_000).default(12_000),
-    tokenBudget: z.number().int().min(100).max(100_000_000).default(500_000),
+    tokenBudget: z
+      .number()
+      .int()
+      .min(100)
+      .max(100_000_000)
+      .default(500_000)
+      .describe(
+        'Deprecated legacy estimate. Never enforced as a spending limit; use provider allowance caps.',
+      ),
     quotaPercent: z.number().min(0.1).max(100).default(3),
     expectedSeconds: z.number().int().min(1).max(604800).default(300),
     cpuCores: z.number().min(0.1).max(256).default(0.25),

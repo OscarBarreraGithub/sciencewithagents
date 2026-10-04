@@ -256,19 +256,9 @@ export class Pulsar {
       );
     // Owner override is explicit per queued job, never an account/permission/approval bypass.
     const override = this.store.getSetting(`pulsar:override:${run.id}`) === true;
-    if (taskId) {
-      const charged = all
-        .filter((l) => l.taskId === taskId && l.runId !== run.id)
-        .reduce((n, l) => n + l.tokensCharged, 0);
-      const taskBudget = this.store.task(taskId).scheduling.tokenBudget;
-      if (charged + estimate.expectedTokens > taskBudget && !override)
-        return {
-          ...reject(
-            `Task token budget: ${charged.toLocaleString()} charged or reserved; this turn estimates ${estimate.expectedTokens.toLocaleString()}. Increase the budget or explicitly override.`,
-          ),
-          budgetBlock: { kind: 'tokens', targetId: taskId },
-        };
-    }
+    // Token counters (including repeated cached context) are accounting evidence,
+    // not subscription allowance. Legacy tokenBudget remains readable, never a gate.
+    // Explicit allowance caps are enforced above by allowanceDecision, even with pacing off.
     if (estimate.priority === 'background' && !override) {
       const foreground = this.foregroundWork(run.id, executing);
       if (foreground || this.hasForegroundLocal())

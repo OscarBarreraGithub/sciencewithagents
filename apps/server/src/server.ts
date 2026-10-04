@@ -1,3 +1,5 @@
+import { BugReports, registerBugReportRoutes } from './bug-reports.js';
+import { repoRoot } from './paths.js';
 import { registerDocumentRoutes } from './documents.js';
 import { registerWorkItemRoutes } from './work-items.js';
 import { registerConversationRoutes } from './conversations.js';
@@ -520,6 +522,11 @@ export async function createServer(
       },
     });
   const agentId = (params: unknown) => z.object({ id }).parse(params).id;
+  registerBugReportRoutes(
+    app,
+    new BugReports(store, runtime.dataDir, repoRoot, runtime.workItems, runtime.pulsar),
+    () => runtime.kick(),
+  );
   registerDocumentRoutes(app, runtime.documents);
   registerRecoveryBackupRoutes(app, store, runtime.dataDir);
   registerProjectWorkflowRoutes(app, store, runtime.modelPolicy);

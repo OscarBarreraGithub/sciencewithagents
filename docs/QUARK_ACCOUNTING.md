@@ -12,9 +12,11 @@ do not manage those leases; the host enforces their budgets independently of man
 
 ## Set and use a spending budget
 
-Managers are instructed to set each planned task’s starting cap with `dock_budget` before
-delegation, estimating the whole bounded task, workers and review from available evidence.
-They use the actual provider/window readings, without inventing a generic percentage.
+Routine tasks do not require an invented per-task cap. QUARK admits them using shared
+allowance headroom and machine capacity. Managers use `dock_budget` for an owner-requested
+allowance allocation, using each provider's actual reported window. Raw token counts remain
+accounting evidence; the legacy `tokenBudget` field is no longer an admission gate. Cached
+context rereads must not produce requests to approve millions of tokens.
 Existing task caps appear on task cards; project caps appear on project cards in **QUARK**.
 Move a slider up or down; release it to save. Estimated spent/remaining amounts refresh
 from the shared ledger every ten seconds while the page is visible. Provider readings can

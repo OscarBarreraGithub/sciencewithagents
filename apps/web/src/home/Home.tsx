@@ -1,3 +1,4 @@
+import { BugReport } from './BugReport';
 import { LatexApp } from '../Documents';
 import { ProviderActions } from './ProviderActions';
 import { ModelSettings } from './ModelSettings';
@@ -346,7 +347,7 @@ export function Home() {
   }, []);
   const page = currentRoute.split('/')[0]!;
   const [now, setNow] = useState(Date.now);
-  const [dialog, setDialog] = useState<'help' | 'phone' | null>(null);
+  const [dialog, setDialog] = useState<'help' | 'phone' | 'bug' | null>(null);
   const main = useRef<HTMLElement>(null);
   const back = useNavigation(currentRoute, main);
   const scrollHint = useScrollHints(main, currentRoute);
@@ -551,6 +552,12 @@ export function Home() {
           <Modal title="Help and setup" close={() => setDialog(null)} className="home-help-dialog">
             <div className="home-help" onClickCapture={closeOnLink}>
               <section>
+                <button type="button" className="setup-link" onClick={() => setDialog('bug')}>
+                  Report a bug
+                </button>
+                <p>Save an issue locally and assign it to the app’s maintenance manager.</p>
+              </section>
+              <section>
                 <h3>App display</h3>
                 <p>Reload to load the latest interface. Work running on your computer continues.</p>
                 <button type="button" className="setup-link" onClick={() => location.reload()}>
@@ -577,6 +584,9 @@ export function Home() {
               </section>
             </div>
           </Modal>
+        )}
+        {dialog === 'bug' && (
+          <BugReport key={apiScope()} page={currentRoute} close={() => setDialog(null)} />
         )}
         {dialog === 'phone' && (
           <PhoneSettings

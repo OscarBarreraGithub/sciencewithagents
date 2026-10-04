@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -20,6 +20,19 @@ beforeEach(async () => {
   store = new Store(join(root, 'dock.sqlite'));
   modelFixture(store);
   runtime = new Runtime(store, root, 'codex', async () => new DemoProvider());
+  const status = runtime.capacity.status.bind(runtime.capacity);
+  vi.spyOn(runtime.capacity, 'status').mockImplementation(() => ({
+    ...status(),
+    machine: {
+      observedAt: new Date().toISOString(),
+      cpuCount: 8,
+      cpuUsedPercent: 10,
+      memoryTotalBytes: 16 * 1024 ** 3,
+      memoryAvailableBytes: 8 * 1024 ** 3,
+      diskAvailableBytes: 100 * 1024 ** 3,
+      loadPerCore: 0.1,
+    },
+  }));
   app = await createServer(store, runtime, { port: 4371, demo: true });
 });
 afterEach(async () => {
@@ -87,7 +100,7 @@ async function jobs() {
   expect(response.statusCode).toBe(200);
   return pulsarStatusSchema.parse(response.json()).jobs;
 }
-it('classifies a never-admitted completion report with an idle manager, then removes the token-budget blocker after correction', async () => {
+it('does not ask the owner for a raw-token increase before delivering a worker report', async () => {
   const f = fixture();
   runtime.pulsar.savePolicy({
     key: randomUUID(),
@@ -96,12 +109,10 @@ it('classifies a never-admitted completion report with an idle manager, then rem
   expect(store.agent(f.project.managerId).status).toBe('idle');
   expect((await jobs())[0]).toMatchObject({
     status: 'queued',
-    eligible: false,
+    eligible: true,
     taskId: f.task.id,
-    budgetBlock: { kind: 'tokens', targetId: f.task.id },
   });
   expect(runtime.quark.holds()).toHaveLength(0);
-  store.updateTask(f.task.id, { scheduling: { ...f.task.scheduling, tokenBudget: 5000 } });
   expect((await jobs())[0].budgetBlock).toBeUndefined();
   expect(store.run(f.run.id).status).toBe('queued');
 });

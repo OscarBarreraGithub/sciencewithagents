@@ -47,7 +47,6 @@ export function JobEstimateFields({
         </p>
         <div className="estimate-grid">
           {number('expectedTokens', 'Estimated tokens per turn', 100, 10_000_000)}
-          {number('tokenBudget', 'Task token budget', 100, 100_000_000)}
           {number('quotaPercent', 'Allowance reservation (%)', 0.1, 100, 0.1)}
           {number('expectedSeconds', 'Estimated seconds per turn', 1, 604800)}
           {number('cpuCores', 'Estimated CPU cores', 0.1, 256, 0.05)}

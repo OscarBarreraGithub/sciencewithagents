@@ -1672,6 +1672,28 @@ it('persists manager next steps through opaque native tool receipts and prevents
   ).rejects.toThrow();
   expect(runtime.workItems.list({ projectId: project }).items).toHaveLength(1);
 });
+it('previews long work details on turns and retrieves originals without modifying owner records', async () => {
+  const detail = 'Long task evidence. '.repeat(300);
+  const notes = 'Owner reference. '.repeat(300);
+  const item = runtime.workItems.saveForManager(manager, {
+    key: randomUUID(),
+    title: 'Investigate one bug',
+    detail,
+  });
+  runtime.workItems.saveNotes(project, { key: randomUUID(), expectedRevision: 0, text: notes });
+  const brief = JSON.parse(runtime.context(store.agent(manager)).split('\n').slice(1).join('\n'));
+  expect(brief.workItems[0]).toMatchObject({
+    id: item.id,
+    detail: detail.trim().slice(0, 480),
+    truncated: true,
+  });
+  expect(brief.projectNotes.text).toHaveLength(1200);
+  expect(brief.hostCapabilities.notesWritableByAgents).toBe(false);
+  const full = (await runtime.tool(manager, randomUUID(), 'dock_inspect', {})) as typeof brief;
+  expect(full.workItems[0]).toMatchObject({ detail: detail.trim(), truncated: false });
+  expect(full.projectNotes).toMatchObject({ text: notes, truncated: false });
+  expect(runtime.workItems.get(item.id).detail).toBe(detail.trim());
+});
 it('reserves Notes for the owner, including calls from old provider sessions', async () => {
   const original = runtime.workItems.saveNotes(project, {
     key: randomUUID(),

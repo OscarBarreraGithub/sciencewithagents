@@ -22,6 +22,19 @@ This describes connected source behavior, not a blanket release certification.
 | Updates and recovery | Consistent local recovery copies, source-backup controls and agent-led update handoff                            | Git source backup excludes conversations, browser drafts and uncommitted files                  |
 | Provider maintenance | Refresh usage, check native connection, supported CLI update paths                                               | Custom/embedded installations and sign-in may require a person; no silent provider substitution |
 
+## Report a bug
+
+Open **? → Report a bug**, describe the problem, then **Save and assign**. The selected
+computer saves a private report under `data/bug-reports/<id>/report.md`, with the page and
+a bounded queue snapshot. One maintenance manager receives an internal to-do and a message;
+it delegates a bounded fix and independent review using the normal model/project policy.
+Reports never become public GitHub issues automatically. Existing running work is preserved;
+publishing, external permission grants and app restarts are not automatic.
+
+A report survives connection loss without duplicate assignments. A failed folder write can be
+retried while the database and manager retain the report. **Open maintenance chat** shows
+progress or the actual queue/connection blocker; saving a report does not guarantee a fix.
+
 ## QUARK and shared accounting
 
 QUARK means **Queued Usage, Agent Routing Kernel**. One host-owned collector reads the
@@ -32,7 +45,9 @@ inform project attribution; estimates never become a claim of billing accuracy.
 Managers need signed admission leases before orchestrating. Typed dispatch hooks and the
 host watcher check limits independently of the manager. Managers can pause owned workers;
 QUARK can stop an unresponsive owned run while preserving its files and conversations.
-Caps and reserves apply across concurrent projects. Unknown usage holds new protected work;
+Routine work uses shared headroom without an invented per-task cap. Raw token counts, including
+cached context, are accounting evidence and never an admission limit. Owner-set allowance
+caps and reserves apply across concurrent projects. Unknown usage holds new protected work;
 transient read failures and quota exhaustion have distinct recovery paths.
 
 The coordinator stores its instructions outside project worktrees, uses a selectable central
@@ -51,6 +66,11 @@ New managed agents inherit native tools, skills, hooks and configured integratio
 native unattended policies provide broad reads/network access and role-appropriate writes;
 explicit saved restrictions remain editable. Provider/organization rules and external tool
 boundaries still apply. [Worker tools](WORKER_TOOLS.md), [provider compatibility](PROVIDER_COMPATIBILITY.md).
+
+Managed turns include short work-item/Notes previews; `dock_inspect {}` retrieves their full
+details when needed. Current instructions and accepted host-tool names accompany managed
+turns; Claude reconnects its saved session at the next turn if its charter/tools changed.
+Native tool catalogs may still retain old tool names, which the backend rejects explicitly.
 
 Stored app conversations and worker records remain searchable in project history even when
 the screen pages old messages. Managed chats show up to 200 entries per page; **Latest messages**

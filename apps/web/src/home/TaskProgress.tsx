@@ -213,7 +213,6 @@ export function TaskProgress({ task, data }: { task: Task; data: HomeData }) {
             {task.scheduling.priority} priority.
           </p>
           <p>
-            {task.scheduling.tokenBudget.toLocaleString()} token budget.{' '}
             {task.scheduling.estimatedCostUsd === null
               ? 'No monetary estimate supplied.'
               : `Estimated cost $${task.scheduling.estimatedCostUsd.toFixed(2)}.`}

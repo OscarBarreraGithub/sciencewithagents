@@ -42,7 +42,6 @@ UUID once. Use real IDs from the reports, not the illustrative labels below:
     "scheduling": {
       "priority": "background",
       "expectedTokens": 12000,
-      "tokenBudget": 200000,
       "quotaPercent": 2,
       "expectedSeconds": 600
     }

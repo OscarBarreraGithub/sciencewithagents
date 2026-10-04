@@ -160,7 +160,20 @@ export class ManagedClaude {
     if (agent.provider !== 'claude' || agent.nativeRootId)
       throw new Conflict('This is not a standalone managed Claude conversation.');
     const existing = this.sessions.get(agent.id);
-    if (existing) return existing;
+    if (existing) {
+      const describe = (tools: { name: string; description: string; inputSchema: unknown }[]) =>
+        JSON.stringify(
+          tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+        );
+      if (
+        existing.options.charter === this.callbacks.charter(agent) &&
+        describe(existing.options.tools ?? []) === describe(this.callbacks.tools(agent))
+      )
+        return existing;
+      // prepare is called at the next managed turn boundary, never to interrupt
+      // active work. Rejoin the same native session with the current host contract.
+      await this.forget(agent.id);
+    }
     const starting = this.starting.get(agent.id);
     if (starting) return starting;
     const promise = this.open(agent);
