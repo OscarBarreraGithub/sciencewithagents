@@ -23,8 +23,11 @@ the phone displays the result. Both devices use the existing authenticated conne
 If macOS blocks an iCloud or protected folder, allow sciencewithagents folder access in
 System Settings → Privacy & Security, then retry. The app does not bypass operating-system permissions.
 
-The full-screen reader supports fit-to-width, whole-page view, zoom buttons, pinch zoom,
-page navigation, selectable text and download. A manager’s document link opens over the
+When LaTeX source is available, **Reading** opens a reflowing, phone-width document with
+adjustable text size. Paragraphs, headings, tables and figures fit the screen; long equations
+scroll individually. Reading position is saved locally. A PDF with a same-name `.tex` beside
+it also offers Reading mode. **Original PDF** retains fixed pages, fit-to-width, whole-page
+view, zoom buttons, pinch zoom, page navigation, selectable text and download. A manager’s document link opens over the
 conversation. Back, browser Back, or a right swipe at fitted width returns to the same
 chat position and keeps the draft. When zoomed in, horizontal gestures pan the page.
 Reading position is also remembered locally for recent documents.
@@ -33,10 +36,29 @@ Reading position is also remembered locally for recent documents.
 
 Use `dock_document` with a project-relative path, for example
 `{"path":"reports/thermal.tex"}`. Put its returned `href` in a Markdown link in the reply.
-Workers register relative to their own workspace. Interactive resource assistants can share
+Managers may also register a report from their managed workspace; workers register relative
+to their own workspace. Saved manager messages with local `.tex` or `.pdf` Markdown links
+open in the app too: the server checks the recorded message and its project/workspace boundary,
+then issues a document ID. The browser never submits an arbitrary file path. Interactive resource assistants can share
 reports from their workspace too. Registration does not build or change the source; opening
 the link starts the build. Saved document links also work in shared VS Code chat Markdown.
 An independent editor agent needs a document already registered in this app to use such a link.
+
+## Reading mode setup and limits
+
+Reading mode uses installed [Pandoc](https://pandoc.org/installing.html); local PDF figures
+also need Poppler (`pdftoppm`). On macOS, the setup agent can install missing tools with
+`brew install pandoc poppler`. This computer-side conversion spends no model tokens.
+The browser sanitizes converted HTML and typesets equations with local KaTeX. Converter
+sandboxing blocks network/file access; a bounded loader supplies local includes and image
+assets from the registered folder. Source files are never edited.
+
+Reading mode interprets LaTeX content, not every package's print layout. Complex package
+commands may need Original PDF; missing figures are marked. An ordinary PDF without its
+LaTeX source keeps the PDF viewer rather than claiming reliable mathematical reflow.
+Includes outside the registered folder are refused in Reading mode. Inputs are bounded to
+100 files / 8 MB combined, conversions to 30 seconds per operation, with one reading build
+at a time. Missing conversion tools have a retry action; the original PDF stays available.
 
 ## Compiler and build boundaries
 

@@ -130,6 +130,79 @@ const read = (file: string, args: string[], signal: AbortSignal) =>
     );
   });
 
+/** A few diagnostic flags, never raw arguments (which can contain credentials or inline code). */
+export function processPurpose(command: string) {
+  return {
+    type: /(?:^|\s)--type=([a-zA-Z0-9._-]+)/.exec(command)?.[1] ?? null,
+    service: /(?:^|\s)--utility-sub-type=([a-zA-Z0-9._-]+)/.exec(command)?.[1] ?? null,
+    extensionHost: /(?:extensionHostProcess|--extension-process)(?:\s|\.|$)/.test(command),
+  };
+}
+
+/** Targeted host-side reads remain available when a provider sandbox denies process enumeration. */
+export async function inspectResourceProcesses(pids: number[]) {
+  const signal = AbortSignal.timeout(6000);
+  return Promise.all(
+    [...new Set(pids)].map(async (pid) => {
+      if (!Number.isSafeInteger(pid) || pid <= 0 || pid > 2147483647)
+        throw new Error('Invalid process ID');
+      try {
+        const raw = await read(
+          '/bin/ps',
+          ['-ww', '-p', String(pid), '-o', 'pid=,ppid=,lstart=,time=,rss=,comm='],
+          signal,
+        );
+        const identity = parseProcesses(raw)[0];
+        if (!identity) throw new Error('Process ended');
+        const commandName =
+          /^\s*\d+\s+\d+\s+\w+\s+\w+\s+\d+\s+[\d:]+\s+\d+\s+[\d:.\-]+\s+\d+\s+(.+)$/.exec(
+            raw.trim(),
+          )?.[1] ?? identity.name;
+        const [args, cwd] = await Promise.allSettled([
+          read('/bin/ps', ['-ww', '-p', String(pid), '-o', 'lstart=,command='], signal),
+          read(
+            process.platform === 'darwin' ? '/usr/sbin/lsof' : '/usr/bin/lsof',
+            ['-a', '-p', String(pid), '-d', 'cwd,txt', '-Fn'],
+            signal,
+          ),
+        ]);
+        const match =
+          args.status === 'fulfilled'
+            ? /^\s*(\w+\s+\w+\s+\d+\s+[\d:]+\s+\d+)\s+(.+)/.exec(args.value)
+            : null;
+        const same = match && Date.parse(match[1]!) === Date.parse(identity.startedAt);
+        const command = same ? match[2]! : '';
+        const executable =
+          cwd.status === 'fulfilled'
+            ? (/^ftxt\nn(.+)$/m.exec(cwd.value)?.[1] ??
+              (commandName.startsWith('/') ? commandName : null))
+            : commandName.startsWith('/')
+              ? commandName
+              : null;
+        return {
+          pid,
+          parentPid: identity.parentPid,
+          startedAt: identity.startedAt,
+          name: identity.name,
+          executable,
+          commandName,
+          memoryBytes: identity.memoryBytes,
+          workingDirectory:
+            cwd.status === 'fulfilled' ? (/^fcwd\nn(.+)$/m.exec(cwd.value)?.[1] ?? null) : null,
+          entrypoint: processEntrypoint(command, basename(executable ?? commandName)),
+          ...processPurpose(command),
+          note: 'Command purpose comes from selected flags. Raw arguments and environment are not retained. A helper role does not identify a particular tab or extension.',
+        };
+      } catch {
+        return {
+          pid,
+          unavailable: 'The process ended or the operating system refused this reading.',
+        };
+      }
+    }),
+  );
+}
+
 export class ResourceProbe {
   private entrypoints = new Map<string, { value: string | null; at: number }>();
   private previous: {

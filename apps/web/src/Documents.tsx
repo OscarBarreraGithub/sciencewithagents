@@ -17,21 +17,48 @@ export function openDocument(id: string) {
   // Defer delivery until the current effect flush has installed its listener.
   queueMicrotask(() => window.dispatchEvent(new CustomEvent('dock:document', { detail: id })));
 }
-export function DocumentLink({ href, children }: ComponentProps<'a'>) {
+export function DocumentLink({
+  href,
+  children,
+  saved,
+}: ComponentProps<'a'> & { saved?: { agentId: string; entryId: string; index: number } }) {
   const id = href && documentId(href);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   return (
-    <a
-      href={href}
-      target={id ? undefined : '_blank'}
-      rel="noreferrer"
-      onClick={(event) => {
-        if (!id || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-        event.preventDefault();
-        openDocument(id);
-      }}
-    >
-      {children}
-    </a>
+    <>
+      <a
+        href={href}
+        target={id ? undefined : '_blank'}
+        rel="noreferrer"
+        aria-busy={busy}
+        onClick={(event) => {
+          if (saved) {
+            event.preventDefault();
+            if (busy) return;
+            setBusy(true);
+            setError('');
+            void api('/documents/from-message', saved)
+              .then(documentSchema.parse)
+              .then((document) => openDocument(document.id))
+              .catch((error) => setError(error.message))
+              .finally(() => setBusy(false));
+            return;
+          }
+          if (!id || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          openDocument(id);
+        }}
+      >
+        {children}
+      </a>
+      {error && (
+        <span role="alert" className="document-link-error">
+          {' '}
+          {error}
+        </span>
+      )}
+    </>
   );
 }
 

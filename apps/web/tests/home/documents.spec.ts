@@ -59,6 +59,8 @@ async function fixture(page: Page) {
   let fail = false;
   await page.route('**/api/documents**', (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/reading'))
+      return route.fulfill({ json: { available: false, html: '', warnings: [] } });
     if (url.pathname.endsWith('/pdf'))
       return route.fulfill({ contentType: 'application/pdf', body: pdfFixture() });
     if (url.pathname.endsWith('/browse'))
@@ -192,6 +194,17 @@ test('manager PDF links retain the mounted chat, its draft and exact scroll posi
   });
   expect(created.ok()).toBe(true);
   const project = await created.json();
+  let resolvedLocalLink = false;
+  await page.route('**/api/documents/from-message', (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({ agentId: project.managerId, index: 0 });
+    expect(Object.keys(route.request().postDataJSON()).sort()).toEqual([
+      'agentId',
+      'entryId',
+      'index',
+    ]);
+    resolvedLocalLink = true;
+    return route.fulfill({ json: data.doc });
+  });
   await page.route(`**/api/agents/${project.managerId}`, async (route) => {
     const response = await route.fetch();
     const detail = await response.json();
@@ -203,7 +216,7 @@ test('manager PDF links retain the mounted chat, its draft and exact scroll posi
       title: 'Report',
       status: 'completed',
       createdAt: new Date().toISOString(),
-      text: `Reading paragraph ${index}. ${'Keep this chat position while reading the document. '.repeat(4)}\n\n[Read the thermal report](${data.doc.href})`,
+      text: `Reading paragraph ${index}. ${'Keep this chat position while reading the document. '.repeat(4)}\n\n[Read the thermal report](/saved/project/thermal.pdf)`,
     }));
     await route.fulfill({ json: detail });
   });
@@ -219,6 +232,7 @@ test('manager PDF links retain the mounted chat, its draft and exact scroll posi
   const before = await conversation.evaluate((element) => element.scrollTop);
   await link.click();
   const reader = await rendered(page);
+  expect(resolvedLocalLink).toBe(true);
   expect(new URL(page.url()).hash).toBe(`#/chat/${project.managerId}`);
   await page.screenshot({
     path: `../../data/latex-reader-20261004/${info.project.name}-from-chat.png`,
@@ -259,4 +273,53 @@ test('a direct document link opens on first load and one Back closes it', async 
   await reader.getByRole('button', { name: 'Back to where I was' }).click();
   await expect(reader).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'LaTeX', exact: true })).toBeVisible();
+});
+
+test('source reading wraps at large text sizes, isolates equations, keeps its place and opens the original PDF', async ({
+  page,
+}, info) => {
+  const data = await fixture(page);
+  const html = `<h1>Thermal report</h1><p>Comfortable reading with a formula <span class="math inline">\\(E=mc^2\\)</span> in ordinary text.</p>
+    <p>${'This text should wrap to the phone width without moving sideways. '.repeat(6)}</p>
+    <span class="math display">\\[${'a+b+c+d+'.repeat(25)}z\\]</span>
+    <table><tr><th>Name</th><th>Meaning</th></tr><tr><td>Temperature</td><td>${'A longer description that wraps. '.repeat(5)}</td></tr></table>
+    ${Array.from({ length: 40 }, (_, i) => `<h2 id="section-${i}">Section ${i}</h2><p>${'More readable text. '.repeat(12)}</p>`).join('')}
+    <img src="https://invalid.example/private"><script>window.injected=true</script><a href="javascript:alert(1)">Unsafe link</a>`;
+  await page.route('**/api/documents/*/reading', (route) =>
+    route.fulfill({ json: { available: true, html, warnings: [] } }),
+  );
+  await page.goto(`/#/latex/${data.doc.id}`);
+  const reader = page.getByRole('dialog', { name: 'PDF reader' });
+  await expect(reader.locator('.document-reading h1')).toHaveText('Thermal report');
+  await expect(reader.locator('.katex-error')).toHaveCount(0);
+  await expect(reader.locator('.document-reading img')).toHaveCount(0);
+  await expect(reader.locator('a[href^="javascript:"]')).toHaveCount(0);
+  for (let i = 0; i < 5; i++) await reader.getByRole('button', { name: 'Larger text' }).click();
+  const area = reader.getByLabel('Reading pages');
+  expect(await area.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
+    true,
+  );
+  expect(
+    await reader
+      .locator('.math.display')
+      .evaluate((element) => element.scrollWidth > element.clientWidth),
+  ).toBe(true);
+  expect(
+    await reader
+      .locator('.document-reading p')
+      .first()
+      .evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+  ).toBe(true);
+  await page.screenshot({
+    path: `../../data/reader-resource-20261004/reflow-${info.project.name}.png`,
+  });
+  await area.evaluate((element) => {
+    element.scrollTop = 1500;
+  });
+  await reader.getByRole('button', { name: 'Original PDF', exact: true }).click();
+  await rendered(page);
+  await reader.getByRole('button', { name: 'Reading', exact: true }).click();
+  await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBeGreaterThan(1400);
+  await reader.getByRole('button', { name: 'Back to where I was' }).click();
+  await expect(reader).toHaveCount(0);
 });

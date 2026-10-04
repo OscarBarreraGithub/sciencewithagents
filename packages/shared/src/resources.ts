@@ -2,6 +2,14 @@ import { z } from 'zod';
 import { machineCapacitySchema } from './capacity.js';
 import { effortSchema, providerIdSchema } from './providers.js';
 
+export const resourceInspectionSchema = z
+  .object({
+    resources: z.literal(true),
+    processIds: z.array(z.number().int().positive().max(2147483647)).max(12).optional(),
+    history: z.boolean().optional(),
+  })
+  .strict();
+
 export const resourceGroupSchema = z
   .object({
     name: z.string().max(100),

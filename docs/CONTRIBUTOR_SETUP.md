@@ -35,7 +35,7 @@ person's installation. Repository history does not authorize access to another p
 
 Node 24+, Git and a working Codex CLI or Claude Code are the source prerequisites.
 LaTeX compilation optionally needs Tectonic or TeX Live with latexmk; detect an existing install
-first. The built-in PDF reader needs neither. See [LaTeX](LATEX.md).
+first. For reflowing phone reading, install Pandoc and Poppler if absent (`brew install pandoc poppler` on Mac). The original PDF viewer needs none of these tools. See [LaTeX](LATEX.md).
 Transcription additionally needs yt-dlp, FFmpeg and whisper.cpp. Phone connections and
 private GitHub backup need their chosen native connection tool and GitHub CLI respectively.
 Install optional tools for the features the person wants; a missing optional tool must not

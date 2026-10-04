@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Download, Minus, Plus, RefreshCw } from 'lucide-react';
-import { documentSchema, type SavedDocument } from '@dock/shared';
+import {
+  documentReadingSchema,
+  type DocumentReading as Reading,
+  documentSchema,
+  type SavedDocument,
+} from '@dock/shared';
 import type { PDFViewer as Viewer } from 'pdfjs-dist/types/web/pdf_viewer';
 import { api, apiScope, apiUrl } from './api';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
+import { DocumentReading } from './DocumentReading';
 
 type Position = { page: number; scale: string; top: number; left: number; width: number };
 function PdfPages({
@@ -211,6 +217,43 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
   const [page, setPage] = useState('1');
   const [scale, setScale] = useState(100);
   const [sending, setSending] = useState(false);
+  const [reading, setReading] = useState<Reading | null>(null);
+  const [readingError, setReadingError] = useState('');
+  const [mode, setMode] = useState<'reading' | 'pdf'>('reading');
+  const [size, setSize] = useState(() => {
+    try {
+      return Math.max(18, Math.min(30, Number(localStorage.getItem('swa:reading-size')) || 20));
+    } catch {
+      return 20;
+    }
+  });
+  const [readingVersion, setReadingVersion] = useState(0);
+  useEffect(() => {
+    const abort = new AbortController();
+    void api(`/documents/${id}/reading`, undefined, abort.signal)
+      .then(documentReadingSchema.parse)
+      .then((value) => {
+        if (abort.signal.aborted) return;
+        setReading(value);
+        setReadingError('');
+        if (!value.available) setMode('pdf');
+      })
+      .catch((error) => {
+        if (abort.signal.aborted) return;
+        setReadingError(error.message);
+        setMode('pdf');
+      });
+    return () => abort.abort();
+  }, [id, readingVersion]);
+  function resizeText(delta: number) {
+    const next = Math.max(18, Math.min(30, size + delta));
+    setSize(next);
+    try {
+      localStorage.setItem('swa:reading-size', String(next));
+    } catch {
+      /* private storage */
+    }
+  }
   const actionKey = useRef(crypto.randomUUID());
   const ready = useCallback((pages: number, page: number, scale: number) => {
     setPages(pages);
@@ -272,6 +315,7 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
   }, [id, doc]);
   async function rebuild() {
     setSending(true);
+    setReadingVersion((value) => value + 1);
     setError('');
     try {
       setDoc(
@@ -330,69 +374,108 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
           </a>
         )}
       </header>
-      <div className="pdf-toolbar" aria-label="PDF controls">
-        <div className="pdf-zoom">
-          <button
-            disabled={!pages || scale <= 20}
-            aria-label="Zoom out"
-            onClick={() => controller.current?.decreaseScale()}
-          >
-            <Minus size={20} />
-          </button>
-          <span aria-live="polite">{pages ? `${scale}%` : '—'}</span>
-          <button
-            disabled={!pages || scale >= 400}
-            aria-label="Zoom in"
-            onClick={() => controller.current?.increaseScale()}
-          >
-            <Plus size={20} />
-          </button>
+      {(reading?.available || readingError) && (
+        <div className="pdf-toolbar reader-mode" aria-label="Reading controls">
+          {reading?.available && (
+            <div className="reader-modes">
+              <button aria-pressed={mode === 'reading'} onClick={() => setMode('reading')}>
+                Reading
+              </button>
+              <button aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')}>
+                Original PDF
+              </button>
+            </div>
+          )}
+          {mode === 'reading' && (
+            <div className="reader-text-size">
+              <button
+                aria-label="Smaller text"
+                disabled={size <= 18}
+                onClick={() => resizeText(-2)}
+              >
+                A−
+              </button>
+              <button aria-label="Larger text" disabled={size >= 30} onClick={() => resizeText(2)}>
+                A+
+              </button>
+            </div>
+          )}
+          {readingError && (
+            <details>
+              <summary>Reading mode unavailable</summary>
+              <p>{readingError}</p>
+              <button onClick={() => setReadingVersion((value) => value + 1)}>
+                Retry reading mode
+              </button>
+            </details>
+          )}
         </div>
-        <label className="sr-only" htmlFor="pdf-fit">
-          Page fit
-        </label>
-        <select
-          id="pdf-fit"
-          value=""
-          disabled={!pages}
-          onChange={(event) => {
-            if (controller.current) controller.current.currentScaleValue = event.target.value;
-          }}
-        >
-          <option value="" disabled>
-            Fit / zoom
-          </option>
-          <option value="page-width">Fit width</option>
-          <option value="page-fit">Whole page</option>
-          <option value="1">100%</option>
-          <option value="1.5">150%</option>
-          <option value="2">200%</option>
-          <option value="3">300%</option>
-        </select>
-        <form
-          className="pdf-page-number"
-          onSubmit={(event) => {
-            event.preventDefault();
-            jumpToPage();
-            (document.activeElement as HTMLElement)?.blur();
-          }}
-        >
-          <label htmlFor="pdf-page">Page</label>
-          <input
-            id="pdf-page"
-            aria-label="Page number"
-            inputMode="numeric"
-            value={page}
+      )}
+      {mode === 'pdf' && (
+        <div className="pdf-toolbar" aria-label="PDF controls">
+          <div className="pdf-zoom">
+            <button
+              disabled={!pages || scale <= 20}
+              aria-label="Zoom out"
+              onClick={() => controller.current?.decreaseScale()}
+            >
+              <Minus size={20} />
+            </button>
+            <span aria-live="polite">{pages ? `${scale}%` : '—'}</span>
+            <button
+              disabled={!pages || scale >= 400}
+              aria-label="Zoom in"
+              onClick={() => controller.current?.increaseScale()}
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+          <label className="sr-only" htmlFor="pdf-fit">
+            Page fit
+          </label>
+          <select
+            id="pdf-fit"
+            value=""
             disabled={!pages}
-            onChange={(event) => setPage(event.target.value.replace(/\D/g, ''))}
-            onBlur={() => {
-              jumpToPage();
+            onChange={(event) => {
+              if (controller.current) controller.current.currentScaleValue = event.target.value;
             }}
-          />
-          <span>/ {pages || '…'}</span>
-        </form>
-      </div>
-      {building && (
+          >
+            <option value="" disabled>
+              Fit / zoom
+            </option>
+            <option value="page-width">Fit width</option>
+            <option value="page-fit">Whole page</option>
+            <option value="1">100%</option>
+            <option value="1.5">150%</option>
+            <option value="2">200%</option>
+            <option value="3">300%</option>
+          </select>
+          <form
+            className="pdf-page-number"
+            onSubmit={(event) => {
+              event.preventDefault();
+              jumpToPage();
+              (document.activeElement as HTMLElement)?.blur();
+            }}
+          >
+            <label htmlFor="pdf-page">Page</label>
+            <input
+              id="pdf-page"
+              aria-label="Page number"
+              inputMode="numeric"
+              value={page}
+              disabled={!pages}
+              onChange={(event) => setPage(event.target.value.replace(/\D/g, ''))}
+              onBlur={() => {
+                jumpToPage();
+              }}
+            />
+            <span>/ {pages || '…'}</span>
+          </form>
+        </div>
+      )}
+      {mode === 'pdf' && building && (
         <p className="pdf-status" role="status">
           {doc.state === 'queued'
             ? 'Waiting for the current document build…'
@@ -400,7 +483,7 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
           {doc.hasPdf ? ' Showing the previous PDF.' : ''}
         </p>
       )}
-      {(error || doc?.error) && (
+      {(error || (mode === 'pdf' && doc?.error)) && (
         <div className="pdf-error" role="alert">
           <p>
             {error ||
@@ -420,7 +503,9 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
         </div>
       )}
       <div className="pdf-body">
-        {doc?.hasPdf ? (
+        {mode === 'reading' && reading?.available ? (
+          <DocumentReading id={id} reading={reading} size={size} close={close} />
+        ) : mode === 'pdf' && doc?.hasPdf ? (
           <PdfPages doc={doc} controller={controller} onReady={ready} onFailure={failure} />
         ) : (
           <div className="pdf-wait" role="status">

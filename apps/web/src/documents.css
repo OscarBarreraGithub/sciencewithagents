@@ -370,3 +370,164 @@
 .latex-app > header p {
   color: #616b75;
 }
+
+.document-link-error {
+  display: block;
+  color: #924524;
+  font-size: 0.9em;
+}
+.reader-mode {
+  justify-content: space-between;
+}
+.reader-modes,
+.reader-text-size {
+  display: flex;
+  gap: 4px;
+}
+.reader-modes button[aria-pressed='true'] {
+  background: #e8ebfc;
+  border-color: #4958c8;
+  color: #263798;
+}
+.document-reading-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  background: #fffdf7;
+}
+.document-reading {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 70ch;
+  margin: auto;
+  padding: 24px max(20px, env(safe-area-inset-right)) max(64px, env(safe-area-inset-bottom))
+    max(20px, env(safe-area-inset-left));
+  font:
+    var(--reading-size, 20px) / 1.65 Georgia,
+    'Times New Roman',
+    serif;
+  overflow-wrap: anywhere;
+  color: #272a30;
+}
+.document-reading p {
+  margin: 0 0 1.05em;
+}
+.document-reading h1,
+.document-reading h2,
+.document-reading h3 {
+  font-family: system-ui, sans-serif;
+  line-height: 1.3;
+  margin: 1.6em 0 0.7em;
+  scroll-margin-top: 20px;
+}
+.document-reading h1 {
+  font-size: 1.45em;
+}
+.document-reading h2 {
+  font-size: 1.25em;
+}
+.document-reading img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  margin: 1em auto;
+}
+.document-reading table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.87em;
+}
+.document-reading td,
+.document-reading th {
+  padding: 0.45em;
+  border-bottom: 1px solid #deddd5;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.document-reading col {
+  width: auto !important;
+}
+.document-reading pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.85em;
+}
+.document-reading .math {
+  max-width: 100%;
+  overflow-wrap: normal;
+}
+.document-reading .math.display {
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 1em 0;
+  padding: 0.35em 0;
+  overscroll-behavior-x: contain;
+}
+.document-reading .math.inline {
+  display: inline-block;
+  vertical-align: middle;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.document-reading .katex {
+  font-size: 1.03em;
+}
+.document-reading .katex * {
+  overflow-wrap: normal;
+}
+.document-reading .katex-display {
+  margin: 0;
+}
+.document-reading .katex-display > .katex {
+  width: max-content;
+  min-width: 100%;
+}
+.document-reading .katex-error {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.9em;
+}
+.reading-notes {
+  padding: 12px 20px;
+  font:
+    0.9rem/1.5 system-ui,
+    sans-serif;
+  background: #f5f0de;
+}
+.reading-notes p {
+  margin: 8px 0;
+}
+@media (max-width: 440px) {
+  .reader-mode {
+    gap: 4px;
+  }
+  .reader-mode button {
+    padding: 8px 10px;
+    font-size: 0.95rem;
+  }
+}
+/* Reader typography is independent of the compact app-card typography. */
+.pdf-reader .document-reading {
+  font-size: var(--reading-size, 20px);
+  color: #272a30;
+  line-height: 1.65;
+}
+.pdf-reader .document-reading :is(p, li, dt, dd, strong, em, a) {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+.pdf-reader .document-reading :is(h1, h2, h3) {
+  color: #272a30;
+}
+.document-reading .reading-equation-number {
+  display: block;
+  text-align: right;
+  font-size: 0.85em;
+}

@@ -5,6 +5,7 @@ import {
   lstat,
   mkdir,
   open,
+  readFile,
   readdir,
   realpath,
   rename,
@@ -20,10 +21,14 @@ import {
   documentSchema,
   documentActionSchema,
   documentBrowseQuerySchema,
+  savedDocumentLinkSchema,
+  savedDocumentLinks,
+  type DocumentReading,
   type SavedDocument,
 } from '@dock/shared';
 import { FolderBrowser } from './folder-browser.js';
 import { Conflict, Missing, Store, now } from './store.js';
+import { buildReading } from './document-reading.js';
 
 const maxBytes = 50 * 1024 ** 2;
 const inside = (root: string, path: string) =>
@@ -57,6 +62,8 @@ export class Documents {
   private active: Promise<void> | null = null;
   private child: ChildProcess | null = null;
   private stopped = false;
+  private readings = new Map<string, Promise<DocumentReading>>();
+  private readingQueue: Promise<unknown> = Promise.resolve();
   private stopCompiler() {
     const child = this.child;
     if (!child?.pid) return;
@@ -164,6 +171,84 @@ export class Documents {
     if (isAbsolute(path) || path.includes('\0') || !inside(resolve(root), resolve(root, path)))
       throw new Conflict('Use a project-relative .tex or .pdf path.');
     return this.register(root, resolve(root, path));
+  }
+  private agentRoots(agentId: string) {
+    const agent = this.store.agent(agentId);
+    return [
+      ...new Set([
+        agent.cwd,
+        this.store.project(agent.projectId).root,
+        // Project-scoped managers used this host-owned workspace before their cwd migration.
+        ...(agent.role === 'manager' && !agent.surface
+          ? [resolve(this.directory, '..', 'managers', agent.id)]
+          : []),
+      ]),
+    ];
+  }
+  async registerAgentRelative(agentId: string, path: string) {
+    const agent = this.store.agent(agentId);
+    const roots =
+      agent.role === 'manager' && !agent.surface ? this.agentRoots(agentId) : [agent.cwd];
+    let failure: unknown;
+    for (const root of roots) {
+      try {
+        return await this.registerRelative(root, path);
+      } catch (error) {
+        failure ??= error;
+      }
+    }
+    throw failure;
+  }
+  async fromSavedLink(raw: unknown) {
+    const input = savedDocumentLinkSchema.parse(raw);
+    const agent = this.store.agent(input.agentId);
+    const entry = this.store.savedEntry(agent.id, input.entryId);
+    const href =
+      entry && ['assistant', 'user'].includes(entry.kind)
+        ? savedDocumentLinks(entry.text)[input.index]
+        : undefined;
+    if (!href) throw new Missing('This saved message does not contain that document link.');
+    let path: string;
+    try {
+      path = decodeURIComponent(href.startsWith('file://') ? new URL(href).pathname : href);
+    } catch {
+      throw new Conflict('This saved file link is invalid.');
+    }
+    // A message is evidence of the link, not authority to read outside its workspaces.
+    for (const root of this.agentRoots(agent.id)) {
+      try {
+        return await this.register(root, path);
+      } catch {
+        /* check the other allowed workspace */
+      }
+    }
+    throw new Conflict(
+      'The linked document is unavailable or outside this conversation’s project and workspace. Find it through Apps → LaTeX instead.',
+    );
+  }
+  reading(id: string): Promise<DocumentReading> {
+    const doc = this.read(id);
+    if (this.stopped) throw new Conflict('The reader is restarting. Try again in a moment.');
+    const existing = this.readings.get(id);
+    if (existing) return existing;
+    const work = this.readingQueue.then(async () => {
+      let source = doc.path;
+      if (doc.kind === 'pdf') source = source.replace(/\.pdf$/i, '.tex');
+      const canonical = await realpath(source).catch(() => null);
+      if (!canonical || !inside(doc.root, canonical))
+        return { available: false, html: '', warnings: [], labels: {} };
+      return buildReading(canonical, doc.root, join(this.directory, `${id}-assets`));
+    });
+    this.readingQueue = work.catch(() => {});
+    this.readings.set(id, work);
+    void work.finally(() => this.readings.delete(id)).catch(() => {});
+    return work;
+  }
+  async readingAsset(id: string, asset: string) {
+    this.read(id);
+    if (!/^[a-f0-9]{64}\.(png|jpg|jpeg|webp|gif)$/.test(asset))
+      throw new Missing('No such figure.');
+    return readFile(join(this.directory, `${id}-assets`, asset));
   }
   async browse(folderId?: string, offset = 0) {
     const folders = await this.browser.browse(folderId, offset);
@@ -372,17 +457,29 @@ export class Documents {
     this.stopped = true;
     this.stopCompiler();
     await this.active;
+    await this.readingQueue;
   }
 }
 
 export function registerDocumentRoutes(app: FastifyInstance, documents: Documents) {
   const id = (params: unknown) => z.object({ id: z.string().uuid() }).parse(params).id;
   app.get('/api/documents', () => documents.list());
+  app.post('/api/documents/from-message', (request) => documents.fromSavedLink(request.body));
   app.get('/api/documents/browse', (request) => {
     const query = documentBrowseQuerySchema.parse(request.query);
     return documents.browse(query.folderId, query.offset);
   });
   app.get('/api/documents/:id', (request) => documents.get(id(request.params)));
+  app.get('/api/documents/:id/reading', (request) => documents.reading(id(request.params)));
+  app.get('/api/documents/:id/assets/:asset', async (request, reply) => {
+    const params = z.object({ id: z.string().uuid(), asset: z.string() }).parse(request.params);
+    const data = await documents.readingAsset(params.id, params.asset);
+    const extension = extname(params.asset).slice(1);
+    return reply
+      .header('Cache-Control', 'private, max-age=3600')
+      .type(`image/${extension === 'jpg' ? 'jpeg' : extension}`)
+      .send(data);
+  });
   for (const action of ['open', 'build'])
     app.post(`/api/documents/:id/${action}`, (request) =>
       documents.open(

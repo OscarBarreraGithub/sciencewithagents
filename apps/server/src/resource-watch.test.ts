@@ -12,6 +12,8 @@ import {
   parseSwap,
   parseVm,
   processEntrypoint,
+  processPurpose,
+  inspectResourceProcesses,
 } from './resource-probe.js';
 import { Runtime } from './runtime.js';
 import { DemoProvider } from './demo.js';
@@ -52,6 +54,12 @@ function fixture(singleProvider = false) {
     {
       id: provider === 'codex' ? 'terra-fixture' : 'sonnet-fixture',
       label: provider === 'codex' ? 'Terra' : 'Sonnet',
+      isDefault: false,
+      efforts: ['low', 'high'],
+    },
+    {
+      id: provider === 'codex' ? 'sol-fixture' : 'opus-fixture',
+      label: provider === 'codex' ? 'Sol' : 'Opus',
       isDefault: false,
       efforts: ['low', 'high'],
     },
@@ -96,7 +104,7 @@ it('a fresh Codex-only installation can queue Ask without discovering or requiri
     .checks[0]!;
   expect(store.agent(check.agentId)).toMatchObject({
     provider: 'codex',
-    model: 'terra-fixture',
+    model: 'sol-fixture',
     permission: 'workspace-write',
   });
   expect(models).toHaveBeenCalledWith('codex');
@@ -109,8 +117,8 @@ it('honors explicit provider, exact model and effort through central model selec
   const codex = (await watch.ask({ key: randomUUID(), provider: 'codex' })).checks[0]!;
   expect(store.agent(codex.agentId)).toMatchObject({
     provider: 'codex',
-    model: 'terra-fixture',
-    effort: 'low',
+    model: 'sol-fixture',
+    effort: 'high',
   });
   expect(models).toHaveBeenLastCalledWith('codex');
   store.updateRun(codex.runId, { status: 'completed' });
@@ -131,7 +139,7 @@ it('honors explicit provider, exact model and effort through central model selec
     model: 'custom-fixture',
     effort: 'high',
     permission: 'workspace-write',
-    assignment: { source: 'manager_selection', tier: 'undergrad', taskClass: 'routine' },
+    assignment: { source: 'manager_selection', tier: 'grad', taskClass: 'routine' },
   });
   expect(models).toHaveBeenLastCalledWith('claude');
   store.updateRun(selected.runId, { status: 'completed' });
@@ -176,7 +184,7 @@ it('continues the saved diagnostic context with fresh evidence and durable follo
   expect(store.agent(first.agentId)).toMatchObject({
     threadId: 'diagnostic-fixture-thread',
     provider: 'claude',
-    model: 'sonnet-fixture',
+    model: 'opus-fixture',
     effort: 'high',
     permission: 'workspace-write',
     toolPolicy: 'native',
@@ -340,7 +348,7 @@ it('uses a single durable request, an exact catalog model and the existing queue
   expect(watch.context(check.agentId).latest?.machine?.cpuUsedPercent).toBe(90);
   expect(store.agent(check.agentId)).toMatchObject({
     provider: 'claude',
-    model: 'sonnet-fixture',
+    model: 'opus-fixture',
     permission: 'workspace-write',
     role: 'manager',
   });
@@ -373,7 +381,7 @@ it('does not guess another model, and stale or concurrent requests do not create
   models.mockResolvedValueOnce([
     { id: 'unrelated', label: 'Another model', isDefault: true, efforts: ['low'] },
   ]);
-  await expect(watch.ask({ key: randomUUID() })).rejects.toThrow('no sonnet model');
+  await expect(watch.ask({ key: randomUUID() })).rejects.toThrow('no opus model');
   expect(store.agents()).toHaveLength(0);
   advance(60_000);
   watch.save({ key: randomUUID(), settings: { automatic: true } });
@@ -556,6 +564,23 @@ it('protects resource APIs from hostile origins and denies the assistant executi
     runtime.tool(project.managerId, randomUUID(), 'dock_task_create', {}),
   ).rejects.toThrow('only explain');
   expect(runtime.context(store.agent(project.managerId))).toContain('Resource evidence');
+  await expect(
+    runtime.tool(project.managerId, randomUUID(), 'dock_inspect', {
+      resources: true,
+      processIds: [process.pid],
+    }),
+  ).rejects.toThrow();
+  store.updateAgent(project.managerId, {
+    resourceAssistant: { mode: 'interactive', reason: 'asked' },
+    permission: 'workspace-write',
+    toolPolicy: 'native',
+  });
+  expect(
+    await runtime.tool(project.managerId, randomUUID(), 'dock_inspect', {
+      resources: true,
+      processIds: [],
+    }),
+  ).toHaveProperty('processDetails', []);
 });
 it('caps automatic work across restarts and never catches up missed checkpoints in a burst', async () => {
   const { watch, store, advance, root, dependencies, now } = fixture();
@@ -736,4 +761,17 @@ it('lets a distinct sustained incident wake the assistant after five minutes ins
   await watch.tick();
   expect(store.runs()).toHaveLength(2);
   expect(watch.status().checks[0]!.reason).toBe('pressure');
+});
+
+it('reads targeted host process identities without exposing command secrets', async () => {
+  expect(
+    processPurpose(
+      'Electron --type=utility --utility-sub-type=node.mojom.NodeService --token=SECRET',
+    ),
+  ).toEqual({ type: 'utility', service: 'node.mojom.NodeService', extensionHost: false });
+  if (process.platform !== 'darwin') return;
+  const result = await inspectResourceProcesses([process.pid]);
+  expect(result[0]).toMatchObject({ pid: process.pid, parentPid: process.ppid });
+  expect(result[0]).toHaveProperty('executable', process.execPath);
+  expect(result[0]).not.toHaveProperty('command');
 });

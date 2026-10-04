@@ -399,7 +399,7 @@ export function Conversation({
                   <time>{time(entry.createdAt)}</time>
                 </div>
                 <div className="markdown">
-                  <Markdown>{entry.text}</Markdown>
+                  <ChatMarkdown entry={entry}>{entry.text}</ChatMarkdown>
                 </div>
                 {entry.status === 'streaming' && <span className="stream-caret" />}
               </div>

@@ -1,6 +1,6 @@
 # Current status
 
-Checked 2026-10-03. **Beta: current workflows have been exercised with real Codex/Claude
+Checked 2026-10-04. **Beta: current workflows have been exercised with real Codex/Claude
 projects and desktop/phone browser checks.** This is not a claim that every device or
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
@@ -22,7 +22,10 @@ The app connects project setup, manager/worker conversations, versioned prompt d
 shared editor chats, QUARK's board/budgets/coordinator, computer health, model preferences,
 phone pairing, recovery and the [LaTeX/PDF reader](LATEX.md). [Features](FEATURES.md) describes their boundaries.
 LaTeX math renders automatically across chat views and shared editor messages; full document
-compilation remains in the reader.
+compilation remains in the reader. LaTeX-backed reports offer reflowing Reading mode, with
+adjustable text and individually scrollable equations alongside Original PDF. Direct resource
+questions default to a stronger grad model and native investigation; automatic checks remain
+bounded routine reports.
 Source installation and isolated Codex-only/Claude-only first replies have been exercised
 on Apple Silicon macOS. Linux CI does not certify native Linux desktop integration.
 Intel Mac and Windows remain unqualified; see [machine support](CONTRIBUTOR_SETUP.md#check-the-machine-first).

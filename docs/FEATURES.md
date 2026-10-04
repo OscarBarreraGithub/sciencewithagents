@@ -71,7 +71,7 @@ and shared VS Code messages. Wide equations scroll within their message; code re
 Apps includes a LaTeX/PDF reader with computer-side compilation, folder browsing, recent
 files, selectable text, page navigation and zoom. Manager links open over chat and return
 to the same reading position and draft. Failed builds retain the previous PDF; existing
-PDFs need no compiler. See [LaTeX](LATEX.md) for setup and build limits.
+LaTeX-backed reports also have adjustable, reflowing Reading mode: phone-width text, figures and individually scrollable equations. Saved local report links open inside the chat. PDFs need no compiler. See [LaTeX](LATEX.md) for setup and conversion limits.
 
 ## Scope not presented as finished
 

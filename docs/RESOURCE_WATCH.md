@@ -63,8 +63,15 @@ can inspect relevant system state or logs; it must distinguish actual findings f
 A question about failed login or switching users does not authorize logging out, restarting,
 killing processes or changing OS/account settings. Low CPU alone never proves a service works.
 
-Central [model policy](MODEL_POLICY.md) selects Sonnet or Terra for routine assistance, or
-the owner's exact model choice. In an idle conversation, open the **model button**
+Central [model policy](MODEL_POLICY.md) defaults direct questions to the chosen provider’s
+grad model (Opus or Sol), while automatic checks retain the routine Sonnet/Terra model.
+Explicit model choices and the model of an existing conversation are preserved. Direct
+questions require fresh inspection and targeted native read-only investigation of the actual
+unknowns; the supplied snapshot alone is not a diagnosis. `dock_inspect` can inspect up to
+12 PIDs through the host, including executable paths, working directories, parent identities
+and browser/editor helper roles. This remains available when the native provider sandbox
+blocks `ps` or `lsof`. Raw command arguments and environment variables are not retained.
+`history:true` returns older chart readings; the default tool response includes the latest six. In an idle conversation, open the **model button**
 to choose any available model and reasoning level on that provider. The next question uses it
 with the same saved history. Switching providers starts a separate conversation. Automatic checkpoint/pressure checks remain snapshot-only:
 no execution, filesystem, network or process-control tools. They can refresh the same

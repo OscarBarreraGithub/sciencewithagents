@@ -138,6 +138,11 @@ it('serves only registered PDF IDs and proxies documents to the selected compute
     expect(proxyPath('GET', `/documents/${id}/pdf`)).toBe(`/api/documents/${id}/pdf`);
     expect(proxyPath('POST', `/documents/${id}/build`)).toBe(`/api/documents/${id}/build`);
     expect(proxyPath('GET', `/documents/browse?folderId=${id}&offset=100`)).not.toBeNull();
+    expect(proxyPath('GET', `/documents/${id}/reading`)).toBe(`/api/documents/${id}/reading`);
+    expect(proxyPath('GET', `/documents/${id}/assets/${'a'.repeat(64)}.png`)).toBe(
+      `/api/documents/${id}/assets/${'a'.repeat(64)}.png`,
+    );
+    expect(proxyPath('POST', '/documents/from-message')).toBe('/api/documents/from-message');
     expect(proxyPath('GET', '/documents/browse?path=/etc')).toBeNull();
     expect((await app.inject('/api/documents/browse?path=/etc')).statusCode).not.toBe(200);
     expect((await app.inject('/api/documents/not-an-id/pdf')).statusCode).not.toBe(200);
@@ -152,4 +157,37 @@ it('serves only registered PDF IDs and proxies documents to the selected compute
   } finally {
     await app.close();
   }
+});
+
+it('resolves only recorded document links within the conversation workspaces', async () => {
+  const project = store.register(home, 'Research', 'Test saved links', 'codex');
+  const agent = store.agent(project.managerId);
+  const legacy = join(data, 'managers', agent.id);
+  await mkdir(legacy, { recursive: true });
+  await writeFile(join(legacy, 'report.pdf'), '%PDF-1.4\nreport');
+  const entryId = `${agent.id}:msg_provider-message-id`;
+  store.entry({
+    id: entryId,
+    agentId: agent.id,
+    runId: null,
+    kind: 'assistant',
+    title: '',
+    text: `[Read report](${join(legacy, 'report.pdf')})\n[Outside](${join(root, 'outside.pdf')})`,
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+  });
+  await writeFile(join(root, 'outside.pdf'), '%PDF-1.4\nprivate');
+  // Match migrated installations: cwd now points to the project, while saved links
+  // still refer to this manager's previous private workspace.
+  store.updateAgent(agent.id, { cwd: home });
+  const input = { agentId: agent.id, entryId, index: 0 };
+  const found = await documents.fromSavedLink(input);
+  expect(found.name).toBe('report.pdf');
+  expect(await documents.registerAgentRelative(agent.id, 'report.pdf')).toEqual(found);
+  expect(await documents.fromSavedLink(input)).toEqual(found);
+  await expect(documents.fromSavedLink({ ...input, index: 1 })).rejects.toThrow(/outside/);
+  await expect(documents.fromSavedLink({ ...input, entryId: randomUUID() })).rejects.toThrow(
+    /saved message/,
+  );
+  await expect(documents.fromSavedLink({ ...input, path: '/etc/passwd' })).rejects.toThrow();
 });

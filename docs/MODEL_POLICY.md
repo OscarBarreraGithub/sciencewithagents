@@ -135,17 +135,17 @@ blocks new consultations; queued work remains reviewable. No model polling or re
 
 ## Launch-path coverage
 
-| Path                                                                    | Policy behavior                                                                                                                                             |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| New project, folder connection, additional manager, advanced `dock add` | Provider preset/explicit choice; postdoc on first managed turn                                                                                              |
-| Personal agent                                                          | Same manager policy, with original project-visibility controls                                                                                              |
-| `dock_delegate`                                                         | Explicit task class and optional higher tier; policy model/provider or exact overrides; durable assignment before queueing                                  |
-| Computer Ask, checkpoint, pressure check                                | Routine undergrad policy; former Terra preference migrates to the central routine-provider choice                                                           |
-| Undergrad consultation                                                  | Same-provider grad model from the central policy, bounded one-step escalation                                                                               |
-| Managed Codex native helpers                                            | Resolved parent model/effort set as native defaults; central policy in instructions; cheap routine/bulk work and consultations have native helpers disabled |
-| Native custom roles / explicit spawn overrides                          | Preserve owner/provider overrides; actual model and visible history are mirrored. These native choices are not hard host-enforced task classification       |
-| Imported Codex sessions and original VS Code Codex/Claude chats         | Preserve native provider, identity and model choices; do not migrate them into fresh managed agents                                                         |
-| Catalog discovery                                                       | No user/model turn. Claude uses its provider `default` discovery selector, not a hard-coded reasoning family                                                |
+| Path                                                                    | Policy behavior                                                                                                                                                   |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New project, folder connection, additional manager, advanced `dock add` | Provider preset/explicit choice; postdoc on first managed turn                                                                                                    |
+| Personal agent                                                          | Same manager policy, with original project-visibility controls                                                                                                    |
+| `dock_delegate`                                                         | Explicit task class and optional higher tier; policy model/provider or exact overrides; durable assignment before queueing                                        |
+| Computer Ask; checkpoint/pressure checks                                | Direct Ask defaults to the grad model on the routine provider; automatic checks remain undergrad. Exact selections and existing conversations retain their models |
+| Undergrad consultation                                                  | Same-provider grad model from the central policy, bounded one-step escalation                                                                                     |
+| Managed Codex native helpers                                            | Resolved parent model/effort set as native defaults; central policy in instructions; cheap routine/bulk work and consultations have native helpers disabled       |
+| Native custom roles / explicit spawn overrides                          | Preserve owner/provider overrides; actual model and visible history are mirrored. These native choices are not hard host-enforced task classification             |
+| Imported Codex sessions and original VS Code Codex/Claude chats         | Preserve native provider, identity and model choices; do not migrate them into fresh managed agents                                                               |
+| Catalog discovery                                                       | No user/model turn. Claude uses its provider `default` discovery selector, not a hard-coded reasoning family                                                      |
 
 Claude rolling choices follow its [model-alias configuration](https://code.claude.com/docs/en/model-config); local/organization remapping can affect what an alias serves.
 Native default precedence follows the [official Codex subagent configuration](https://learn.chatgpt.com/docs/agent-configuration/subagents).

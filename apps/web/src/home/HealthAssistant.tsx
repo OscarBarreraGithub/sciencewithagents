@@ -7,6 +7,7 @@ import {
   latestFamily,
   modelPolicyStatusSchema,
   policyProvider,
+  policyDefaultEffort,
   taskTiers,
   type AgentDetail,
   type Model,
@@ -85,8 +86,8 @@ export function useHealthModels() {
       }));
     }
   };
-  const routine = (provider: ProviderId) => {
-    const choice = status?.policy.models[provider][taskTiers.routine];
+  const routine = (provider: ProviderId, task: 'routine' | 'reasoning' = 'routine') => {
+    const choice = status?.policy.models[provider][taskTiers[task]];
     const list = catalogs[provider]?.models ?? [];
     const id = choice ? (choice.model ?? latestFamily(list, choice.family)?.id) : undefined;
     return { choice, id, model: list.find((m) => m.id === id) };
@@ -245,18 +246,13 @@ export function HealthAssistant({
     if (provider) void modelsState.load(provider);
   }, [provider]);
   const catalog = provider ? modelsState.catalogs[provider] : undefined;
-  const routine = provider ? modelsState.routine(provider) : null;
+  const routine = provider ? modelsState.routine(provider, 'reasoning') : null;
   const selectedModel = saved.model
     ? catalog?.models.find((m) => m.id === saved.model)
     : routine?.model;
   const efforts = selectedModel?.efforts ?? [];
   const defaultEffort =
-    routine?.choice?.effort ??
-    (routine?.model?.efforts.includes('low')
-      ? 'low'
-      : routine?.model?.efforts.includes('medium')
-        ? 'medium'
-        : undefined);
+    routine?.choice?.effort ?? policyDefaultEffort(routine?.model?.efforts ?? [], 'grad');
   const foreground = checks.find((c) => activeCheck(c) && c.reason === 'asked');
   const running = foreground ?? checks.find(activeCheck);
   const runningHere = running && threadId && rootOf(running) === threadId ? running : undefined;
@@ -536,10 +532,10 @@ export function HealthAssistant({
                     >
                       <option value="">
                         {routine?.model
-                          ? `${routine.model.label} · routine-check default`
+                          ? `${routine.model.label} · diagnosis default`
                           : routine?.choice
-                            ? `Latest ${routine.choice.family} · routine-check default`
-                            : 'Central routine-check default'}
+                            ? `Latest ${routine.choice.family} · diagnosis default`
+                            : 'Central diagnosis default'}
                       </option>
                       {catalog?.models.map((m) => (
                         <option key={m.id} value={m.id}>

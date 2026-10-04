@@ -1,5 +1,5 @@
 import { Documents } from './documents.js';
-import { documentRegisterSchema } from '@dock/shared';
+import { documentRegisterSchema, resourceInspectionSchema } from '@dock/shared';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -95,7 +95,7 @@ import { ResourceWatch, resourceCharter, interactiveResourceCharter } from './re
 import { ModelPolicy } from './model-policy.js';
 import { Setup } from './setup.js';
 import { CodexSignIn } from './codex-sign-in.js';
-import { ResourceProbe, type ResourceRoot } from './resource-probe.js';
+import { ResourceProbe, inspectResourceProcesses, type ResourceRoot } from './resource-probe.js';
 import {
   closedAssignment,
   requireActiveAssignment,
@@ -407,8 +407,12 @@ export class Runtime {
             type: 'function' as const,
             name: 'dock_inspect',
             description:
-              'Read current processes, script entry points, resource changes and linked QUARK jobs. Read-only; no process control. Use once to verify supplied evidence, not for polling.',
-            inputSchema: z.toJSONSchema(z.object({ resources: z.literal(true) }).strict()),
+              'Read current processes, resource changes and linked QUARK jobs. Interactive diagnoses can supply processIds (up to 12) for host-side executable, parent, working directory and helper-role inspection, even if native ps is sandboxed. Raw command arguments are not retained. Set history:true for all saved chart readings. Read-only; no process control or polling.',
+            inputSchema: z.toJSONSchema(
+              this.resources.isSnapshot(agent.id)
+                ? z.object({ resources: z.literal(true) }).strict()
+                : resourceInspectionSchema,
+            ),
             deferLoading: false,
           },
         ]
@@ -3462,23 +3466,30 @@ export class Runtime {
       )
         throw new Conflict('Ask the project manager to share a document.');
       const value = documentRegisterSchema.parse(raw);
-      const root =
-        agent.role === 'manager' && !agent.surface
-          ? this.store.project(agent.projectId).root
-          : agent.cwd;
       return this.withLock(`document-register:${agentId}`, async () => {
         if (this.store.db.prepare('SELECT 1 FROM operations WHERE key=?').get(key))
           return this.store.operation(key, { agentId, name, raw }, () => null);
-        const result = await this.documents.registerRelative(root, value.path);
+        const result = await this.documents.registerAgentRelative(agentId, value.path);
         return this.store.operation(key, { agentId, name, raw }, () => result);
       });
     }
     if (name === 'dock_escalate') return this.escalate(agent, key, raw);
     if (this.resources.isAgent(agentId) && name === 'dock_inspect') {
-      z.object({ resources: z.literal(true) })
-        .strict()
-        .parse(raw);
-      return this.resources.context(agentId);
+      if (this.resources.isSnapshot(agentId)) {
+        z.object({ resources: z.literal(true) })
+          .strict()
+          .parse(raw);
+        return this.resources.context(agentId);
+      }
+      const input = resourceInspectionSchema.parse(raw);
+      const context = this.resources.context(agentId);
+      return {
+        ...context,
+        history: input.history ? context.history : context.history.slice(-6),
+        ...(input.processIds
+          ? { processDetails: await inspectResourceProcesses(input.processIds) }
+          : {}),
+      };
     }
     if (this.resources.isAgent(agentId))
       throw new Conflict(
