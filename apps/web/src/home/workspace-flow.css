@@ -903,12 +903,17 @@
   font-size: var(--text-reading);
 }
 .chat-filters {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
   flex-shrink: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 .chat-filters button {
-  padding: 8px 4px;
+  /* Allocate room for each label instead of squeezing long words into equal columns. */
+  flex: 1 0 auto;
+  min-width: 44px;
+  padding: 8px 10px;
+  white-space: nowrap;
   font-size: var(--text-small);
   cursor: pointer;
 }

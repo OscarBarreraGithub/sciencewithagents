@@ -105,3 +105,58 @@ test('shared read failures remain visible and recover without submitting the ret
   await expect(draft).toHaveValue('Keep this unsent request.');
   expect(sends).toBe(1);
 });
+
+test('conversation filters keep whole labels and reachable touch targets at narrow widths and larger text', async ({
+  page,
+}, info) => {
+  await page.goto('/#/chats');
+  const filters = page.getByRole('group', { name: 'Conversation type', exact: true });
+  await expect(filters).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  for (const scale of [1, 1.25, 1.5]) {
+    await page.evaluate((scale) => {
+      document.documentElement.style.fontSize = `${16 * scale}px`;
+    }, scale);
+    const layout = await filters.evaluate((group) => {
+      const buttons = [...group.querySelectorAll('button')];
+      return buttons.map((button) => {
+        const range = document.createRange();
+        range.selectNodeContents(button);
+        const label = range.getBoundingClientRect();
+        const bounds = button.getBoundingClientRect();
+        return {
+          name: button.textContent,
+          lines: new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size,
+          fits: label.left >= bounds.left && label.right <= bounds.right,
+          touchTarget: bounds.width >= 44 && bounds.height >= 44,
+        };
+      });
+    });
+    expect(layout).toEqual(
+      ['All', 'Managers', 'Shared', 'Misc'].map((name) => ({
+        name,
+        lines: 1,
+        fits: true,
+        touchTarget: true,
+      })),
+    );
+    if (scale === 1)
+      expect(
+        await filters.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      ).toBe(true);
+    for (const name of ['All', 'Managers', 'Shared', 'Misc']) {
+      const button = filters.getByRole('button', { name, exact: true });
+      await button.click();
+      await expect(button).toHaveAttribute('aria-pressed', 'true');
+      await expect(button).toBeInViewport();
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  }
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '';
+  });
+  await filters.getByRole('button', { name: 'All', exact: true }).click();
+  await filters.screenshot({ path: info.outputPath('conversation-filters.png') });
+});
