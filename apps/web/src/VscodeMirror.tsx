@@ -1,5 +1,13 @@
 import { ChatMarkdown } from './ChatMarkdown';
-import { createContext, memo, useContext, useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  memo,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -393,13 +401,43 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
   const draftKey = `dock:mirror:${apiScope()}:${chat.provider === 'claude' ? 'claude:' : ''}${chat.threadId}`;
   const [state, setState] = useState<MirrorState | null>(null);
   const [text, setText] = useState('');
-  useEffect(() => {
+  const resizeInput = () => {
     const element = input.current;
     if (!element) return;
+    const scrollTop = element.scrollTop;
+    element.style.overflowY = 'hidden';
     element.style.height = 'auto';
-    const maximum = Number.parseFloat(getComputedStyle(element).maxHeight) || 140;
-    element.style.height = `${Math.min(element.scrollHeight + 2, maximum)}px`;
-  }, [text]);
+    const style = getComputedStyle(element);
+    const maximum = Number.parseFloat(style.maxHeight) || 140;
+    const wanted = Math.ceil(
+      element.scrollHeight +
+        Number.parseFloat(style.borderTopWidth) +
+        Number.parseFloat(style.borderBottomWidth),
+    );
+    element.style.height = `${Math.min(wanted, maximum)}px`;
+    element.style.overflowY = wanted > maximum ? 'auto' : 'hidden';
+    element.scrollTop = scrollTop;
+  };
+  useLayoutEffect(resizeInput, [text]);
+  useEffect(() => {
+    // Resize saved drafts too: zoom, rotation and side panels change line wrapping
+    // without changing the text. Ignore our own height changes to avoid a resize loop.
+    let width = -1;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width !== width) {
+        width = entry.contentRect.width;
+        resizeInput();
+      }
+    });
+    if (input.current) observer.observe(input.current);
+    window.addEventListener('resize', resizeInput);
+    window.visualViewport?.addEventListener('resize', resizeInput);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', resizeInput);
+      window.visualViewport?.removeEventListener('resize', resizeInput);
+    };
+  }, []);
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState('');
   const [busy, setBusy] = useState(false);

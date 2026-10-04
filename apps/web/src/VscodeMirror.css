@@ -405,10 +405,16 @@
   margin: auto;
 }
 .mirror-input-row textarea {
-  width: 100%;
+  flex: 1 1 0;
+  width: 0;
   min-width: 0;
   resize: none;
-  field-sizing: content;
+  /* Use one height-sizing path and keep the native editor inside this flex item
+     as browser zoom and the available writing width change. */
+  field-sizing: fixed;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  overflow-wrap: anywhere;
   font: inherit;
   font-size: var(--text-reading);
   line-height: 1.45;
@@ -425,12 +431,6 @@
   flex-shrink: 0;
   border-radius: 22px;
   padding: 10px;
-}
-/* Without content sizing, an empty two-row box still starts at one line. */
-@supports not (field-sizing: content) {
-  .mirror-input-row textarea:placeholder-shown {
-    height: 44px;
-  }
 }
 .mirror-note {
   font-size: var(--text-caption);
