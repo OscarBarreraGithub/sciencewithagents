@@ -366,7 +366,7 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   await expect(assistant.getByRole('combobox', { name: 'Model', exact: true })).toHaveCount(0);
   await assistant.locator('.health-chat-controls > summary').click();
   await expect(
-    assistant.getByText('Follow-ups keep this conversation’s provider and model.', {
+    assistant.getByText('Change the model while keeping this conversation.', {
       exact: false,
     }),
   ).toBeVisible();
@@ -610,7 +610,7 @@ test('resource conversations stay out of lists while saved conversation links re
   await expect(chat).toHaveCount(0);
 });
 
-test('full-screen automatic snapshot keeps the fresh-reading guard and Stop retries its exact receipt', async ({
+test('a saved automatic report accepts an owner question with old readings after Stop retries its exact receipt', async ({
   page,
 }) => {
   const status = reading(Date.now() - 900000);
@@ -649,7 +649,7 @@ test('full-screen automatic snapshot keeps the fresh-reading guard and Stop retr
   expect(stops).toHaveLength(2);
   expect(stops[0]).toEqual(stops[1]);
   await expect(chat.locator('.health-running')).toHaveCount(0);
-  await expect(chat.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  await expect(chat.getByRole('button', { name: 'Send message' })).toBeEnabled();
 });
 
 test('crowded readings keep long names, large groups and whole-computer CPU inside their panels', async ({
@@ -878,3 +878,92 @@ test('first-run failures explain the blocked assistant and keep provider choice 
   expect(writes).toEqual([]);
   await noHorizontalOverflow(page);
 });
+
+for (const mode of ['interactive', 'snapshot'] as const) {
+  test(`a queued background check does not block a direct question or upgrading a ${mode} conversation model`, async ({
+    page,
+  }, info) => {
+    const status = reading();
+    if (mode === 'snapshot') status.stale = true;
+    const previous = {
+      ...diagnosis(Date.now() - 60000, 'Saved diagnosis'),
+      model: 'fixture-sonnet',
+    };
+    const background = {
+      ...diagnosis(Date.now(), ''),
+      reason: 'pressure' as const,
+      state: 'queued' as const,
+      waitReason: 'Waiting for CPU headroom',
+    };
+    status.checks = [background, previous];
+    const { conversations } = await fixture(page, status);
+    const saved = conversation(previous);
+    saved.agent.role = 'manager';
+    saved.agent.resourceAssistant =
+      mode === 'interactive' ? { mode, reason: 'asked' } : { mode, reason: 'checkpoint' };
+    saved.agent.toolPolicy = mode === 'interactive' ? 'native' : 'restricted';
+    saved.agent.permission = mode === 'interactive' ? 'workspace-write' : 'read-only';
+    saved.agent.effort = 'high';
+    conversations.set(previous.agentId, saved);
+    const changes: Record<string, unknown>[] = [],
+      asks: Record<string, unknown>[] = [];
+    await page.route(`**/api/agents/${previous.agentId}/settings`, async (route) => {
+      const input = route.request().postDataJSON();
+      changes.push(input);
+      if (changes.length === 1)
+        return route.fulfill({
+          status: 503,
+          json: { error: 'Temporary connection failure. Retry.' },
+        });
+      saved.agent = {
+        ...saved.agent,
+        model: input.model,
+        effort: input.effort,
+        updatedAt: new Date().toISOString(),
+      };
+      return route.fulfill({ json: saved.agent });
+    });
+    await page.route('**/api/resources/ask', (route) => {
+      asks.push(route.request().postDataJSON());
+      return route.fulfill({ json: status });
+    });
+    await page.goto('/#/resources/chat');
+    const chat = page.getByRole('dialog', { name: 'Resource assistant conversation' });
+    await expect(chat.getByText('Saved diagnosis', { exact: true })).toBeVisible();
+    await chat
+      .getByRole('textbox', { name: 'Message Resource assistant' })
+      .fill('What is using the CPU?');
+    await expect(chat.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+    await chat.locator('.health-chat-controls > summary').click();
+    await chat.getByRole('button', { name: 'Change model', exact: true }).click();
+    const picker = page.getByRole('dialog', { name: 'Resource assistant model', exact: true });
+    await picker.getByRole('combobox', { name: 'Model', exact: true }).selectOption('fixture-opus');
+    await picker
+      .getByRole('combobox', { name: 'Thinking', exact: true })
+      .selectOption('adaptive-v2');
+    await page.screenshot({
+      path: `../../data/resource-interactive-20261004/${info.project.name}-${mode}-model.png`,
+    });
+    expect(await picker.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await picker.getByRole('button', { name: 'Use this model', exact: true }).click();
+    await expect(picker.getByRole('alert')).toContainText('Temporary connection failure');
+    await picker.getByRole('button', { name: 'Use this model', exact: true }).click();
+    await expect(picker).toHaveCount(0);
+    await expect(chat.getByText('Model updated.', { exact: false })).toBeVisible();
+    await expect(chat.getByText('Saved diagnosis', { exact: true })).toBeVisible();
+    expect(changes).toHaveLength(2);
+    expect(changes[1]).toMatchObject({
+      model: 'fixture-opus',
+      effort: 'adaptive-v2',
+      permission: saved.agent.permission,
+      toolPolicy: saved.agent.toolPolicy,
+    });
+    expect(asks).toEqual([]);
+    await chat.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect.poll(() => asks.length).toBe(1);
+    expect(asks[0]).toMatchObject({
+      agentId: previous.agentId,
+      question: 'What is using the CPU?',
+    });
+  });
+}

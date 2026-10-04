@@ -401,3 +401,45 @@ it('backfills around a held foreground job and requests preemption when CPU is o
   expect(pulsar.wantsForeground(new Set())).toBe(true);
   expect(pulsar.decision(slow.run).reason).toContain('yielding');
 });
+
+function diagnostic(name = 'Owner diagnosis') {
+  const project = store.register(join(root, name), name, '', 'claude');
+  store.updateAgent(project.managerId, {
+    resourceAssistant: { mode: 'interactive', reason: 'asked' },
+  });
+  const queued = store.enqueue(project.managerId, randomUUID(), 'Why is my computer busy?');
+  store.setSetting(
+    `pulsar:estimate:${queued.id}`,
+    jobEstimateSchema.parse({
+      priority: 'interactive',
+      cpuCores: 0.1,
+      memoryMb: 256,
+      quotaPercent: 1,
+      expectedTokens: 6000,
+      tokenBudget: 12000,
+    }),
+  );
+  return store.run(queued.id);
+}
+it('admits one direct diagnosis despite busy CPU and occupied provider slots, without bypassing budgets or memory', () => {
+  for (const name of ['one', 'two']) {
+    const work = job(name);
+    expect(pulsar.reserve(work.run, new Set())).toBe(true);
+    store.updateRun(work.run.id, { status: 'running' });
+  }
+  machine.cpuUsedPercent = 99;
+  const question = diagnostic();
+  const ordinary = job('later', 'interactive');
+  expect(pulsar.ordered([ordinary.run, question])[0]!.id).toBe(question.id);
+  expect(pulsar.decision(ordinary.run).eligible).toBe(false);
+  expect(pulsar.decision(question).eligible).toBe(true);
+  machine.memoryAvailableBytes = 64 * 1024 ** 2;
+  expect(pulsar.decision(question).reason).toContain('memory');
+  machine.memoryAvailableBytes = 16 * 1024 ** 3;
+  pulsar.allowanceDecision = () => 'The saved allowance cap is reached.';
+  expect(pulsar.decision(question).eligible).toBe(false);
+  pulsar.allowanceDecision = () => null;
+  expect(pulsar.reserve(question, new Set())).toBe(true);
+  store.updateRun(question.id, { status: 'running' });
+  expect(pulsar.decision(diagnostic('Second question')).eligible).toBe(false);
+});

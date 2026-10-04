@@ -1038,3 +1038,37 @@
     height: 230px;
   }
 }
+
+.resource-model-dialog {
+  box-sizing: border-box;
+  width: min(38rem, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  padding: clamp(14px, 3vw, 24px);
+  overflow: auto;
+}
+.resource-model-dialog .health-model-pick {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  margin: 20px 0;
+}
+.resource-model-dialog select {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  font-size: 16px;
+}
+.resource-model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.resource-model-actions button,
+.health-model-fixed > button {
+  min-height: 44px;
+}
+.health-model-fixed > button {
+  justify-self: start;
+  margin-top: 8px;
+}

@@ -106,6 +106,13 @@ dialog.assistant-fullscreen,
   padding: 8px 12px;
   flex-shrink: 0;
 }
+.assistant-fullscreen .health-chat-options {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 45%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
 .assistant-fullscreen .health-assistant-head > div:first-child {
   /* The full-screen bar already names this conversation. Keep the labelled region. */
   position: absolute;
@@ -121,8 +128,8 @@ dialog.assistant-fullscreen,
 .assistant-fullscreen .health-chat-controls {
   margin: 0;
   flex-shrink: 0;
-  max-height: 42%;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
 }
 .assistant-fullscreen .health-chat-controls > summary {
   padding: 10px 12px;

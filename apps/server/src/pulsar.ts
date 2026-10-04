@@ -158,15 +158,24 @@ export class Pulsar {
         tokenBasis: l.tokenBasis,
       }));
   }
+  /** One owner-requested diagnosis can run alongside the normal work slots. */
+  isInteractiveDiagnostic(run: PrivateRun) {
+    return (
+      ['user', 'resume'].includes(run.kind) &&
+      this.store.agent(run.agentId).resourceAssistant?.mode === 'interactive'
+    );
+  }
   ordered(runs: PrivateRun[]) {
     if (!this.policy().enabled)
       return [...runs].sort(
         (a, b) =>
+          Number(this.isInteractiveDiagnostic(b)) - Number(this.isInteractiveDiagnostic(a)) ||
           rank[this.estimate(b).priority] - rank[this.estimate(a).priority] ||
           this.projectWeight(b) - this.projectWeight(a),
       );
     return [...runs].sort(
       (a, b) =>
+        Number(this.isInteractiveDiagnostic(b)) - Number(this.isInteractiveDiagnostic(a)) ||
         rank[this.estimate(b).priority] - rank[this.estimate(a).priority] ||
         this.projectWeight(b) - this.projectWeight(a) ||
         String(this.store.getSetting(`pulsar:last-manager:${this.manager(a)}`) ?? '').localeCompare(
@@ -228,9 +237,13 @@ export class Pulsar {
           executing.has(this.store.run(l.runId).agentId)),
     );
     const sameProvider = active.filter((l) => l.provider === agent.provider);
+    const diagnostic = this.isInteractiveDiagnostic(run);
+    const diagnosticSlot =
+      diagnostic && !active.some((l) => this.isInteractiveDiagnostic(this.store.run(l.runId)));
     if (
       sameProvider.length >=
-      (agent.provider === 'claude' ? policy.claudeConcurrent : policy.codexConcurrent)
+      (agent.provider === 'claude' ? policy.claudeConcurrent : policy.codexConcurrent) +
+        Number(diagnosticSlot)
     )
       return reject(
         `Waiting for the shared ${agent.provider === 'claude' ? 'Claude' : 'Codex'} worker slot.`,
@@ -258,7 +271,7 @@ export class Pulsar {
       if (this.clock() - last < policy.backgroundGapSeconds * 1000)
         return reject('Pacing background work between turns to preserve capacity.');
     }
-    const resource = this.resourceDecision(estimate, override, active);
+    const resource = this.resourceDecision(estimate, override, active, undefined, diagnostic);
     if (!resource.eligible && !preparingPreemption) return resource;
     const capacity = readCapacity(this.store, agent.provider, this.clock());
     const windows = capacity.windows.filter(
@@ -376,6 +389,7 @@ export class Pulsar {
     override: boolean,
     active: Lease[],
     localId?: string,
+    diagnostic = false,
   ) {
     const reject = (reason: string) => ({ eligible: false, reason });
     if (!this.policy().enabled || override)
@@ -391,8 +405,9 @@ export class Pulsar {
         .reduce((n, r) => n + r.cpuCores, 0);
     const occupiedCores = ((machine.cpuUsedPercent ?? 100) * machine.cpuCount) / 100;
     if (
+      !diagnostic &&
       Math.max(reservedCores, occupiedCores) + estimate.cpuCores >
-      (machine.cpuCount * policy.maxCpuPercent) / 100
+        (machine.cpuCount * policy.maxCpuPercent) / 100
     )
       return reject('Waiting for CPU headroom; other computer activity is included.');
     const reservedMemory =

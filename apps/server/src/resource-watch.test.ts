@@ -395,7 +395,12 @@ it('recovers durable automatic identity beyond the recent list without classifyi
   store.updateRun(check.runId, { status: 'completed' });
   const followup = (await watch.ask({ key: randomUUID(), agentId: check.agentId })).checks[0]!;
   store.updateRun(followup.runId, { status: 'completed' });
-  store.updateAgent(check.agentId, { resourceAssistant: undefined });
+  // Emulate a report saved before durable identity metadata existed.
+  store.updateAgent(check.agentId, {
+    resourceAssistant: undefined,
+    permission: 'read-only',
+    toolPolicy: 'restricted',
+  });
   store.setSetting('resources:checks', []);
   const ordinary = store.addManager(watch.projectId()!, 'My own computer chat', '', 'codex');
   const restored = new ResourceWatch(store, root, dependencies, now);
@@ -408,7 +413,7 @@ it('recovers durable automatic identity beyond the recent list without classifyi
   expect(store.agent(ordinary.id)).not.toHaveProperty('resourceAssistant');
   expect(store.runs()).toHaveLength(2);
   await restored.ask({ key: randomUUID(), agentId: check.agentId });
-  expect(restored.isSnapshot(check.agentId)).toBe(true);
+  expect(restored.isInteractive(check.agentId)).toBe(true);
   await restored.close();
 });
 it('keeps a legacy resource identity with unknown origin bounded on an explicit follow-up', async () => {
@@ -434,7 +439,7 @@ it('keeps a legacy resource identity with unknown origin bounded on an explicit 
   });
   await restored.close();
 });
-it('explicitly migrates an old requested snapshot on the same history, but keeps automatic follow-ups bounded', async () => {
+it('upgrades known reports only on an explicit owner question, preserving the same history', async () => {
   const { watch, store, root, dependencies, now, release } = fixture();
   await watch.tick();
   const first = (await watch.ask({ key: randomUUID() })).checks[0]!;
@@ -467,9 +472,9 @@ it('explicitly migrates an old requested snapshot on the same history, but keeps
     question: 'Explain that report.',
   });
   expect(store.agent(automatic.agentId)).toMatchObject({
-    resourceAssistant: { mode: 'snapshot', reason: 'pressure' },
-    permission: 'read-only',
-    toolPolicy: 'restricted',
+    resourceAssistant: { mode: 'interactive', reason: 'asked' },
+    permission: 'workspace-write',
+    toolPolicy: 'native',
   });
   expect(store.runs()).toHaveLength(4);
   await restored.close();
@@ -591,3 +596,24 @@ it('stops only the selected check and makes retries idempotent', async () => {
     'recent check list',
   );
 });
+
+it.each(['queued', 'running'] as const)(
+  'answers an owner while an automatic check is %s, without starting a second owner question',
+  async (state) => {
+    const { watch, store } = fixture();
+    await watch.tick();
+    watch.save({ key: randomUUID(), settings: { automatic: true } });
+    const background = (await watch.ask({ key: randomUUID() }, 'checkpoint')).checks[0]!;
+    store.updateRun(background.runId, { status: state });
+    const question = (await watch.ask({ key: randomUUID(), question: 'What is using the CPU?' }))
+      .checks[0]!;
+    expect(question.reason).toBe('asked');
+    expect(store.getSetting(`pulsar:estimate:${question.runId}`)).toMatchObject({
+      priority: 'interactive',
+    });
+    expect(store.run(background.runId).status).toBe(state === 'queued' ? 'cancelled' : 'running');
+    await expect(
+      watch.ask({ key: randomUUID(), question: 'Another simultaneous question' }),
+    ).rejects.toThrow('already queued or running');
+  },
+);

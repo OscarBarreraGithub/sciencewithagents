@@ -60,15 +60,18 @@ A question about failed login or switching users does not authorize logging out,
 killing processes or changing OS/account settings. Low CPU alone never proves a service works.
 
 Central [model policy](MODEL_POLICY.md) selects Sonnet or Terra for routine assistance, or
-the owner's exact model choice. Automatic checkpoint/pressure checks remain snapshot-only:
+the owner's exact model choice. In an idle conversation, open **Model & provider → Change model**
+to choose any available model and reasoning level on that provider. The next question uses it
+with the same saved history. Switching providers starts a separate conversation. Automatic checkpoint/pressure checks remain snapshot-only:
 no execution, filesystem, network or process-control tools. Either kind may request one
 bounded grad consultation, which cannot escalate again. Automatic consultations count against
 the same daily limit. Finished provider processes are released while saved history remains.
 No provider/model is silently substituted.
 
-Existing snapshot conversations keep their original restrictions. An explicit follow-up to
-an older owner-requested diagnosis upgrades that same conversation to native assistance;
-merely opening a saved conversation does not. Automatic reports and grad consultations stay bounded.
+An explicit owner question about a known saved report upgrades that same conversation to native
+assistance; merely opening it does not. Older reports that already contain owner questions also
+allow model changes without losing history. Unattended automatic reports, unknown legacy origins
+and grad consultations retain their bounded roles.
 Durable origin metadata separates automatic reports from owner conversations, including
 older reports outside the recent history window. Resource-owned records with unknown origins
 also remain saved outside the normal chat list; no conversation is deleted.
@@ -77,15 +80,18 @@ Automatic checks are configurable and off on a fresh installation. Defaults: che
 OS memory warning/critical, swap-out ≥10 MiB/s, or disk space <10 GiB / <5%. Warnings must
 persist for two minutes; critical signals for 30 seconds. These are application heuristics,
 not vendor guarantees. A pressure episode gets one diagnosis; routine checkpoints can
-review it later. At most one diagnostic chain is pending (an undergrad and at most one grad consultation), with a 30-minute automatic cooldown and six
+review it later. One automatic diagnostic chain (an undergrad and at most one grad consultation)
+may be pending alongside one explicit owner question, with a 30-minute automatic cooldown and six
 automatic attempts per rolling 24 hours. Failed attempts count. Missed checkpoints coalesce.
 Settings, receipts, cooldown and attempts survive restart; interrupted checks are not replayed.
 Each request also retains the readings that prompted it, so a delayed diagnosis can compare
 the original slowdown with current conditions.
 
-Checks use the existing QUARK queue: owner questions are interactive, automatic checks are
-background. They obey shared provider/machine limits and may wait when the machine is too
-busy. A queued snapshot check expires after 15 minutes; a running snapshot check is stopped
+Checks use the existing QUARK queue. Direct owner questions go first and have one extra
+interactive slot alongside normal project/provider slots. High CPU usage alone cannot block a
+diagnosis. Queued automatic checks yield to the question; an automatic report already running
+may finish. Shared allowance caps, deliberate pauses, memory and disk protection still apply.
+Automatic checks retain ordinary background pacing and never disable the question box. A queued snapshot check expires after 15 minutes; a running snapshot check is stopped
 after about three minutes. Interactive native assistance uses ordinary QUARK supervision
 instead of that three-minute cutoff, and can investigate even when cached readings are stale. Estimates are 6,000 tokens and 1% allowance, not measured cost or a hard provider
 token cap. The local readings remain useful while the agent waits. Turning automatic checks

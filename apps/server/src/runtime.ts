@@ -544,12 +544,16 @@ export class Runtime {
             (a.run && b.run ? order.indexOf(a.run.id) - order.indexOf(b.run.id) : 0),
         );
         const candidate = candidates.shift()!;
+        const diagnosticSlot =
+          candidate.run &&
+          this.pulsar.isInteractiveDiagnostic(candidate.run) &&
+          ![...this.executing].some((id) => this.resources.isInteractive(id));
         if (
           [...this.executing].filter((id) => !this.store.agent(id).nativeRootId).length +
             this.localJobs.runningCount() >=
-          scheduling.maxConcurrent
+          scheduling.maxConcurrent + Number(!!diagnosticSlot)
         )
-          break;
+          continue;
         if (candidate.local) {
           const decision = this.pulsar.localDecision(candidate.local, this.executing);
           if (decision.eligible) await this.localJobs.start(candidate.local.id);
@@ -1304,8 +1308,12 @@ export class Runtime {
       }
     });
   }
-  async reconnectTools(agentId: string) {
-    if (!this.coordinator.isRetired(agentId)) this.requireDirectControl(agentId);
+  async reconnectTools(agentId: string, snapshotModelChange = false) {
+    if (
+      !this.coordinator.isRetired(agentId) &&
+      !(snapshotModelChange && this.resources.canChooseModel(agentId))
+    )
+      this.requireDirectControl(agentId);
     if (this.activeChildren(agentId).length)
       throw new Conflict('Wait for or stop native children before reconnecting their provider.');
     this.externalControl.add(agentId);

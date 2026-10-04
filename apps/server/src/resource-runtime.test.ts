@@ -363,3 +363,94 @@ it('guards automatic models, permissions and direct controls while allowing inte
     'Project coordination',
   );
 });
+
+it('starts an owner diagnosis alongside a full work queue without interrupting the ongoing project', async () => {
+  const { store, root } = fixture();
+  class BusyProvider extends DemoProvider {
+    override async request(method: string, raw?: unknown): Promise<unknown> {
+      if (method === 'turn/start') return { turn: { id: randomUUID(), status: 'inProgress' } };
+      return super.request(method, raw);
+    }
+  }
+  const runtime = new Runtime(store, root, 'unused', async () => new BusyProvider());
+  cleanups.push(() => runtime.close());
+  store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 1 });
+  const project = store.register(join(root, 'ongoing'), 'Ongoing project', '', 'codex');
+  const work = store.enqueue(project.managerId, randomUUID(), 'Existing work');
+  runtime.kick();
+  await vi.waitFor(() => expect(store.run(work.id).status).toBe('running'));
+  const other = store.register(join(root, 'other'), 'Other project', '', 'codex');
+  const waiting = store.enqueue(other.managerId, randomUUID(), 'Wait for a normal slot');
+  const check = (
+    await runtime.resources.ask({
+      key: randomUUID(),
+      provider: 'codex',
+      question: 'Why is it slow?',
+    })
+  ).checks[0]!;
+  runtime.kick();
+  await vi.waitFor(() => expect(store.run(check.runId).status).toBe('running'));
+  expect(store.run(work.id).status).toBe('running');
+  expect(store.run(waiting.id).status).toBe('queued');
+});
+
+it.each(['interactive', 'snapshot'] as const)(
+  'uses a stronger selected model in the same %s resource conversation',
+  async (mode) => {
+    const { store, root } = fixture();
+    const runtime = new Runtime(store, root, 'unused', async () => new DemoProvider());
+    const app = await createServer(store, runtime, { port: 4999, ownsRuntime: false });
+    cleanups.push(async () => {
+      await app.close();
+      await runtime.close();
+    });
+    vi.spyOn(runtime.modelPolicy, 'catalog').mockResolvedValue([
+      { id: 'demo', label: 'Routine model', isDefault: true, efforts: ['medium'] },
+      { id: 'sol-fixture', label: 'Stronger model', isDefault: false, efforts: ['high'] },
+    ]);
+    const first = (await runtime.resources.ask({ key: randomUUID(), provider: 'codex' }))
+      .checks[0]!;
+    store.updateRun(first.runId, { status: 'completed' });
+    store.updateAgent(first.agentId, { status: 'idle' });
+    const { threadId } = await runtime.attach(first.agentId);
+    if (mode === 'snapshot')
+      store.updateAgent(first.agentId, {
+        resourceAssistant: { mode: 'snapshot', reason: 'checkpoint' },
+        permission: 'read-only',
+        toolPolicy: 'restricted',
+      });
+    const history = store.entries(first.agentId);
+    const saved = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${first.agentId}/settings`,
+      headers: { host: '127.0.0.1:4999', origin: 'http://127.0.0.1:4999' },
+      payload: {
+        model: 'sol-fixture',
+        effort: 'high',
+        permission: mode === 'snapshot' ? 'read-only' : 'workspace-write',
+        toolPolicy: mode === 'snapshot' ? 'restricted' : 'native',
+      },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(store.agent(first.agentId)).toMatchObject({
+      threadId,
+      model: 'sol-fixture',
+      effort: 'high',
+    });
+    expect(store.entries(first.agentId)).toEqual(history);
+    if (mode === 'snapshot') expect(store.agent(first.agentId).permission).toBe('read-only');
+    const next = (
+      await runtime.resources.ask({
+        key: randomUUID(),
+        agentId: first.agentId,
+        question: 'Look more closely.',
+      })
+    ).checks[0]!;
+    expect(next).toMatchObject({ agentId: first.agentId, model: 'sol-fixture' });
+    expect(store.agent(first.agentId)).toMatchObject({
+      threadId,
+      resourceAssistant: { mode: 'interactive', reason: 'asked' },
+      toolPolicy: 'native',
+    });
+  },
+);

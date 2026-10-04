@@ -102,6 +102,10 @@ then plots and details. Projects/jobs precede apps/processes. Show historical ev
 charts and assistant queries, not a long snapshot list. Default routine choices resolve through
 the central Terra/Sonnet mappings; exact alternatives are selectable. Automatic checks stay bounded.
 
+Direct resource questions take priority over background health checks. Existing interactive
+resource conversations offer Change model without losing history; stronger models remain
+available from the provider catalog. Automatic reports in other conversations never disable the direct question box.
+
 Setup guides use numbered steps and readable, copyable prompts with a selectable-text fallback.
 Only actual checks can establish completion. Optional GitHub/Cloudflare setup is not a local-use
 prerequisite. Connecting another computer provides prompts for that computer and the main host.

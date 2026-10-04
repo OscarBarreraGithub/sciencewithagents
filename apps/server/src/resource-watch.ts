@@ -171,6 +171,14 @@ export class ResourceWatch {
   isSnapshot(id: string) {
     return this.isAgent(id) && !this.isInteractive(id);
   }
+  canChooseModel(id: string) {
+    return (
+      this.isAgent(id) &&
+      this.store.getSetting(`model-policy:consultation:${id}`) !== true &&
+      (this.isInteractive(id) ||
+        this.store.runs().some((run) => run.agentId === id && run.kind === 'user'))
+    );
+  }
   projectId(): string | null {
     return (this.store.getSetting(prefix + 'project') as string | null) ?? null;
   }
@@ -369,7 +377,11 @@ export class ResourceWatch {
     }
     if (
       this.requesting ||
-      this.saved().some((c) => ['queued', 'running'].includes(this.store.run(c.runId).status))
+      this.saved().some(
+        (c) =>
+          ['queued', 'running'].includes(this.store.run(c.runId).status) &&
+          (reason !== 'asked' || c.reason === 'asked'),
+      )
     )
       throw new Conflict(
         'A resource check is already queued or running. Its report will appear here.',
@@ -394,7 +406,7 @@ export class ResourceWatch {
         reason === 'asked' &&
         (!previous ||
           this.isInteractive(previous.id) ||
-          (previous.resourceAssistant?.reason === 'asked' &&
+          (previous.resourceAssistant?.reason !== undefined &&
             this.store.getSetting(`model-policy:consultation:${previous.id}`) !== true));
       if (!interactive && this.status(false).stale)
         throw new Conflict(
@@ -452,13 +464,22 @@ export class ResourceWatch {
       const requestedState = this.status(false);
       this.store.operation(prefix + 'ask:' + input.key, { input, reason }, () => {
         if (
-          this.saved().some((check) =>
-            ['queued', 'running'].includes(this.store.run(check.runId).status),
+          this.saved().some(
+            (check) =>
+              ['queued', 'running'].includes(this.store.run(check.runId).status) &&
+              (reason !== 'asked' || check.reason === 'asked'),
           )
         )
           throw new Conflict(
             'A resource check is already queued or running. Its report will appear here.',
           );
+        // The owner's question replaces queued routine work; an already running
+        // automatic report may finish without holding up the interactive diagnosis.
+        if (reason === 'asked')
+          for (const check of this.saved()) {
+            if (check.reason !== 'asked' && this.store.run(check.runId).status === 'queued')
+              this.cancelQueued(check, 'Superseded by your direct resource question.');
+          }
         const projectId = selectedProject;
         const project = this.store.project(projectId);
         const primary = this.store.agent(project.managerId);
@@ -485,9 +506,8 @@ export class ResourceWatch {
                 cwd: project.root,
                 provider,
               }));
-        // A follow-up to an automatic check or grad consultation keeps its
-        // original bounded context. Only an explicit follow-up to an old owner
-        // question can migrate that saved snapshot identity to native assistance.
+        // An explicit owner question upgrades a known ordinary report to native
+        // assistance. Opening it alone does not; grad consultations stay bounded.
         const classification =
           current?.resourceAssistant && !interactive
             ? current.resourceAssistant

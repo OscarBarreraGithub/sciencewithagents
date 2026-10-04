@@ -1215,9 +1215,18 @@ export async function createServer(
   );
   app.post('/api/agents/:id/settings', async (request) => {
     const target = agentId(request.params);
-    runtime.requireDirectControl(target);
     const settings = settingsSchema.parse(request.body);
     const agent = store.agent(target);
+    const snapshotModelChange =
+      runtime.resources.isSnapshot(target) &&
+      runtime.resources.canChooseModel(target) &&
+      settings.permission === 'read-only' &&
+      (settings.toolPolicy ?? agent.toolPolicy) === 'restricted' &&
+      !settings.pluginsEnabled &&
+      !settings.imageGeneration &&
+      !settings.mcpServers?.length &&
+      (!settings.webSearch || settings.webSearch === 'disabled');
+    if (!snapshotModelChange) runtime.requireDirectControl(target);
     if (
       agent.interview &&
       (settings.permission !== 'read-only' ||
@@ -1343,7 +1352,7 @@ export async function createServer(
         imageGenerationChanged ||
         JSON.stringify(previous) !== JSON.stringify(updated.mcpServers)
       )
-        await runtime.reconnectTools(target);
+        await runtime.reconnectTools(target, snapshotModelChange);
       return agentSchema.parse(updated);
     });
   });
