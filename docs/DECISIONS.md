@@ -27,7 +27,8 @@ Managers apply independently reviewed code by default, validating the exact revi
 and target. An optional human-review policy waits for confirmation instead. Workers use
 isolated worktrees; closing obsolete tasks preserves evidence and is not a fabricated approval.
 
-Each manager keeps durable internal work, human action items, decisions and checkpoints.
+Notes belong to the owner. Managers can read them for context but cannot write or overwrite
+them. Each manager keeps durable internal work, human action items, decisions and checkpoints.
 Human summaries are one or two readable lines. One blocked item does not stop independent
 work. Claude uses native 60% compaction with saved handoffs; Codex manages its context naturally.
 

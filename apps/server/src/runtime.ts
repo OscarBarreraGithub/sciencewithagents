@@ -3486,6 +3486,11 @@ export class Runtime {
       }
       return this.frontdesk.tool(agentId, key, name, raw);
     }
+    // Older provider sessions may still advertise the removed Notes-writing tool.
+    if (name === 'dock_project_notes')
+      throw new Conflict(
+        'Notes belong to the owner. Keep your plans and progress in dock_work_item (kind internal) and dock_checkpoint instead.',
+      );
     if (!toolsFor(agent.role).some((t) => t.name === name))
       throw new Conflict('This role does not have that capability.');
     if (agent.nativeRootId && name === 'dock_review')
@@ -3644,13 +3649,6 @@ export class Runtime {
     if (name === 'dock_work_item') {
       requireLease();
       return this.workItems.saveForManager(agent.id, {
-        ...obj.parse(raw),
-        key: coordinationReceipt(agentId, key),
-      });
-    }
-    if (name === 'dock_project_notes') {
-      requireLease();
-      return this.workItems.saveNotesForManager(agent.id, {
         ...obj.parse(raw),
         key: coordinationReceipt(agentId, key),
       });

@@ -1,3 +1,4 @@
+import { toolsFor, managerCharter } from './charters.js';
 import { managerTool } from './manager-lease.fixture.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1637,6 +1638,35 @@ it('persists manager next steps through opaque native tool receipts and prevents
     }),
   ).rejects.toThrow();
   expect(runtime.workItems.list({ projectId: project }).items).toHaveLength(1);
+});
+it('reserves Notes for the owner, including calls from old provider sessions', async () => {
+  const original = runtime.workItems.saveNotes(project, {
+    key: randomUUID(),
+    expectedRevision: 0,
+    text: 'My personal project notes.',
+  });
+  for (const role of ['manager', 'planner', 'implementer', 'reviewer', 'researcher'] as const)
+    expect(toolsFor(role).map((tool) => tool.name)).not.toContain('dock_project_notes');
+  for (const provider of ['codex', 'claude'] as const) {
+    store.updateAgent(manager, { provider });
+    await expect(
+      runtime.tool(manager, randomUUID(), 'dock_project_notes', {
+        expectedRevision: original.revision,
+        text: 'Manager progress would overwrite these.',
+      }),
+    ).rejects.toThrow('Notes belong to the owner');
+  }
+  expect(runtime.workItems.notes(project)).toEqual(original);
+  expect(store.events().filter((event) => event.type === 'project.notes.updated')).toHaveLength(1);
+  expect(runtime.context(store.agent(manager))).toContain(original.text);
+  expect(managerCharter).toContain('never write or overwrite Notes');
+  expect(managerCharter).toContain('internal work items and dock_checkpoint');
+  const edited = runtime.workItems.saveNotes(project, {
+    key: randomUUID(),
+    expectedRevision: original.revision,
+    text: 'My revised notes.',
+  });
+  expect(edited).toMatchObject({ revision: 2, updatedByManagerId: null });
 });
 it('lets the manager apply exact reviewed work by default and enforces the human-review project option', async () => {
   const t = await task();

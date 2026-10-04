@@ -374,9 +374,7 @@ export function NotesPanel({
             ))}
           </ol>
         ) : (
-          notes && (
-            <p className="chat-side-empty">No notes yet. The manager keeps durable notes here.</p>
-          )
+          notes && <p className="chat-side-empty">Your notes go here. Only you can edit them.</p>
         )}
         {paragraphs.length > 12 && (
           <button type="button" className="chat-small-button" onClick={() => setShowAll((v) => !v)}>

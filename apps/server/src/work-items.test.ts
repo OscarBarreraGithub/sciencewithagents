@@ -337,7 +337,7 @@ it('rolls back an assignment enqueue failure and retries exactly once across lat
   ).toHaveLength(1);
 });
 
-it('versions project notes with durable receipts, manager authorship and preserved prior text', () => {
+it('versions owner notes with durable receipts and preserved prior text', () => {
   expect(items.notes(projectId)).toEqual({
     projectId,
     text: '',
@@ -353,12 +353,12 @@ it('versions project notes with durable receipts, manager authorship and preserv
   expect(() =>
     items.saveNotes(projectId, { ...input, key: randomUUID(), text: 'Stale notes' }),
   ).toThrow('notes changed');
-  const second = items.saveNotesForManager(managerId, {
+  const second = items.saveNotes(projectId, {
     key: randomUUID(),
     expectedRevision: 1,
     text: 'Summer measurements chosen; labels confirmed.',
   });
-  expect(second).toMatchObject({ revision: 2, updatedByManagerId: managerId });
+  expect(second).toMatchObject({ revision: 2, updatedByManagerId: null });
   expect(items.notes(otherProjectId).revision).toBe(0);
   const history = store.events().filter((event) => event.type === 'project.notes.updated');
   expect(history.map((event) => projectNotesSchema.parse(event.data).text)).toEqual([

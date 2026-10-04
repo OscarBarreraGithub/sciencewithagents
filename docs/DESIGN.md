@@ -44,8 +44,10 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 - Project shortcuts open its folder, configuration, Notes and Subagents. A worker row shows
   assignment, activity, timing and token evidence. Completed workers offer a separate
   Ask about this work discussion without reopening the task/review.
-- Notes has general notes, concise human actions and internal work. Referencing an item fills
-  the composer without sending or marking it complete. Managers continue unblocked tasks.
+- Notes contains owner-written notes alongside separate human actions and internal work.
+  Managers may read the notes but cannot edit them; their plans belong in internal work items
+  and checkpoints. Referencing an item fills the composer without sending or marking it
+  complete. Managers continue unblocked tasks.
 - Search has an explicit assisted-search prompt, not a message to an arbitrary existing chat.
   Report bounded/partial coverage. No model call on each keystroke.
 - New can create a project manager or a saved Misc chat. The native terminal option preserves

@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { documentRegisterSchema } from '@dock/shared';
 import {
   managerWorkItemRequestSchema,
-  projectNotesRequestSchema,
   managerApplySchema,
   checkpointSchema,
   decisionInputSchema,
@@ -30,7 +29,7 @@ You are a postdoc project or module manager in sciencewithagents. The owner talk
 
 Normal project managers start with write access to their project folder. Use it to save requested reports, manuscripts, notes and other non-code deliverables; do not leave them only in chat. Explicit saved read-only settings still apply. Code implementation and independent review continue through task workspaces as described below. If you encounter a permission failure, report the actual operation and boundary, preserve progress and continue permitted work. Do not ask the owner for writable access merely because you are a manager.
 
-Maintain a durable work list with dock_work_item; use kind internal for your own next actions and kind human only when the owner must answer or act. Human titles and detail must explain the question in 1–2 plain lines without Git jargon. Reuse item IDs and revisions to update state. Keep project notes with dock_project_notes. A blocked human item does not block unrelated tasks. Read current workItems and projectNotes after compaction; never duplicate unresolved asks.
+Maintain a durable work list with dock_work_item; use kind internal for your own next actions and kind human only when the owner must answer or act. Human titles and detail must explain the question in 1–2 plain lines without Git jargon. Reuse item IDs and revisions to update state. The app’s Notes panel belongs to the owner. Read projectNotes as owner context, but never write or overwrite Notes. Keep your plans and progress in internal work items and dock_checkpoint. A blocked human item does not block unrelated tasks. Read current workItems and projectNotes after compaction; never duplicate unresolved asks.
 
 Keep dock_checkpoint current after each meaningful step: goal, completed evidence, active workers, next steps, pending human asks and any uncertain side effects. Claude compacts natively at 60% context; the host saves your checkpoint and work state before compaction and restores them afterwards. Codex uses its native compaction behavior. Never treat compaction as a new assignment.
 
@@ -84,12 +83,6 @@ const definitions = [
     'dock_work_item',
     'Create/update one durable internal next step or concise human action item. IDs and expectedRevision update existing items; omitting id creates. Continue unblocked work while human replies are pending.',
     managerWorkItemRequestSchema.omit({ key: true }),
-    ['manager'],
-  ],
-  [
-    'dock_project_notes',
-    'Save durable project notes at the observed revision. Current notes are in host state. Keep them short, stable and useful after compaction.',
-    projectNotesRequestSchema.omit({ key: true }),
     ['manager'],
   ],
   [

@@ -251,18 +251,8 @@ export class WorkItems {
   }
 
   saveNotes(projectId: string, raw: unknown): ProjectNotes {
-    return this.mutateNotes(projectId, raw, null);
-  }
-
-  saveNotesForManager(managerId: string, raw: unknown): ProjectNotes {
-    return this.mutateNotes(this.manager(managerId).projectId, raw, managerId);
-  }
-
-  private mutateNotes(
-    projectId: string,
-    raw: unknown,
-    actorManagerId: string | null,
-  ): ProjectNotes {
+    // Keep the existing owner receipt shape; older saved Notes and history remain readable.
+    const actorManagerId = null;
     const input = projectNotesRequestSchema.parse(raw);
     return projectNotesSchema.parse(
       this.store.operation(
