@@ -16,6 +16,7 @@ import {
   projectTrackingSchema,
   policyDefaultEffort,
   workerDefaultEffort,
+  withProjectDecisionPolicy,
   taskTiers,
   type Agent,
   type Model,
@@ -374,19 +375,6 @@ export function WorkerSettings({
           <label className="config-check">
             <input
               type="checkbox"
-              checked={workflow.reviewLimit === 'ask-human'}
-              onChange={(event) =>
-                onChange({
-                  ...workflow,
-                  reviewLimit: event.target.checked ? 'ask-human' : 'manager-decides',
-                })
-              }
-            />
-            <span>After two review rounds, ask me instead of letting the manager decide</span>
-          </label>
-          <label className="config-check">
-            <input
-              type="checkbox"
               checked={workflow.reviewPlan}
               onChange={(event) => onChange({ ...workflow, reviewPlan: event.target.checked })}
             />
@@ -397,25 +385,32 @@ export function WorkerSettings({
               </small>
             </span>
           </label>
-          <label className="config-check">
-            <input
-              type="checkbox"
-              checked={workflow.ambiguity === 'ask-human'}
-              onChange={(event) =>
-                onChange({
-                  ...workflow,
-                  ambiguity: event.target.checked ? 'ask-human' : 'continue',
-                })
-              }
-            />
-            <span>
-              Stop and ask me when something is unclear
-              <small>
-                Otherwise the manager records a reasonable assumption, tells you, and continues
-                other unblocked work. Genuine approvals always come to you.
-              </small>
-            </span>
-          </label>
+          <div className="config-decisions">
+            <label>
+              When a decision is needed
+              <select
+                value={workflow.reviewLimit}
+                onChange={(event) =>
+                  onChange(
+                    withProjectDecisionPolicy(
+                      workflow,
+                      event.target.value as ProjectWorkflow['reviewLimit'],
+                    ),
+                  )
+                }
+              >
+                <option value="manager-decides">Let the manager decide</option>
+                <option value="ask-human">Ask me</option>
+              </select>
+            </label>
+            <p className="config-help">
+              Applies to unclear details and unresolved issues after two review rounds.
+              {workflow.reviewLimit === 'ask-human'
+                ? ' Pause that item and ask you.'
+                : ' The manager records its decision and tells you.'}{' '}
+              Other unblocked work continues. Required approvals still come to you.
+            </p>
+          </div>
         </>
       )}
     </fieldset>

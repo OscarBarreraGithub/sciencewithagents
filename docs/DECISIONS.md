@@ -20,7 +20,8 @@ External MCP services are not made safe by a filesystem prompt instruction.
 
 Managers coordinate small assignments, with high-level plan review and atomic implementation
 reviews. Two correction rounds are the default bound. Then the manager records a disposition,
-or the project can require stopping for human input. Do not force a giant plan through endless
+or pauses that item for human input. One decision policy covers this and unclear details;
+existing requests to ask the owner are preserved. Do not force a giant plan through endless
 review. Research can finish with evidence without manufacturing a code branch or merge.
 
 Managers apply independently reviewed code by default, validating the exact reviewed source

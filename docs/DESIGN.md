@@ -66,6 +66,9 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   each have a bordered, tappable model row with a visible Change control and expansion arrow.
   Keep the current choices on separate readable rows and the defaults explanation above them.
   Exact model overrides remain available; edited choices must be visibly custom.
+- Use one decision setting for unclear details and unresolved issues after two review rounds:
+  let the manager decide and record why, or pause that item and ask the owner. Other unblocked
+  work continues. Plan review and approval before applying changes remain separate choices.
 - Populate effective reasoning defaults, preferring supported xhigh for managers. Global model
   preferences seed new projects; project customization does not overwrite those preferences.
   Restore recommended defaults is always available. [Model policy](MODEL_POLICY.md).

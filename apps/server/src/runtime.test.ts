@@ -11,7 +11,12 @@ import { DemoProvider } from './demo.js';
 import { git, checkpointWorktree, integrate, checkCheckpointFiles } from './workspaces.js';
 import { repoRoot } from './paths.js';
 import { parseCapacity } from './capacity.js';
-import { projectToolsSchema, workerToolsSchema } from '@dock/shared';
+import {
+  projectToolsSchema,
+  workerToolsSchema,
+  projectWorkflowSchema,
+  withProjectDecisionPolicy,
+} from '@dock/shared';
 
 let root: string,
   projectRoot: string,
@@ -1129,6 +1134,34 @@ describe('manager capabilities and task convergence', () => {
     expect(store.task(t.id).status).toBe('split');
     expect(store.decisions()).toHaveLength(3);
   });
+  it.each([{ reviewLimit: 'ask-human' }, { ambiguity: 'ask-human' }])(
+    'uses one decision policy at the review limit while preserving legacy human choices: %j',
+    async (legacy) => {
+      const t = await task();
+      store.updateTask(t.id, {
+        status: 'needs_decision',
+        review: 'changes_requested',
+        revisions: 2,
+      });
+      store.setSetting(`project-workflow:${project}`, legacy);
+      const accept = () =>
+        managerTool(runtime, manager, randomUUID(), 'dock_decide', {
+          taskId: t.id,
+          kind: 'accept',
+          rationale: 'The remaining tradeoff is bounded and its evidence is recorded.',
+          evidence: 'The independent review identified only the documented limitation.',
+        });
+      await expect(accept()).rejects.toThrow('requires a human decision');
+      expect(store.task(t.id).review).toBe('changes_requested');
+      store.setSetting(
+        `project-workflow:${project}`,
+        withProjectDecisionPolicy(projectWorkflowSchema.parse(legacy), 'manager-decides'),
+      );
+      await accept();
+      expect(store.task(t.id).review).toBe('accepted_tradeoff');
+      expect(store.task(t.id).revisions).toBe(2);
+    },
+  );
   it('completes a requested read-only review without creating a code branch', async () => {
     const t = await task();
     const reviewer = (await managerTool(runtime, manager, randomUUID(), 'dock_delegate', {

@@ -32,7 +32,7 @@ export const workerPreferencesSchema = z
       .default({}),
   })
   .strict();
-export const projectWorkflowSchema = z
+const projectWorkflowFieldsSchema = z
   .object({
     revision: z.number().int().nonnegative().default(0),
     providerMix: providerMixSchema.default('codex-only'),
@@ -57,13 +57,31 @@ export const projectWorkflowSchema = z
       .optional(),
   })
   .strict();
+export const projectWorkflowSchema = projectWorkflowFieldsSchema.transform((workflow) => {
+  // One decision policy. Keep the legacy wire fields aligned for saved projects and
+  // older clients; an existing request for human input must never be weakened.
+  return workflow.reviewLimit === 'ask-human' || workflow.ambiguity === 'ask-human'
+    ? { ...workflow, reviewLimit: 'ask-human' as const, ambiguity: 'ask-human' as const }
+    : workflow;
+});
 export type ProjectWorkflow = z.infer<typeof projectWorkflowSchema>;
+export function withProjectDecisionPolicy(
+  workflow: ProjectWorkflow,
+  policy: ProjectWorkflow['reviewLimit'],
+): ProjectWorkflow {
+  return {
+    ...workflow,
+    reviewLimit: policy,
+    ambiguity: policy === 'ask-human' ? 'ask-human' : 'continue',
+  };
+}
 export const projectEditorOpenSchema = z.object({ key: z.string().uuid() }).strict();
 export const projectWorkflowSaveSchema = z
   .object({
     key: z.string().uuid(),
     expectedRevision: z.number().int().nonnegative(),
-    workflow: projectWorkflowSchema,
+    // Keep exact legacy request receipts stable; normalize when reading/saving the workflow.
+    workflow: projectWorkflowFieldsSchema,
   })
   .strict();
 export const managerApplySchema = z

@@ -154,6 +154,16 @@ test('project setup shows real defaults, comfortable controls and retained choic
   await workers
     .getByRole('checkbox', { name: 'Let me review changes before they are applied', exact: true })
     .check();
+  const decisions = workers.getByRole('combobox', {
+    name: 'When a decision is needed',
+    exact: true,
+  });
+  await expect(decisions).toHaveCount(1);
+  await expect(decisions).toHaveValue('manager-decides');
+  await expect(
+    workers.getByRole('checkbox', { name: /After two review rounds|Stop and ask me/ }),
+  ).toHaveCount(0);
+  await decisions.selectOption('ask-human');
   await page.screenshot({ path: info.outputPath('worker-controls.png') });
   const priority = page.getByRole('group', { name: 'Priority and usage', exact: true });
   await expect(priority).toContainText('Tell your manager more specific priorities');
@@ -169,6 +179,16 @@ test('project setup shows real defaults, comfortable controls and retained choic
   await expect(page).toHaveURL(/#\/new$/);
   await expect(page.getByLabel('Project name', { exact: true })).toHaveValue('Keep this setup');
   await expect(reasoning).toHaveValue('high');
+  await expect(decisions).toHaveValue('ask-human');
+  const draft = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('dock:local:project-spawn')!),
+  );
+  expect(draft.workflow).toMatchObject({ reviewLimit: 'ask-human', ambiguity: 'ask-human' });
+  await decisions.selectOption('manager-decides');
+  const updated = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('dock:local:project-spawn')!),
+  );
+  expect(updated.workflow).toMatchObject({ reviewLimit: 'manager-decides', ambiguity: 'continue' });
   await expect(
     workers.getByRole('checkbox', {
       name: 'Let me review changes before they are applied',

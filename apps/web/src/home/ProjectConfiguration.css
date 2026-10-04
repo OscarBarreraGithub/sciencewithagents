@@ -379,6 +379,15 @@
   font-size: var(--text-small);
   color: var(--home-muted);
 }
+.config-decisions {
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--home-line);
+}
+.config-decisions .config-help {
+  margin: 0;
+}
 .config-tracking {
   padding: 18px 20px;
   border: 1px solid #d8decf;

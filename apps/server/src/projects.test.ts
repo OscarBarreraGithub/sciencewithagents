@@ -76,6 +76,7 @@ it('opens only a registered project in the editor once per receipt and retains p
   expect(workflow).toMatchObject({
     reviewPlan: true,
     ambiguity: 'continue',
+    reviewLimit: 'manager-decides',
     applyChanges: 'manager',
   });
   const save = {
@@ -85,6 +86,7 @@ it('opens only a registered project in the editor once per receipt and retains p
   };
   const saved = await app.inject({ method: 'POST', url: workflowUrl, headers, payload: save });
   expect(saved.statusCode).toBe(200);
+  expect(saved.json()).toMatchObject({ reviewLimit: 'ask-human', ambiguity: 'ask-human' });
   await app.close();
   await open();
   const repeated = await app.inject({ method: 'POST', url: workflowUrl, headers, payload: save });
@@ -92,6 +94,22 @@ it('opens only a registered project in the editor once per receipt and retains p
   expect((await app.inject({ url: workflowUrl, headers })).json()).toMatchObject({
     reviewPlan: false,
     ambiguity: 'ask-human',
+    reviewLimit: 'ask-human',
+  });
+  const managerDecides = await app.inject({
+    method: 'POST',
+    url: workflowUrl,
+    headers,
+    payload: {
+      key: randomUUID(),
+      expectedRevision: saved.json().revision,
+      workflow: { ...saved.json(), reviewLimit: 'manager-decides', ambiguity: 'continue' },
+    },
+  });
+  expect(managerDecides.statusCode).toBe(200);
+  expect(managerDecides.json()).toMatchObject({
+    reviewLimit: 'manager-decides',
+    ambiguity: 'continue',
   });
 });
 afterEach(async () => {
