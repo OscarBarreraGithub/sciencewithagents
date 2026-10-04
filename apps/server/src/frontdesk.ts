@@ -166,6 +166,7 @@ export class Frontdesk {
       this.store.transaction(() => {
         this.store.updateAgent(agent.id, {
           toolPolicy: 'restricted',
+          permission: 'read-only',
           name: 'Your assistant',
           scope:
             'Personal front desk for explicitly selected projects; coordination and routing only.',

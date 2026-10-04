@@ -51,7 +51,8 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 - New can create a project manager or a saved Misc chat. The native terminal option preserves
   native ownership and does not create a misleading saved contact; current support is Codex-only.
 - New projects begin with New folder or Existing folder. Existing folder immediately opens the
-  computer's picker and shows the selection beside those choices, without creating a manager.
+  in-app folder browser on the selected computer, including from paired phones and other hosts.
+  Show the selection beside those choices without creating a manager.
   Then choose the manager/provider/reasoning and workers; one Spawn action sits at the bottom.
   New folders have a replaceable name. Use real catalog names, not academic role labels here.
 - Worker provider mix and spending are separate sliders. Research/coding, Review and Bulk

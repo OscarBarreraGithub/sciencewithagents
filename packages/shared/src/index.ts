@@ -163,9 +163,30 @@ export const projectCreateSchema = z
     provider: providerIdSchema.optional(),
   })
   .strict();
-export const projectOptionsSchema = z.object({ canChooseFolder: z.boolean() }).strict();
+export const projectOptionsSchema = z
+  .object({ canChooseFolder: z.boolean(), folderBrowser: z.boolean().optional() })
+  .strict();
+export const folderBrowseRequestSchema = z
+  .object({
+    folderId: id.optional(),
+    offset: z.coerce.number().int().nonnegative().max(1000000).default(0),
+  })
+  .strict();
+export const folderBrowseSchema = z
+  .object({
+    current: z.object({ id, name: z.string().max(255), canSelect: z.boolean() }).strict(),
+    parentId: id.nullable(),
+    folders: z.array(z.object({ id, name: z.string().max(255) }).strict()).max(100),
+    nextOffset: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
 export const projectFolderSchema = z
-  .object({ key: id, provider: providerIdSchema.optional(), selectOnly: z.boolean().optional() })
+  .object({
+    key: id,
+    provider: providerIdSchema.optional(),
+    selectOnly: z.boolean().optional(),
+    folderId: id.optional(),
+  })
   .strict();
 export const projectTrackingSchema = z.object({ key: id, name: z.string().max(255) }).strict();
 export const projectFolderSelectionSchema = projectTrackingSchema.extend({

@@ -28,6 +28,8 @@ import {
   projectCreateSchema,
   projectEditorOpenSchema,
   projectOptionsSchema,
+  folderBrowseSchema,
+  folderBrowseRequestSchema,
   projectFolderSchema,
   projectTrackingRequestSchema,
   projectConnectionSchema,
@@ -890,15 +892,15 @@ export async function createServer(
     );
   });
   app.get('/api/project-options', async () =>
-    projectOptionsSchema.parse({ canChooseFolder: !!folders.picker }),
+    projectOptionsSchema.parse({ canChooseFolder: true, folderBrowser: true }),
   );
+  app.get('/api/project-folders', async (request) => {
+    const { folderId, offset } = folderBrowseRequestSchema.parse(request.query);
+    return folderBrowseSchema.parse(await folders.browser.browse(folderId, offset));
+  });
   app.post('/api/projects/connect-folder', async (request) => {
-    if (options.remote)
-      throw new Conflict(
-        'Choose an existing folder on your computer. You can create a new project here.',
-      );
-    const { key, provider, selectOnly } = projectFolderSchema.parse(request.body);
-    const project = await folders.connect(key, provider, selectOnly);
+    const { key, provider, selectOnly, folderId } = projectFolderSchema.parse(request.body);
+    const project = await folders.connect(key, provider, selectOnly, folderId);
     return projectConnectionSchema.parse({
       project,
       ...(selectOnly
@@ -909,8 +911,6 @@ export async function createServer(
     });
   });
   app.post('/api/projects/track-folder', async (request) => {
-    if (options.remote || !folders.picker)
-      throw new Conflict('Start tracking on the computer where you chose this folder.');
     const { key } = projectTrackingRequestSchema.parse(request.body);
     return runtime.withLock('folder-tracking', async () =>
       projectConnectionSchema.parse({ project: await folders.track(key) }),
@@ -1278,11 +1278,18 @@ export async function createServer(
       throw new Conflict('Change settings when the agent is idle.');
     if (
       agent.role !== 'implementer' &&
+      !(
+        agent.role === 'manager' &&
+        !runtime.frontdesk.isFrontdesk(target) &&
+        !runtime.coordinator.isAgent(target) &&
+        !runtime.resources.isSnapshot(target) &&
+        !runtime.conversationSearch.isAgent(target)
+      ) &&
       !agent.surface &&
       !runtime.resources.isInteractive(target) &&
       settings.permission !== 'read-only'
     )
-      throw new Conflict('Only implementers can receive workspace write permission.');
+      throw new Conflict('This read-only role cannot receive workspace write permission.');
     const catalog = await runtime.modelPolicy.catalog(provider);
     const resolved = settings.model
       ? null
@@ -1308,6 +1315,7 @@ export async function createServer(
       )
         throw new Conflict('Change settings when the agent is idle.');
       const previous = store.agent(target).mcpServers;
+      const permissionChanged = settings.permission !== store.agent(target).permission;
       const policyChanged = toolPolicy !== store.agent(target).toolPolicy;
       const pluginsChanged =
         settings.pluginsEnabled !== undefined &&
@@ -1328,6 +1336,7 @@ export async function createServer(
       store.setSetting(`model-policy:follow:${target}`, settings.model === null);
       if (
         provider === 'claude' ||
+        permissionChanged ||
         policyChanged ||
         pluginsChanged ||
         webSearchChanged ||

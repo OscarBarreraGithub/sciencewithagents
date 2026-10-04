@@ -1,7 +1,8 @@
 import { modelFixture } from './model-policy.fixture.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, realpathSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { get, type IncomingMessage } from 'node:http';
@@ -241,7 +242,7 @@ describe('protected phone entry', () => {
     expect(
       (await remote.inject({ url: '/api/project-options', headers: remoteHeaders(cookie) })).json()
         .canChooseFolder,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('keeps exact HTTPS origin / JSON checks for writes and does not accept a copied cookie alone', async () => {
@@ -430,4 +431,93 @@ describe('protected phone entry', () => {
       socket.terminate();
     }
   });
+});
+
+it('lets paired phones browse host folders while keeping unpaired requests and arbitrary paths out', async () => {
+  access.setEnabled(true);
+  expect(
+    (await remote.inject({ url: '/api/project-folders', headers: remoteHeaders() })).statusCode,
+  ).toBe(401);
+  const { cookie } = await pair();
+  const headers = remoteHeaders(cookie);
+  expect((await remote.inject({ url: '/api/project-options', headers })).json()).toEqual({
+    canChooseFolder: true,
+    folderBrowser: true,
+  });
+  const folders = await remote.inject({ url: '/api/project-folders', headers });
+  expect(folders.statusCode).toBe(200);
+  expect(folders.json().current.id).toMatch(/^[a-f0-9-]{36}$/);
+  expect((await remote.inject({ url: '/api/project-folders?path=/tmp', headers })).statusCode).toBe(
+    400,
+  );
+  expect(
+    (
+      await remote.inject({
+        method: 'POST',
+        url: '/api/projects/connect-folder',
+        headers,
+        payload: { key: randomUUID(), folderId: randomUUID(), selectOnly: true },
+      })
+    ).statusCode,
+  ).toBe(409);
+});
+
+it('connects a chosen host folder from a paired phone and retries without duplicating a manager', async () => {
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'swa-phone-project-')));
+  writeFileSync(join(folder, 'notes.txt'), 'Preserve this work.');
+  try {
+    const { cookie } = await pair();
+    const headers = remoteHeaders(cookie);
+    const browse = async (id?: string, offset = 0) => {
+      const query = new URLSearchParams({ offset: String(offset) });
+      if (id) query.set('folderId', id);
+      const response = await remote.inject({ url: `/api/project-folders?${query}`, headers });
+      expect(response.statusCode).toBe(200);
+      return response.json();
+    };
+    let list = await browse();
+    while (list.parentId) list = await browse(list.parentId);
+    for (const segment of folder.split('/').filter(Boolean)) {
+      let choice = list.folders.find((f: { name: string }) => f.name === segment);
+      while (!choice && list.nextOffset !== null) {
+        list = await browse(list.current.id, list.nextOffset);
+        choice = list.folders.find((f: { name: string }) => f.name === segment);
+      }
+      expect(choice).toBeTruthy();
+      list = await browse(choice.id);
+    }
+    const key = randomUUID();
+    const selected = await remote.inject({
+      method: 'POST',
+      url: '/api/projects/connect-folder',
+      headers,
+      payload: { key, folderId: list.current.id, selectOnly: true },
+    });
+    expect(selected.statusCode).toBe(200);
+    expect(selected.json().selection.needsTracking).toBe(true);
+    const count = store.projects().length;
+    const connected = await remote.inject({
+      method: 'POST',
+      url: '/api/projects/connect-folder',
+      headers,
+      payload: { key },
+    });
+    expect(connected.json().tracking.key).toBe(key);
+    const track = () =>
+      remote.inject({
+        method: 'POST',
+        url: '/api/projects/track-folder',
+        headers,
+        payload: { key, confirmedTracking: true },
+      });
+    const created = await track();
+    expect(created.statusCode).toBe(200);
+    expect((await track()).json()).toEqual(created.json());
+    expect(store.projects()).toHaveLength(count + 1);
+    expect(store.agent(created.json().project.managerId).permission).toBe('workspace-write');
+    expect(store.runs()).toHaveLength(0);
+    expect(readFileSync(join(folder, 'notes.txt'), 'utf8')).toBe('Preserve this work.');
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });

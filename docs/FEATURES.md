@@ -78,3 +78,7 @@ The legacy workspace is maintenance-only. See [Status](STATUS.md) before plannin
 
 Source is MIT licensed. Runtime data, credentials, private conversations, drawings and
 screenshots are excluded from the distributable repository. The public domain redirects to GitHub.
+
+Existing project folders can be selected in the app from a paired phone, desktop browser or
+connected-computer view. The browser lists directories on the selected host using opaque folder
+IDs. Selection creates no manager; Spawn connects the folder and preserves its files.

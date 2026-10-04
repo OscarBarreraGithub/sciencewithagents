@@ -78,6 +78,17 @@ beforeEach(async () => {
       reply.header('CF-Access-Jwt-Assertion', 'secret');
       return { label, messages: fixture.writes };
     });
+    app.get('/api/project-options', () => ({ canChooseFolder: true, folderBrowser: true }));
+    app.get('/api/project-folders', () => ({
+      current: { id: agentId, name: label, canSelect: true },
+      parentId: null,
+      folders: [],
+      nextOffset: null,
+    }));
+    app.post('/api/projects/connect-folder', (request) => {
+      fixture.writes.push(request.body);
+      return { project: null };
+    });
     app.get('/api/models', (_request, reply) => {
       if (fixture.modelMode === 'drop') {
         reply.raw.destroy();
@@ -430,20 +441,35 @@ describe('isolated computer connections', () => {
     expect(
       (await gateway.inject({ method: 'DELETE', url: path(0, `/agents/${agentId}`) })).statusCode,
     ).toBe(404);
-    expect(
-      (
-        await gateway.inject({
-          method: 'POST',
-          url: path(0, '/projects/connect-folder'),
-          payload: { key: randomUUID() },
-        })
-      ).statusCode,
-    ).toBe(404);
-    expect((await gateway.inject(path(0, '/project-options'))).json()).toEqual({
-      canChooseFolder: false,
-    });
     expect(fixtures.flatMap((fixture) => fixture.writes)).toEqual([]);
     expect(fixtures.flatMap((fixture) => fixture.headers)).toEqual([]);
+  });
+
+  it('forwards folder browsing and selection to the selected computer only', async () => {
+    expect((await gateway.inject(path(1, '/project-options'))).json()).toEqual({
+      canChooseFolder: true,
+      folderBrowser: true,
+    });
+    expect((await gateway.inject(path(1, '/project-folders'))).json().current.name).toBe(
+      'School computer',
+    );
+    const payload = { key: randomUUID(), folderId: agentId, selectOnly: true };
+    expect(
+      (await gateway.inject({ method: 'POST', url: path(1, '/projects/connect-folder'), payload }))
+        .statusCode,
+    ).toBe(200);
+    expect(fixtures.map((f) => f.writes)).toEqual([[], [payload], []]);
+    expect(proxyPath('GET', `/project-folders?folderId=${agentId}&offset=100`)).toBe(
+      `/api/project-folders?folderId=${agentId}&offset=100`,
+    );
+    for (const query of [
+      'path=/tmp',
+      'folderId=bad',
+      'offset=-1',
+      'offset=1000001',
+      'offset=0&offset=1',
+    ])
+      expect(proxyPath('GET', `/project-folders?${query}`)).toBeNull();
   });
 
   it('checks downstream identity before any body is sent, including after a replacement restart', async () => {

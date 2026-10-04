@@ -106,6 +106,25 @@ describe('managed Claude host lifecycle', () => {
     },
   );
 
+  it.each(['workspace-write', 'read-only'] as const)(
+    'honors a project manager’s saved %s boundary',
+    async (permission) => {
+      store.updateAgent(managerId, { permission, toolPolicy: 'native' });
+      const session = await managed.prepare(store.agent(managerId));
+      expect(session.options).toMatchObject({
+        inheritNative: true,
+        unattended: true,
+        role: permission === 'workspace-write' ? 'manager' : 'read-only',
+      });
+    },
+  );
+
+  it('preserves coordination-only built-ins for a restricted manager', async () => {
+    store.updateAgent(managerId, { permission: 'read-only', toolPolicy: 'restricted' });
+    const session = await managed.prepare(store.agent(managerId));
+    expect(session.options).toMatchObject({ inheritNative: false, role: 'manager' });
+  });
+
   it('retains native aliases and exposes reported concrete versions for stable pins', async () => {
     inspect.mockResolvedValue({
       identity,

@@ -206,7 +206,11 @@ describe('durable state', () => {
       parentId: null,
       managerId: manager.id,
     });
-    expect(manager).toMatchObject({ role: 'manager', permission: 'read-only', parentId: null });
+    expect(manager).toMatchObject({
+      role: 'manager',
+      permission: 'workspace-write',
+      parentId: null,
+    });
     expect(() => store.addManager(project.id, 'INTERFACE MANAGER', 'Duplicate')).toThrow(
       'already exists',
     );

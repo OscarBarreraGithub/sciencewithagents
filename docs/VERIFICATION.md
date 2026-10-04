@@ -4,7 +4,15 @@ Use [Status](STATUS.md) for the release decision and [CI](https://github.com/Osc
 for the source actually checked. Historical passing runs do not certify a newer revision.
 Private logs, screenshots, disposable databases and native-session receipts stay under `data/`.
 
-## Current evidence — 2026-10-01
+## Current focused checks — 2026-10-03
+
+Folder browsing was checked through paired-phone authentication, selected-host forwarding,
+selection/tracking retries, private-directory exclusion and directory replacement. Fifteen browser
+checks passed at desktop, 412×915, 360×800, 915×412 and iPhone WebKit emulation. Manager permission
+checks cover saved restrictions, Codex session reconnection and Claude launch boundaries.
+These are focused checks; the full beta suite below was not rerun for this change.
+
+## Earlier beta evidence — 2026-10-01
 
 - Local production builds/typechecks passed with **827 backend and 99 companion checks**.
   The previous provider-routing/runtime/lease failures are corrected. Published-source CI

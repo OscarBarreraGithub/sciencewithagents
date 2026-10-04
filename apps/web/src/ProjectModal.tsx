@@ -11,6 +11,7 @@ import {
 } from '@dock/shared';
 import { api, apiScope, ApiError } from './api';
 import { Modal } from './Modal';
+import { FolderBrowser } from './FolderBrowser';
 
 const storageKey =
   apiScope() === 'local' ? 'dock:project-draft' : `dock:${apiScope()}:project-draft`;
@@ -56,6 +57,8 @@ export function ProjectModal({
   const [draft, setDraft] = useState(readDraft);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [folderBrowser, setFolderBrowser] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const [canChooseFolder, setCanChooseFolder] = useState(false);
   const [choosingFolder, setChoosingFolder] = useState(false);
   const folderStorageKey = `${storageKey}:folder-request`;
@@ -118,11 +121,11 @@ export function ProjectModal({
   const submitting = useRef(false);
   useEffect(() => {
     void api('/project-options')
-      .then((value) =>
-        setCanChooseFolder(
-          apiScope() === 'local' && projectOptionsSchema.parse(value).canChooseFolder,
-        ),
-      )
+      .then((value) => {
+        const options = projectOptionsSchema.parse(value);
+        setCanChooseFolder(options.canChooseFolder);
+        setFolderBrowser(!!options.folderBrowser);
+      })
       .catch(() => {});
   }, []);
   useEffect(() => {
@@ -136,6 +139,44 @@ export function ProjectModal({
     setDraft((previous) => ({ ...previous, [field]: value, key: crypto.randomUUID() }));
     setError('');
   };
+  const connectFolder = async (folderId?: string) => {
+    setBrowsing(false);
+    if (submitting.current) return;
+    submitting.current = true;
+    setSaving(true);
+    setChoosingFolder(true);
+    setError('');
+    try {
+      saveFolderReceipt();
+      const value = projectConnectionSchema.parse(
+        await api('/projects/connect-folder', {
+          key: folderKey.current,
+          ...(folderId ? { folderId } : {}),
+          ...(draft.provider !== 'policy' ? { provider: draft.provider } : {}),
+        }),
+      );
+      if (value.tracking) {
+        setTracking(value.tracking);
+        saveFolderReceipt(value.tracking, false);
+      } else {
+        clearFolderReceipt();
+        if (value.project) await onCreated(projectSchema.parse(value.project));
+      }
+    } catch (error) {
+      if (!(error instanceof TypeError)) clearFolderReceipt();
+      setError(
+        error instanceof TypeError
+          ? 'We lost the connection. Try again when you’re connected; your project will not be duplicated.'
+          : error instanceof Error
+            ? error.message
+            : 'We couldn’t open that folder. Please try again.',
+      );
+    } finally {
+      submitting.current = false;
+      setSaving(false);
+      setChoosingFolder(false);
+    }
+  };
   return (
     <Modal
       title="Create a project"
@@ -144,6 +185,9 @@ export function ProjectModal({
         if (!submitting.current) close();
       }}
     >
+      {browsing && (
+        <FolderBrowser close={() => setBrowsing(false)} select={(id) => void connectFolder(id)} />
+      )}
       <form
         className="project-create-form"
         onSubmit={async (event) => {
@@ -334,45 +378,10 @@ export function ProjectModal({
               type="button"
               className="secondary project-folder"
               disabled={saving || !!tracking}
-              onClick={async () => {
-                if (submitting.current) return;
-                submitting.current = true;
-                setSaving(true);
-                setChoosingFolder(true);
-                setError('');
-                try {
-                  saveFolderReceipt();
-                  const value = projectConnectionSchema.parse(
-                    await api('/projects/connect-folder', {
-                      key: folderKey.current,
-                      ...(draft.provider !== 'policy' ? { provider: draft.provider } : {}),
-                    }),
-                  );
-                  if (value.tracking) {
-                    setTracking(value.tracking);
-                    saveFolderReceipt(value.tracking, false);
-                  } else {
-                    clearFolderReceipt();
-                    if (value.project) await onCreated(projectSchema.parse(value.project));
-                  }
-                } catch (error) {
-                  if (!(error instanceof TypeError)) clearFolderReceipt();
-                  setError(
-                    error instanceof TypeError
-                      ? 'We lost the connection. Try again when you’re connected; your project will not be duplicated.'
-                      : error instanceof Error
-                        ? error.message
-                        : 'We couldn’t open that folder. Please try again.',
-                  );
-                } finally {
-                  submitting.current = false;
-                  setSaving(false);
-                  setChoosingFolder(false);
-                }
-              }}
+              onClick={() => (folderBrowser ? setBrowsing(true) : void connectFolder())}
             >
               <FolderOpen size={16} />
-              {choosingFolder ? 'Choose a folder on this Mac…' : 'Use an existing project folder'}
+              {choosingFolder ? 'Selecting folder…' : 'Use an existing project folder'}
             </button>
           )}
           {canChooseFolder && (
@@ -382,7 +391,7 @@ export function ProjectModal({
           )}
           <p className="project-next">
             {choosingFolder
-              ? 'A folder chooser is open on the computer running sciencewithagents. Your files will stay where they are.'
+              ? 'The selected folder is being connected. Your files stay where they are.'
               : 'Next, you’ll meet your manager. No work starts until you send a message.'}
           </p>
         </div>

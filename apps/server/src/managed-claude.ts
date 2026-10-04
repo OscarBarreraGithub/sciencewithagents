@@ -240,7 +240,9 @@ export class ManagedClaude {
             ? 'implementer'
             : 'read-only'
           : agent.role === 'manager'
-            ? 'manager'
+            ? agent.toolPolicy !== 'native' || agent.permission === 'workspace-write'
+              ? 'manager'
+              : 'read-only'
             : agent.role === 'implementer' && agent.permission === 'workspace-write'
               ? 'implementer'
               : 'read-only',

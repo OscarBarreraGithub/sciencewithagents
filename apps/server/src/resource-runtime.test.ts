@@ -340,7 +340,7 @@ it('guards automatic models, permissions and direct controls while allowing inte
         payload: settings,
       })
     ).statusCode,
-  ).toBe(409);
+  ).toBe(200);
   const snapshot = (await app.inject({ url: '/api/snapshot', headers })).json();
   expect(
     snapshot.agents.find((agent: { id: string }) => agent.id === automatic.agentId),

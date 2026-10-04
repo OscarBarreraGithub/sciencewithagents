@@ -426,10 +426,10 @@ export class Hosts {
 
 const uuid = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const getPaths = new RegExp(
-  `^/(?:health|setup(?:/(?:sign-in|claude-sign-in))?|snapshot|attention|capacity|resources|pulsar|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-rates|work-items|conversations(?:/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid})?|vscode/deliveries/${uuid}|agents/${uuid}(?:/mcp|/export|/recovery|/usage|/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
+  `^/(?:health|setup(?:/(?:sign-in|claude-sign-in))?|snapshot|attention|capacity|resources|pulsar|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|work-items|conversations(?:/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid})?|vscode/deliveries/${uuid}|agents/${uuid}(?:/mcp|/export|/recovery|/usage|/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
 );
 const postPaths = new RegExp(
-  `^/(?:projects|work-items|conversations(?:/search)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control)|agents/${uuid}/(?:interviews|messages|commands|settings|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
+  `^/(?:projects(?:/(?:connect-folder|track-folder))?|work-items|conversations(?:/search)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control)|agents/${uuid}/(?:interviews|messages|commands|settings|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
 );
 const terminalPath = new RegExp(`^/agents/${uuid}/terminal$`);
 
@@ -474,6 +474,17 @@ export function proxyPath(method: string, path: string, socket = false) {
     for (const [name, value] of params) {
       if (mirrorRead) {
         if (params.getAll(name).length !== 1 || /[\x00-\x1f]/.test(value)) return null;
+        continue;
+      }
+      if (pathname === '/project-folders') {
+        if (
+          params.getAll(name).length !== 1 ||
+          !(
+            (name === 'folderId' && new RegExp(`^${uuid}$`).test(value)) ||
+            (name === 'offset' && /^\d{1,7}$/.test(value) && Number(value) <= 1000000)
+          )
+        )
+          return null;
         continue;
       }
       if (pathname === '/models') {
@@ -544,7 +555,6 @@ export function registerHostRoutes(
         return reply
           .code(404)
           .send({ error: 'This action is not available through the computer connection.' });
-      if (target === '/api/project-options') return { canChooseFolder: false };
       const abort = new AbortController();
       let response: IncomingMessage | undefined;
       const close = () => {

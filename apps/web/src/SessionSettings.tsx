@@ -137,7 +137,8 @@ export function SessionSettings({
             ))}
           </select>
         </label>
-        {agent.role === 'implementer' && (
+        {(agent.role === 'implementer' ||
+          (agent.role === 'manager' && agent.toolPolicy === 'native' && !agent.interview)) && (
           <label>
             Permissions
             <select
@@ -145,7 +146,11 @@ export function SessionSettings({
               onChange={(event) => setPermission(event.target.value as Agent['permission'])}
             >
               <option value="read-only">Read files only</option>
-              <option value="workspace-write">Edit this task’s separate copy</option>
+              <option value="workspace-write">
+                {agent.role === 'manager'
+                  ? 'Edit files in this project folder'
+                  : 'Edit this task’s separate copy'}
+              </option>
             </select>
           </label>
         )}

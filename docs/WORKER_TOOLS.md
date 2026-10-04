@@ -2,7 +2,10 @@
 
 **Current native policy (2026-09-30):** broad reads and internet access with scoped native
 writes and no routine permission queue. New inherited Codex sessions use broad reads and
-network access with approval policy `never`; write access follows their saved role. Claude managers/write-enabled workers use native
+network access with approval policy `never`. New project managers can write inside their project
+folder, including reports and manuscripts. Implementers write in task worktrees; reviewers and
+background checks remain read-only. Explicit saved permission choices are preserved. Changing
+file access reconnects the native session before the next turn. Claude managers/write-enabled workers use native
 edit acceptance and Bash approval inside its strict command sandbox; unsandboxed retries
 remain disabled. Read-only roles retain native plan permissions, and the native command sandbox
 explicitly denies writes to their workspace. Real questions still surface.

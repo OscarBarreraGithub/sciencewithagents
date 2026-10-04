@@ -1075,7 +1075,7 @@ describe('local application boundary', () => {
     expect(module).toMatchObject({
       role: 'manager',
       scope: 'Web interface',
-      permission: 'read-only',
+      permission: 'workspace-write',
     });
     expect(first.body).not.toContain(root);
     expect((await app.inject(request)).json().id).toBe(module.id);
@@ -1315,14 +1315,62 @@ describe('local application boundary', () => {
       ).statusCode,
     ).toBe(404);
   });
-  it('does not allow a manager to select workspace writes', async () => {
+  it('lets a manager restore scoped writes without starting work', async () => {
     const response = await app.inject({
       method: 'POST',
       url: `/api/agents/${manager}/settings`,
       headers,
       payload: { model: 'demo', effort: 'medium', permission: 'workspace-write' },
     });
-    expect(response.statusCode).toBe(409);
-    expect(store.agent(manager).permission).toBe('read-only');
+    expect(response.statusCode).toBe(200);
+    expect(store.agent(manager).permission).toBe('workspace-write');
   });
+});
+
+it('starts ordinary managers writable and applies permission changes to the next native attachment', async () => {
+  expect(store.agent(manager).permission).toBe('workspace-write');
+  store.updateAgent(manager, { permission: 'read-only', toolPolicy: 'native' });
+  const { client, threadId } = await runtime.attach(manager);
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/agents/${manager}/settings`,
+    headers,
+    payload: {
+      model: 'demo',
+      effort: 'medium',
+      permission: 'workspace-write',
+      toolPolicy: 'native',
+    },
+  });
+  expect(response.statusCode).toBe(200);
+  expect(client.ready).toBe(false);
+  expect(store.agent(manager)).toMatchObject({ permission: 'workspace-write', threadId });
+  const next = await runtime.client(store.agent(manager));
+  const request = vi.spyOn(next, 'request');
+  await runtime.attach(manager);
+  expect(next).not.toBe(client);
+  expect(request).toHaveBeenCalledWith(
+    'thread/resume',
+    expect.objectContaining({ threadId, sandbox: 'workspace-write', approvalPolicy: 'never' }),
+  );
+  expect(store.runs()).toHaveLength(0);
+  const reviewer = store.addAgent({
+    projectId: store.agent(manager).projectId,
+    parentId: manager,
+    taskId: null,
+    name: 'Review',
+    role: 'reviewer',
+    cwd: root,
+  });
+  expect(reviewer.permission).toBe('read-only');
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: `/api/agents/${reviewer.id}/settings`,
+        headers,
+        payload: { model: 'demo', effort: 'medium', permission: 'workspace-write' },
+      })
+    ).statusCode,
+  ).toBe(409);
 });

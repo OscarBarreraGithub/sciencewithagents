@@ -157,7 +157,7 @@ it('native Codex inheritance avoids capability probes and keeps original manager
 it.each(['native', 'restricted'] as const)(
   '%s read-only turns preserve writes policy while native turns allow network access',
   async (toolPolicy) => {
-    store.updateAgent(manager, { toolPolicy });
+    store.updateAgent(manager, { toolPolicy, permission: 'read-only' });
     const client = await runtime.client(store.agent(manager));
     const request = vi.spyOn(client, 'request');
     store.transaction(() => store.enqueue(manager, randomUUID(), 'Read the project status.'));

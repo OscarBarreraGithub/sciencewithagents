@@ -161,6 +161,7 @@ export class QuarkCoordinator {
         name: 'QUARK',
         scope: 'Cross-project scheduling and saved owner instructions.',
         toolPolicy: 'restricted',
+        permission: 'read-only',
         model: assignment.model,
         modelSelection: 'policy',
         effort: assignment.effort,

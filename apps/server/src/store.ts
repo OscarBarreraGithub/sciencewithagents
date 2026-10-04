@@ -351,7 +351,7 @@ export class Store extends EventEmitter {
       status: 'idle',
       model: null,
       effort: 'medium',
-      permission: input.role === 'implementer' ? 'workspace-write' : 'read-only',
+      permission: ['manager', 'implementer'].includes(input.role) ? 'workspace-write' : 'read-only',
       toolPolicy: 'native',
       mcpServers: [],
       pluginsEnabled: false,

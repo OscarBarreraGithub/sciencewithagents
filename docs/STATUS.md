@@ -1,6 +1,6 @@
 # Current status
 
-Checked 2026-10-01. **Beta: current workflows have been exercised with real Codex/Claude
+Checked 2026-10-03. **Beta: current workflows have been exercised with real Codex/Claude
 projects and desktop/phone browser checks.** This is not a claim that every device or
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
@@ -9,6 +9,8 @@ The earlier provider-routing, Claude review and manager-lease failures are corre
 The beta pass also fixed owned-process stopping, delayed allowance attribution, crowded
 attention/QUARK layouts, keyboard composers, draft races and helper search filtering.
 Product work below remains outside this polish pass.
+Paired devices can browse existing folders on the selected host. New project managers have
+scoped project-folder writes; explicit read-only choices and reviewer restrictions are preserved.
 
 ## Delivered, with acceptance limits
 

@@ -50,6 +50,7 @@ import {
   type QuarkPlan,
 } from './ProjectQuark';
 import './ProjectConfiguration.css';
+import { FolderBrowser } from '../FolderBrowser';
 
 const providerNames: Record<ProviderId, string> = { codex: 'Codex', claude: 'Claude' };
 const mixLabels = {
@@ -639,6 +640,8 @@ export function ProjectConfiguration({
   const [error, setError] = useState('');
   const [errorAtFolder, setErrorAtFolder] = useState(false);
   const [choosingFolder, setChoosingFolder] = useState(false);
+  const [folderBrowser, setFolderBrowser] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const [canChooseFolder, setCanChooseFolder] = useState<boolean | null>(null);
   const nameInput = useRef<HTMLInputElement>(null);
   const running = useRef(false);
@@ -708,11 +711,11 @@ export function ProjectConfiguration({
       }
     });
     void api('/project-options')
-      .then((value) =>
-        setCanChooseFolder(
-          apiScope() === 'local' && projectOptionsSchema.parse(value).canChooseFolder,
-        ),
-      )
+      .then((value) => {
+        const options = projectOptionsSchema.parse(value);
+        setCanChooseFolder(options.canChooseFolder);
+        setFolderBrowser(!!options.folderBrowser);
+      })
       .catch(() => setCanChooseFolder(false));
     return () => cancelAnimationFrame(frame);
   }, []);
@@ -869,8 +872,14 @@ export function ProjectConfiguration({
       }
       await finish(next);
     });
-  const choose = () =>
-    run(async (current) => {
+  const choose = (folderId?: string) => {
+    if (folderBrowser && !folderId) {
+      edit({ folder: 'connect' });
+      setBrowsing(true);
+      return;
+    }
+    setBrowsing(false);
+    return run(async (current) => {
       const next = persist({
         ...current,
         folder: 'connect',
@@ -878,15 +887,23 @@ export function ProjectConfiguration({
         tracking: undefined,
         trackingPending: false,
         connectionPending: false,
-        folderKey: current.selection || current.tracking ? crypto.randomUUID() : current.folderKey,
+        folderKey:
+          folderId || current.selection || current.tracking
+            ? crypto.randomUUID()
+            : current.folderKey,
       });
       const value = projectConnectionSchema.parse(
-        await api('/projects/connect-folder', { key: next.folderKey, selectOnly: true }),
+        await api('/projects/connect-folder', {
+          key: next.folderKey,
+          selectOnly: true,
+          ...(folderId ? { folderId } : {}),
+        }),
       );
-      // Defaults may have loaded while the native picker was open. Keep those
+      // Defaults may have loaded while the folder selection was pending. Keep those
       // choices as well as the receipt, without creating or freezing a manager.
       persist({ ...latestSpawn.current, selection: value.selection });
     }, true);
+  };
   const connect = () =>
     run(async (current) => {
       if (!current.selection) return;
@@ -943,6 +960,9 @@ export function ProjectConfiguration({
   return (
     <section className="flow-page project-config">
       {heading}
+      {browsing && (
+        <FolderBrowser close={() => setBrowsing(false)} select={(id) => void choose(id)} />
+      )}
       <form
         className="config-form"
         onSubmit={(event) => {
@@ -996,7 +1016,7 @@ export function ProjectConfiguration({
               <p className="config-help">
                 {canChooseFolder
                   ? 'The project takes the folder’s name. An already connected folder keeps its existing manager and settings.'
-                  : 'Choose an existing folder on the computer running sciencewithagents. New folder works from any device.'}
+                  : 'Folder browsing is unavailable. Reload this page to try again.'}
               </p>
               {!locked && (
                 <button
@@ -1007,7 +1027,7 @@ export function ProjectConfiguration({
                 >
                   <FolderOpen size={17} />
                   {choosingFolder
-                    ? 'Waiting for the folder picker…'
+                    ? 'Selecting folder…'
                     : spawn.selection
                       ? 'Choose another folder'
                       : 'Choose a folder'}

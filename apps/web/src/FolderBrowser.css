@@ -1,0 +1,76 @@
+dialog.folder-browser {
+  box-sizing: border-box;
+  width: min(38rem, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  padding: clamp(12px, 3vw, 24px);
+  overflow: auto;
+}
+.folder-browser .modal-heading h2 {
+  font-size: 1.3rem;
+}
+.folder-browser > p {
+  color: var(--muted);
+  margin: 12px 0;
+}
+.folder-browser-navigation,
+.folder-browser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0;
+}
+.folder-browser button {
+  min-height: 44px;
+  white-space: normal;
+}
+.folder-browser-navigation button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.folder-browser-current {
+  display: block;
+  overflow-wrap: anywhere;
+  margin: 16px 0 10px;
+}
+.folder-browser label {
+  display: grid;
+  gap: 6px;
+}
+.folder-browser input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: 16px;
+}
+.folder-browser-list {
+  margin-top: 12px;
+  max-height: 38dvh;
+  min-height: 70px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.folder-browser-list button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #e4e0d6;
+  border-radius: 0;
+  padding: 12px 4px;
+}
+.folder-browser-list button svg {
+  flex-shrink: 0;
+}
+.folder-browser-list button span:first-of-type {
+  flex: 1;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.folder-browser-actions {
+  justify-content: flex-end;
+}

@@ -12,6 +12,7 @@ import {
 import { homedir } from 'node:os';
 import { id, projectSchema, type Project, type ProviderId } from '@dock/shared';
 import { Conflict, type Store } from './store.js';
+import { FolderBrowser } from './folder-browser.js';
 import { validateRoot, git } from './workspaces.js';
 
 const exec = promisify(execFile);
@@ -48,12 +49,14 @@ const identity = (root: string) => {
   return `${stat.dev}:${stat.ino}`;
 };
 
-/** A host-native chooser grants one folder; the browser can never supply a path. */
+/** Native picks and server-issued folder IDs select one folder; clients never supply paths. */
 export class FolderConnections {
+  readonly browser: FolderBrowser;
   private active: {
     key: string;
     provider: ProviderId | undefined;
     selectOnly: boolean;
+    folderId?: string;
     promise: Promise<Project | null>;
     controller: AbortController;
   } | null = null;
@@ -61,23 +64,26 @@ export class FolderConnections {
     readonly store: Store,
     readonly dataDir: string,
     readonly picker: FolderPicker | null,
-  ) {}
+  ) {
+    this.browser = new FolderBrowser(dataDir);
+  }
   async connect(
     key: string,
     requestedProvider?: ProviderId,
     selectOnly = false,
+    folderId?: string,
   ): Promise<Project | null> {
     id.parse(key);
-    if (!this.picker)
-      throw new Conflict(
-        'Choosing an existing folder is currently available on Mac. You can still create a new project here.',
-      );
     const setting = `project-folder:${key}`;
     const previous = this.store.getSetting(setting) as Selection | null;
     const provider = selectOnly
       ? undefined
       : (previous?.provider ?? this.store.defaultProvider('manager', requestedProvider));
     if (previous) {
+      if (folderId && previous.root !== (await this.browser.resolve(folderId)))
+        throw new Conflict(
+          'This request already selected another folder. Choose again with a new request.',
+        );
       this.assertSelection(previous);
       if (selectOnly) return null;
       if (
@@ -103,18 +109,23 @@ export class FolderConnections {
       }
       return this.register(previous.root, provider!);
     }
+    if (!folderId && !this.picker)
+      throw new Conflict('Open the folder browser to choose an existing project.');
     if (this.active) {
       if (
         this.active.key === key &&
         this.active.provider === provider &&
-        this.active.selectOnly === selectOnly
+        this.active.selectOnly === selectOnly &&
+        this.active.folderId === folderId
       )
         return this.active.promise;
       throw new Conflict('The folder chooser is already open. Choose a folder or cancel it first.');
     }
     const controller = new AbortController();
     const promise = (async () => {
-      const selected = await this.picker!(controller.signal);
+      const selected = folderId
+        ? await this.browser.resolve(folderId)
+        : await this.picker!(controller.signal);
       if (!selected || controller.signal.aborted) return null;
       const selection = await this.inspect(selected);
       const { root } = selection;
@@ -128,7 +139,7 @@ export class FolderConnections {
       });
       return selectOnly || selection.needsTracking ? null : this.register(root, provider!);
     })();
-    this.active = { key, provider, selectOnly, promise, controller };
+    this.active = { key, provider, selectOnly, folderId, promise, controller };
     try {
       return await promise;
     } finally {
