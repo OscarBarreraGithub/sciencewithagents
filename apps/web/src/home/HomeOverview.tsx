@@ -123,7 +123,7 @@ function Destinations({ data }: { data: HomeData }) {
       label: 'Apps',
       icon: <LayoutGrid size={22} />,
       tone: 'apps',
-      detail: 'No apps added yet',
+      detail: 'LaTeX · PDF reader',
     },
     {
       href: '#/work',

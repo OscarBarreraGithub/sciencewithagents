@@ -18,7 +18,7 @@ diagnostics for sustained resource changes, with cooldowns and a daily attempt l
 
 The app connects project setup, manager/worker conversations, versioned prompt drafts,
 shared editor chats, QUARK's board/budgets/coordinator, computer health, model preferences,
-phone pairing and recovery. [Features](FEATURES.md) describes their boundaries.
+phone pairing, recovery and the [LaTeX/PDF reader](LATEX.md). [Features](FEATURES.md) describes their boundaries.
 Source installation and isolated Codex-only/Claude-only first replies have been exercised
 on Apple Silicon macOS. Linux CI does not certify native Linux desktop integration.
 Intel Mac and Windows remain unqualified; see [machine support](CONTRIBUTOR_SETUP.md#check-the-machine-first).
@@ -33,7 +33,7 @@ on the actual device. The companion is installed from source; no marketplace rel
 - **Automatic five-hour utilization:** QUARK has shared reserves, caps, pacing and concurrency
   limits. It does not yet automatically target a reset window or shift suitable new work
   toward Claude to use spare capacity. Respect actual account/model windows and explicit choices.
-- **Apps:** the gallery is an empty placeholder. Registered app tiles and project-site
+- **Apps:** LaTeX/PDF reading is connected. Custom project-app registration and project-site
   publication are not connected.
 - **Setup progress:** GitHub/Cloudflare copy prompts work, but do not yet detect completion
   or hide completed steps. Native Codex/Claude sign-in/model checks are separate and connected.

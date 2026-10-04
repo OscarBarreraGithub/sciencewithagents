@@ -13,7 +13,7 @@ will change; these images will be replaced for the final presentation. See
 
 Your starting point on the phone: see the selected computer and remaining Codex and Claude
 allowance, open your chats or QUARK's work queue, and find items needing your attention
-alongside your own to-do list. The Apps tile is a placeholder for future integrations.
+alongside your own to-do list. Apps includes a LaTeX/PDF reader for reports on your phone.
 
 <img src="docs/beta-test-demo/00-home.png" alt="Phone Home screen with remaining AI allowance, Chats, Apps, QUARK, attention items and a to-do list" width="360">
 

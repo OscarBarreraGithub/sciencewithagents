@@ -111,8 +111,10 @@ Only actual checks can establish completion. Optional GitHub/Cloudflare setup is
 prerequisite. Connecting another computer provides prompts for that computer and the main host.
 Phone pairing remains protected; no repeated app lock or separate VS Code authentication.
 
-Apps will use a spaced grid of rounded icons and titles, with real registered destinations.
-Until registration is connected, keep an honest empty state. Do not add unrelated action tiles.
+Apps uses rounded icons and titles. LaTeX opens a simple file/recent-document library and
+a full-screen PDF reader. Fit width, pinch/button zoom and page navigation must remain usable
+on phones. Document links open over mounted chats; closing or swiping out preserves the exact
+reading position and draft. Custom project-app registration is still pending.
 
 Use readable body text, large controls, consistent spacing and wrapping. Verify 360×800,
 412×915, 915×412 and desktop, enlarged text/zoom, long labels and content growth. Default,

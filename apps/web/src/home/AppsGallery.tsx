@@ -69,20 +69,14 @@ export function AppsGallery() {
         <h1 id="apps-heading" tabIndex={-1}>
           Apps
         </h1>
-        <p>Apps built in your projects will open from here.</p>
+        <p>Tools for your projects.</p>
       </header>
-      <div className="apps-empty">
-        <div className="apps-empty-grid" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
-        <h2>No apps yet</h2>
-        <p>
-          Adding project apps here is not available yet in this beta. Once it is, each app appears
-          with its icon and title.
-        </p>
-      </div>
+      <a href="#/latex" className="apps-tile">
+        <span className="latex-app-icon" aria-hidden="true">
+          T<span>E</span>X
+        </span>
+        LaTeX
+      </a>
       <section className="apps-setup" aria-labelledby="apps-setup-heading">
         <h2 id="apps-setup-heading">Setup for apps that publish online</h2>
         <p>

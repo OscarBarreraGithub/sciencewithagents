@@ -1,3 +1,4 @@
+import { DocumentHost } from './Documents';
 import React, { lazy, Suspense, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Home } from './home/Home';
@@ -48,6 +49,7 @@ createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <PhoneGate initialPairingCode={initialPairingCode}>
       <WorkspaceApp />
+      <DocumentHost />
     </PhoneGate>
   </React.StrictMode>,
 );

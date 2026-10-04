@@ -1,3 +1,4 @@
+import { DocumentLink } from './Documents';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
@@ -124,11 +125,7 @@ export function Markdown({ children }: { children: string }) {
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        a: ({ children, href }) => (
-          <a href={href} target="_blank" rel="noreferrer">
-            {children}
-          </a>
-        ),
+        a: DocumentLink,
         img: ({ alt }) => <span className="muted">[Image: {alt ?? 'image'}]</span>,
       }}
     >
@@ -243,7 +240,8 @@ export function Conversation({
           container.scrollTop +=
             card.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
       }
-    } else if (!older && pinned.current) container.scrollTop = container.scrollHeight;
+    } else if (!older && pinned.current && !document.documentElement.dataset.pdfOpen)
+      container.scrollTop = container.scrollHeight;
     shownApproval.current = first;
   }, [data, approvals, older]);
   useLayoutEffect(() => {
@@ -260,7 +258,8 @@ export function Conversation({
     // Keep the newest message in view only for a reader already at the bottom; anyone
     // reading history keeps their place.
     const observer = new ResizeObserver(() => {
-      if (pinned.current) container.scrollTop = container.scrollHeight;
+      if (pinned.current && !document.documentElement.dataset.pdfOpen)
+        container.scrollTop = container.scrollHeight;
     });
     observer.observe(container);
     if (container.firstElementChild) observer.observe(container.firstElementChild);

@@ -83,7 +83,13 @@ export class FolderBrowser {
         folders,
         nextOffset: offset + 100 < entries.length ? offset + 100 : null,
       };
-    } catch {
+    } catch (error) {
+      if (['EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? ''))
+        throw new Conflict(
+          process.platform === 'darwin'
+            ? 'macOS has not allowed sciencewithagents to read this folder. On the computer, allow folder access in System Settings → Privacy & Security → Files and Folders (or Full Disk Access for protected folders), then try again.'
+            : 'The operating system has not allowed this app to read this folder. Check this computer’s filesystem permissions, then try again.',
+        );
       throw new Conflict(
         'This computer could not read that folder. Check its filesystem access or choose another folder.',
       );

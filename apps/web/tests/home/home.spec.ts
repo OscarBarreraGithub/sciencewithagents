@@ -236,7 +236,10 @@ test('unknown and stale allowances remain honest and destinations survive reload
   await codex.click();
   await page.locator('.overview-destinations a[href="#/apps"]').click();
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'No apps yet' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'LaTeX', exact: true })).toHaveAttribute(
+    'href',
+    '#/latex',
+  );
   await page.goto('/#/home');
   await page.unroute('**/api/capacity');
   await readings(page, { stale: true });

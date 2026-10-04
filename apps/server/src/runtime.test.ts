@@ -1707,3 +1707,23 @@ it.each([true, false])('restores an archived session only when app-owned: %s', a
   }
   expect(request.mock.calls.some(([method]) => method === 'turn/start')).toBe(false);
 });
+
+it('gives a manager durable report links without launching work, and prevents project path escapes', async () => {
+  writeFileSync(
+    join(projectRoot, 'report.tex'),
+    String.raw`\documentclass{article}\begin{document}Result\end{document}`,
+  );
+  const key = randomUUID();
+  const link = (await runtime.tool(manager, key, 'dock_document', { path: 'report.tex' })) as {
+    id: string;
+    href: string;
+    state: string;
+  };
+  expect(link.href).toBe(`#/latex/${link.id}`);
+  expect(link.state).toBe('source');
+  expect(await runtime.tool(manager, key, 'dock_document', { path: 'report.tex' })).toEqual(link);
+  expect(store.runs()).toHaveLength(0);
+  await expect(
+    runtime.tool(manager, randomUUID(), 'dock_document', { path: '../secret.tex' }),
+  ).rejects.toThrow(/relative/);
+});

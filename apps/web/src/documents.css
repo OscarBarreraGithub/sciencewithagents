@@ -1,0 +1,372 @@
+.latex-app {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: grid;
+  gap: 24px;
+  padding: 8px 0 28px;
+}
+.latex-app > header {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+.latex-app h1,
+.latex-app h2,
+.latex-app p {
+  margin: 0;
+}
+.latex-app h1 {
+  font-size: 1.8rem;
+}
+.latex-app h2 {
+  font-size: 1.25rem;
+}
+.latex-app > header p,
+.latex-note {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.latex-app > button {
+  justify-self: start;
+}
+.latex-app-icon {
+  background: #e5ece6;
+  color: #365e49;
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font:
+    bold 27px Georgia,
+    serif;
+  letter-spacing: -3px;
+  padding-right: 3px;
+}
+.latex-app-icon > span {
+  transform: translateY(5px);
+}
+.latex-app section {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.latex-file {
+  display: flex;
+  text-align: left;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 68px;
+  padding: 14px 18px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--paper);
+}
+.latex-file > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.latex-file > svg {
+  flex-shrink: 0;
+  color: #486655;
+}
+.latex-file strong {
+  font-weight: 600;
+  display: block;
+}
+.latex-file small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.latex-files,
+.latex-recents {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.latex-file:last-child {
+  border-bottom: 0;
+}
+.latex-files {
+  max-height: 55dvh;
+  overflow: auto;
+}
+.latex-files > p {
+  padding: 20px;
+}
+.latex-browser > header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.latex-browser h2 {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.latex-browser > header button {
+  min-width: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+}
+.latex-filter {
+  display: grid;
+  gap: 8px;
+}
+.latex-filter input {
+  width: 100%;
+  min-width: 0;
+}
+.apps-tile {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  text-decoration: none;
+  color: inherit;
+  font-weight: 600;
+  font-size: 1.15rem;
+  justify-self: start;
+}
+.pdf-reader {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  color: #242b36;
+  background: #ececea;
+}
+.pdf-reader[open] {
+  display: flex;
+  flex-direction: column;
+}
+.pdf-reader::backdrop {
+  background: #ececea;
+}
+.pdf-heading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px
+    max(12px, env(safe-area-inset-left));
+  background: #fffefa;
+  border-bottom: 1px solid #e2dfd5;
+}
+.pdf-heading > div {
+  min-width: 0;
+  flex: 1;
+}
+.pdf-heading strong {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 1rem;
+}
+.pdf-heading small {
+  display: block;
+  color: #6f736d;
+  font-size: 0.8rem;
+}
+.pdf-heading button,
+.pdf-heading a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  justify-content: center;
+  padding: 8px;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  text-decoration: none;
+}
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fffefa;
+  border-bottom: 1px solid #dddcd5;
+  flex-shrink: 0;
+}
+.pdf-toolbar button,
+.pdf-toolbar select,
+.pdf-toolbar input {
+  min-height: 44px;
+  background: white;
+  border: 1px solid #dddcd5;
+  border-radius: 10px;
+  padding: 8px;
+  font: inherit;
+  color: inherit;
+}
+.pdf-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  gap: 6px;
+}
+.pdf-toolbar select {
+  width: 120px;
+  max-width: 100%;
+}
+.pdf-zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.pdf-zoom span {
+  width: 48px;
+  text-align: center;
+  font-size: 0.9rem;
+}
+.pdf-page-number {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.pdf-page-number label,
+.pdf-page-number > span {
+  font-size: 0.875rem;
+}
+.pdf-page-number input {
+  width: 52px;
+  text-align: center;
+}
+.pdf-body {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+.pdf-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+.pdf-scroll .pdfViewer {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pdf-scroll .pdfViewer .page {
+  margin-bottom: 12px;
+}
+.pdf-status {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  background: #f8f0ce;
+  flex-shrink: 0;
+}
+.pdf-error {
+  padding: 12px 16px;
+  background: #fff0e5;
+  flex-shrink: 0;
+  max-height: 35dvh;
+  overflow: auto;
+}
+.pdf-error p {
+  margin: 0 0 8px;
+}
+.pdf-error pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+.pdf-error button {
+  margin-top: 8px;
+}
+.pdf-wait {
+  display: grid;
+  place-content: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+}
+.pdf-opening {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #fffefa;
+  display: grid;
+  place-content: center;
+  gap: 20px;
+}
+@media (max-width: 440px) {
+  .pdf-toolbar {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+  .pdf-heading {
+    gap: 6px;
+  }
+  .pdf-zoom span {
+    width: 43px;
+  }
+  .pdf-toolbar select {
+    width: 108px;
+  }
+  .pdf-page-number label {
+    display: none;
+  }
+  .pdf-page-number input {
+    width: 40px;
+  }
+  .latex-file {
+    padding: 14px 12px;
+  }
+}
+@media (max-height: 500px) {
+  .pdf-heading {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  .pdf-heading small {
+    display: none;
+  }
+  .pdf-toolbar {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+}
+
+.pdf-toolbar .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.latex-note,
+.latex-app > header p {
+  color: #616b75;
+}

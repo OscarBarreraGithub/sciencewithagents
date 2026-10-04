@@ -21,36 +21,6 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.apps-empty {
-  border: 1px solid var(--home-line);
-  border-radius: 18px;
-  background: var(--home-white);
-  padding: 28px 24px 26px;
-  text-align: center;
-}
-/* Empty outlines only; no app is shown until one is actually added. */
-.apps-empty-grid {
-  display: flex;
-  justify-content: center;
-  gap: 22px;
-  margin-bottom: 18px;
-}
-.apps-empty-grid span {
-  width: 64px;
-  height: 64px;
-  border-radius: 16px;
-  border: 1.5px dashed #cfc7b8;
-  background: #f6f2ea;
-}
-.apps-empty h2 {
-  font-size: var(--text-lead);
-}
-.apps-empty p {
-  margin: 6px auto 0;
-  max-width: 46ch;
-  color: var(--home-muted);
-  font-size: var(--text-body);
-}
 .apps-setup {
   display: grid;
   gap: 8px;
@@ -133,17 +103,6 @@
 @media (max-width: 700px) {
   .apps-heading h1 {
     font-size: 26px;
-  }
-  .apps-empty {
-    padding: 22px 16px;
-  }
-  .apps-empty-grid {
-    gap: 16px;
-  }
-  .apps-empty-grid span {
-    width: 56px;
-    height: 56px;
-    border-radius: 14px;
   }
   .setup-guide li {
     padding: 14px;

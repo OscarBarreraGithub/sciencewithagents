@@ -516,6 +516,7 @@ export * from './integration.js';
 
 export * from './project-drafts.js';
 export * from './setup.js';
+export * from './documents.js';
 
 /** An outside agent can create new capped work, never revise or raise existing caps. */
 export const agentTaskRequestSchema = taskRequestSchema

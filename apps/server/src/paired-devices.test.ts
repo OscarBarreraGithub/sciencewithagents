@@ -1,6 +1,6 @@
 import { modelFixture } from './model-policy.fixture.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
@@ -166,6 +166,34 @@ async function enroll() {
 }
 
 describe('secure enrollment and persistent paired access', () => {
+  it('protects PDFs behind pairing and permits a paired phone to open and read them', async () => {
+    const path = join(root, 'report.pdf');
+    writeFileSync(path, '%PDF-1.4\npaired document');
+    const document = await runtime.documents.registerRelative(root, 'report.pdf');
+    const url = `/api/documents/${document.id}`;
+    expect((await remote.inject({ url: `${url}/pdf`, headers: headers() })).statusCode).toBe(401);
+    await enroll();
+    expect(
+      (
+        await remote.inject({
+          url: `${url}/open`,
+          method: 'POST',
+          headers: headers(),
+          payload: { key: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(200);
+    await expect.poll(() => runtime.documents.get(document.id).state).toBe('ready');
+    const response = await remote.inject({ url: `${url}/pdf`, headers: headers() });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/pdf');
+    expect(response.body).toBe('%PDF-1.4\npaired document');
+    expect(
+      (await remote.inject({ url: '/api/documents/browse?path=/etc', headers: headers() }))
+        .statusCode,
+    ).toBe(400);
+  });
+
   it('retains enrolled phones through unavailable setup without allowing remote access', async () => {
     const { deviceId } = await enroll();
     await request('setup/complete', { setupComplete: true });

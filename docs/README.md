@@ -12,6 +12,7 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 - [Choose managers, workers and model defaults](MODEL_POLICY.md)
 - [QUARK queue and budgets](QUARK.md) and [its coordinator](QUARK_COORDINATOR.md)
 - [Computer health](RESOURCE_WATCH.md)
+- [LaTeX and PDF reader](LATEX.md)
 - [Update a customized installation](UPDATE_APP.md)
 - [Recovery copies](RECOVERY_COPIES.md) and [private source backups](SOURCE_BACKUPS.md)
 

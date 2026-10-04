@@ -1,3 +1,4 @@
+import { LatexApp } from '../Documents';
 import { ProviderActions } from './ProviderActions';
 import { ModelSettings } from './ModelSettings';
 import {
@@ -48,6 +49,7 @@ const titles: Record<string, string> = {
   home: 'Home',
   welcome: 'Welcome and setup',
   apps: 'Apps',
+  latex: 'LaTeX',
   chats: 'Chats',
   managers: 'Managers',
   vscode: 'VS Code chats',
@@ -513,6 +515,8 @@ export function Home() {
             <HomeOverview data={data} now={now} />
           ) : page === 'apps' ? (
             <AppsGallery />
+          ) : page === 'latex' ? (
+            <LatexApp initialId={currentRoute.split('/')[1]} />
           ) : flowPages.has(page) ? (
             <WorkspaceFlow route={currentRoute} data={data} />
           ) : activityPages.has(page) ? (

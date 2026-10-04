@@ -1,3 +1,4 @@
+import { registerDocumentRoutes } from './documents.js';
 import { registerWorkItemRoutes } from './work-items.js';
 import { registerConversationRoutes } from './conversations.js';
 import { QuarkFocus, registerQuarkFocusRoutes } from './quark-focus.js';
@@ -285,7 +286,7 @@ export async function createServer(
       reply.header('Strict-Transport-Security', 'max-age=31536000');
       reply.header(
         'Content-Security-Policy',
-        `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ${remoteOrigin!.replace('https:', 'wss:')}; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,
+        `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ${remoteOrigin!.replace('https:', 'wss:')}; font-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,
       );
       // The named tunnel is the only remote entry. A zone-wide HTTPS toggle may
       // be off for unrelated sites; never serve this application over HTTP.
@@ -518,6 +519,7 @@ export async function createServer(
       },
     });
   const agentId = (params: unknown) => z.object({ id }).parse(params).id;
+  registerDocumentRoutes(app, runtime.documents);
   registerRecoveryBackupRoutes(app, store, runtime.dataDir);
   registerProjectWorkflowRoutes(app, store, runtime.modelPolicy);
   registerWorkItemRoutes(app, runtime.workItems, () => runtime.kick());

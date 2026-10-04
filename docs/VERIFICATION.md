@@ -6,6 +6,18 @@ Private logs, screenshots, disposable databases and native-session receipts stay
 
 ## Current focused checks — 2026-10-03
 
+LaTeX/PDF checks cover real compilation with included chapters, equations and tables, failed
+build/retry with the previous PDF retained, recent-file persistence, path validation, manager
+links, paired-phone authentication and selected-computer PDF forwarding. The reader was
+visually checked at desktop, 412×915, 360×800, 915×412 and iPhone WebKit emulation. Browser
+checks cover zoom, page navigation, synthetic pinch/swipe, doubled UI scale, the phone content
+security policy, and return to the exact mounted chat position with an unsent draft. These
+are emulated browser checks, not physical iPhone acceptance or universal TeX-package support.
+A real 33-page document with a shared parent-folder preamble compiled without changing its
+source directory. Its PDF was opened, zoomed and navigated in the running app. The installed
+Mac app still needs OS permission to browse that owner’s protected iCloud folder; a cached PDF
+remains readable without source access.
+
 Resource checks cover sustained-change triggers, transient spikes, sleep/restart, incident
 deduplication/cooldowns, QUARK admission and read-only evidence retrieval. A disposable real
 Python process on macOS verified script identification, CPU measurement, supervisor/project

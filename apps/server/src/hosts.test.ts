@@ -78,6 +78,12 @@ beforeEach(async () => {
       reply.header('CF-Access-Jwt-Assertion', 'secret');
       return { label, messages: fixture.writes };
     });
+    app.get(`/api/documents/${agentId}/pdf`, (_request, reply) =>
+      reply
+        .type('application/pdf')
+        .header('Set-Cookie', 'private=secret')
+        .send(Buffer.from('%PDF-1.4\n' + label)),
+    );
     app.get('/api/project-options', () => ({ canChooseFolder: true, folderBrowser: true }));
     app.get('/api/project-folders', () => ({
       current: { id: agentId, name: label, canSelect: true },
@@ -443,6 +449,15 @@ describe('isolated computer connections', () => {
     ).toBe(404);
     expect(fixtures.flatMap((fixture) => fixture.writes)).toEqual([]);
     expect(fixtures.flatMap((fixture) => fixture.headers)).toEqual([]);
+  });
+
+  it('streams a registered PDF from the selected computer without forwarding private headers', async () => {
+    const response = await gateway.inject(path(1, `/documents/${agentId}/pdf`));
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/pdf');
+    expect(response.body).toBe('%PDF-1.4\nSchool computer');
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(response.headers['cache-control']).toBe('no-store');
   });
 
   it('forwards folder browsing and selection to the selected computer only', async () => {

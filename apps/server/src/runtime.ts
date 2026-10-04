@@ -1,3 +1,5 @@
+import { Documents } from './documents.js';
+import { documentRegisterSchema } from '@dock/shared';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -182,6 +184,7 @@ export class Runtime {
     if (event.type.startsWith('run.') || event.type === 'usage.observed') this.pulsar.reconcile();
     queueMicrotask(() => this.kick());
   };
+  readonly documents: Documents;
   models: Model[] = [];
   health = { ready: false, version: '', message: 'Checking Codex…' };
   constructor(
@@ -191,6 +194,7 @@ export class Runtime {
     readonly factory?: ProviderFactory,
     claudeDependencies?: ManagedClaudeDependencies,
   ) {
+    this.documents = new Documents(store, dataDir);
     this.workItems = new WorkItems(store);
     this.capacity = new CapacityMonitor(store, dataDir);
     this.pulsar = new Pulsar(store, () => this.capacity.status().machine);
@@ -387,6 +391,9 @@ export class Runtime {
       );
     const base = this.resources.isAgent(agent.id)
       ? [
+          ...(this.resources.isSnapshot(agent.id)
+            ? []
+            : toolsFor('researcher').filter((tool) => tool.name === 'dock_document')),
           {
             type: 'function' as const,
             name: 'dock_inspect',
@@ -3432,6 +3439,22 @@ export class Runtime {
       throw new Conflict('Context maintenance cannot call coordination tools or continue work.');
     if (this.coordinator.isAgent(agentId))
       return this.coordinator.tool(agentId, key, name, raw, active ?? null);
+    if (name === 'dock_document') {
+      if (
+        agent.interview ||
+        (this.resources.isAgent(agentId) && this.resources.isSnapshot(agentId))
+      )
+        throw new Conflict('Ask the project manager to share a document.');
+      const value = documentRegisterSchema.parse(raw);
+      const root =
+        agent.role === 'manager' && !agent.surface
+          ? this.store.project(agent.projectId).root
+          : agent.cwd;
+      return this.withLock(`document-register:${agentId}`, async () => {
+        const result = await this.documents.registerRelative(root, value.path);
+        return this.store.operation(key, { agentId, name, raw }, () => result);
+      });
+    }
     if (name === 'dock_escalate') return this.escalate(agent, key, raw);
     if (this.resources.isAgent(agentId) && name === 'dock_inspect') {
       z.object({ resources: z.literal(true) })
@@ -4459,6 +4482,7 @@ export class Runtime {
     const setupClosing = this.setup.close();
     const signInClosing = this.codexSignIn.close();
     const discoveryClosing = this.modelPolicy.close();
+    await this.documents.close();
     await this.resources.close();
     await this.conversationSearch.close();
     await this.capacity.close();

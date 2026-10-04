@@ -1,3 +1,4 @@
+import { DocumentLink } from './Documents';
 import { createContext, memo, useContext, useEffect, useRef, useState } from 'react';
 import {
   ArrowDown,
@@ -35,11 +36,7 @@ import remarkGfm from 'remark-gfm';
 const DaemonSource = createContext(false);
 
 const markdownComponents = {
-  a: ({ href, children }: React.ComponentProps<'a'>) => (
-    <a href={href} target="_blank" rel="noreferrer">
-      {children}
-    </a>
-  ),
+  a: DocumentLink,
   img: function MirrorImage({ alt }: React.ComponentProps<'img'>) {
     const daemon = useContext(DaemonSource);
     return <span>[Image: {alt ?? (daemon ? 'view on your computer' : 'view in VS Code')}]</span>;
@@ -529,7 +526,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
     return () => window.removeEventListener('dock:mirror-draft', changed);
   }, [draftKey]);
   useEffect(() => {
-    if (follow.current && viewport.current)
+    if (follow.current && viewport.current && !document.documentElement.dataset.pdfOpen)
       viewport.current.scrollTop = viewport.current.scrollHeight;
   }, [state?.entries]);
   useEffect(() => {
@@ -538,7 +535,8 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
     // A keyboard or taller composer shrinks the log. Keep the newest message in view
     // only for a reader already at the bottom; anyone reading history keeps their place.
     const observer = new ResizeObserver(() => {
-      if (follow.current) log.scrollTop = log.scrollHeight;
+      if (follow.current && !document.documentElement.dataset.pdfOpen)
+        log.scrollTop = log.scrollHeight;
     });
     observer.observe(log);
     return () => observer.disconnect();

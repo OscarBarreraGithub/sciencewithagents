@@ -63,9 +63,16 @@ Independent native/editor histories, unsent drafts and private reasoning have di
 retention boundaries. Original VS Code chats retain their native identity and model choices.
 The optional companion needs no separate editor login. [Companion](../apps/vscode-mirror/README.md).
 
+## Documents on a phone
+
+Apps includes a LaTeX/PDF reader with computer-side compilation, folder browsing, recent
+files, selectable text, page navigation and zoom. Manager links open over chat and return
+to the same reading position and draft. Failed builds retain the previous PDF; existing
+PDFs need no compiler. See [LaTeX](LATEX.md) for setup and build limits.
+
 ## Scope not presented as finished
 
-The Apps gallery, automatic five-hour utilization mode, setup-progress detection and some
+Custom project-app registration, automatic five-hour utilization mode, setup-progress detection and some
 update/UI refinements remain incomplete. Personal-assistant and transcription backend
 capabilities are retained for existing/advanced use, but are not advertised Home destinations.
 The legacy workspace is maintenance-only. See [Status](STATUS.md) before planning a rollout.
