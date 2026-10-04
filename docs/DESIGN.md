@@ -63,7 +63,8 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   Then choose the manager/provider/reasoning and workers; one Spawn action sits at the bottom.
   New folders have a replaceable name. Use real catalog names, not academic role labels here.
 - Worker provider mix and spending are separate sliders. Research/coding, Review and Bulk
-  choices each occupy a readable line. Put the defaults explanation prominently above them.
+  each have a bordered, tappable model row with a visible Change control and expansion arrow.
+  Keep the current choices on separate readable rows and the defaults explanation above them.
   Exact model overrides remain available; edited choices must be visibly custom.
 - Populate effective reasoning defaults, preferring supported xhigh for managers. Global model
   preferences seed new projects; project customization does not overwrite those preferences.

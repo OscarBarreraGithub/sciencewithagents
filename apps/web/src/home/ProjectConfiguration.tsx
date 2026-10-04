@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { FolderOpen, RefreshCw, Sparkles } from 'lucide-react';
+import { ChevronDown, FolderOpen, RefreshCw, Sparkles } from 'lucide-react';
 import {
   effortLabel,
   id as uuidSchema,
@@ -256,21 +256,8 @@ export function WorkerSettings({
           </p>
         )}
       </div>
-      <details className={`config-models ${custom ? 'is-custom' : ''}`} open={custom || undefined}>
-        <summary>
-          <strong>{custom ? 'Custom task models' : 'Task models'}</strong>
-          <span className="config-task-summary">
-            {workerPurposes.map((purpose) => {
-              const choice = workerDefault(workflow, purpose);
-              return (
-                <small key={purpose}>
-                  {purposeLabels[purpose]}:{' '}
-                  {resolved(choice, catalogs)?.label ?? family(choice.family)}
-                </small>
-              );
-            })}
-          </span>
-        </summary>
+      <section className={`config-models ${custom ? 'is-custom' : ''}`}>
+        <h3>{custom ? 'Custom task models' : 'Task models'}</h3>
         {workerPurposes.map((purpose) => {
           const preset = workerDefault({ ...workflow, overrides: {} }, purpose);
           const saved = workflow.overrides[purpose];
@@ -280,85 +267,97 @@ export function WorkerSettings({
           const catalog = catalogs[current.provider];
           const value = saved ? `${saved.provider}:${saved.model ?? ''}` : '';
           return (
-            <div className="config-model-row" key={purpose}>
-              <label>
-                {purposeLabels[purpose]}
-                <select
-                  value={value}
-                  onChange={(event) => {
-                    if (!event.target.value) return setOverride(purpose, null);
-                    const [provider, id] = event.target.value.split(/:(.*)/s) as [
-                      ProviderId,
-                      string,
-                    ];
-                    const next = catalogs[provider].models.find((m) => m.id === id);
-                    if (!next) return;
-                    setOverride(purpose, {
-                      provider,
-                      family: familyFor(next, provider, preset.family),
-                      model: next.id,
-                      effort: null,
-                    });
-                  }}
-                >
-                  <option value="">
-                    Slider default · {presetModel?.label ?? `${family(preset.family)} (not found)`}
-                  </option>
-                  {saved?.model && !model && (
-                    <option value={value}>{saved.model} · not in the current catalog</option>
-                  )}
-                  {(['codex', 'claude'] as const).map((provider) =>
-                    catalogs[provider].models.length ? (
-                      <optgroup key={provider} label={providerNames[provider]}>
-                        {catalogs[provider].models.map((m) => (
-                          <option key={m.id} value={`${provider}:${m.id}`}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ) : null,
-                  )}
-                </select>
-              </label>
-              {saved?.model && model && (
+            <details className="config-task-choice" key={purpose} open={!!saved || undefined}>
+              <summary>
+                <span className="config-task-summary">
+                  <strong>{purposeLabels[purpose]}</strong>
+                  <small>{model?.label ?? family(current.family)}</small>
+                </span>
+                <span className="config-task-change">
+                  Change <ChevronDown size={18} aria-hidden="true" />
+                </span>
+              </summary>
+              <div className="config-model-row">
                 <label>
-                  Thinking
+                  {purposeLabels[purpose]}
                   <select
-                    value={
-                      saved.effort ??
-                      workerDefaultEffort(
-                        model.efforts,
-                        modelFamilies[familyFor(model, current.provider, current.family)]?.tier ??
-                          'grad',
-                      ) ??
-                      ''
-                    }
-                    onChange={(event) =>
-                      setOverride(purpose, { ...saved, effort: event.target.value || null })
-                    }
+                    value={value}
+                    onChange={(event) => {
+                      if (!event.target.value) return setOverride(purpose, null);
+                      const [provider, id] = event.target.value.split(/:(.*)/s) as [
+                        ProviderId,
+                        string,
+                      ];
+                      const next = catalogs[provider].models.find((m) => m.id === id);
+                      if (!next) return;
+                      setOverride(purpose, {
+                        provider,
+                        family: familyFor(next, provider, preset.family),
+                        model: next.id,
+                        effort: null,
+                      });
+                    }}
                   >
-                    {model.efforts.map((effort) => (
-                      <option key={effort} value={effort}>
-                        {effortLabel(effort)}
-                      </option>
-                    ))}
+                    <option value="">
+                      Slider default ·{' '}
+                      {presetModel?.label ?? `${family(preset.family)} (not found)`}
+                    </option>
+                    {saved?.model && !model && (
+                      <option value={value}>{saved.model} · not in the current catalog</option>
+                    )}
+                    {(['codex', 'claude'] as const).map((provider) =>
+                      catalogs[provider].models.length ? (
+                        <optgroup key={provider} label={providerNames[provider]}>
+                          {catalogs[provider].models.map((m) => (
+                            <option key={m.id} value={`${provider}:${m.id}`}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null,
+                    )}
                   </select>
                 </label>
-              )}
-              {!saved && catalog.loaded && !presetModel && (
-                <p className="config-warning">
-                  {catalog.error ||
-                    `No ${family(preset.family)} model is offered by ${providerNames[preset.provider]} on this computer. Choose a replacement here; nothing is substituted silently.`}
-                </p>
-              )}
-            </div>
+                {saved?.model && model && (
+                  <label>
+                    Thinking
+                    <select
+                      value={
+                        saved.effort ??
+                        workerDefaultEffort(
+                          model.efforts,
+                          modelFamilies[familyFor(model, current.provider, current.family)]?.tier ??
+                            'grad',
+                        ) ??
+                        ''
+                      }
+                      onChange={(event) =>
+                        setOverride(purpose, { ...saved, effort: event.target.value || null })
+                      }
+                    >
+                      {model.efforts.map((effort) => (
+                        <option key={effort} value={effort}>
+                          {effortLabel(effort)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {!saved && catalog.loaded && !presetModel && (
+                  <p className="config-warning">
+                    {catalog.error ||
+                      `No ${family(preset.family)} model is offered by ${providerNames[preset.provider]} on this computer. Choose a replacement here; nothing is substituted silently.`}
+                  </p>
+                )}
+              </div>
+            </details>
           );
         })}
         <p className="config-help">
           Slider defaults follow the newest available model in each family when work starts. An
           exact choice keeps that model.
         </p>
-      </details>
+      </section>
 
       {!modelsOnly && (
         <>

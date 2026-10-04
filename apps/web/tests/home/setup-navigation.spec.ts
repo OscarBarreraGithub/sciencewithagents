@@ -106,6 +106,32 @@ test('project setup shows real defaults, comfortable controls and retained choic
     const previous = (await rows[i - 1]!.boundingBox())!;
     expect((await rows[i]!.boundingBox())!.y).toBeGreaterThanOrEqual(previous.y + previous.height);
   }
+  const choices = workers.locator('.config-task-choice');
+  await expect(choices).toHaveCount(3);
+  for (const choice of await choices.all()) {
+    const toggle = choice.locator('summary');
+    await expect(toggle).toContainText('Change');
+    expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await toggle.click();
+    await expect(choice.getByRole('combobox').first()).toBeVisible();
+    await toggle.focus();
+    await toggle.press('Enter');
+    await expect(choice.getByRole('combobox').first()).toBeHidden();
+  }
+  for (const size of [16, 20, 24]) {
+    await page.evaluate((size) => {
+      document.documentElement.style.fontSize = `${size}px`;
+    }, size);
+    for (const toggle of await choices.locator('summary').all()) {
+      expect(await toggle.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    }
+  }
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '';
+  });
+  await workers
+    .locator('.config-models')
+    .screenshot({ path: info.outputPath('task-model-choices.png') });
   for (const row of await workers.locator('.config-check').all()) {
     await row.scrollIntoViewIfNeeded();
     const boxes = await row.evaluate((label) => {

@@ -215,7 +215,6 @@
   border-radius: 12px;
   background: #fffbeb;
 }
-.config-models > summary,
 .config-defaults > summary {
   display: grid;
   gap: 2px;
@@ -251,24 +250,69 @@
 }
 .config-task-summary {
   display: grid;
-  gap: 5px;
-  padding: 6px 0;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
-.config-models > summary small {
+.config-task-summary small {
   font-weight: 500;
   font-size: var(--text-small);
   color: var(--home-muted);
   overflow-wrap: anywhere;
 }
+.config-models > h3 {
+  margin: 0 0 10px;
+  font-size: var(--text-body);
+  font-weight: 650;
+}
+.config-task-choice {
+  margin-bottom: 10px;
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  background: white;
+}
+.config-task-choice > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  padding: 12px;
+  border-radius: 11px;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--text-small);
+}
+.config-task-choice > summary::-webkit-details-marker {
+  display: none;
+}
+.config-task-choice > summary:hover {
+  background: #f5f6fc;
+}
+.config-task-choice > summary:focus-visible {
+  outline: 2px solid var(--home-blue);
+  outline-offset: 2px;
+}
+.config-task-change {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--home-blue);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.config-task-choice[open] .config-task-change svg {
+  transform: rotate(180deg);
+}
+.config-task-choice[open] > summary {
+  border-bottom: 1px solid var(--home-line);
+  border-radius: 11px 11px 0 0;
+}
 .config-model-row {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
   gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--home-line);
-}
-.config-model-row:last-of-type {
-  border-bottom: 0;
+  padding: 12px;
 }
 .config-model-row > label:only-of-type {
   grid-column: 1 / -1;

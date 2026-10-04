@@ -298,7 +298,10 @@ test('general preferences seed project customization and recommendations restore
   const usage = page.getByRole('slider', { name: 'Usage', exact: true });
   await usage.focus();
   await usage.press('Home');
-  await page.locator('.config-models > summary').click();
+  await page
+    .locator('.config-task-choice > summary')
+    .filter({ hasText: 'Research & coding' })
+    .click();
   await page
     .getByRole('combobox', { name: 'Research & coding', exact: true })
     .selectOption('codex:gpt-5.6-sol');
@@ -347,8 +350,8 @@ test('general preferences seed project customization and recommendations restore
     'aria-valuetext',
     'Tokenmax',
   );
-  await expect(page.locator('.config-task-summary')).toContainText(
-    'Research & coding: gpt-6-astra',
-  );
+  await expect(
+    page.locator('.config-task-summary').filter({ hasText: 'Research & coding' }),
+  ).toContainText('gpt-6-astra');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
