@@ -561,6 +561,7 @@ type Spawn = {
   folderKey: string;
   startedAt: string;
   name: string;
+  nameEdited?: boolean;
   folder: 'fresh' | 'connect';
   provider: ProviderId | null;
   managerModel: string | null;
@@ -571,6 +572,7 @@ type Spawn = {
   tracking?: { key: string; name: string };
   selection?: { key: string; name: string; needsTracking: boolean };
   connectionPending?: boolean;
+  connectionName?: string;
   trackingPending?: boolean;
   managerSaved?: boolean;
   workflowRequest?: { key: string; expectedRevision: number; workflow: ProjectWorkflow };
@@ -611,6 +613,10 @@ function readSpawn(): Spawn {
       return {
         ...freshSpawn(),
         ...raw,
+        name:
+          raw.folder === 'connect' && raw.name === suggestedName && !raw.nameEdited && raw.selection
+            ? raw.selection.name.slice(0, 100)
+            : raw.name,
         workflow: parseWorkflow(raw.workflow ?? {}),
         // Older saved drafts already contain the user's choices. Keep them on upgrade.
         workflowChosen: raw.workflowChosen ?? !!raw.workflow,
@@ -901,20 +907,33 @@ export function ProjectConfiguration({
       );
       // Defaults may have loaded while the folder selection was pending. Keep those
       // choices as well as the receipt, without creating or freezing a manager.
-      persist({ ...latestSpawn.current, selection: value.selection });
+      persist({
+        ...latestSpawn.current,
+        selection: value.selection,
+        name: latestSpawn.current.nameEdited
+          ? latestSpawn.current.name
+          : (value.selection?.name.slice(0, 100) ?? latestSpawn.current.name),
+      });
     }, true);
   };
   const connect = () =>
     run(async (current) => {
       if (!current.selection) return;
+      if (!current.name.trim()) throw new Error('Give your project a name to get started.');
       let next = persist({
         ...current,
         provider: current.provider ?? provider,
+        // Retain the exact name on retries, including older pending requests without one.
+        connectionName: current.connectionPending ? current.connectionName : current.name.trim(),
         connectionPending: true,
       });
       if (!next.project) {
         const value = projectConnectionSchema.parse(
-          await api('/projects/connect-folder', { key: next.folderKey, provider: next.provider }),
+          await api('/projects/connect-folder', {
+            key: next.folderKey,
+            provider: next.provider,
+            ...(next.connectionName ? { name: next.connectionName } : {}),
+          }),
         );
         if (value.tracking) {
           await trackSelected(
@@ -998,24 +1017,12 @@ export function ProjectConfiguration({
               </label>
             ))}
           </div>
-          {spawn.folder === 'fresh' && !spawn.tracking && (
-            <label className="config-name">
-              Project name
-              <input
-                ref={nameInput}
-                required
-                maxLength={100}
-                value={spawn.name}
-                onChange={(event) => edit({ name: event.target.value }, true)}
-              />
-            </label>
-          )}
           {spawn.folder === 'connect' && (
             <div className="config-folder-selection">
               {spawn.selection && <strong>Selected folder: {spawn.selection.name}</strong>}
               <p className="config-help">
                 {canChooseFolder
-                  ? 'The project takes the folder’s name. An already connected folder keeps its existing manager and settings.'
+                  ? 'An already connected folder opens its existing project, keeping its name, manager and settings.'
                   : 'Folder browsing is unavailable. Reload this page to try again.'}
               </p>
               {!locked && (
@@ -1039,6 +1046,19 @@ export function ProjectConfiguration({
                 </p>
               )}
             </div>
+          )}
+          <label className="config-name">
+            Project name
+            <input
+              ref={nameInput}
+              required
+              maxLength={100}
+              value={spawn.name}
+              onChange={(event) => edit({ name: event.target.value, nameEdited: true }, true)}
+            />
+          </label>
+          {spawn.folder === 'connect' && (
+            <p className="config-help">The name shown in the app. Your folder keeps its name.</p>
           )}
         </fieldset>
         {spawn.tracking && (
@@ -1235,7 +1255,7 @@ export function ProjectConfiguration({
               needsManagerChoice ||
               (!policy && !locked) ||
               capsInvalid ||
-              (!spawn.project && spawn.folder === 'fresh' && !spawn.name.trim()) ||
+              (!spawn.project && !spawn.name.trim()) ||
               (spawn.folder === 'connect' &&
                 !spawn.project &&
                 !spawn.tracking &&

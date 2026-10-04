@@ -212,6 +212,7 @@ export const folderBrowseSchema = z
 export const projectFolderSchema = z
   .object({
     key: id,
+    name: projectCreateSchema.shape.name.optional(),
     provider: providerIdSchema.optional(),
     selectOnly: z.boolean().optional(),
     folderId: id.optional(),

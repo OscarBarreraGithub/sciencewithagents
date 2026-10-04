@@ -14,9 +14,10 @@ test('pick an existing folder first, keep model choices editable, and Spawn once
       ],
     }),
   );
-  const selections: { key: string; selectOnly?: boolean; provider?: string }[] = [];
+  const selections: { key: string; selectOnly?: boolean; provider?: string; name?: string }[] = [];
   const connections: typeof selections = [];
-  let created: { id: string; managerId: string } | undefined;
+  let created: { id: string; managerId: string; name: string } | undefined;
+  const name = `Planetary observations ${info.project.name} ${randomUUID().slice(0, 8)}`;
   await page.route('**/api/projects/connect-folder', async (route) => {
     const input = route.request().postDataJSON();
     if (input.selectOnly) {
@@ -34,7 +35,7 @@ test('pick an existing folder first, keep model choices editable, and Spawn once
         headers: { origin: new URL(page.url()).origin },
         data: {
           key: randomUUID(),
-          name: `Folder ${info.project.name} ${randomUUID().slice(0, 8)}`,
+          name: input.name,
           provider: input.provider,
         },
       });
@@ -52,6 +53,9 @@ test('pick an existing folder first, keep model choices editable, and Spawn once
   expect(selections).toHaveLength(1);
   expect(selections[0]).not.toHaveProperty('provider');
   expect(connections).toHaveLength(0);
+  const projectName = page.getByLabel('Project name', { exact: true });
+  await expect(projectName).toHaveValue('Existing research folder');
+  await projectName.fill(name);
   const provider = page
     .getByRole('group', { name: 'Manager', exact: true })
     .getByRole('combobox', { name: 'Provider', exact: true });
@@ -62,6 +66,7 @@ test('pick an existing folder first, keep model choices editable, and Spawn once
     page.getByText('Selected folder: Existing research folder', { exact: true }),
   ).toBeVisible();
   await expect(provider).toHaveValue('claude');
+  await expect(projectName).toHaveValue(name);
   expect(selections).toHaveLength(1);
   await page.screenshot({
     path: `../../data/screenshots/folder-setup/${info.project.name}-selection.png`,
@@ -85,14 +90,17 @@ test('pick an existing folder first, keep model choices editable, and Spawn once
   await spawn.click();
   await expect(page.getByRole('alert')).toContainText('connection was interrupted');
   await page.reload();
+  await expect(projectName).toHaveValue(name);
+  await expect(projectName).toBeDisabled();
   await page.getByRole('button', { name: 'Retry Spawn', exact: true }).click();
   await expect(
     page.getByRole('dialog', { name: 'Describe your project', exact: true }),
   ).toBeVisible();
   expect(connections).toEqual([
-    { key: selections[0]!.key, provider: 'claude' },
-    { key: selections[0]!.key, provider: 'claude' },
+    { key: selections[0]!.key, provider: 'claude', name },
+    { key: selections[0]!.key, provider: 'claude', name },
   ]);
+  expect(created!.name).toBe(name);
   const detail = await (await page.request.get(`/api/agents/${created!.managerId}`)).json();
   expect(detail.agent.provider).toBe('claude');
   expect(detail.runs).toEqual([]);

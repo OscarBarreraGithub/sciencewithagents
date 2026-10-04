@@ -901,8 +901,8 @@ export async function createServer(
     return folderBrowseSchema.parse(await folders.browser.browse(folderId, offset, options));
   });
   app.post('/api/projects/connect-folder', async (request) => {
-    const { key, provider, selectOnly, folderId } = projectFolderSchema.parse(request.body);
-    const project = await folders.connect(key, provider, selectOnly, folderId);
+    const { key, name, provider, selectOnly, folderId } = projectFolderSchema.parse(request.body);
+    const project = await folders.connect(key, provider, selectOnly, folderId, name);
     return projectConnectionSchema.parse({
       project,
       ...(selectOnly

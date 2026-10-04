@@ -37,6 +37,7 @@ export const chooseFolder: FolderPicker = async (signal) => {
 
 type Selection = {
   root: string;
+  name?: string;
   provider?: ProviderId;
   requestedProvider?: ProviderId | 'policy';
   needsTracking?: boolean;
@@ -57,6 +58,7 @@ export class FolderConnections {
     provider: ProviderId | undefined;
     selectOnly: boolean;
     folderId?: string;
+    name?: string;
     promise: Promise<Project | null>;
     controller: AbortController;
   } | null = null;
@@ -72,6 +74,7 @@ export class FolderConnections {
     requestedProvider?: ProviderId,
     selectOnly = false,
     folderId?: string,
+    name?: string,
   ): Promise<Project | null> {
     id.parse(key);
     const setting = `project-folder:${key}`;
@@ -86,6 +89,10 @@ export class FolderConnections {
         );
       this.assertSelection(previous);
       if (selectOnly) return null;
+      if (previous.provider && previous.name !== name)
+        throw new Conflict(
+          'This folder request already chose another project name. Retry with the original name or start a new setup.',
+        );
       if (
         previous.provider &&
         (previous.requestedProvider ?? previous.provider ?? 'policy') !==
@@ -101,13 +108,14 @@ export class FolderConnections {
           ...previous,
           provider,
           requestedProvider: requestedProvider ?? 'policy',
+          name,
         });
       const existing = this.store.projects().find((project) => project.root === previous.root);
       if (existing) return projectSchema.parse(existing);
       if (previous.needsTracking) {
         return null;
       }
-      return this.register(previous.root, provider!);
+      return this.register(previous.root, provider!, name);
     }
     if (!folderId && !this.picker)
       throw new Conflict('Open the folder browser to choose an existing project.');
@@ -116,7 +124,8 @@ export class FolderConnections {
         this.active.key === key &&
         this.active.provider === provider &&
         this.active.selectOnly === selectOnly &&
-        this.active.folderId === folderId
+        this.active.folderId === folderId &&
+        this.active.name === name
       )
         return this.active.promise;
       throw new Conflict('The folder chooser is already open. Choose a folder or cancel it first.');
@@ -133,13 +142,15 @@ export class FolderConnections {
       this.store.transaction(() => {
         this.store.setSetting(setting, {
           ...selection,
-          ...(selectOnly ? {} : { provider, requestedProvider: requestedProvider ?? 'policy' }),
+          ...(selectOnly
+            ? {}
+            : { provider, requestedProvider: requestedProvider ?? 'policy', name }),
         });
         this.store.event('project.folder_selected', null, null, { key });
       });
-      return selectOnly || selection.needsTracking ? null : this.register(root, provider!);
+      return selectOnly || selection.needsTracking ? null : this.register(root, provider!, name);
     })();
-    this.active = { key, provider, selectOnly, folderId, promise, controller };
+    this.active = { key, provider, selectOnly, folderId, name, promise, controller };
     try {
       return await promise;
     } finally {
@@ -282,7 +293,12 @@ export class FolderConnections {
         ]);
       }
       assertOwned();
-      return this.store.register(saved.root, basename(saved.root), '', saved.provider);
+      return this.store.register(
+        saved.root,
+        saved.name ?? basename(saved.root),
+        '',
+        saved.provider,
+      );
     } catch (error) {
       if (error instanceof Conflict) throw error;
       throw new Conflict(
@@ -299,12 +315,12 @@ export class FolderConnections {
       );
     }
   }
-  private async register(root: string, provider: ProviderId) {
+  private async register(root: string, provider: ProviderId, name?: string) {
     // Already registered projects can be reopened without touching their files/history.
     const existing = this.store.projects().find((project) => project.root === root);
     if (existing) return projectSchema.parse(existing);
     const canonical = await this.validRoot(root);
-    return this.store.register(canonical, basename(canonical), '', provider);
+    return this.store.register(canonical, name ?? basename(canonical), '', provider);
   }
   close() {
     this.active?.controller.abort();

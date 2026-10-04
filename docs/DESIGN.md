@@ -58,6 +58,8 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   search including subfolders. Keep the folder list scrollable and selection controls reachable.
   Search limits must be visible; hidden folders are an explicit option. Show the selection
   beside those choices without creating a manager.
+  Existing folders suggest their folder name as an editable project name; the display name
+  does not rename the folder. Keep that choice through reloads and setup retries.
   Then choose the manager/provider/reasoning and workers; one Spawn action sits at the bottom.
   New folders have a replaceable name. Use real catalog names, not academic role labels here.
 - Worker provider mix and spending are separate sliders. Research/coding, Review and Bulk

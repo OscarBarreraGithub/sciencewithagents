@@ -524,7 +524,7 @@ test('ordinary-folder tracking stays explicit and its uncertain confirmation sur
   const region = page.getByRole('region', { name: 'Start tracking this folder' });
   await expect(region).toHaveCount(0);
   expect(confirmations).toHaveLength(0);
-  await expect(page.getByLabel('Project name', { exact: true })).toBeHidden();
+  await expect(page.getByLabel('Project name', { exact: true })).toHaveValue('My research notes');
   const start = page.getByRole('button', { name: 'Spawn', exact: true });
   await start.scrollIntoViewIfNeeded();
   await expect(start).toBeInViewport();

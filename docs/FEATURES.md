@@ -99,3 +99,5 @@ connected-computer view. Familiar locations, clickable breadcrumbs, back/forward
 and folder-name search make it possible to explore the selected computer. Search can include
 subfolders; broad searches are bounded and incomplete results are labelled. Hidden folders
 are optional. Selection creates no manager; Spawn connects the folder and preserves its files.
+Give the project a separate display name during setup; the selected folder stays in place
+with its original name. Reopening an already connected folder keeps its existing project.

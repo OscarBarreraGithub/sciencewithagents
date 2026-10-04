@@ -136,7 +136,7 @@ it.each([false, true])(
         method: 'POST',
         url: '/api/projects/connect-folder',
         headers,
-        payload: { key, provider: 'claude' },
+        payload: { key, provider: 'claude', name: 'Planetary observations' },
       });
     let result = await spawn();
     expect(result.statusCode).toBe(200);
@@ -146,10 +146,25 @@ it.each([false, true])(
       result = await track(key);
     }
     expect(store.projects()).toHaveLength(1);
+    expect(result.json().project.name).toBe('Planetary observations');
+    expect(store.projects()[0]!.root).toBe(await git(folder, ['rev-parse', '--show-toplevel']));
+    expect(store.agent(result.json().project.managerId).name).toBe(
+      'Planetary observations manager',
+    );
     expect(store.agent(result.json().project.managerId).provider).toBe('claude');
+    await app.close();
+    await open();
     expect((await spawn()).json()).toEqual(result.json());
+    const changed = await app.inject({
+      method: 'POST',
+      url: '/api/projects/connect-folder',
+      headers,
+      payload: { key, provider: 'claude', name: 'Different name' },
+    });
+    expect(changed.statusCode).toBe(409);
     expect(picker).toHaveBeenCalledTimes(1);
     expect(store.runs()).toEqual([]);
+    expect((await post()).json().project).toEqual(result.json().project);
   },
 );
 
