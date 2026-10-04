@@ -21,16 +21,58 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.apps-setup {
+.apps-setup-content {
   display: grid;
-  gap: 8px;
+  gap: 16px;
+  padding-top: 16px;
 }
-.apps-setup > h2 {
-  font-size: var(--text-lead);
+.apps-setup > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  background: var(--home-white);
+  font-size: var(--text-body);
+  font-weight: 650;
+  cursor: pointer;
+  list-style: none;
 }
-.apps-setup > p {
+.apps-setup > summary::-webkit-details-marker {
+  display: none;
+}
+.apps-setup > summary:hover {
+  border-color: var(--home-blue);
+}
+.apps-setup > summary:focus-visible {
+  outline: 2px solid var(--home-blue);
+  outline-offset: 3px;
+}
+.apps-setup > summary svg {
+  flex-shrink: 0;
+}
+.apps-setup[open] > summary svg {
+  transform: rotate(180deg);
+}
+.apps-setup-content > p {
   color: var(--home-muted);
   font-size: var(--text-body);
+}
+.apps-setup-dismiss {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: var(--text-small);
+  color: var(--home-muted);
+}
+.apps-setup-dismiss p {
+  flex: 1 1 240px;
 }
 .setup-guide {
   display: grid;

@@ -1,4 +1,6 @@
-import { ArrowUpRight } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ArrowUpRight, ChevronDown } from 'lucide-react';
+import { apiScope } from '../api';
 import { PromptCard } from '../SetupPrompt';
 import './apps-gallery.css';
 
@@ -62,11 +64,30 @@ export function SetupGuide({ headingLevel = 3 }: { headingLevel?: 2 | 3 }) {
 }
 
 export function AppsGallery() {
+  const heading = useRef<HTMLHeadingElement>(null);
+  // A display preference, not a claim that an account is authenticated.
+  const setupKey = `dock:${apiScope()}:apps:hide-setup`;
+  const [hideSetup, setHideSetup] = useState(() => {
+    try {
+      return localStorage.getItem(setupKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  function dismissSetup() {
+    try {
+      localStorage.setItem(setupKey, '1');
+    } catch {
+      // The shortcut still hides for this visit when storage is unavailable.
+    }
+    setHideSetup(true);
+    heading.current?.focus();
+  }
   return (
     <section className="apps-page" aria-labelledby="apps-heading">
       <header className="apps-heading">
         <p className="home-eyebrow">APPS</p>
-        <h1 id="apps-heading" tabIndex={-1}>
+        <h1 id="apps-heading" tabIndex={-1} ref={heading}>
           Apps
         </h1>
         <p>Tools for your projects.</p>
@@ -77,14 +98,26 @@ export function AppsGallery() {
         </span>
         LaTeX
       </a>
-      <section className="apps-setup" aria-labelledby="apps-setup-heading">
-        <h2 id="apps-setup-heading">Setup for apps that publish online</h2>
-        <p>
-          Only apps that use GitHub or Cloudflare need these accounts. Local chats and projects work
-          without them.
-        </p>
-        <SetupGuide />
-      </section>
+      {!hideSetup && (
+        <details className="apps-setup">
+          <summary>
+            Set up publishing accounts <ChevronDown size={20} aria-hidden="true" />
+          </summary>
+          <div className="apps-setup-content">
+            <p>
+              Only apps that use GitHub or Cloudflare need these accounts. Local chats and projects
+              work without them.
+            </p>
+            <div className="apps-setup-dismiss">
+              <p>Already set up? These instructions are always available in Help and setup.</p>
+              <button type="button" className="setup-link" onClick={dismissSetup}>
+                Hide setup shortcut
+              </button>
+            </div>
+            <SetupGuide />
+          </div>
+        </details>
+      )}
     </section>
   );
 }

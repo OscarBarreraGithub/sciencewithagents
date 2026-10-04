@@ -65,6 +65,11 @@ The optional companion needs no separate editor login. [Companion](../apps/vscod
 
 ## Documents on a phone
 
+Apps keeps GitHub and Cloudflare sign-up instructions behind **Set up publishing accounts**.
+You can hide this shortcut once set up; that display preference is saved for this browser and
+selected computer. The full instructions remain in **Help and setup**. Hiding the shortcut
+does not verify or change account sign-in.
+
 All chat views render inline and displayed LaTeX equations automatically, including saved
 and shared VS Code messages. Wide equations scroll within their message; code remains literal.
 

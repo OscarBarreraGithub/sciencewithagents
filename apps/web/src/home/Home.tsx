@@ -515,7 +515,7 @@ export function Home() {
           ) : page === 'home' ? (
             <HomeOverview data={data} now={now} />
           ) : page === 'apps' ? (
-            <AppsGallery />
+            <AppsGallery key={apiScope()} />
           ) : page === 'latex' ? (
             <LatexApp initialId={currentRoute.split('/')[1]} />
           ) : flowPages.has(page) ? (

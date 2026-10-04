@@ -110,9 +110,18 @@ test('GitHub and Cloudflare prompts are readable and copyable in Apps and Help',
   });
   await readings(page);
   await page.goto('/#/apps');
+  await expect(page.locator('.apps-setup .setup-guide')).not.toBeVisible();
+  await page.locator('.apps-setup > summary').click();
+  await expect(page.locator('.apps-setup .setup-guide')).toBeVisible();
   for (const destination of ['Apps', 'Help']) {
-    if (destination === 'Help')
+    if (destination === 'Help') {
+      await page.getByRole('button', { name: 'Hide setup shortcut' }).click();
+      await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeFocused();
+      await page.reload();
+      await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible();
+      await expect(page.locator('.apps-setup')).toHaveCount(0);
       await page.getByRole('button', { name: 'Help and setup', exact: true }).click();
+    }
     const guide =
       destination === 'Apps'
         ? page.locator('.apps-setup')
