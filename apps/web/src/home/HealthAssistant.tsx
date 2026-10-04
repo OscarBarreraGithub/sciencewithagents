@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, RefreshCw, Square } from 'lucide-react';
+import { Plus, RefreshCw, Settings2, Square } from 'lucide-react';
 import {
   agentSchema,
   snapshotSchema,
@@ -168,6 +168,7 @@ export function HealthAssistant({
   const [notice, setNotice] = useState('');
   const [thread, setThread] = useState<AgentDetail | null>(null);
   const [modelEdit, setModelEdit] = useState<{ model: string; effort: string } | null>(null);
+  const [modelOpen, setModelOpen] = useState(false);
   const [modelSaving, setModelSaving] = useState(false);
   const [modelError, setModelError] = useState('');
   const [error, setError] = useState('');
@@ -265,6 +266,11 @@ export function HealthAssistant({
     : !!primaryCheck && primaryCheck.reason !== 'asked';
   const canChangeModel =
     !snapshotOnly || threadChecks.some((c) => c.reason === 'asked' && !c.escalatedFrom);
+  const modelLocked =
+    !canChangeModel ||
+    !!foreground ||
+    !agent ||
+    ['running', 'queued', 'waiting'].includes(agent.status);
   const needsFreshReading = snapshotOnly && !identity?.reason;
   const blocked = !status
     ? unreachable
@@ -278,7 +284,7 @@ export function HealthAssistant({
           ? 'Saving the model…'
           : !provider
             ? modelsState.error
-              ? 'Model settings could not be loaded. Choose Ask Codex or Ask Claude above.'
+              ? 'Model settings could not be loaded. Choose a provider in Model settings.'
               : 'Loading the assistant’s provider…'
             : '';
   const send = async (question: string, key: string) => {
@@ -306,19 +312,26 @@ export function HealthAssistant({
   };
   const choose = (next: ProviderId) => {
     ask.clear();
-    if (threadId && next === threadProvider) return;
-    update({ selection: { kind: 'new' }, provider: next, model: '', effort: '' });
-    setNotice(threadId ? 'New conversation. The earlier conversation remains saved.' : '');
+    if (next === provider) return;
+    startNew(next);
+    setModelOpen(true);
   };
-  const startNew = () => {
+  const startNew = (nextProvider?: ProviderId) => {
     ask.clear();
     update({
       selection: { kind: 'new' },
-      provider: threadProvider ?? saved.provider,
+      provider: nextProvider ?? threadProvider ?? saved.provider,
       model: '',
       effort: '',
     });
-    setNotice('The previous conversation remains saved.');
+    setThread(null);
+    setError('');
+    setModelError('');
+    setModelEdit(null);
+    setModelOpen(false);
+    setNotice('');
+    // A deep link must not reopen the previous conversation after a reload.
+    if (agentId) window.location.replace('#/resources/chat');
   };
   const started = thread?.runs[0]?.createdAt ?? primaryCheck?.createdAt;
   const placeholder = agentSchema.parse({
@@ -359,234 +372,246 @@ export function HealthAssistant({
             </p>
           </div>
           <div className="health-assistant-tools">
+            <button
+              className="health-model-button"
+              aria-label="Model settings"
+              title="Model settings"
+              disabled={!!threadId && !agent}
+              onClick={() => {
+                setModelError('');
+                setModelEdit(agent?.model ? { model: agent.model, effort: agent.effort } : null);
+                setModelOpen(true);
+              }}
+            >
+              <Settings2 size={18} aria-hidden="true" />
+              <span>
+                {threadId
+                  ? (catalog?.models.find((m) => m.id === threadModel)?.label ??
+                    threadModel ??
+                    'Loading model…')
+                  : (selectedModel?.label ?? (provider ? providerNames[provider] : 'Choose model'))}
+              </span>
+            </button>
             {threadId && (
-              <button onClick={startNew}>
-                <Plus size={16} /> New diagnosis
+              <button onClick={() => startNew()} disabled={!!ask.busy || modelSaving}>
+                <Plus size={18} aria-hidden="true" /> New conversation
               </button>
             )}
           </div>
         </div>
-        <details className="health-chat-controls" open={!threadId} key={threadId ?? 'new'}>
-          <summary>
-            Model & provider{threadModel ? ` · ${modelsState.name(threadModel)}` : ''}
-          </summary>
-          <div className="health-provider" role="radiogroup" aria-label="Assistant provider">
-            {(['codex', 'claude'] as const).map((p) => (
-              <button
-                key={p}
-                role="radio"
-                aria-checked={provider === p}
-                disabled={!!ask.busy}
-                onClick={() => choose(p)}
-              >
-                Ask {providerNames[p]}
-              </button>
-            ))}
-          </div>
-          {threadId ? (
-            <div className="health-model-fixed">
-              <span>
-                <strong>{threadModel ? modelsState.name(threadModel) : 'Loading model…'}</strong>
-                {agent ? ` · thinking ${effortLabel(agent.effort)}` : ''}
-                {agent
-                  ? ` · ${agent.permission === 'read-only' ? 'read-only' : 'can edit its folder'}`
-                  : ''}
-              </span>
-              <small>
-                Change the model while keeping this conversation. Choosing another provider starts a
-                separate conversation; the earlier one stays saved.
-              </small>
-              {canChangeModel && (
-                <button
-                  className="secondary"
-                  disabled={
-                    !agent ||
-                    !!foreground ||
-                    modelSaving ||
-                    ['running', 'queued', 'waiting'].includes(agent.status)
-                  }
-                  onClick={() => {
-                    if (agent?.model) {
-                      setModelError('');
-                      setModelEdit({ model: agent.model, effort: agent.effort });
-                    }
-                  }}
-                >
-                  Change model
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="health-model-pick">
-              <label>
-                <span>Model</span>
-                <select
-                  value={saved.model}
-                  disabled={!provider || !!ask.busy}
-                  onChange={(e) => update({ model: e.target.value, effort: '' })}
-                >
-                  <option value="">
-                    {routine?.model
-                      ? `${routine.model.label} · routine-check default`
-                      : routine?.choice
-                        ? `Latest ${routine.choice.family} · routine-check default`
-                        : 'Central routine-check default'}
-                  </option>
-                  {catalog?.models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label === m.id ? m.id : `${m.label} (${m.id})`}
-                    </option>
-                  ))}
-                  {saved.model && !catalog?.models.some((m) => m.id === saved.model) && (
-                    <option value={saved.model}>{saved.model}</option>
-                  )}
-                </select>
-              </label>
-              <label>
-                <span>Thinking</span>
-                <select
-                  value={saved.effort}
-                  disabled={!provider || !!ask.busy}
-                  onChange={(e) => update({ effort: e.target.value })}
-                >
-                  <option value="">
-                    {saved.model
-                      ? 'Model default'
-                      : defaultEffort
-                        ? `${effortLabel(defaultEffort)} · default`
-                        : 'Default'}
-                  </option>
-                  {efforts.map((effort) => (
-                    <option key={effort} value={effort}>
-                      {effortLabel(effort)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                className="health-icon-button"
-                aria-label={`Refresh ${provider ? providerNames[provider] : ''} model list`}
-                disabled={!provider || !!catalog?.loading}
-                onClick={() => provider && void modelsState.load(provider, true)}
-              >
-                <RefreshCw size={17} />
-              </button>
-              <small>
-                {!provider
-                  ? 'Choose a provider to see its models.'
-                  : catalog?.loading
-                    ? `Checking ${providerNames[provider]}’s available models…`
-                    : catalog?.error
-                      ? catalog.error
-                      : modelsState.error && !modelsState.status
-                        ? 'Model settings are unavailable; the central default will be used.'
-                        : routine?.choice && !routine.model && !saved.model
-                          ? `No ${routine.choice.family} model is listed right now. Choose another model or refresh.`
-                          : modelsState.status &&
-                              !modelsState.status.policy.enabledProviders.includes(provider)
-                            ? `${providerNames[provider]} is not in your Model settings defaults. It runs only because you chose it here.`
-                            : 'Defaults come from Model settings. Other models apply to this diagnosis only.'}
-              </small>
-            </div>
-          )}
-        </details>
-        {modelEdit && agent && (
+        {modelOpen && (
           <Modal
             title="Resource assistant model"
             className="resource-model-dialog"
             close={() => {
-              if (!modelSaving) setModelEdit(null);
+              if (!modelSaving) setModelOpen(false);
             }}
           >
-            <p>
-              Choose any available {providerNames[agent.provider]} model. This conversation and its
-              history stay in place.
-            </p>
-            <div className="health-model-pick">
-              <label>
-                <span>Model</span>
-                <select
-                  value={modelEdit.model}
-                  disabled={modelSaving || !!catalog?.loading}
-                  onChange={(event) => {
-                    const model = catalog?.models.find((m) => m.id === event.target.value);
-                    setModelEdit({
-                      model: event.target.value,
-                      effort: model?.efforts.includes(modelEdit.effort)
-                        ? modelEdit.effort
-                        : (model?.efforts[0] ?? agent.effort),
-                    });
-                  }}
+            <div className="health-provider" role="radiogroup" aria-label="Assistant provider">
+              {(['codex', 'claude'] as const).map((p) => (
+                <button
+                  key={p}
+                  role="radio"
+                  aria-checked={provider === p}
+                  disabled={!!ask.busy || modelSaving}
+                  onClick={() => choose(p)}
                 >
-                  {catalog?.models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.label === model.id ? model.id : `${model.label} (${model.id})`}
-                    </option>
-                  ))}
-                  {!catalog?.models.some((m) => m.id === modelEdit.model) && (
-                    <option value={modelEdit.model}>{modelEdit.model}</option>
-                  )}
-                </select>
-              </label>
-              <label>
-                <span>Thinking</span>
-                <select
-                  value={modelEdit.effort}
-                  disabled={modelSaving}
-                  onChange={(event) => setModelEdit({ ...modelEdit, effort: event.target.value })}
-                >
-                  {(
-                    catalog?.models.find((m) => m.id === modelEdit.model)?.efforts ?? [
-                      modelEdit.effort,
-                    ]
-                  ).map((e) => (
-                    <option key={e} value={e}>
-                      {effortLabel(e)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  {providerNames[p]}
+                </button>
+              ))}
             </div>
-            {(modelError || catalog?.error) && <p role="alert">{modelError || catalog?.error}</p>}
-            <div className="resource-model-actions">
-              <button
-                className="secondary"
-                disabled={modelSaving || !!catalog?.loading}
-                onClick={() => void modelsState.load(agent.provider, true)}
-              >
-                Refresh models
-              </button>
-              <button
-                className="primary"
-                disabled={modelSaving || !catalog?.models.some((m) => m.id === modelEdit.model)}
-                onClick={async () => {
-                  setModelSaving(true);
-                  setModelError('');
-                  try {
-                    await api(`/agents/${agent.id}/settings`, {
-                      model: modelEdit.model,
-                      effort: modelEdit.effort,
-                      permission: agent.permission,
-                      toolPolicy: agent.toolPolicy,
-                    });
-                    setThread(await detail(agent.id));
-                    setModelEdit(null);
-                    setNotice('Model updated. Your next message uses the selected model.');
-                    refresh();
-                  } catch (reason) {
-                    setModelError(
-                      reason instanceof Error
-                        ? reason.message
-                        : 'The model could not be saved. Try again.',
-                    );
-                  } finally {
-                    setModelSaving(false);
-                  }
-                }}
-              >
-                {modelSaving ? 'Saving…' : 'Use this model'}
-              </button>
-            </div>
+            {threadId && agent && modelEdit ? (
+              <>
+                <p>Change the model while keeping this conversation.</p>
+                {modelLocked && (
+                  <p>
+                    Model changes are available when this conversation is idle. You can start a new
+                    conversation with another provider.
+                  </p>
+                )}
+                <div className="health-model-pick">
+                  <label>
+                    <span>Model</span>
+                    <select
+                      value={modelEdit.model}
+                      disabled={modelLocked || modelSaving || !!catalog?.loading}
+                      onChange={(event) => {
+                        const model = catalog?.models.find((m) => m.id === event.target.value);
+                        setModelEdit({
+                          model: event.target.value,
+                          effort: model?.efforts.includes(modelEdit.effort)
+                            ? modelEdit.effort
+                            : (model?.efforts[0] ?? agent.effort),
+                        });
+                      }}
+                    >
+                      {catalog?.models.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.label === model.id ? model.id : `${model.label} (${model.id})`}
+                        </option>
+                      ))}
+                      {!catalog?.models.some((m) => m.id === modelEdit.model) && (
+                        <option value={modelEdit.model}>{modelEdit.model}</option>
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Thinking</span>
+                    <select
+                      value={modelEdit.effort}
+                      disabled={modelLocked || modelSaving}
+                      onChange={(event) =>
+                        setModelEdit({ ...modelEdit, effort: event.target.value })
+                      }
+                    >
+                      {(
+                        catalog?.models.find((m) => m.id === modelEdit.model)?.efforts ?? [
+                          modelEdit.effort,
+                        ]
+                      ).map((e) => (
+                        <option key={e} value={e}>
+                          {effortLabel(e)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {(modelError || catalog?.error) && (
+                  <p role="alert">{modelError || catalog?.error}</p>
+                )}
+                <div className="resource-model-actions">
+                  <button
+                    className="secondary"
+                    disabled={modelLocked || modelSaving || !!catalog?.loading}
+                    onClick={() => void modelsState.load(agent.provider, true)}
+                  >
+                    Refresh models
+                  </button>
+                  <button
+                    className="primary"
+                    disabled={
+                      modelLocked ||
+                      modelSaving ||
+                      !catalog?.models.some((m) => m.id === modelEdit.model)
+                    }
+                    onClick={async () => {
+                      setModelSaving(true);
+                      setModelError('');
+                      try {
+                        await api(`/agents/${agent.id}/settings`, {
+                          model: modelEdit.model,
+                          effort: modelEdit.effort,
+                          permission: agent.permission,
+                          toolPolicy: agent.toolPolicy,
+                        });
+                        setThread(await detail(agent.id));
+                        setModelEdit(null);
+                        setModelOpen(false);
+                        setNotice('Model updated. Your next message uses the selected model.');
+                        refresh();
+                      } catch (reason) {
+                        setModelError(
+                          reason instanceof Error
+                            ? reason.message
+                            : 'The model could not be saved. Try again.',
+                        );
+                      } finally {
+                        setModelSaving(false);
+                      }
+                    }}
+                  >
+                    {modelSaving ? 'Saving…' : 'Use this model'}
+                  </button>
+                </div>
+              </>
+            ) : !threadId ? (
+              <>
+                <div className="health-model-pick">
+                  <label>
+                    <span>Model</span>
+                    <select
+                      value={saved.model}
+                      disabled={!provider || !!ask.busy}
+                      onChange={(e) => update({ model: e.target.value, effort: '' })}
+                    >
+                      <option value="">
+                        {routine?.model
+                          ? `${routine.model.label} · routine-check default`
+                          : routine?.choice
+                            ? `Latest ${routine.choice.family} · routine-check default`
+                            : 'Central routine-check default'}
+                      </option>
+                      {catalog?.models.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label === m.id ? m.id : `${m.label} (${m.id})`}
+                        </option>
+                      ))}
+                      {saved.model && !catalog?.models.some((m) => m.id === saved.model) && (
+                        <option value={saved.model}>{saved.model}</option>
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Thinking</span>
+                    <select
+                      value={saved.effort}
+                      disabled={!provider || !!ask.busy}
+                      onChange={(e) => update({ effort: e.target.value })}
+                    >
+                      <option value="">
+                        {saved.model
+                          ? 'Model default'
+                          : defaultEffort
+                            ? `${effortLabel(defaultEffort)} · default`
+                            : 'Default'}
+                      </option>
+                      {efforts.map((effort) => (
+                        <option key={effort} value={effort}>
+                          {effortLabel(effort)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="health-icon-button"
+                    aria-label={`Refresh ${provider ? providerNames[provider] : ''} model list`}
+                    disabled={!provider || !!catalog?.loading}
+                    onClick={() => provider && void modelsState.load(provider, true)}
+                  >
+                    <RefreshCw size={17} /> Refresh models
+                  </button>
+                  <small>
+                    {!provider
+                      ? 'Choose a provider to see its models.'
+                      : catalog?.loading
+                        ? `Checking ${providerNames[provider]}’s available models…`
+                        : catalog?.error
+                          ? catalog.error
+                          : modelsState.error && !modelsState.status
+                            ? 'Model settings are unavailable; the central default will be used.'
+                            : routine?.choice && !routine.model && !saved.model
+                              ? `No ${routine.choice.family} model is listed right now. Choose another model or refresh.`
+                              : modelsState.status &&
+                                  !modelsState.status.policy.enabledProviders.includes(provider)
+                                ? `${providerNames[provider]} is not in your Model settings defaults. It runs only because you chose it here.`
+                                : 'Defaults come from Model settings. Other models apply to this diagnosis only.'}
+                  </small>
+                </div>
+                <div className="resource-model-actions">
+                  <button className="primary" onClick={() => setModelOpen(false)}>
+                    Done
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p>Loading this conversation’s model…</p>
+            )}
+            {threadId && (
+              <p className="health-model-help">
+                Choosing another provider starts a new conversation. Your previous conversation
+                stays saved.
+              </p>
+            )}
           </Modal>
         )}
         {running && (
@@ -645,7 +670,8 @@ export function HealthAssistant({
       <div className="health-chat-main flow-chat-main">
         {agent ? (
           <Conversation
-            key={agent.id}
+            // The transcript and composer are siblings: their keys must be distinct.
+            key={`conversation:${agent.id}`}
             agent={agent}
             detail={thread}
             formatEntry={(entry) =>
@@ -661,12 +687,14 @@ export function HealthAssistant({
             act={act}
           />
         ) : (
-          <div className="health-intro">
-            <p>
-              {threadId
-                ? 'Loading conversation…'
-                : 'Describe a slowdown or anything odd. The assistant receives current measurements and saved health readings with your question.'}
-            </p>
+          <div className="health-intro" key="new-conversation">
+            <p>{threadId ? 'Loading conversation…' : 'Ask about this computer'}</p>
+            {!threadId && (
+              <p>
+                Describe a slowdown or ask what’s running. Current measurements are included
+                automatically.
+              </p>
+            )}
           </div>
         )}
         {threadChecks
@@ -679,12 +707,13 @@ export function HealthAssistant({
           ))}
         {(!threadId || agent) && (
           <Composer
-            key={threadId ?? 'new'}
+            key={`composer:${threadId ?? 'new'}`}
             agent={agent ?? placeholder}
             workspace={workspace.state}
             draftOverride={threadId ? undefined : local.draft}
             maxLength={1000}
             specialized
+            messagePlaceholder="Ask about this computer…"
             localHistory={local.history}
             onNotepadClose={local.checkpoint}
             disabled={!!blocked || !!ask.busy || (!!threadId && !agent)}

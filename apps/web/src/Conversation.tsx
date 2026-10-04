@@ -454,6 +454,7 @@ export function Composer({
   maxLength = 24_000,
   specialized = false,
   localHistory,
+  messagePlaceholder,
 }: {
   agent: Agent;
   workspace: WorkspaceSnapshot | null;
@@ -478,6 +479,7 @@ export function Composer({
   draftOverride?: SharedDraft;
   maxLength?: number;
   specialized?: boolean;
+  messagePlaceholder?: string;
   localHistory?: { versions: { text: string; at: string }[]; restore: (text: string) => void };
 }) {
   const managedDraft = useSharedDraft(draftOverride ? null : workspace, agent.id);
@@ -847,7 +849,8 @@ export function Composer({
         ref={textarea}
         aria-label={`Message ${agent.name}`}
         placeholder={
-          steer
+          messagePlaceholder ??
+          (steer
             ? 'Guide the reply in progress…'
             : canSteer
               ? 'Write the next message…'
@@ -855,7 +858,7 @@ export function Composer({
                 ? 'Add a follow-up…'
                 : agent.role === 'manager'
                   ? 'Describe an idea, ask a question, or move the work forward…'
-                  : `Message ${agent.name}…`
+                  : `Message ${agent.name}…`)
         }
         value={text}
         onChange={(event) => {

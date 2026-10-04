@@ -738,7 +738,7 @@ export function ChatPage({
       >
         <div className="flow-chat-main">
           <Conversation
-            key={id}
+            key={`conversation:${id}`}
             personal={personal}
             intro={
               embedded
@@ -821,7 +821,7 @@ export function ChatPage({
             </div>
           ) : (
             <Composer
-              key={id}
+              key={`composer:${id}`}
               agent={agent}
               workspace={workspace.state}
               disabled={!connected || busy}

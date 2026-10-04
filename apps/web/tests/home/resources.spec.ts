@@ -317,10 +317,11 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   const geometry = await full.boundingBox();
   expect(geometry!.width).toBe(page.viewportSize()!.width);
   expect(geometry!.height).toBeGreaterThanOrEqual(page.viewportSize()!.height - 2);
-  await expect(assistant.getByRole('radio', { name: 'Ask Codex', exact: true })).toBeChecked();
+  await assistant.getByRole('button', { name: 'Model settings', exact: true }).click();
+  await expect(assistant.getByRole('radio', { name: 'Codex', exact: true })).toBeChecked();
 
-  await assistant.getByRole('radio', { name: 'Ask Claude', exact: true }).click();
-  await expect(assistant.getByRole('radio', { name: 'Ask Claude', exact: true })).toBeChecked();
+  await assistant.getByRole('radio', { name: 'Claude', exact: true }).click();
+  await expect(assistant.getByRole('radio', { name: 'Claude', exact: true })).toBeChecked();
   await expect(
     assistant.getByRole('combobox', { name: 'Model', exact: true }).locator('option[value=""]'),
   ).toHaveText('Sonnet example · routine-check default');
@@ -330,6 +331,7 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   await assistant
     .getByRole('combobox', { name: 'Thinking', exact: true })
     .selectOption('adaptive-v2');
+  await assistant.getByRole('button', { name: 'Done', exact: true }).click();
   expect(writes).toEqual([]);
   await assistant
     .getByRole('textbox', { name: 'Message Resource assistant' })
@@ -340,13 +342,15 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   ).toBeVisible();
   await expect(assistant.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   await page.reload();
-  await expect(assistant.getByRole('radio', { name: 'Ask Claude', exact: true })).toBeChecked();
+  await assistant.getByRole('button', { name: 'Model settings', exact: true }).click();
+  await expect(assistant.getByRole('radio', { name: 'Claude', exact: true })).toBeChecked();
   await expect(assistant.getByRole('combobox', { name: 'Model', exact: true })).toHaveValue(
     'fixture-opus',
   );
   await expect(assistant.getByRole('combobox', { name: 'Thinking', exact: true })).toHaveValue(
     'adaptive-v2',
   );
+  await assistant.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(assistant.getByRole('textbox', { name: 'Message Resource assistant' })).toHaveValue(
     'Why is Chrome slow at only 20% CPU?',
   );
@@ -364,13 +368,13 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   });
   expect(status.checks).toHaveLength(1);
   await expect(assistant.getByRole('combobox', { name: 'Model', exact: true })).toHaveCount(0);
-  await assistant.locator('.health-chat-controls > summary').click();
+  await assistant.getByRole('button', { name: 'Model settings', exact: true }).click();
   await expect(
     assistant.getByText('Change the model while keeping this conversation.', {
       exact: false,
     }),
   ).toBeVisible();
-  await assistant.locator('.health-chat-controls > summary').click();
+  await assistant.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await expect(assistant.locator('.composer textarea')).toBeInViewport();
   await expect(
     assistant.getByRole('button', { name: 'Open notepad', exact: true }),
@@ -449,7 +453,9 @@ for (const state of ['missing', 'stale'] as const) {
       ).toBeVisible();
     }
     await page.getByRole('button', { name: 'Open Resource assistant' }).click();
-    await expect(assistant.getByRole('radio', { name: 'Ask Codex', exact: true })).toBeChecked();
+    await assistant.getByRole('button', { name: 'Model settings', exact: true }).click();
+    await expect(assistant.getByRole('radio', { name: 'Codex', exact: true })).toBeChecked();
+    await assistant.getByRole('button', { name: 'Done', exact: true }).click();
     await assistant
       .getByRole('textbox', { name: 'Message Resource assistant' })
       .fill('Please explain the slowdown.');
@@ -860,21 +866,23 @@ test('first-run failures explain the blocked assistant and keep provider choice 
   );
   await page.getByRole('button', { name: 'Open Resource assistant' }).click();
   await expect(
-    chat.getByText('Model settings could not be loaded. Choose Ask Codex or Ask Claude above.'),
+    chat.getByText('Model settings could not be loaded. Choose a provider in Model settings.'),
   ).toBeVisible();
-  await expect(chat.getByRole('radio', { name: 'Ask Codex', exact: true })).not.toBeChecked();
-  await chat.getByRole('radio', { name: 'Ask Claude', exact: true }).click();
+  await chat.getByRole('button', { name: 'Model settings', exact: true }).click();
+  await expect(chat.getByRole('radio', { name: 'Codex', exact: true })).not.toBeChecked();
+  await chat.getByRole('radio', { name: 'Claude', exact: true }).click();
   await expect(chat.getByRole('combobox', { name: 'Model', exact: true })).toBeEnabled();
   await expect(
     chat
       .getByRole('combobox', { name: 'Model', exact: true })
       .locator('option', { hasText: 'Opus example' }),
   ).toHaveCount(1);
-  await chat.getByRole('textbox', { name: 'Message Resource assistant' }).fill('Why is it slow?');
-  await expect(chat.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   await expect(
     chat.getByText('Model settings are unavailable; the central default will be used.'),
   ).toBeVisible();
+  await chat.getByRole('button', { name: 'Done', exact: true }).click();
+  await chat.getByRole('textbox', { name: 'Message Resource assistant' }).fill('Why is it slow?');
+  await expect(chat.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   expect(writes).toEqual([]);
   await noHorizontalOverflow(page);
 });
@@ -934,8 +942,7 @@ for (const mode of ['interactive', 'snapshot'] as const) {
       .getByRole('textbox', { name: 'Message Resource assistant' })
       .fill('What is using the CPU?');
     await expect(chat.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
-    await chat.locator('.health-chat-controls > summary').click();
-    await chat.getByRole('button', { name: 'Change model', exact: true }).click();
+    await chat.getByRole('button', { name: 'Model settings', exact: true }).click();
     const picker = page.getByRole('dialog', { name: 'Resource assistant model', exact: true });
     await picker.getByRole('combobox', { name: 'Model', exact: true }).selectOption('fixture-opus');
     await picker
@@ -967,3 +974,113 @@ for (const mode of ['interactive', 'snapshot'] as const) {
     });
   });
 }
+
+// Different sibling keys matter here: a transcript and its composer must not share an ID.
+// This exercises real React reconciliation, including late polling and repeated transitions.
+test('new resource conversations remove old messages, preserve history and stay new after reload', async ({
+  page,
+}, info) => {
+  const status = reading();
+  const previous = diagnosis(Date.now() - 60_000, 'Earlier diagnosis: a long-running Python job.');
+  status.checks = [previous];
+  const history = conversation(
+    previous,
+    'Earlier question\n<agent-dock-evidence>Private measurements',
+  );
+  const { conversations, writes } = await fixture(
+    page,
+    status,
+    new Map([[previous.agentId, history]]),
+  );
+  const asks: Record<string, unknown>[] = [];
+  await page.route('**/api/resources/ask', async (route) => {
+    const input = route.request().postDataJSON();
+    asks.push(input);
+    const created = diagnosis(Date.now(), 'New answer: memory pressure is normal.');
+    conversations.set(created.agentId, conversation(created, input.question));
+    status.checks.unshift(created);
+    await route.fulfill({ json: status });
+  });
+  await page.goto(`/#/resources/${previous.agentId}`);
+  const chat = page.getByRole('dialog', { name: 'Resource assistant conversation', exact: true });
+  await expect(chat.getByText(previous.summary, { exact: true })).toBeVisible();
+  await expect(chat.getByText('Private measurements', { exact: false })).toHaveCount(0);
+  await expect(chat.getByRole('combobox')).toHaveCount(0);
+  await chat
+    .getByRole('textbox', { name: 'Message Resource assistant' })
+    .fill('Unsent draft for the earlier conversation');
+  // Leave an old poll in flight; it must not restore the old transcript after New.
+  let finishPoll: (() => void) | undefined;
+  const pending = new Promise<void>((resolve) => {
+    finishPoll = resolve;
+  });
+  let polling = false;
+  await page.route(`**/api/agents/${previous.agentId}`, async (route) => {
+    polling = true;
+    await pending;
+    await route.fulfill({ json: history });
+  });
+  await expect.poll(() => polling).toBe(true);
+  await chat.getByRole('button', { name: 'New conversation', exact: true }).click();
+  finishPoll!();
+  await expect(page).toHaveURL(/#\/resources\/chat$/);
+  await expect(chat.locator('.conversation')).toHaveCount(0);
+  await expect(chat.locator('.message')).toHaveCount(0);
+  await expect(chat.locator('.health-intro')).toHaveCount(1);
+  await expect(chat.getByRole('combobox')).toHaveCount(0);
+  await expect(chat.getByRole('textbox', { name: 'Message Resource assistant' })).toHaveValue('');
+  expect(conversations.get(previous.agentId)).toEqual(history);
+  expect(writes).toEqual([]);
+  await page.reload();
+  await expect(chat.locator('.health-intro')).toBeVisible();
+  await expect(chat.locator('.conversation')).toHaveCount(0);
+  const box = chat.getByRole('textbox', { name: 'Message Resource assistant' });
+  await page.goto(`/#/resources/${previous.agentId}`);
+  await expect(box).toHaveValue('Unsent draft for the earlier conversation');
+  await expect(chat.locator('.conversation')).toHaveCount(1);
+  await chat.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await expect(box).toHaveValue('');
+  await box.fill('What is running now?');
+  await chat.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(
+    chat.getByText('New answer: memory pressure is normal.', { exact: true }),
+  ).toBeVisible();
+  expect(asks).toHaveLength(1);
+  expect(asks[0]).toMatchObject({ question: 'What is running now?', provider: 'claude' });
+  expect(asks[0]).not.toHaveProperty('agentId');
+  await expect(chat.getByText(previous.summary, { exact: true })).toHaveCount(0);
+  await expect(chat.locator('.conversation')).toHaveCount(1);
+  await expect(chat.locator('.composer')).toHaveCount(1);
+  await expect(chat.locator('.health-intro')).toHaveCount(0);
+  await chat.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await box.fill('Keep this new draft while changing models');
+  await chat.getByRole('button', { name: 'Model settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Resource assistant model', exact: true });
+  await settings.getByRole('radio', { name: 'Codex', exact: true }).click();
+  await settings.getByRole('combobox', { name: 'Model', exact: true }).selectOption('fixture-sol');
+  // Re-selecting this provider must not reset a deliberate model choice.
+  await settings.getByRole('radio', { name: 'Codex', exact: true }).click();
+  await expect(settings.getByRole('combobox', { name: 'Model', exact: true })).toHaveValue(
+    'fixture-sol',
+  );
+  await settings.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(box).toHaveValue('Keep this new draft while changing models');
+  expect(asks).toHaveLength(1);
+  for (const zoom of [1, 1.25, 1.5]) {
+    await page.evaluate((factor) => {
+      document.documentElement.style.fontSize = `${16 * factor}px`;
+    }, zoom);
+    await expect(box).toBeInViewport();
+    await expect(
+      chat.getByRole('button', { name: 'Model settings', exact: true }),
+    ).toBeInViewport();
+    await expect(chat.locator('.message')).toHaveCount(0);
+    expect(await chat.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    const header = await chat.locator('.health-chat-options').boundingBox();
+    expect(header!.height).toBeLessThan(page.viewportSize()!.height * 0.3);
+    await mkdir('../../data/resource-chat-polish-20261003', { recursive: true });
+    await page.screenshot({
+      path: `../../data/resource-chat-polish-20261003/${info.project.name}-new-${zoom}.png`,
+    });
+  }
+});

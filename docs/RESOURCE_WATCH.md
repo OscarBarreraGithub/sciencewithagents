@@ -8,7 +8,9 @@ Projects and jobs appear above Apps and processes. Past readings are inspected t
 graphs; the page has no history list or conversation archive browser. Resource conversations,
 reports and their evidence remain saved and available to the resource assistant and history
 APIs, outside the normal chat list. Existing saved-conversation links still work.
-Model settings and the other core workspace destinations are connected; see FEATURES.md.
+The model button opens provider, model and thinking choices without crowding the chat.
+**New conversation** opens a clean draft; previous messages remain saved and do not reappear
+on reload.
 
 ## What matters
 
@@ -62,7 +64,7 @@ A question about failed login or switching users does not authorize logging out,
 killing processes or changing OS/account settings. Low CPU alone never proves a service works.
 
 Central [model policy](MODEL_POLICY.md) selects Sonnet or Terra for routine assistance, or
-the owner's exact model choice. In an idle conversation, open **Model & provider → Change model**
+the owner's exact model choice. In an idle conversation, open the **model button**
 to choose any available model and reasoning level on that provider. The next question uses it
 with the same saved history. Switching providers starts a separate conversation. Automatic checkpoint/pressure checks remain snapshot-only:
 no execution, filesystem, network or process-control tools. They can refresh the same

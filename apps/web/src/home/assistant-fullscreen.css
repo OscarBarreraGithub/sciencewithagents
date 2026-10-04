@@ -125,16 +125,26 @@ dialog.assistant-fullscreen,
 .assistant-fullscreen .health-assistant-head p {
   margin: 3px 0 0;
 }
-.assistant-fullscreen .health-chat-controls {
-  margin: 0;
-  flex-shrink: 0;
-  max-height: none;
-  overflow: visible;
+.assistant-fullscreen .health-assistant-tools {
+  width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+  justify-content: space-between;
 }
-.assistant-fullscreen .health-chat-controls > summary {
-  padding: 10px 12px;
-  cursor: pointer;
-  font-size: var(--text-small);
+.assistant-fullscreen .health-assistant-tools button {
+  min-height: 44px;
+}
+.assistant-fullscreen .health-model-button {
+  min-width: 0;
+  max-width: min(60%, 24rem);
+}
+.assistant-fullscreen .health-model-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assistant-fullscreen .health-model-button svg {
+  flex-shrink: 0;
 }
 .assistant-fullscreen .health-chat-main {
   display: flex;
@@ -148,6 +158,20 @@ dialog.assistant-fullscreen,
 .assistant-fullscreen .health-intro {
   overflow: auto;
   flex: 1;
+  align-content: center;
+  text-align: center;
+  padding: 24px;
+  color: var(--health-muted, #626d78);
+}
+.assistant-fullscreen .health-intro p {
+  max-width: 34rem;
+  margin: 8px auto;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+.assistant-fullscreen .health-intro p:first-child {
+  font-weight: 600;
+  color: var(--home-ink, #243538);
 }
 .assistant-fullscreen :is(.health-running, .health-notice, .health-alert) {
   flex-shrink: 0;

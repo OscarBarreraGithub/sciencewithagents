@@ -420,20 +420,6 @@
   line-height: 1.5;
   color: var(--health-muted);
 }
-.health-model-fixed {
-  display: grid;
-  gap: 3px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--health-soft);
-  font-size: var(--text-small);
-  overflow-wrap: anywhere;
-}
-.health-model-fixed small {
-  font-size: var(--text-small);
-  line-height: 1.5;
-  color: var(--health-muted);
-}
 .health-transcript {
   height: clamp(220px, 40dvh, 400px);
   overflow-y: auto;
@@ -1064,11 +1050,21 @@
   gap: 10px;
   justify-content: flex-end;
 }
-.resource-model-actions button,
-.health-model-fixed > button {
+.resource-model-actions button {
   min-height: 44px;
 }
-.health-model-fixed > button {
+.resource-model-dialog .health-icon-button {
+  width: auto;
   justify-self: start;
-  margin-top: 8px;
+  gap: 8px;
+  padding: 8px 12px !important;
+}
+.resource-model-dialog label {
+  margin: 0;
+}
+.resource-model-dialog .health-model-help {
+  margin-top: 16px;
+  color: var(--health-muted);
+  font-size: var(--text-small);
+  line-height: 1.5;
 }
