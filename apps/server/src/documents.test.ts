@@ -75,6 +75,7 @@ it('opens an existing PDF, preserves recent documents across restart and rejects
   documents = new Documents(store, data, home);
   expect(documents.list().documents).toHaveLength(1);
   await rm(join(home, 'existing.pdf'));
+  expect(await documents.open(document.id, key)).toEqual(initial);
   expect(await documents.open(document.id, randomUUID())).toMatchObject({ hasPdf: true });
   await expect(documents.open(document.id, randomUUID(), true)).rejects.toThrow(/unavailable/);
 });

@@ -3451,6 +3451,8 @@ export class Runtime {
           ? this.store.project(agent.projectId).root
           : agent.cwd;
       return this.withLock(`document-register:${agentId}`, async () => {
+        if (this.store.db.prepare('SELECT 1 FROM operations WHERE key=?').get(key))
+          return this.store.operation(key, { agentId, name, raw }, () => null);
         const result = await this.documents.registerRelative(root, value.path);
         return this.store.operation(key, { agentId, name, raw }, () => result);
       });

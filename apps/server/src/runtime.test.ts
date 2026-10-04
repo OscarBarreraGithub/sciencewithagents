@@ -1723,6 +1723,8 @@ it('gives a manager durable report links without launching work, and prevents pr
   expect(link.state).toBe('source');
   expect(await runtime.tool(manager, key, 'dock_document', { path: 'report.tex' })).toEqual(link);
   expect(store.runs()).toHaveLength(0);
+  rmSync(join(projectRoot, 'report.tex'));
+  expect(await runtime.tool(manager, key, 'dock_document', { path: 'report.tex' })).toEqual(link);
   await expect(
     runtime.tool(manager, randomUUID(), 'dock_document', { path: '../secret.tex' }),
   ).rejects.toThrow(/relative/);

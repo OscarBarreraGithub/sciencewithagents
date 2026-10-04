@@ -196,6 +196,8 @@ export class Documents {
     return { path, revision: `${info.size}:${info.mtimeMs}` };
   }
   async open(id: string, key: string, rebuild = false) {
+    if (this.store.db.prepare('SELECT 1 FROM operations WHERE key=?').get(`document:${key}`))
+      return this.store.operation(`document:${key}`, { id, rebuild }, () => this.get(id));
     let doc = this.read(id);
     if (this.stopped) throw new Conflict('The reader is restarting. Try again in a moment.');
     const source = await this.source(doc).catch(() => null);
