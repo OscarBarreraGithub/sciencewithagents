@@ -1,0 +1,43 @@
+.chat-markdown {
+  min-width: 0;
+  max-width: 100%;
+}
+.chat-markdown > :first-child {
+  margin-top: 0;
+}
+.chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+.chat-markdown .katex {
+  font-size: 1.08em;
+}
+/* An unusually wide inline fraction can also be panned without moving the chat. */
+.chat-markdown p {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+/* Keep long equations inside their message, including at enlarged text sizes. */
+.chat-markdown .katex-display {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0.8em 0;
+  padding: 0.3em 0;
+  overscroll-behavior-x: contain;
+}
+.chat-markdown .katex-display > .katex {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  text-align: center;
+}
+.chat-markdown .katex-error {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.95em;
+}
+/* KaTeX owns its line boxes; ordinary Markdown wrapping must not split glyphs. */
+.chat-markdown .katex * {
+  overflow-wrap: normal;
+}

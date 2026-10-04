@@ -27,7 +27,7 @@ The README is the current public landing; a separate website and Guide/FAQ are d
   and resource records do not masquerade as personal chats. No separate editor login is needed.
 - **Computer health with context.** See memory pressure, trends and app/project groups, then ask
   a selectable assistant about a slowdown. Automatic checks are bounded and optional.
-- **Read the result.** Open LaTeX reports and PDFs on your phone, zoom into equations, and
+- **Read the result.** Equations render directly in chat. Open LaTeX reports and PDFs on your phone, zoom into equations, and
   return to the same point in the manager chat. Recent documents and computer-folder browsing
   also work directly from Apps. Compilation happens on the selected computer.
 - **Phone access.** Pair once with computer confirmation, then use the same workspace. No repeat

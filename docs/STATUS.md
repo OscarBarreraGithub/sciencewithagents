@@ -19,6 +19,8 @@ diagnostics for sustained resource changes, with cooldowns and a daily attempt l
 The app connects project setup, manager/worker conversations, versioned prompt drafts,
 shared editor chats, QUARK's board/budgets/coordinator, computer health, model preferences,
 phone pairing, recovery and the [LaTeX/PDF reader](LATEX.md). [Features](FEATURES.md) describes their boundaries.
+LaTeX math renders automatically across chat views and shared editor messages; full document
+compilation remains in the reader.
 Source installation and isolated Codex-only/Claude-only first replies have been exercised
 on Apple Silicon macOS. Linux CI does not certify native Linux desktop integration.
 Intel Mac and Windows remain unqualified; see [machine support](CONTRIBUTOR_SETUP.md#check-the-machine-first).

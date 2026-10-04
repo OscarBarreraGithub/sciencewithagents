@@ -1,4 +1,4 @@
-import { DocumentLink } from './Documents';
+import { ChatMarkdown } from './ChatMarkdown';
 import { createContext, memo, useContext, useEffect, useRef, useState } from 'react';
 import {
   ArrowDown,
@@ -29,19 +29,14 @@ import './VscodeMirror.css';
 import { MirrorStopReply } from './MirrorStopReply';
 import { Notepad, type DraftSelection } from './Notepad';
 import { useBrowserNotepad } from './useBrowserNotepad';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 
 // A native Codex daemon session lives on the computer, never in a VS Code window.
 const DaemonSource = createContext(false);
 
-const markdownComponents = {
-  a: DocumentLink,
-  img: function MirrorImage({ alt }: React.ComponentProps<'img'>) {
-    const daemon = useContext(DaemonSource);
-    return <span>[Image: {alt ?? (daemon ? 'view on your computer' : 'view in VS Code')}]</span>;
-  },
-};
+function MirrorImage({ alt }: React.ComponentProps<'img'>) {
+  const daemon = useContext(DaemonSource);
+  return <span>[Image: {alt ?? (daemon ? 'view on your computer' : 'view in VS Code')}]</span>;
+}
 
 function EntryText({
   entry,
@@ -84,12 +79,10 @@ function EntryText({
   }
   return (
     <>
-      {current.textLength || entry.role === 'activity' ? (
+      {entry.role === 'activity' ? (
         <pre>{current.text}</pre>
       ) : (
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {current.text}
-        </ReactMarkdown>
+        <ChatMarkdown image={MirrorImage}>{current.text}</ChatMarkdown>
       )}
       {current.textLength !== undefined && (
         <div className="mirror-text-pages">

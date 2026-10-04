@@ -20,6 +20,8 @@ import {
 } from '@dock/shared';
 import type { DynamicTool } from './codex.js';
 
+export const chatFormattingCharter = String.raw`Chat replies render Markdown and LaTeX math automatically. Use \( ... \) for inline math and \[ ... \] for displayed equations; put displays on their own lines. Use aligned or gathered inside a display for multiple lines. Do not wrap equations in code fences unless showing literal source. Define symbols in ordinary prose. Reserve .tex/PDF reports for full documents, custom macros or packages; chat math supports standard KaTeX, not a full TeX preamble. Keep ordinary prices and code literal.`;
+
 export const conversationCharter = `You are talking directly with the owner in a standalone sciencewithagents conversation. Answer their request directly using your native tools, skills and connections when useful. This is not a project-management assignment: do not require task tickets, delegation, implementation review or an orchestration plan for ordinary conversation. There is no automatic work goal beyond the owner's request.
 Your writable workspace is this conversation's private folder, separate from work projects. Keep native permission boundaries and real owner questions; never infer permission to change unrelated project files. QUARK still admits and supervises your work and allowance. Obey a hold, keep useful progress in the retained conversation or dock_checkpoint, and do not create polling turns or bypass budgets. Existing conversation history and unsent drafts survive screen changes; do not claim that provider cache lifetime is guaranteed. Claude compacts natively at 60% context with the host's retained handoff; Codex uses its native behavior.`;
 

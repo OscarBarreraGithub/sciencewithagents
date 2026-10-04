@@ -1,5 +1,22 @@
 # LaTeX and PDF reader
 
+## Equations in chat
+
+Chat renders math automatically in manager, worker, QUARK, resource and shared editor
+conversations, including saved replies. Use `\( ... \)` inline and `\[ ... \]` for displayed
+equations; these are also the app's agent instructions. `$...$`, `$$...$$` and `math` code
+fences are supported for existing messages. Ordinary code fences and inline code stay literal.
+Wide displays scroll inside the message; unusually wide inline formulas can be panned in
+their paragraph. Rendering and fonts are local and spend no model tokens.
+
+The renderer uses [KaTeX](https://katex.org/), with accessible MathML alongside the visual
+equation. Incomplete streamed equations stay as text until closed; malformed math stays
+readable instead of breaking the chat. Plain prices such as `$5 and $10` stay text. This is
+math typesetting, not a full TeX compiler: custom preambles/packages belong in a `.tex` report
+opened with the reader below. Source messages are retained unchanged.
+
+## Read documents
+
 Open **Apps → LaTeX**. Browse the selected computer’s folders, choose a `.tex` or `.pdf`,
 or reopen a recent document. PDF files need no compiler. LaTeX builds on the computer;
 the phone displays the result. Both devices use the existing authenticated connection.

@@ -15,14 +15,18 @@
     "@simplewebauthn/browser": "13.3.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
+    "katex": "^0.16.47",
     "lucide-react": "^0.468.0",
     "pdfjs-dist": "^6.4.299",
     "qrcode.react": "^4.2.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "thinking-orbs": "0.3.1"
+    "remark-parse": "^11.0.0",
+    "thinking-orbs": "0.3.1",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

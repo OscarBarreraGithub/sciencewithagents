@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   resourceStatusSchema,
   type ProviderId,
@@ -8,7 +8,7 @@ import {
 } from '@dock/shared';
 import { api, apiScope, ApiError } from '../api';
 
-const ReactMarkdown = lazy(() => import('react-markdown'));
+import { ChatMarkdown } from '../ChatMarkdown';
 
 export const providerNames: Record<ProviderId, string> = { codex: 'Codex', claude: 'Claude' };
 export const pressureLabels: Record<ResourceSample['memoryPressure'], string> = {
@@ -50,31 +50,11 @@ export function ago(iso: string, now: number) {
   return `${Math.round(seconds / 3600)} h ago`;
 }
 
-/** Diagnoses are model output: render a small markdown subset, never links or images. */
+/** Reports share chat math formatting, with links and images kept inactive. */
 export function ReportText({ text, fallback }: { text: string; fallback: string }) {
   return (
     <div className="health-report-text">
-      <Suspense fallback={<p>{text || fallback}</p>}>
-        <ReactMarkdown
-          allowedElements={[
-            'p',
-            'strong',
-            'em',
-            'ul',
-            'ol',
-            'li',
-            'h3',
-            'h4',
-            'code',
-            'pre',
-            'blockquote',
-            'br',
-          ]}
-          unwrapDisallowed
-        >
-          {text || fallback}
-        </ReactMarkdown>
-      </Suspense>
+      <ChatMarkdown report>{text || fallback}</ChatMarkdown>
     </div>
   );
 }

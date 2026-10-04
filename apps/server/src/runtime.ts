@@ -35,7 +35,13 @@ import {
 } from '@dock/shared';
 import { CodexRpc, threadResponse, toolCall, turnResponse, type Provider } from './codex.js';
 import { Conflict, Store, now, publicTask, type PrivateAgent, type PrivateRun } from './store.js';
-import { managerCharter, workerCharter, conversationCharter, toolsFor } from './charters.js';
+import {
+  managerCharter,
+  workerCharter,
+  conversationCharter,
+  chatFormattingCharter,
+  toolsFor,
+} from './charters.js';
 import {
   checkpointWorktree,
   ensureWorktree,
@@ -363,6 +369,9 @@ export class Runtime {
     });
   }
   private charter(agent: PrivateAgent) {
+    return `${this.roleCharter(agent)}\n\n${chatFormattingCharter}`;
+  }
+  private roleCharter(agent: PrivateAgent) {
     if (this.conversationSearch.isAgent(agent.id)) return conversationSearchCharter;
     if (agent.surface) return conversationCharter;
     if (this.coordinator.isAgent(agent.id)) return quarkCoordinatorCharter;

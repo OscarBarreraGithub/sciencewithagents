@@ -1,4 +1,4 @@
-import { DocumentLink } from './Documents';
+import { ChatMarkdown } from './ChatMarkdown';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
@@ -14,8 +14,6 @@ import {
   Square,
   Terminal,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
   parseMcpFormValues,
   jobEstimateSchema,
@@ -121,17 +119,7 @@ export function Avatar({ role, small = false }: { role: Agent['role']; small?: b
   );
 }
 export function Markdown({ children }: { children: string }) {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        a: DocumentLink,
-        img: ({ alt }) => <span className="muted">[Image: {alt ?? 'image'}]</span>,
-      }}
-    >
-      {children}
-    </ReactMarkdown>
-  );
+  return <ChatMarkdown>{children}</ChatMarkdown>;
 }
 
 // Consecutive tool calls become one activity row, so messages stay the timeline.

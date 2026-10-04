@@ -65,6 +65,9 @@ The optional companion needs no separate editor login. [Companion](../apps/vscod
 
 ## Documents on a phone
 
+All chat views render inline and displayed LaTeX equations automatically, including saved
+and shared VS Code messages. Wide equations scroll within their message; code remains literal.
+
 Apps includes a LaTeX/PDF reader with computer-side compilation, folder browsing, recent
 files, selectable text, page navigation and zoom. Manager links open over chat and return
 to the same reading position and draft. Failed builds retain the previous PDF; existing

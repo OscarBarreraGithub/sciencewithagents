@@ -6,6 +6,12 @@ Private logs, screenshots, disposable databases and native-session receipts stay
 
 ## Current focused checks — 2026-10-03
 
+Chat-math checks cover both delimiter styles, inline/display equations, aligned expressions,
+matrices, lists/tables, prices and literal code, streamed/incomplete input, malformed math,
+external-content rejection and paged shared-editor replies. Desktop, 412×915, 360×800,
+915×412 and iPhone WebKit checks include enlarged UI scaling through 200% and equation
+overflow containment. PDF-link return/scroll/draft checks still pass with the shared renderer.
+
 LaTeX/PDF checks cover real compilation with included chapters, equations and tables, failed
 build/retry with the previous PDF retained, recent-file persistence, path validation, manager
 links, paired-phone authentication and selected-computer PDF forwarding. The reader was
