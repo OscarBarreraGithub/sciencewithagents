@@ -98,6 +98,131 @@ it('cancellation does not create a project or stop another user journey', async 
   expect((await post()).json().project.name).toBe('My project');
 });
 
+it('Spawn starts a fresh manager in a previously connected folder, with durable retries and separate settings', async () => {
+  const original = (await post()).json().project;
+  store.updateAgent(original.managerId, {
+    threadId: 'old-provider-conversation',
+    checkpoint: 'September work',
+    createdAt: '2026-09-07T18:05:16.092Z',
+  });
+  const oldProject = { ...store.project(original.id), internal: true };
+  store.db
+    .prepare('UPDATE projects SET body=? WHERE id=?')
+    .run(JSON.stringify(oldProject), original.id);
+  const oldManager = store.agent(original.managerId);
+  const oldWorkflow = store.getSetting(`project-workflow:${original.id}`);
+  writeFileSync(
+    join(projectRoot, 'old-session.jsonl'),
+    '{"text":"Do not adopt this conversation"}\n',
+  );
+  const key = randomUUID();
+  await app.inject({
+    method: 'POST',
+    url: '/api/projects/connect-folder',
+    headers,
+    payload: { key, selectOnly: true },
+  });
+  const input = {
+    method: 'POST' as const,
+    url: '/api/projects/connect-folder',
+    headers,
+    payload: { key, name: 'My new app', provider: 'claude', fresh: true },
+  };
+  const result = await app.inject(input);
+  expect(result.statusCode).toBe(200);
+  const created = result.json().project;
+  expect(created.id).not.toBe(original.id);
+  expect(created.managerId).not.toBe(original.managerId);
+  expect(created.name).toBe('My new app');
+  expect(created.internal).not.toBe(true);
+  expect(store.agent(created.managerId)).toMatchObject({
+    threadId: null,
+    checkpoint: '',
+    provider: 'claude',
+  });
+  expect(store.entries(created.managerId)).toEqual([]);
+  expect(store.runs()).toEqual([]);
+  expect(store.project(created.id).root).toBe(oldProject.root);
+  expect(store.project(original.id)).toEqual(oldProject);
+  expect(store.agent(original.managerId)).toEqual(oldManager);
+  expect(store.getSetting(`project-workflow:${original.id}`)).toEqual(oldWorkflow);
+  await app.close();
+  await open();
+  const [first, second] = await Promise.all([app.inject(input), app.inject(input)]);
+  expect(first.json()).toEqual(result.json());
+  expect(second.json()).toEqual(result.json());
+  expect(store.projects()).toHaveLength(2);
+  expect(
+    (await app.inject({ ...input, payload: { ...input.payload, name: 'Changed' } })).statusCode,
+  ).toBe(409);
+  expect(readFileSync(join(projectRoot, 'old-session.jsonl'), 'utf8')).toContain('Do not adopt');
+});
+
+it('removes idle managers durably, cancels queued work and retains files and conversation history', async () => {
+  const first = (await post()).json().project;
+  const second = store.addManager(first.id, 'Another manager', 'Independent work');
+  writeFileSync(join(projectRoot, 'owner.txt'), 'Keep this file.');
+  const queued = store.enqueue(first.managerId, randomUUID(), 'A queued idea');
+  const other = store.enqueue(second.id, randomUUID(), 'Another idea');
+  const task = store.addTask(first.id, {
+    title: 'Child work',
+    goal: 'Verify removal',
+    acceptance: 'Retained files',
+    parentId: null,
+  });
+  const worker = store.addAgent({
+    projectId: first.id,
+    parentId: first.managerId,
+    taskId: task.id,
+    name: 'Worker',
+    role: 'implementer',
+    cwd: projectRoot,
+  });
+  const workerRun = store.enqueue(worker.id, randomUUID(), 'Worker idea');
+  const history = store.entries(first.managerId);
+  const input = {
+    method: 'POST' as const,
+    url: `/api/agents/${first.managerId}/remove`,
+    headers,
+    payload: { key: randomUUID() },
+  };
+  store.updateAgent(first.managerId, { status: 'running' });
+  expect((await app.inject(input)).statusCode).toBe(409);
+  expect(store.agent(first.managerId).archivedAt).toBeUndefined();
+  expect(store.run(queued.id).status).toBe('queued');
+  store.updateAgent(first.managerId, { status: 'queued' });
+  store.updateAgent(worker.id, { status: 'running' });
+  expect((await app.inject(input)).statusCode).toBe(409);
+  store.updateAgent(worker.id, { status: 'queued' });
+  const response = await app.inject(input);
+  expect(response.statusCode).toBe(200);
+  expect(response.json().archivedAt).toBeTruthy();
+  expect(store.run(queued.id).status).toBe('cancelled');
+  expect(store.run(workerRun.id).status).toBe('cancelled');
+  expect(store.task(task.id).status).toBe('cancelled');
+  expect(store.agent(worker.id).archivedAt).toBeTruthy();
+  expect(() => store.enqueue(worker.id, randomUUID(), 'Restart worker')).toThrow('removed');
+  expect(store.run(other.id).status).toBe('queued');
+  expect(store.agent(second.id).archivedAt).toBeUndefined();
+  expect(store.entries(first.managerId)).toEqual(history);
+  expect(() => store.enqueue(first.managerId, randomUUID(), 'Restart')).toThrow('removed');
+  await app.close();
+  await open();
+  expect((await app.inject(input)).json()).toEqual(response.json());
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: `/api/agents/${first.managerId}/messages`,
+        headers,
+        payload: { key: randomUUID(), text: 'Try again' },
+      })
+    ).statusCode,
+  ).toBe(409);
+  expect(readFileSync(join(projectRoot, 'owner.txt'), 'utf8')).toBe('Keep this file.');
+  expect(store.events().filter((event) => event.type === 'manager.removed')).toHaveLength(1);
+});
+
 it.each([false, true])(
   'selects first without creating a manager or history (needs tracking: %s)',
   async (needsTracking) => {
@@ -136,7 +261,7 @@ it.each([false, true])(
         method: 'POST',
         url: '/api/projects/connect-folder',
         headers,
-        payload: { key, provider: 'claude', name: 'Planetary observations' },
+        payload: { key, provider: 'claude', name: 'Planetary observations', fresh: true },
       });
     let result = await spawn();
     expect(result.statusCode).toBe(200);
@@ -159,7 +284,7 @@ it.each([false, true])(
       method: 'POST',
       url: '/api/projects/connect-folder',
       headers,
-      payload: { key, provider: 'claude', name: 'Different name' },
+      payload: { key, provider: 'claude', name: 'Different name', fresh: true },
     });
     expect(changed.statusCode).toBe(409);
     expect(picker).toHaveBeenCalledTimes(1);

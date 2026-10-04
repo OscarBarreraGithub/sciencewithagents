@@ -569,6 +569,22 @@ export function ConfigPanel({
   act: (fn: () => Promise<unknown>) => Promise<void>;
 }) {
   const [rates, setRates] = useState<ProjectRate[] | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const [removeError, setRemoveError] = useState('');
+  const removeKey = useRef(crypto.randomUUID());
+  const remove = async () => {
+    setRemoveBusy(true);
+    setRemoveError('');
+    try {
+      await api(`/agents/${agent.id}/remove`, { key: removeKey.current });
+      window.location.hash = '/chats';
+    } catch (reason) {
+      setRemoveError(failure(reason, 'Could not remove this manager. Try again.'));
+    } finally {
+      setRemoveBusy(false);
+    }
+  };
   const [ratesError, setRatesError] = useState('');
   usePoll(
     async () => {
@@ -594,6 +610,47 @@ export function ConfigPanel({
   const fresh = !!machine && Date.now() - Date.parse(machine.observedAt) < 60_000;
   return (
     <div className="chat-config">
+      {managerView && !agent.archivedAt && (
+        <section>
+          <h3>Manager</h3>
+          <div className="chat-remove-manager">
+            {removing ? (
+              <>
+                <p>
+                  Remove this manager from Chats? Queued work will be cancelled. Project files and
+                  saved conversation history will stay on this computer. Running work must be
+                  stopped first.
+                </p>
+                <div className="chat-links">
+                  <button
+                    className="chat-small-button"
+                    disabled={removeBusy}
+                    onClick={() => void remove()}
+                  >
+                    {removeBusy ? 'Removing…' : 'Confirm removal'}
+                  </button>
+                  <button
+                    className="chat-small-button"
+                    disabled={removeBusy}
+                    onClick={() => setRemoving(false)}
+                  >
+                    Keep manager
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button className="chat-small-button" onClick={() => setRemoving(true)}>
+                Remove manager
+              </button>
+            )}
+            {removeError && (
+              <p className="chat-panel-error" role="alert">
+                {removeError}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
       <section>
         <h3>Usage and resources</h3>
         <ExecutionInfo agent={agent} />

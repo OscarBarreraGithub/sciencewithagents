@@ -13,7 +13,7 @@ This describes connected source behavior, not a blanket release certification.
 | Active messages      | Codex steering, supported Claude follow-up queue, Stop and durable retry receipts                                | Support depends on the native session; uncertain sends are not blindly replayed                 |
 | Delegation           | Managers assign Codex/Claude workers, inspect tools/results and coordinate bounded reviews                       | Native helpers share parent supervision; partial helper counters are labelled                   |
 | Completed work       | Separate questions using saved evidence or an eligible copy of the original native conversation                  | Does not reopen the finished task/review or recover hidden reasoning                            |
-| Manager continuity   | Persistent internal/human work items, checkpoints and concise requests; owner-only Notes                                    | Managers continue independent work when one item awaits a person                                |
+| Manager continuity   | Persistent internal/human work items, checkpoints and concise requests; owner-only Notes                         | Managers continue independent work when one item awaits a person                                |
 | Context maintenance  | Native Claude 60% compaction with handoff hooks; natural Codex compaction                                        | External native/editor sessions need their own supported integration; no perfect-memory claim   |
 | QUARK                | Shared queue, priority/weights, caps/reserves, spending sliders, leases, pauses and coordinator chat             | Estimated attribution and stopping latency prevent an exact provider-enforced spending ceiling  |
 | Computer health      | Current pressure, charts, project/job attribution, grouped apps/processes and full-screen Ask                    | Detailed probes are macOS-specific; automatic checks are bounded and off on fresh installs      |
@@ -100,4 +100,11 @@ and folder-name search make it possible to explore the selected computer. Search
 subfolders; broad searches are bounded and incomplete results are labelled. Hidden folders
 are optional. Selection creates no manager; Spawn connects the folder and preserves its files.
 Give the project a separate display name during setup; the selected folder stays in place
-with its original name. Reopening an already connected folder keeps its existing project.
+with its original name. Spawn creates a fresh project and manager even if that folder already
+has a manager. Settings and conversations are separate; files in the chosen folder are shared.
+Open an earlier manager from Chats to continue its conversation. No local transcript is
+automatically imported during setup.
+
+To remove a manager, open its chat configuration and choose Remove manager. Stop running work
+first. Removal cancels queued messages and unfinished tasks, hides the manager from normal
+lists and prevents further work. Project files, completed results and saved history are retained.

@@ -43,6 +43,7 @@ type Selection = {
   needsTracking?: boolean;
   initializationKey?: string;
   identity?: string;
+  fresh?: boolean;
 };
 const identity = (root: string) => {
   const stat = lstatSync(root);
@@ -59,6 +60,7 @@ export class FolderConnections {
     selectOnly: boolean;
     folderId?: string;
     name?: string;
+    fresh: boolean;
     promise: Promise<Project | null>;
     controller: AbortController;
   } | null = null;
@@ -75,6 +77,7 @@ export class FolderConnections {
     selectOnly = false,
     folderId?: string,
     name?: string,
+    fresh = false,
   ): Promise<Project | null> {
     id.parse(key);
     const setting = `project-folder:${key}`;
@@ -89,6 +92,8 @@ export class FolderConnections {
         );
       this.assertSelection(previous);
       if (selectOnly) return null;
+      if (previous.provider && !!previous.fresh !== fresh)
+        throw new Conflict('This folder request belongs to an earlier setup. Start a new setup.');
       if (previous.provider && previous.name !== name)
         throw new Conflict(
           'This folder request already chose another project name. Retry with the original name or start a new setup.',
@@ -109,13 +114,14 @@ export class FolderConnections {
           provider,
           requestedProvider: requestedProvider ?? 'policy',
           name,
+          fresh,
         });
-      const existing = this.store.projects().find((project) => project.root === previous.root);
+      const existing = this.existing(key, { ...previous, fresh });
       if (existing) return projectSchema.parse(existing);
       if (previous.needsTracking) {
         return null;
       }
-      return this.register(previous.root, provider!, name);
+      return this.register(previous.root, provider!, name, fresh ? key : undefined);
     }
     if (!folderId && !this.picker)
       throw new Conflict('Open the folder browser to choose an existing project.');
@@ -125,7 +131,8 @@ export class FolderConnections {
         this.active.provider === provider &&
         this.active.selectOnly === selectOnly &&
         this.active.folderId === folderId &&
-        this.active.name === name
+        this.active.name === name &&
+        this.active.fresh === fresh
       )
         return this.active.promise;
       throw new Conflict('The folder chooser is already open. Choose a folder or cancel it first.');
@@ -144,13 +151,15 @@ export class FolderConnections {
           ...selection,
           ...(selectOnly
             ? {}
-            : { provider, requestedProvider: requestedProvider ?? 'policy', name }),
+            : { provider, requestedProvider: requestedProvider ?? 'policy', name, fresh }),
         });
         this.store.event('project.folder_selected', null, null, { key });
       });
-      return selectOnly || selection.needsTracking ? null : this.register(root, provider!, name);
+      return selectOnly || selection.needsTracking
+        ? null
+        : this.register(root, provider!, name, fresh ? key : undefined);
     })();
-    this.active = { key, provider, selectOnly, folderId, name, promise, controller };
+    this.active = { key, provider, selectOnly, folderId, name, fresh, promise, controller };
     try {
       return await promise;
     } finally {
@@ -165,11 +174,7 @@ export class FolderConnections {
   }
   tracking(key: string) {
     const saved = this.store.getSetting(`project-folder:${key}`) as Selection | null;
-    if (
-      !saved?.needsTracking ||
-      this.store.projects().some((project) => project.root === saved.root)
-    )
-      return undefined;
+    if (!saved?.needsTracking || this.existing(key, saved)) return undefined;
     return { key, name: basename(saved.root) };
   }
   private assertSelection(saved: Selection) {
@@ -180,6 +185,14 @@ export class FolderConnections {
         'The selected folder changed or is unavailable. Choose it again; nothing was replaced.',
       );
     }
+  }
+  private existing(key: string, saved: Selection) {
+    const projectId = this.store.getSetting(`project-spawn:${key}`);
+    return saved.fresh
+      ? projectId
+        ? this.store.project(String(projectId))
+        : undefined
+      : this.store.projects().find((project) => project.root === saved.root);
   }
   private async inspect(selected: string): Promise<Selection> {
     try {
@@ -239,7 +252,7 @@ export class FolderConnections {
     if (!saved?.needsTracking || !saved.provider)
       throw new Conflict('Choose a folder that needs tracking first.');
     this.assertSelection(saved);
-    const existing = this.store.projects().find((project) => project.root === saved.root);
+    const existing = this.existing(key, saved);
     if (existing) return projectSchema.parse(existing);
     const initializationKey = saved.initializationKey ?? key;
     const metadata = join(saved.root, '.git'),
@@ -298,6 +311,7 @@ export class FolderConnections {
         saved.name ?? basename(saved.root),
         '',
         saved.provider,
+        saved.fresh ? key : undefined,
       );
     } catch (error) {
       if (error instanceof Conflict) throw error;
@@ -315,12 +329,14 @@ export class FolderConnections {
       );
     }
   }
-  private async register(root: string, provider: ProviderId, name?: string) {
+  private async register(root: string, provider: ProviderId, name?: string, freshKey?: string) {
     // Already registered projects can be reopened without touching their files/history.
-    const existing = this.store.projects().find((project) => project.root === root);
+    const existing = freshKey
+      ? undefined
+      : this.store.projects().find((project) => project.root === root);
     if (existing) return projectSchema.parse(existing);
     const canonical = await this.validRoot(root);
-    return this.store.register(canonical, name ?? basename(canonical), '', provider);
+    return this.store.register(canonical, name ?? basename(canonical), '', provider, freshKey);
   }
   close() {
     this.active?.controller.abort();

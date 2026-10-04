@@ -151,6 +151,7 @@ export function ProjectModal({
       const value = projectConnectionSchema.parse(
         await api('/projects/connect-folder', {
           key: folderKey.current,
+          fresh: true,
           ...(draft.name.trim() ? { name: draft.name.trim() } : {}),
           ...(folderId ? { folderId } : {}),
           ...(draft.provider !== 'policy' ? { provider: draft.provider } : {}),

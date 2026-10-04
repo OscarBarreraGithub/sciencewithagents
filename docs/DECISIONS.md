@@ -61,6 +61,12 @@ Users can restore recommendations or choose any supported catalog model. New fam
 need a central mapping change, not edits in each feature. Imported/native sessions stay native.
 Updates to locally customized installations are agent-assisted, preserving local work and data.
 
+New-project Spawn creates an independent project/manager identity, including when a folder was
+used before. A folder is not a conversation identity: projects can share its files while retaining
+separate settings and history. Existing-folder connection receipts preserve one result per setup
+through retries. Manager removal is archival: stop active work first, cancel its queued work,
+retain files and evidence, and reject later launches. Continuing old work is an explicit chat choice.
+
 ## Conversations and phone use
 
 Home prioritizes Chats, Apps and QUARK. Phone chat uses a compact header, message bubbles,

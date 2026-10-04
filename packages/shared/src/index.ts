@@ -141,6 +141,7 @@ export const agentSchema = z.object({
   checkpoint: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  archivedAt: z.string().optional(),
 });
 export const projectSchema = z.object({
   id,
@@ -215,6 +216,7 @@ export const projectFolderSchema = z
     name: projectCreateSchema.shape.name.optional(),
     provider: providerIdSchema.optional(),
     selectOnly: z.boolean().optional(),
+    fresh: z.boolean().optional(),
     folderId: id.optional(),
   })
   .strict();
@@ -409,6 +411,7 @@ export const taskCreateSchema = z
     scheduling: jobEstimateSchema.optional(),
   })
   .strict();
+export const managerRemoveSchema = z.object({ key: id }).strict();
 export const managerCreateSchema = z
   .object({
     key: id,

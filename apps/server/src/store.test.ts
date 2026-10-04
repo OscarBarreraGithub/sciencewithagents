@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { Store, publicTask } from './store.js';
 import { repoRoot } from './paths.js';
 
@@ -16,6 +17,39 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 describe('durable state', () => {
+  it('migrates legacy unique folders without changing IDs, history or foreign references', () => {
+    const original = store.register(root, 'Original', 'Keep this');
+    const run = store.enqueue(original.managerId, randomUUID(), 'Saved message');
+    const agent = store.agent(original.managerId),
+      entries = store.entries(original.managerId),
+      events = store.events();
+    store.close();
+    const legacy = new DatabaseSync(join(root, 'dock.sqlite'));
+    legacy.exec(`PRAGMA foreign_keys=OFF;
+      BEGIN;
+      CREATE TABLE legacy_projects (id TEXT PRIMARY KEY, root TEXT UNIQUE NOT NULL, body TEXT NOT NULL);
+      INSERT INTO legacy_projects SELECT * FROM projects;
+      DROP TABLE projects;
+      ALTER TABLE legacy_projects RENAME TO projects;
+      COMMIT;`);
+    legacy.close();
+    store = new Store(join(root, 'dock.sqlite'));
+    expect(store.db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(store.db.prepare('PRAGMA foreign_keys').get()).toMatchObject({ foreign_keys: 1 });
+    expect(store.agent(original.managerId)).toEqual(agent);
+    expect(store.run(run.id).text).toBe('Saved message');
+    expect(store.entries(original.managerId)).toEqual(entries);
+    expect(store.events()).toEqual(events);
+    const key = randomUUID();
+    const fresh = store.register(root, 'New idea', '', 'claude', key);
+    expect(fresh.id).not.toBe(original.id);
+    store.close();
+    store = new Store(join(root, 'dock.sqlite'));
+    expect(store.register(root, 'New idea', '', 'claude', key)).toEqual(fresh);
+    expect(store.projects()).toHaveLength(2);
+    expect(store.db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(() => store.db.prepare('DELETE FROM projects WHERE id=?').run(original.id)).toThrow();
+  });
   it('explicitly retains full WAL commit synchronization across reopen', () => {
     expect(store.db.prepare('PRAGMA journal_mode').get()).toMatchObject({ journal_mode: 'wal' });
     expect(store.db.prepare('PRAGMA synchronous').get()).toMatchObject({ synchronous: 2 });

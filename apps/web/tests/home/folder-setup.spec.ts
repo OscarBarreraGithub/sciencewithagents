@@ -97,8 +97,8 @@ test('pick an existing folder first, keep model choices editable, and Spawn once
     page.getByRole('dialog', { name: 'Describe your project', exact: true }),
   ).toBeVisible();
   expect(connections).toEqual([
-    { key: selections[0]!.key, provider: 'claude', name },
-    { key: selections[0]!.key, provider: 'claude', name },
+    { key: selections[0]!.key, provider: 'claude', name, fresh: true },
+    { key: selections[0]!.key, provider: 'claude', name, fresh: true },
   ]);
   expect(created!.name).toBe(name);
   const detail = await (await page.request.get(`/api/agents/${created!.managerId}`)).json();

@@ -266,6 +266,7 @@ export class ConversationSearch {
       agents
         .filter((agent) => {
           if (
+            agent.archivedAt ||
             agent.nativeRootId ||
             agent.resourceAssistant ||
             agent.surface === 'terminal' ||

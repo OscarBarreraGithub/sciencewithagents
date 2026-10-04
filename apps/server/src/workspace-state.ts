@@ -93,7 +93,12 @@ export class WorkspaceState {
       )
       .all()
       .map((row) => String(row.id));
-    const existing = new Set(this.store.agents().map((agent) => agent.id));
+    const existing = new Set(
+      this.store
+        .agents()
+        .filter((agent) => !agent.archivedAt)
+        .map((agent) => agent.id),
+    );
     return ids.filter((id) => existing.has(id));
   }
 

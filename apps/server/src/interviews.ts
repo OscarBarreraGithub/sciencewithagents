@@ -10,6 +10,7 @@ export function closedAssignment(store: Store, agent: PrivateAgent) {
 }
 
 export function requireActiveAssignment(store: Store, agent: PrivateAgent) {
+  store.requireActiveAgent(agent.id);
   if (!agent.interview && closedAssignment(store, agent))
     throw new Conflict(
       'This work is finished. Choose Ask about this work for a separate read-only conversation; the completed task and review stay unchanged.',

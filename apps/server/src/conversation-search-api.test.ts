@@ -7,6 +7,7 @@ import type WebSocket from 'ws';
 import * as pty from 'node-pty';
 import { conversationSearchResultSchema } from '@dock/shared';
 import { conversationSearchCharter } from './conversation-search.js';
+import { chatFormattingCharter } from './charters.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { Store } from './store.js';
 import { Runtime } from './runtime.js';
@@ -162,7 +163,7 @@ it('runs the helper through normal QUARK admission with its bounded evidence cha
   const requests = vi.mocked(provider.request).mock.calls;
   expect(requests.find(([method]) => method === 'thread/start')?.[1]).toMatchObject({
     sandbox: 'read-only',
-    developerInstructions: conversationSearchCharter,
+    developerInstructions: `${conversationSearchCharter}\n\n${chatFormattingCharter}`,
     dynamicTools: [],
   });
   const turn = requests.find(([method]) => method === 'turn/start')?.[1] as {

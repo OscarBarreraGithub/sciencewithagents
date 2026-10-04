@@ -72,7 +72,7 @@ export class Store extends EventEmitter {
     chmodSync(path, 0o600);
     this.db
       .exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
-      CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, root TEXT UNIQUE NOT NULL, body TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, root TEXT NOT NULL, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), key TEXT UNIQUE NOT NULL, status TEXT NOT NULL, body TEXT NOT NULL);
@@ -100,6 +100,28 @@ export class Store extends EventEmitter {
       CREATE INDEX IF NOT EXISTS runs_queue ON runs(status);
       CREATE INDEX IF NOT EXISTS entries_agent ON entries(agent_id);
       CREATE INDEX IF NOT EXISTS events_agent ON events(agent_id, id);`);
+    // A folder can host independent projects/conversations. Rebuild only this table;
+    // its IDs, child references, private records and immutable events stay unchanged.
+    const projectTable = String(
+      this.db.prepare("SELECT sql FROM sqlite_master WHERE name='projects'").get()?.sql,
+    );
+    if (/root TEXT UNIQUE/i.test(projectTable)) {
+      this.db.exec('PRAGMA foreign_keys=OFF');
+      try {
+        this.transaction(() => {
+          this.db
+            .exec(`CREATE TABLE projects_new (id TEXT PRIMARY KEY, root TEXT NOT NULL, body TEXT NOT NULL);
+            INSERT INTO projects_new SELECT id, root, body FROM projects;
+            DROP TABLE projects;
+            ALTER TABLE projects_new RENAME TO projects;`);
+          if (this.db.prepare('PRAGMA foreign_key_check').all().length)
+            throw new Error('Project migration failed its reference check.');
+        });
+      } finally {
+        this.db.exec('PRAGMA foreign_keys=ON');
+      }
+    }
+    this.db.exec('CREATE INDEX IF NOT EXISTS projects_root ON projects(root)');
     // Additive, repeatable migration: old tasks retain their original project manager.
     // Historical events and conversation identities are never rewritten.
     this.transaction(() => {
@@ -302,8 +324,20 @@ export class Store extends EventEmitter {
     if (!provider) throw new Conflict('Pick as I go: choose Codex or Claude for this new agent.');
     return provider;
   }
-  register(root: string, name: string, description: string, provider?: ProviderId) {
-    const existing = this.projects().find((p) => p.root === root);
+  register(
+    root: string,
+    name: string,
+    description: string,
+    provider?: ProviderId,
+    freshKey?: string,
+  ) {
+    const receipt = freshKey ? `project-spawn:${freshKey}` : null;
+    const saved = receipt ? this.getSetting(receipt) : null;
+    const existing = saved
+      ? this.project(String(saved))
+      : !freshKey
+        ? this.projects().find((p) => p.root === root)
+        : undefined;
     if (existing) return projectSchema.parse(existing);
     return this.transaction(() => {
       const p: PrivateProject = {
@@ -331,6 +365,7 @@ export class Store extends EventEmitter {
       );
       this.setSetting(`project-workflow:${p.id}`, workflow);
       this.event('project.workflow_changed', p.id, p.managerId, workflow);
+      if (receipt) this.setSetting(receipt, p.id);
       return projectSchema.parse(p);
     });
   }
@@ -420,6 +455,49 @@ export class Store extends EventEmitter {
       .get(provider, threadId);
     return row ? String(row.agent_id) : null;
   }
+  requireActiveAgent(agentId: string) {
+    const visited = new Set<string>();
+    const pending = [agentId];
+    while (pending.length) {
+      const id = pending.pop()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const agent = this.agent(id);
+      if (agent.archivedAt)
+        throw new Conflict(
+          'This manager was removed. Its files and saved history are retained. Create a new manager to start new work.',
+        );
+      // Evidence-only discussions are new conversations, not a restart of archived work.
+      if (agent.interview) continue;
+      if (agent.parentId) pending.push(agent.parentId);
+      if (agent.nativeRootId) pending.push(agent.nativeRootId);
+      if (agent.taskId) pending.push(this.task(agent.taskId).managerId);
+    }
+  }
+  managerFamily(managerId: string) {
+    const owned = new Set([managerId]);
+    const agents = this.agents();
+    const tasks = new Set(
+      this.tasks()
+        .filter((task) => task.managerId === managerId)
+        .map((task) => task.id),
+    );
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const agent of agents)
+        if (
+          !owned.has(agent.id) &&
+          !agent.interview &&
+          ((agent.parentId && owned.has(agent.parentId)) ||
+            (agent.nativeRootId && owned.has(agent.nativeRootId)) ||
+            (agent.taskId && tasks.has(agent.taskId)))
+        ) {
+          owned.add(agent.id);
+          changed = true;
+        }
+    }
+    return agents.filter((agent) => owned.has(agent.id));
+  }
   rememberContext(agentId: string, threadId: string, provider = this.agent(agentId).provider) {
     if (provider !== this.agent(agentId).provider)
       throw new Conflict('This context belongs to a different provider.');
@@ -463,6 +541,7 @@ export class Store extends EventEmitter {
   ) {
     const managerId = input.managerId ?? this.project(projectId).managerId;
     const manager = this.agent(managerId);
+    this.requireActiveAgent(managerId);
     if (manager.projectId !== projectId || manager.role !== 'manager')
       throw new Conflict('Select a manager belonging to this project.');
     if (input.parentId) {
@@ -519,6 +598,7 @@ export class Store extends EventEmitter {
       return runSchema.parse(value);
     }
     const a = this.agent(agentId);
+    this.requireActiveAgent(agentId);
     const run: PrivateRun = {
       id: randomUUID(),
       agentId,

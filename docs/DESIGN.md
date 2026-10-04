@@ -61,6 +61,9 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   Existing folders suggest their folder name as an editable project name; the display name
   does not rename the folder. Keep that choice through reloads and setup retries.
   Then choose the manager/provider/reasoning and workers; one Spawn action sits at the bottom.
+  Spawn always starts a fresh manager and initial brief, including for a previously used folder.
+  Earlier managers stay in Chats. Keep removal in chat configuration, with confirmation that
+  queued work is cancelled while files and history are retained; require running work to stop first.
   New folders have a replaceable name. Use real catalog names, not academic role labels here.
 - Worker provider mix and spending are separate sliders. Research/coding, Review and Bulk
   each have a bordered, tappable model row with a visible Change control and expansion arrow.

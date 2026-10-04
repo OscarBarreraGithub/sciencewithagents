@@ -848,8 +848,7 @@ export function ProjectConfiguration({
       project: {
         id: value.id,
         managerId: value.managerId,
-        // A connected folder that already had a project keeps its manager and settings.
-        existing: Date.parse(value.createdAt) < Date.parse(current.startedAt) - 1000,
+        existing: false,
       },
     });
   const create = () =>
@@ -927,6 +926,7 @@ export function ProjectConfiguration({
             key: next.folderKey,
             provider: next.provider,
             ...(next.connectionName ? { name: next.connectionName } : {}),
+            fresh: true,
           }),
         );
         if (value.tracking) {
@@ -1016,7 +1016,7 @@ export function ProjectConfiguration({
               {spawn.selection && <strong>Selected folder: {spawn.selection.name}</strong>}
               <p className="config-help">
                 {canChooseFolder
-                  ? 'An already connected folder opens its existing project, keeping its name, manager and settings.'
+                  ? 'Spawn creates a new manager with these settings. Earlier managers and conversations stay separate; the folder’s files are shared.'
                   : 'Folder browsing is unavailable. Reload this page to try again.'}
               </p>
               {!locked && (
@@ -1210,7 +1210,7 @@ export function ProjectConfiguration({
           disabled={busy || quarkPending}
           note={
             spawn.folder === 'connect'
-              ? 'An already connected folder keeps its existing priority and caps.'
+              ? 'These settings apply to your new project and manager.'
               : undefined
           }
         />

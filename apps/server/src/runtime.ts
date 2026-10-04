@@ -466,6 +466,12 @@ export class Runtime {
             const pending = this.withRestoreSlot(() =>
               this.withLock(id, async () => {
                 const agent = this.store.agent(id);
+                if (agent.archivedAt)
+                  return {
+                    agentId: id,
+                    state: 'ready',
+                    message: 'Removed manager: saved history only.',
+                  };
                 if (!agent.threadId)
                   return { agentId: id, state: 'ready', message: 'Ready for your first message.' };
                 if (!agent.interview && closedAssignment(this.store, agent))
@@ -2180,6 +2186,7 @@ export class Runtime {
     return this.store.runs().find((r) => r.agentId === agentId && r.status === 'running');
   }
   requireDirectControl(agentId: string) {
+    this.store.requireActiveAgent(agentId);
     if (this.resources.isSnapshot(agentId))
       throw new Conflict(
         'This resource report is a bounded snapshot check. Use Ask what’s happening for native computer assistance.',
@@ -4211,6 +4218,63 @@ export class Runtime {
     this.store.updateAgent(approval.agentId, { status: 'running' });
   }
   /** Close obsolete work without claiming review/application or releasing allowance holds. */
+  removeManager(agentId: string, key: string) {
+    return this.store.operation(key, { kind: 'manager.remove', agentId }, () => {
+      const manager = this.store.agent(agentId);
+      if (
+        manager.role !== 'manager' ||
+        manager.surface ||
+        manager.nativeRootId ||
+        manager.interview ||
+        this.resources.projectId() === manager.projectId ||
+        this.coordinator.isAgent(agentId) ||
+        this.frontdesk.isFrontdesk(agentId) ||
+        this.conversationSearch.isAgent(agentId) ||
+        this.coordinator.isRetired(agentId)
+      )
+        throw new Conflict('Only project managers can be removed here.');
+      if (manager.archivedAt) return agentSchema.parse(manager);
+      const family = this.store.managerFamily(agentId);
+      const ids = new Set(family.map((agent) => agent.id));
+      if (
+        family.some(
+          (agent) =>
+            agent.turnId ||
+            ['running', 'waiting'].includes(agent.status) ||
+            this.executing.has(agent.id) ||
+            this.externalControl.has(agent.id),
+        ) ||
+        this.store.runs().some((run) => ids.has(run.agentId) && run.status === 'running') ||
+        this.localJobs
+          .all()
+          .some(
+            (job) =>
+              !!job.requestedBy &&
+              ids.has(job.requestedBy) &&
+              ['queued', 'running', 'paused'].includes(job.status),
+          )
+      )
+        throw new Conflict(
+          'Stop this manager and its running workers or local jobs before removing it. Queued agent messages will be cancelled; files and history stay saved.',
+        );
+      for (const run of this.store.runs())
+        if (ids.has(run.agentId) && run.status === 'queued')
+          this.store.updateRun(run.id, { status: 'cancelled' });
+      for (const task of this.store.tasks())
+        if (
+          task.managerId === agentId &&
+          !['done', 'integrated', 'split', 'cancelled'].includes(task.status)
+        )
+          this.store.updateTask(task.id, {
+            status: 'cancelled',
+            closure: { reason: 'Manager removed by owner.', closedAt: now() },
+          });
+      const archivedAt = now();
+      for (const agent of family) this.store.updateAgent(agent.id, { archivedAt, status: 'idle' });
+      this.store.event('manager.removed', manager.projectId, agentId, { archivedAt });
+      return agentSchema.parse(this.store.agent(agentId));
+    });
+  }
   cancelTask(taskId: string, raw: unknown) {
     const input = taskCancelSchema.parse(raw);
     return this.store.operation(input.key, { kind: 'task.cancel', taskId, ...input }, () => {

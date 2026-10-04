@@ -11,6 +11,7 @@ import { Runtime } from './runtime.js';
 import { DemoProvider } from './demo.js';
 import { createServer } from './server.js';
 import { frontdeskCharter } from './frontdesk.js';
+import { chatFormattingCharter } from './charters.js';
 
 let root: string, store: Store, runtime: Runtime, app: FastifyInstance;
 const providers = new Map<string, DemoProvider>();
@@ -242,7 +243,7 @@ describe('personal assistant API and runtime integration', () => {
       sandbox: 'read-only',
       approvalPolicy: 'on-request',
       approvalsReviewer: 'user',
-      developerInstructions: frontdeskCharter,
+      developerInstructions: `${frontdeskCharter}\n\n${chatFormattingCharter}`,
       config: {
         web_search: 'disabled',
         features: { multi_agent: false, multi_agent_v2: false, image_generation: false },
@@ -260,7 +261,7 @@ describe('personal assistant API and runtime integration', () => {
       'thread/resume',
       expect.objectContaining({
         threadId: first.threadId,
-        developerInstructions: frontdeskCharter,
+        developerInstructions: `${frontdeskCharter}\n\n${chatFormattingCharter}`,
         sandbox: 'read-only',
         approvalPolicy: 'on-request',
         approvalsReviewer: 'user',
@@ -269,7 +270,7 @@ describe('personal assistant API and runtime integration', () => {
     runtime.externalControl.add(agentId);
     const transition = runtime.prepareNativeContext(agentId, 'thread/start', {})!;
     expect(transition.params).toMatchObject({
-      developerInstructions: frontdeskCharter,
+      developerInstructions: `${frontdeskCharter}\n\n${chatFormattingCharter}`,
       dynamicTools: expect.arrayContaining([
         expect.objectContaining({ name: 'dock_frontdesk_route' }),
       ]),

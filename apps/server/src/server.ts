@@ -26,6 +26,7 @@ import {
   modelSchema,
   mcpCatalogSchema,
   managerCreateSchema,
+  managerRemoveSchema,
   projectCreateSchema,
   projectEditorOpenSchema,
   projectOptionsSchema,
@@ -901,8 +902,10 @@ export async function createServer(
     return folderBrowseSchema.parse(await folders.browser.browse(folderId, offset, options));
   });
   app.post('/api/projects/connect-folder', async (request) => {
-    const { key, name, provider, selectOnly, folderId } = projectFolderSchema.parse(request.body);
-    const project = await folders.connect(key, provider, selectOnly, folderId, name);
+    const { key, name, provider, selectOnly, folderId, fresh } = projectFolderSchema.parse(
+      request.body,
+    );
+    const project = await folders.connect(key, provider, selectOnly, folderId, name, fresh);
     return projectConnectionSchema.parse({
       project,
       ...(selectOnly
@@ -917,6 +920,10 @@ export async function createServer(
     return runtime.withLock('folder-tracking', async () =>
       projectConnectionSchema.parse({ project: await folders.track(key) }),
     );
+  });
+  app.post('/api/agents/:id/remove', async (request) => {
+    const { key } = managerRemoveSchema.parse(request.body);
+    return runtime.removeManager(agentId(request.params), key);
   });
   app.get('/api/agents/:id', async (request) => {
     const target = agentId(request.params);

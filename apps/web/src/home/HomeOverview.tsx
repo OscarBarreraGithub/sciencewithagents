@@ -61,7 +61,12 @@ export function ago(iso: string | null | undefined, now: number) {
 function ownerProjects(data: HomeData) {
   const internal = [data.resources.data?.projectId, data.frontdesk.data?.projectId];
   return (data.snapshot.data?.projects ?? []).filter(
-    (p) => !p.internal && !internal.includes(p.id),
+    (p) =>
+      !p.internal &&
+      !internal.includes(p.id) &&
+      data.snapshot.data?.agents.some(
+        (a) => a.projectId === p.id && a.role === 'manager' && !a.archivedAt,
+      ),
   );
 }
 
@@ -96,7 +101,8 @@ function Destinations({ data }: { data: HomeData }) {
   const state = data.snapshot.data;
   const projects = new Set(ownerProjects(data).map((p) => p.id));
   const managers =
-    state?.agents.filter((a) => a.role === 'manager' && projects.has(a.projectId)).length ?? 0;
+    state?.agents.filter((a) => !a.archivedAt && a.role === 'manager' && projects.has(a.projectId))
+      .length ?? 0;
   const live = data.mirrors.data?.filter((w) => w.threadId && w.status !== 'offline');
   const editor = live?.filter((w) => !mirrorDaemon(w)).length;
   const sessions = live?.filter(mirrorDaemon).length ?? 0;

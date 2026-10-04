@@ -217,7 +217,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
         </FlowEmpty>
       );
     const team = state.agents.filter(
-      (a) => a.projectId === target && a.role === 'manager' && !a.nativeRootId,
+      (a) => a.projectId === target && a.role === 'manager' && !a.nativeRootId && !a.archivedAt,
     );
     const tasks = state.tasks.filter((t) => t.projectId === target);
     return (
@@ -400,6 +400,9 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
   const listedProjects = state.projects.filter(
     (project) =>
       !project.internal &&
+      state.agents.some(
+        (a) => a.projectId === project.id && a.role === 'manager' && !a.archivedAt,
+      ) &&
       project.id !== data.resources.data?.projectId &&
       project.id !== data.frontdesk.data?.projectId &&
       !surfaceOf(state.agents.find((a) => a.id === project.managerId)),
@@ -549,7 +552,8 @@ export function ChatPage({
       </FlowEmpty>
     );
   const task = state.tasks.find((t) => t.id === agent.taskId);
-  const readOnly = !agent.interview && (closed(task) || !!agent.nativeRootId);
+  const readOnly =
+    !!agent.archivedAt || (!agent.interview && (closed(task) || !!agent.nativeRootId));
   const approvals = state.approvals.filter((a) => a.agentId === id && a.status === 'pending');
   const project = state.projects.find((p) => p.id === agent.projectId);
   const surface = surfaceOf(agent);
@@ -722,15 +726,17 @@ export function ChatPage({
           {(error || workspace.error) && <p role="alert">{error || workspace.error}</p>}
           {!connected
             ? 'Connecting to this computer. Your saved messages and draft are retained.'
-            : agent.interview
-              ? agent.interview.continuity === 'native-fork'
-                ? `A separate read-only discussion using the saved ${agent.provider === 'claude' ? 'Claude' : 'Codex'} conversation. ${conversation?.nativeDiscussion === 'prepared' ? 'The native history has been copied.' : 'The copy is prepared when you send your first question.'} The original work and review stay unchanged. If that history is unavailable, open Original worker and choose Saved evidence only.`
-                : 'A new read-only discussion using saved evidence. The original task, review and conversation stay unchanged.'
-              : agent.nativeRootId
-                ? 'Native helper activity is retained here. Direct input and stop controls belong to the owning conversation.'
-                : readOnly
-                  ? 'This is the saved record. Ask about the work in a separate read-only discussion.'
-                  : 'Your draft stays private to this browser. Sending is always your choice.'}
+            : agent.archivedAt
+              ? 'This manager was removed. Its files and conversation history are saved; it cannot start more work.'
+              : agent.interview
+                ? agent.interview.continuity === 'native-fork'
+                  ? `A separate read-only discussion using the saved ${agent.provider === 'claude' ? 'Claude' : 'Codex'} conversation. ${conversation?.nativeDiscussion === 'prepared' ? 'The native history has been copied.' : 'The copy is prepared when you send your first question.'} The original work and review stay unchanged. If that history is unavailable, open Original worker and choose Saved evidence only.`
+                  : 'A new read-only discussion using saved evidence. The original task, review and conversation stay unchanged.'
+                : agent.nativeRootId
+                  ? 'Native helper activity is retained here. Direct input and stop controls belong to the owning conversation.'
+                  : readOnly
+                    ? 'This is the saved record. Ask about the work in a separate read-only discussion.'
+                    : 'Your draft stays private to this browser. Sending is always your choice.'}
         </div>
       )}
       <div
@@ -1011,7 +1017,7 @@ function MainChat({
     ...state.agents.flatMap((agent): ChatRow[] => {
       const surface = surfaceOf(agent);
       // Terminal-only sessions live in Advanced controls, not the normal chat list.
-      if (agent.nativeRootId || surface === 'terminal') return [];
+      if (agent.archivedAt || agent.nativeRootId || surface === 'terminal') return [];
       // Computer health owns every diagnosis and consultation, including old records
       // without a reason. They remain searchable there, never one row per check here.
       if (resourceAssistantOf(agent) || agent.projectId === data.resources.data?.projectId)

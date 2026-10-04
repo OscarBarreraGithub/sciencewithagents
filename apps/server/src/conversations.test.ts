@@ -17,7 +17,7 @@ import { DemoProvider } from './demo.js';
 import { createServer } from './server.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { repoRoot } from './paths.js';
-import { conversationCharter } from './charters.js';
+import { conversationCharter, chatFormattingCharter } from './charters.js';
 
 let root: string, store: Store, runtime: Runtime, app: FastifyInstance;
 const headers = {
@@ -175,7 +175,7 @@ it('uses the direct conversation charter with native capabilities and retains it
     cwd: store.agent(agent.id).cwd,
     sandbox: 'workspace-write',
     approvalPolicy: 'never',
-    developerInstructions: conversationCharter,
+    developerInstructions: `${conversationCharter}\n\n${chatFormattingCharter}`,
     config: { 'sandbox_workspace_write.network_access': true },
   });
   expect(request.mock.calls.some(([method]) => method === 'turn/start')).toBe(false);
