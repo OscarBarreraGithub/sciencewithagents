@@ -1,0 +1,77 @@
+.owner-terminal {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background: #202421;
+  color: #e7ece4;
+}
+.owner-terminal-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.owner-terminal-status > span {
+  flex: 1;
+}
+.owner-terminal .owner-terminal-location {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  margin: 0;
+  padding: 0 8px 4px;
+  color: #b3c0b5;
+  flex-shrink: 0;
+}
+.owner-terminal-host {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 4px 6px;
+  overflow: hidden;
+}
+.owner-terminal-host .xterm-viewport {
+  scrollbar-color: #718077 #202421;
+}
+.owner-terminal-host .xterm-viewport::-webkit-scrollbar {
+  background: #202421;
+}
+.owner-terminal-host .xterm-viewport::-webkit-scrollbar-thumb {
+  background: #718077;
+}
+.owner-terminal-keys {
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.owner-terminal-keys button,
+.owner-terminal-status button {
+  min-height: 44px;
+  min-width: 44px;
+  flex-shrink: 0;
+  padding: 6px;
+  border: 1px solid #718077;
+  border-radius: 6px;
+  color: #e7ece4;
+  background: #333b35;
+  font-size: 14px;
+}
+.owner-terminal button:disabled {
+  opacity: 0.5;
+}
+.owner-terminal .owner-terminal-error {
+  margin: 0;
+  padding: 6px 8px;
+  color: #ffcfb6;
+  max-height: 20%;
+  overflow: auto;
+  flex-shrink: 0;
+}

@@ -9,6 +9,7 @@ import {
   Smartphone,
   Sparkles,
   Download,
+  TerminalSquare,
 } from 'lucide-react';
 import { frontdeskStatusSchema } from '@dock/shared';
 import { api, apiScope } from '../api';
@@ -123,6 +124,12 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
           />
         </div>
         <div className="activity-shortcuts">
+          <a href="#/terminal">
+            <TerminalSquare />
+            <strong>Open terminal</strong>
+            <span>Your own commands on the selected computer · no AI usage</span>
+            <ArrowUpRight />
+          </a>
           <a href="#/welcome">
             <ShieldCheck />
             <strong>Check this computer</strong>

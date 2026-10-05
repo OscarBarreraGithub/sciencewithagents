@@ -188,6 +188,30 @@ beforeEach(async () => {
         fixture.eventsClosed++;
       });
     });
+    app.post('/api/owner-terminal', (request) => {
+      fixture.headers.push(request.headers);
+      fixture.writes.push(request.body);
+      return { id: queuedId, computer: label };
+    });
+    app.get(`/api/owner-terminal/${queuedId}`, (request) => {
+      fixture.headers.push(request.headers);
+      return { id: queuedId, computer: label };
+    });
+    app.post(`/api/owner-terminal/${queuedId}/close`, (request) => {
+      fixture.headers.push(request.headers);
+      fixture.writes.push({ close: request.body });
+      return { ok: true };
+    });
+    app.get(`/api/owner-terminal/${queuedId}/socket`, { websocket: true }, (socket, request) => {
+      fixture.headers.push(request.headers);
+      fixture.terminals.add(socket);
+      socket.once('close', () => fixture.terminals.delete(socket));
+      socket.send(JSON.stringify({ type: 'ready' }));
+      socket.on('message', (data) => {
+        fixture.writes.push(JSON.parse(data.toString()));
+        socket.send(JSON.stringify({ type: 'output', data: label }));
+      });
+    });
     app.get(`/api/agents/${agentId}/terminal`, { websocket: true }, (socket, request) => {
       fixture.headers.push(request.headers);
       fixture.terminals.add(socket);
@@ -961,4 +985,73 @@ it('tracks a selected-host notebook launch beyond its response and revokes only 
     payload: { key },
   });
   expect(denied.statusCode).toBe(404);
+});
+
+it('keeps owner-terminal creation, read, input and close on the selected authenticated computer', async () => {
+  const fixture = fixtures[1];
+  fixture.access = new LocalAccess(prepareLocalAccess(root, fixture.config.remotePort));
+  const selected = new Hosts(
+    root,
+    async () => ({ port: fixture.config.remotePort, alive: () => true, async close() {} }),
+    [{ ...fixture.config, credential: fixture.access.configuration.host }],
+  );
+  const entry = Fastify();
+  await entry.register(websocket);
+  registerHostRoutes(entry, selected);
+  let socket: WebSocket | undefined;
+  try {
+    const prefix = `/api/hosts/${fixture.config.id}/proxy/owner-terminal`;
+    const key = randomUUID();
+    expect(
+      (
+        await entry.inject({
+          method: 'POST',
+          url: prefix,
+          headers: privateHeaders,
+          payload: { key },
+        })
+      ).json(),
+    ).toEqual({ id: queuedId, computer: 'School computer' });
+    expect(
+      (await entry.inject({ url: `${prefix}/${queuedId}`, headers: privateHeaders })).statusCode,
+    ).toBe(200);
+    await entry.listen({ host: '127.0.0.1', port: 0 });
+    socket = new WebSocket(
+      `ws://127.0.0.1:${(entry.server.address() as { port: number }).port}${prefix}/${queuedId}/socket`,
+      { headers: privateHeaders },
+    );
+    const ready = once(socket, 'message');
+    await once(socket, 'open');
+    await ready;
+    socket.send(JSON.stringify({ type: 'input', data: 'owner typed harmless input' }));
+    await expect.poll(() => fixture.writes.length).toBe(2);
+    socket.close();
+    expect(
+      (
+        await entry.inject({
+          method: 'POST',
+          url: `${prefix}/${queuedId}/close`,
+          headers: privateHeaders,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(fixture.writes).toEqual([
+      { key },
+      { type: 'input', data: 'owner typed harmless input' },
+      { close: {} },
+    ]);
+    expect(fixtures[0].writes).toEqual([]);
+    expect(fixtures[2].writes).toEqual([]);
+    for (const sent of fixture.headers) {
+      expect(sent.origin).toBe(`http://127.0.0.1:${fixture.config.remotePort}`);
+      expect(sent.cookie).toBeUndefined();
+      expect(String(sent.authorization)).toMatch(/^Dock host\./);
+      expect(sent['cf-access-jwt-assertion']).toBeUndefined();
+    }
+  } finally {
+    socket?.terminate();
+    await entry.close();
+    await selected.close();
+  }
 });

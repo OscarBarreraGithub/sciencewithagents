@@ -66,6 +66,8 @@ import {
 import { Conflict, Missing, Store, publicTask } from './store.js';
 import { Runtime } from './runtime.js';
 import { Terminals } from './terminal.js';
+import { OwnerTerminals } from './owner-terminal.js';
+import { ownerTerminalOpenSchema, ownerTerminalSessionSchema } from '@dock/shared';
 import { Sessions } from './sessions.js';
 import { diff, integrate, integrationPreview, reconcileTask } from './workspaces.js';
 import { createProject } from './projects.js';
@@ -115,6 +117,7 @@ export async function createServer(
     folderPicker?: FolderPicker;
     editorOpener?: ProjectEditorOpener;
     terminals?: Terminals;
+    ownerTerminals?: OwnerTerminals;
     ownsRuntime?: boolean;
     phone?: PhoneAccess;
     notebookGateway?: NotebookGateway;
@@ -141,6 +144,7 @@ export async function createServer(
     keepAliveTimeout: 5000,
   });
   const terminals = options.terminals ?? new Terminals(runtime);
+  const ownerTerminals = options.ownerTerminals ?? new OwnerTerminals();
   const phone = options.phone;
   if (options.remote && options.localAccess)
     throw new Error('The phone entry cannot accept local installation credentials.');
@@ -1753,6 +1757,53 @@ export async function createServer(
       store.off('event', schedule);
     });
   });
+  // This deliberate exception is an authenticated owner's shell, never an agent tool.
+  const ownerTerminalAllowed = (request: FastifyRequest) =>
+    options.remote
+      ? !!phoneSessions.get(request)
+      : !!options.localAccess &&
+        (localRoles.get(request) === 'owner' ||
+          localRoles.get(request) === 'host' ||
+          (browserOrigins.has(`http://${request.headers.host}`) &&
+            options.localAccess.browser(request.headers.cookie)));
+  app.addHook('preHandler', async (request, reply) => {
+    if (
+      request.routeOptions.url?.startsWith('/api/owner-terminal') &&
+      !ownerTerminalAllowed(request)
+    )
+      return reply
+        .code(401)
+        .send({ error: 'Connect an authenticated owner browser or paired device.' });
+  });
+  app.post('/api/owner-terminal', async (request) => {
+    const { key } = ownerTerminalOpenSchema.parse(request.body);
+    return ownerTerminalSessionSchema.parse(ownerTerminals.open(key));
+  });
+  app.get('/api/owner-terminal/:id', async (request) =>
+    ownerTerminalSessionSchema.parse(ownerTerminals.read(agentId(request.params))),
+  );
+  app.post('/api/owner-terminal/:id/close', async (request) => {
+    z.object({}).strict().parse(request.body);
+    ownerTerminals.stop(agentId(request.params));
+    return { ok: true };
+  });
+  app.get('/api/owner-terminal/:id/socket', { websocket: true }, (socket, request) => {
+    if (request.headers.origin !== (remoteOrigin ?? `http://${request.headers.host}`)) {
+      socket.close(1008, 'Same-origin required');
+      return;
+    }
+    const session = phoneSessions.get(request);
+    if (session) {
+      const unwatch = phone!.watch(session, () => socket.terminate());
+      socket.once('close', unwatch);
+    }
+    try {
+      ownerTerminals.connect(agentId(request.params), socket);
+    } catch (error) {
+      socket.send(JSON.stringify({ type: 'error', message: runtime.errorText(error) }));
+      socket.close(1008, 'Terminal unavailable');
+    }
+  });
   app.get('/api/agents/:id/terminal', { websocket: true }, (socket, request) => {
     if (request.headers.origin !== (remoteOrigin ?? `http://${request.headers.host}`)) {
       socket.close(1008, 'Same-origin required');
@@ -1789,6 +1840,7 @@ export async function createServer(
     for (const stream of streams) stream.end();
     streams.clear();
     if (options.ownsRuntime !== false) terminals.close();
+    if (!options.ownerTerminals) ownerTerminals.close();
     folders.close();
   });
   app.addHook('onClose', async () => {

@@ -14,6 +14,21 @@ reconnecting does not send them. Conflicting older versions remain readable and 
 under **Settings → Recovery copies → Retained browser drafts**. Original storage is not
 deleted. Large transfers or unavailable browser storage keep a recovery/retry route.
 
+## Run your own commands
+
+Open **Computers and accounts → Open terminal** to use the selected computer's native
+login shell from your computer or paired phone. This is your own shell, separate from the
+Codex conversation terminal. It needs an authenticated owner browser or approved device,
+but no AI allowance, provider sign-in or QUARK admission. You can type native maintenance,
+allowance and account commands yourself; opening the terminal does not run them.
+
+The computer chooses its configured login shell and home directory. **Back** keeps the
+shell alive; **Reconnect** returns to it without replaying input. **Close shell** stops that
+owned terminal. An app restart ends its shells; **New terminal** starts a fresh one explicitly.
+Phone control keys include Tab, arrows, Ctrl C, Ctrl D and Enter. Each connected worker
+computer needs this app version for its terminal routes. The unauthenticated demo cannot
+open a real shell.
+
 ## Share an editor conversation
 
 With the current companion, choose **Share a Codex conversation** or **Share a Claude Code

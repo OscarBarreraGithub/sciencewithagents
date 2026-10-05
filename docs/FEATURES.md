@@ -24,6 +24,9 @@ This describes connected source behavior, not a blanket release certification.
 | Updates and recovery | GitHub update check, automatic pre-update database copy, maintenance-agent assignment and source backups         | Agent handles customizations; quit/reopen is explicit. Source backup excludes private conversations |
 | Provider maintenance | Refresh usage, check native connection, supported CLI update paths                                               | Custom/embedded installations and sign-in may require a person; no silent provider substitution     |
 
+**Computers → Open terminal** runs your own shell on the selected computer even at zero AI
+allowance; the app must remain running. See [local access](LOCAL_ACCESS.md#run-your-own-commands).
+
 ## Report a bug
 
 Open **? → Report a bug**, describe the problem, then **Save and assign**. The selected

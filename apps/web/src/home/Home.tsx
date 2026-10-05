@@ -1,3 +1,4 @@
+import { OwnerTerminal } from '../OwnerTerminal';
 import { BugReport } from './BugReport';
 import { LatexApp } from '../Documents';
 import { ProviderActions } from './ProviderActions';
@@ -68,6 +69,7 @@ const titles: Record<string, string> = {
   new: 'Start or connect a project',
   resources: 'Computer health',
   computers: 'Computers and accounts',
+  terminal: 'Owner terminal',
   search: 'Saved history',
   settings: 'Settings',
   advanced: 'Advanced controls',
@@ -519,6 +521,8 @@ export function Home() {
             <ConnectionFlow route={currentRoute} data={data} />
           ) : page === 'models' ? (
             <ModelSettings />
+          ) : page === 'terminal' ? (
+            <OwnerTerminal key={apiScope()} computer={selectedHost(data)} />
           ) : page === 'resources' ? (
             <Resources reading={data.resources} />
           ) : (

@@ -26,7 +26,11 @@ generated IDs, durable idempotency and append-only events. Runtime data belongs 
 ignored data/. Never commit conversations, credentials, logs, worktrees or private drawings.
 Bind HTTP to 127.0.0.1. Codex App Server stays behind a private Unix socket and typed adapter.
 The web client cannot select filesystem paths, executables, arbitrary RPC methods or shell
-commands. Managers use typed coordination tools; workers implement in task worktrees.
+commands for agent launches. The explicit owner-operated terminal is a narrow exception:
+an authenticated owner or paired device may type native shell commands directly; the server
+chooses the login shell and starting directory. Opening/reconnecting the terminal makes no
+model call and does not depend on QUARK admission. Authentication remains required.
+Managers use typed coordination tools; workers implement in task worktrees.
 Managers apply independently reviewed changes by default using an exact preview. A project's
 human-review setting requires its owner's confirmation. Bound correction rounds to two,
 then record a manager disposition or ask the person according to the project policy.

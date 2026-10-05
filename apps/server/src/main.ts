@@ -10,6 +10,7 @@ import { binary, dataDir, port, repoRoot } from './paths.js';
 import { DemoProvider, seedDemo } from './demo.js';
 import { PhoneAccess, readPhoneConfig } from './phone-access.js';
 import { Terminals } from './terminal.js';
+import { OwnerTerminals } from './owner-terminal.js';
 import { SourceBackups } from './source-backups.js';
 import { PublishingAccounts } from './publishing-accounts.js';
 import { PhoneTunnel } from './phone-tunnel.js';
@@ -61,6 +62,7 @@ let store: Store | undefined;
 let runtime: Runtime | undefined;
 let tunnel: PhoneTunnel | undefined;
 let terminals: Terminals | undefined;
+let ownerTerminals: OwnerTerminals | undefined;
 let backups: SourceBackups | undefined;
 let hosts: Hosts | undefined;
 let notebookGateway: NotebookGateway | undefined;
@@ -99,6 +101,7 @@ function stop() {
     await close(() => tunnel?.close());
     await close(() => backups?.close());
     await close(() => terminals?.close());
+    await close(() => ownerTerminals?.close());
     await Promise.all([close(() => remote?.close()), close(() => app?.close())]);
     await close(() => hosts?.close());
     await runtimeClosing;
@@ -214,6 +217,7 @@ startup = (async () => {
   );
   tunnel = new PhoneTunnel(phone, root);
   terminals = new Terminals(runtime);
+  ownerTerminals = new OwnerTerminals();
   backups = new SourceBackups(store, root, undefined, demo ? [] : undefined);
   hosts = new Hosts(root, undefined, demo ? [] : undefined);
   // Demo data never checks the real computer's GitHub or Cloudflare sign-in.
@@ -251,6 +255,7 @@ startup = (async () => {
           phone,
           notebookGateway,
           terminals,
+          ownerTerminals,
           mirrors,
           backups,
           hosts,
@@ -294,6 +299,7 @@ startup = (async () => {
     repairPhoneListener: activatePhone,
     mirrors,
     terminals,
+    ownerTerminals,
     backups,
     hosts,
     publishing,

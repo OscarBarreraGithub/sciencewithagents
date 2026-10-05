@@ -437,12 +437,12 @@ export class Hosts {
 
 const uuid = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const getPaths = new RegExp(
-  `^/(?:apps|publishing-accounts|chat-images/${uuid}|chat-files/${uuid}(?:/info|/preview)?|health|browser/setup|setup(?:/(?:sign-in|claude-sign-in))?|documents(?:/browse|/${uuid}(?:/pdf|/reading|/assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif))?)?|snapshot|attention|capacity|resources|cluster(?:/sign-in|/notebooks)?|pulsar(?:/jobs/${uuid})?|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|archive/editors|work-items|bug-reports|app-updates|conversations(?:/visibility|/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid})?|vscode/deliveries/${uuid}|vscode/queued(?:/${uuid}(?:/receipts/${uuid})?)?|agents/${uuid}(?:/chat-quark|/mcp|/export|/recovery|/owner-requests|/usage|/receipts/${uuid}|/queued/${uuid}/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
+  `^/(?:owner-terminal/${uuid}|apps|publishing-accounts|chat-images/${uuid}|chat-files/${uuid}(?:/info|/preview)?|health|browser/setup|setup(?:/(?:sign-in|claude-sign-in))?|documents(?:/browse|/${uuid}(?:/pdf|/reading|/assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif))?)?|snapshot|attention|capacity|resources|cluster(?:/sign-in|/notebooks)?|pulsar(?:/jobs/${uuid})?|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|archive/editors|work-items|bug-reports|app-updates|conversations(?:/visibility|/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid})?|vscode/deliveries/${uuid}|vscode/queued(?:/${uuid}(?:/receipts/${uuid})?)?|agents/${uuid}(?:/chat-quark|/mcp|/export|/recovery|/owner-requests|/usage|/receipts/${uuid}|/queued/${uuid}/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
 );
 const postPaths = new RegExp(
-  `^/(?:apps/${uuid}/remove|publishing-accounts/check|chat-images|chat-files|browser/(?:check|open-setup)|documents/(?:from-message|${uuid}/(?:open|build))|projects(?:/(?:connect-folder|track-folder))?|archive/(?:search|read)|work-items(?:/tickets)?|bug-reports|app-updates/(?:check|start)|conversations(?:/search|/visibility)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|cluster/(?:settings|refresh|sign-in(?:/(?:respond|cancel))?|notebooks/(?:close|launch|renew|revoke))|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control)|vscode/queued/${uuid}|agents/${uuid}/(?:interviews|messages|queued/${uuid}|commands|settings|chat-quark|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
+  `^/(?:owner-terminal(?:/${uuid}/close)?|apps/${uuid}/remove|publishing-accounts/check|chat-images|chat-files|browser/(?:check|open-setup)|documents/(?:from-message|${uuid}/(?:open|build))|projects(?:/(?:connect-folder|track-folder))?|archive/(?:search|read)|work-items(?:/tickets)?|bug-reports|app-updates/(?:check|start)|conversations(?:/search|/visibility)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|cluster/(?:settings|refresh|sign-in(?:/(?:respond|cancel))?|notebooks/(?:close|launch|renew|revoke))|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control)|vscode/queued/${uuid}|agents/${uuid}/(?:interviews|messages|queued/${uuid}|commands|settings|chat-quark|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
 );
-const terminalPath = new RegExp(`^/agents/${uuid}/terminal$`);
+const terminalPath = new RegExp(`^/(?:agents/${uuid}/terminal|owner-terminal/${uuid}/socket)$`);
 
 /** Exact routes only. Reject encoded paths rather than reinterpret them across two routers. */
 export function proxyPath(method: string, path: string, socket = false) {
@@ -665,96 +665,101 @@ export function registerHostRoutes(
       }
     },
   });
-  app.get<{ Params: { hostId: string; agentId: string } }>(
-    '/api/hosts/:hostId/proxy/agents/:agentId/terminal',
-    { websocket: true },
-    (socket, request) => {
-      const target = proxyPath('GET', `/agents/${request.params.agentId}/terminal`, true);
-      const expectedPrefix = `/api/hosts/${request.params.hostId}/proxy/agents/${request.params.agentId}/terminal`;
-      if (!target || request.raw.url !== expectedPrefix || !request.headers.origin) {
-        socket.close(1008, 'Unknown terminal');
-        return;
-      }
-      let upstream: WebSocket | undefined,
-        ended = false,
-        waiting = 0;
-      const pending: { data: RawData; binary: boolean }[] = [];
-      const close = () => {
-        if (ended) return;
-        ended = true;
-        upstream?.terminate();
-        socket.terminate();
-      };
-      const unwatch = watch(request, close);
-      socket.once('close', () => {
-        close();
-        unwatch();
-      });
-      socket.once('error', close);
-      socket.on('message', (data, binary) => {
-        const length = Array.isArray(data)
-          ? data.reduce((sum, part) => sum + part.length, 0)
-          : data.byteLength;
-        if (length > 32_768) {
-          close();
+  for (const terminalRoute of ['agents/:agentId/terminal', 'owner-terminal/:agentId/socket'])
+    app.get<{ Params: { hostId: string; agentId: string } }>(
+      `/api/hosts/:hostId/proxy/${terminalRoute}`,
+      { websocket: true },
+      (socket, request) => {
+        const terminalTarget = terminalRoute.replace(':agentId', request.params.agentId);
+        const target = proxyPath('GET', `/${terminalTarget}`, true);
+        const expectedPrefix = `/api/hosts/${request.params.hostId}/proxy/${terminalTarget}`;
+        if (!target || request.raw.url !== expectedPrefix || !request.headers.origin) {
+          socket.close(1008, 'Unknown terminal');
           return;
         }
-        if (upstream?.readyState === WebSocket.OPEN) {
-          if (upstream.bufferedAmount > 131_072) {
+        let upstream: WebSocket | undefined,
+          ended = false,
+          waiting = 0;
+        const pending: { data: RawData; binary: boolean }[] = [];
+        const close = () => {
+          if (ended) return;
+          ended = true;
+          upstream?.terminate();
+          socket.terminate();
+        };
+        const unwatch = watch(request, close);
+        socket.once('close', () => {
+          close();
+          unwatch();
+        });
+        socket.once('error', close);
+        socket.on('message', (data, binary) => {
+          const length = Array.isArray(data)
+            ? data.reduce((sum, part) => sum + part.length, 0)
+            : data.byteLength;
+          if (length > 32_768) {
             close();
             return;
           }
-          upstream.send(data, { binary });
-        } else if (!ended && pending.length < 64 && waiting + length <= 32_768) {
-          waiting += length;
-          pending.push({ data, binary });
-        } else close();
-      });
-      void hosts
-        .checked(request.params.hostId)
-        .then(async ({ host, transport }) => {
-          if (ended) return;
-          const authenticated = await authenticatedHeaders(host, transport, 'GET', target);
-          if (ended) return;
-          upstream = new WebSocket(`ws://127.0.0.1:${transport.port}${target}`, {
-            headers: authenticated,
-            perMessageDeflate: false,
-            maxPayload: 16 * 1024 * 1024,
-            handshakeTimeout: 10_000,
-          });
-          upstream.once('open', () => {
-            if (ended) {
-              upstream?.terminate();
-              return;
-            }
-            for (const item of pending) upstream!.send(item.data, { binary: item.binary });
-            pending.length = 0;
-          });
-          upstream.on('message', (data, binary) => {
-            if (socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > 16 * 1024 * 1024) {
+          if (upstream?.readyState === WebSocket.OPEN) {
+            if (upstream.bufferedAmount > 131_072) {
               close();
               return;
             }
-            socket.send(data, { binary });
-          });
-          upstream.once('error', close);
-          upstream.once('close', (code, reason) => {
-            if (ended) return;
-            ended = true;
-            // Preserve native input-control transfer (e.g. 4001), never replay bytes or seize it automatically.
-            socket.close(
-              code === 1005 || code === 1006 || code === 1015 ? 1011 : code,
-              reason.toString().slice(0, 100),
-            );
-          });
-        })
-        .catch((error: unknown) => {
-          if (socket.readyState === WebSocket.OPEN)
-            socket.send(JSON.stringify({ type: 'error', message: failure(error).error }));
-          socket.close(1011, 'Computer connection unavailable');
+            upstream.send(data, { binary });
+          } else if (!ended && pending.length < 64 && waiting + length <= 32_768) {
+            waiting += length;
+            pending.push({ data, binary });
+          } else close();
         });
-    },
-  );
+        void hosts
+          .checked(request.params.hostId)
+          .then(async ({ host, transport }) => {
+            if (ended) return;
+            const authenticated = await authenticatedHeaders(host, transport, 'GET', target);
+            if (ended) return;
+            upstream = new WebSocket(`ws://127.0.0.1:${transport.port}${target}`, {
+              headers: authenticated,
+              perMessageDeflate: false,
+              maxPayload: 16 * 1024 * 1024,
+              handshakeTimeout: 10_000,
+            });
+            upstream.once('open', () => {
+              if (ended) {
+                upstream?.terminate();
+                return;
+              }
+              for (const item of pending) upstream!.send(item.data, { binary: item.binary });
+              pending.length = 0;
+            });
+            upstream.on('message', (data, binary) => {
+              if (
+                socket.readyState !== WebSocket.OPEN ||
+                socket.bufferedAmount > 16 * 1024 * 1024
+              ) {
+                close();
+                return;
+              }
+              socket.send(data, { binary });
+            });
+            upstream.once('error', close);
+            upstream.once('close', (code, reason) => {
+              if (ended) return;
+              ended = true;
+              // Preserve native input-control transfer (e.g. 4001), never replay bytes or seize it automatically.
+              socket.close(
+                code === 1005 || code === 1006 || code === 1015 ? 1011 : code,
+                reason.toString().slice(0, 100),
+              );
+            });
+          })
+          .catch((error: unknown) => {
+            if (socket.readyState === WebSocket.OPEN)
+              socket.send(JSON.stringify({ type: 'error', message: failure(error).error }));
+            socket.close(1011, 'Computer connection unavailable');
+          });
+      },
+    );
   app.addHook('preClose', async () => {
     notebookDelegations.close();
     for (const close of active) close();
