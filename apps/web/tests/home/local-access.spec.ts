@@ -161,10 +161,12 @@ test('expired browser access waits without redirect loops and resumes the intend
   await expect(page.locator('.home-shell')).toBeVisible();
   const target = `${protectedApp.browserOrigin}/#/vscode`;
   await page.goto(target);
+  await expect(page.getByRole('heading', { name: 'VS Code chats' })).toBeVisible();
   await context.clearCookies();
-  // The expired page may redirect as soon as a pending API request returns 401.
-  // Wait for the reload to commit, then assert the actual reconnect destination.
-  await page.reload({ waitUntil: 'commit' });
+  // Returning to an expired tab performs the real access check. Do not force a
+  // second navigation while a background 401 may already be redirecting it.
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page).toHaveURL(`${protectedApp.browserOrigin}/local-access/restore#/vscode`);
   await expect(page.getByRole('heading', { name: 'Reconnect your workspace' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open desktop app' })).toBeVisible();
   const waiting = page.url();

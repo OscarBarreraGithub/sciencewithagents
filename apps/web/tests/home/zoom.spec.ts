@@ -146,6 +146,12 @@ for (const size of [
           await page.goto(`http://127.0.0.1:4339/#/${route}`);
           await expect(page.locator('.flow-page')).toBeVisible();
           if (route === 'welcome') {
+            // Account/model cards load asynchronously and change the page height.
+            // Scroll after setup settles so this checks the final, usable layout.
+            await expect(page.locator('.welcome-provider-grid')).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: 'Check this computer', exact: true }),
+            ).toBeEnabled();
             const exit = page.getByRole('link', { name: 'Open home', exact: true });
             await exit.scrollIntoViewIfNeeded();
             await expect(exit).toBeInViewport();
