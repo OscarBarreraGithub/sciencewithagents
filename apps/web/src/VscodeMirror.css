@@ -580,6 +580,43 @@
     font-size: var(--text-reading);
   }
 }
+@media (max-height: 500px) and (min-width: 700px) {
+  /* Keep timing beside the existing tools instead of consuming a history row. */
+  .mirror-composer {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: center;
+  }
+  .mirror-composer > * {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+  .mirror-composer > .mirror-input-row {
+    grid-row: 3;
+    width: 100%;
+  }
+  .mirror-composer > .mirror-send-timing {
+    grid-row: 4;
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+  }
+  .mirror-send-timing select {
+    width: auto;
+    min-width: 150px;
+    min-height: 44px;
+    margin: 0;
+    padding: 8px 12px;
+  }
+  .mirror-composer > .mirror-compose-tools {
+    grid-row: 4;
+    grid-column: 2;
+    align-items: center;
+  }
+}
 .mirror-stop-row {
   display: flex;
   align-items: center;

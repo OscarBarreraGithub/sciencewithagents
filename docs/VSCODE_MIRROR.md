@@ -48,6 +48,7 @@ latest actual message. Tool bodies load on demand. Legacy full responses have an
 Codex builds with native turn paging load complete turns once per share and then re-read
 only the newest turns as the conversation changes; builds without it keep the full-history
 read. Summary or unloaded turns are never shown as a complete transcript.
+Short, wide screens keep send timing beside the composer tools so history remains readable.
 
 A slow transcript read keeps the last reading while the editor still answers the bridge's
 ping. An editor that stops answering, or whose latest read fails, is shown offline and loses

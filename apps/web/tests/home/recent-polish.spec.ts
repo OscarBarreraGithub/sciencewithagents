@@ -464,6 +464,9 @@ test('Shared chats retain multiline drafts on reload and expose their current lo
   );
   const writes: string[] = [];
   page.on('request', (request) => {
+    // Registering this browser is metadata bookkeeping, not a chat submission.
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/workspace/clients')
+      return;
     if (request.method() !== 'GET') writes.push(request.url());
   });
   await page.goto(`/#/chats/vscode/${encodeURIComponent(`claude:${chat.threadId}`)}`);
@@ -473,8 +476,7 @@ test('Shared chats retain multiline drafts on reload and expose their current lo
   await composer.fill(text);
   await page.reload();
   await expect(composer).toHaveValue(text);
-  // Observe the baseline gap without requiring that a future correction remain
-  // absent. The frontend task owns shared Expand/Versions and assistant views.
+  await expect(page.getByRole('button', { name: 'Open notepad', exact: true })).toBeVisible();
   const controls = {
     expand: await page.getByRole('button', { name: 'Open notepad', exact: true }).count(),
     versions: await page.getByRole('button', { name: 'Versions', exact: true }).count(),

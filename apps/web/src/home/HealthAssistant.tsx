@@ -261,7 +261,12 @@ export function HealthAssistant({
   stopping: boolean;
   stopError: string;
 }) {
-  const [saved, setSaved] = useState(restore);
+  const [saved, setSaved] = useState<Saved>(() => {
+    const saved = restore();
+    // A deep link must never expose a new-diagnosis draft before its thread loads.
+    // Typing into that temporary composer would be lost when the selection effect runs.
+    return agentId ? { ...saved, selection: { kind: 'thread', id: agentId } } : saved;
+  });
   const [notice, setNotice] = useState('');
   const [thread, setThread] = useState<AgentDetail | null>(null);
   const [modelEdit, setModelEdit] = useState<{ model: string; effort: string } | null>(null);

@@ -656,9 +656,9 @@ test('a saved automatic report accepts an owner question with old readings after
   });
   await page.goto(`/#/resources/${check.agentId}`);
   const chat = page.getByRole('dialog', { name: 'Resource assistant conversation' });
-  await chat
-    .getByRole('textbox', { name: 'Message Resource assistant' })
-    .fill('Explain the readings.');
+  const box = chat.getByRole('textbox', { name: 'Message Resource assistant' });
+  await box.fill('Explain the readings.');
+  await expect(box).toHaveValue('Explain the readings.');
   await expect(chat.getByRole('button', { name: 'Send message' })).toBeDisabled();
   await chat.locator('.health-running').getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(chat.getByRole('alert').filter({ hasText: 'Stop response lost.' })).toBeVisible();
@@ -666,7 +666,99 @@ test('a saved automatic report accepts an owner question with old readings after
   expect(stops).toHaveLength(2);
   expect(stops[0]).toEqual(stops[1]);
   await expect(chat.locator('.health-running')).toHaveCount(0);
+  await expect(box).toHaveValue('Explain the readings.');
   await expect(chat.getByRole('button', { name: 'Send message' })).toBeEnabled();
+});
+
+test('a saved resource deep link waits for its conversation and retains typing through delayed draft hydration', async ({
+  page,
+}) => {
+  const status = reading(Date.now() - 900000);
+  status.stale = true;
+  const check = diagnosis(Date.now(), '');
+  check.reason = 'pressure';
+  check.state = 'running';
+  status.checks = [check];
+  const thread = conversation(check);
+  thread.agent = {
+    ...thread.agent,
+    status: 'running',
+    resourceAssistant: { mode: 'snapshot', reason: 'pressure' },
+  } as typeof thread.agent;
+  const { drafts } = await fixture(page, status, new Map([[check.agentId, thread]]));
+  // Observe the first visible dialog without changing the browser's scheduling.
+  await page.addInitScript(() => {
+    const show = HTMLDialogElement.prototype.showModal;
+    HTMLDialogElement.prototype.showModal = function () {
+      if (this.getAttribute('aria-label') === 'Resource assistant conversation')
+        sessionStorage.setItem(
+          'test:resource-composer-on-open',
+          String(!!this.querySelector('.composer')),
+        );
+      return show.call(this);
+    };
+  });
+  let releaseConversation!: () => void;
+  const conversationReady = new Promise<void>((resolve) => {
+    releaseConversation = resolve;
+  });
+  let releaseDraft!: () => void;
+  const draftReady = new Promise<void>((resolve) => {
+    releaseDraft = resolve;
+  });
+  let conversationRequested = false;
+  let draftRequested = false;
+  await page.route(`**/api/agents/${check.agentId}`, async (route) => {
+    conversationRequested = true;
+    await conversationReady;
+    await route.fallback();
+  });
+  await page.route(`**/api/workspace/*/drafts/${check.agentId}`, async (route) => {
+    if (route.request().method() === 'GET') {
+      draftRequested = true;
+      await draftReady;
+    }
+    await route.fallback();
+  });
+  await page.route('**/api/resources/stop', async (route) => {
+    check.state = 'interrupted';
+    thread.agent.status = 'interrupted';
+    await route.fulfill({ json: status });
+  });
+  try {
+    await page.goto(`/#/resources/${check.agentId}`);
+    const chat = page.getByRole('dialog', { name: 'Resource assistant conversation' });
+    await expect(chat.getByText('Loading conversation…', { exact: true })).toBeVisible();
+    await expect.poll(() => conversationRequested).toBe(true);
+    expect(
+      await page.evaluate(() => sessionStorage.getItem('test:resource-composer-on-open')),
+    ).toBe('false');
+    await expect(chat.getByRole('textbox', { name: 'Message Resource assistant' })).toHaveCount(0);
+    releaseConversation();
+    const box = chat.getByRole('textbox', { name: 'Message Resource assistant' });
+    await expect.poll(() => draftRequested).toBe(true);
+    await box.fill('Keep this question while the saved draft reconnects.');
+    await expect(box).toHaveValue('Keep this question while the saved draft reconnects.');
+    await chat
+      .locator('.health-running')
+      .getByRole('button', { name: 'Stop', exact: true })
+      .click();
+    await expect(chat.locator('.health-running')).toHaveCount(0);
+    await expect(box).toHaveValue('Keep this question while the saved draft reconnects.');
+    await expect(chat.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    releaseDraft();
+    await expect(chat.getByRole('button', { name: 'Send message' })).toBeEnabled();
+    await expect(box).toHaveValue('Keep this question while the saved draft reconnects.');
+    await expect
+      .poll(() => drafts.get(check.agentId)?.text)
+      .toBe('Keep this question while the saved draft reconnects.');
+    await page.reload();
+    await expect(box).toHaveValue('Keep this question while the saved draft reconnects.');
+    await expect(chat.getByRole('button', { name: 'Send message' })).toBeEnabled();
+  } finally {
+    releaseConversation();
+    releaseDraft();
+  }
 });
 
 test('crowded readings keep long names, large groups and whole-computer CPU inside their panels', async ({

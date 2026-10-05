@@ -8,6 +8,8 @@ Projects and jobs appear above Apps and processes. Past readings are inspected t
 graphs. In the assistant, the clock button opens **Diagnosis history** with recent user
 conversations, including their saved drafts. Automatic reports stay available as evidence
 without crowding this history or the normal chat list. Older saved-conversation links still work.
+Saved-conversation links wait for that conversation before showing its composer. Typing stays
+in its draft while the computer reconnects or a pending check is stopped.
 The model button opens provider, model and thinking choices without crowding the chat.
 **New diagnosis** opens a clean draft while keeping the selected model and thinking level.
 Previous messages and drafts remain recoverable from history and do not reappear on reload.
