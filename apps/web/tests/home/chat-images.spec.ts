@@ -59,6 +59,9 @@ test('general PDF/text attachments survive Notepad and reload, expose downloads 
   const composer = page.locator('.composer');
   const input = composer.getByRole('textbox');
   await input.fill('Read these files. ');
+  // WebKit can insert a non-breaking trailing space through native editing.
+  // Preserve the exact browser value across composer/notepad transitions.
+  const originalText = await input.inputValue();
   await page.getByRole('button', { name: 'Open notepad', exact: true }).click();
   const pad = page.getByRole('dialog');
   const pick = async (name: string, mimeType: string, buffer: Buffer) => {
@@ -76,8 +79,9 @@ test('general PDF/text attachments survive Notepad and reload, expose downloads 
   await expect(pad.getByText('PDF ·', { exact: false })).toBeVisible();
   await expect(pad.getByText('Text ·', { exact: false })).toBeVisible();
   const area = pad.getByRole('textbox');
-  await expect(area).toHaveValue('Read these files. ');
+  await expect(area).toHaveValue(originalText);
   await area.fill('Read the full files. ');
+  const revisedText = await area.inputValue();
   const downloaded = await page.request.get(
     (await pad
       .getByRole('link', { name: 'research.tex', exact: true })
@@ -91,7 +95,7 @@ test('general PDF/text attachments survive Notepad and reload, expose downloads 
   await expect(composer.getByRole('link', { name: 'paper.pdf', exact: true })).toBeVisible();
   await page.reload();
   await expect(composer.getByRole('link', { name: 'research.tex', exact: true })).toBeVisible();
-  await expect(input).toHaveValue('Read the full files. ');
+  await expect(input).toHaveValue(revisedText);
   const delivered = page.waitForResponse((response) =>
     response.url().endsWith(`/agents/${managerId}/messages`),
   );

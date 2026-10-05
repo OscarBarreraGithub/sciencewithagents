@@ -92,7 +92,10 @@ test('QUARK opens the normal full-screen chat, retains its model controls and re
   const editor = (await notepad.getByRole('textbox').boundingBox())!;
   expect(paper.width).toBeGreaterThan(page.viewportSize()!.width - 60);
   const padBounds = (await notepad.boundingBox())!;
-  expect(editor.height).toBeGreaterThan(padBounds.height * 0.8);
+  // Header and attachment controls wrap on phones. The editor must fill all of the
+  // space below those controls, rather than a desktop-only percentage of the dialog.
+  const attachments = (await notepad.locator('.notepad-attachments').boundingBox())!;
+  expect(Math.abs(editor.y - (attachments.y + attachments.height))).toBeLessThanOrEqual(2);
   expect(editor.height).toBeGreaterThan(paper.height - 2);
   expect(editor.y + editor.height).toBeGreaterThan(padBounds.y + padBounds.height - 2);
   const writing = notepad.getByRole('textbox');

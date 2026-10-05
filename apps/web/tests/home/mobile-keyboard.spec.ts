@@ -143,9 +143,8 @@ test('focusing the Home to-do keeps cards and editor geometry stable while the k
   await editor.scrollIntoViewIfNeeded();
   await editor.click();
   const geometry = () =>
-    page.evaluate(() => {
+    editor.evaluate((field) => {
       const main = document.querySelector<HTMLElement>('.home-content')!;
-      const field = document.querySelector<HTMLElement>('#todo-new')!;
       const nav = document.querySelector('.overview-destinations')!;
       return {
         navHeight: nav.getBoundingClientRect().height,
