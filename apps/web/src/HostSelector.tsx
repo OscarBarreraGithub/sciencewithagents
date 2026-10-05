@@ -120,6 +120,11 @@ export function HostSelector({
           Open Codex or Claude on the new computer and paste this prompt. Its setup agent installs
           the app and prepares it to connect here.
         </p>
+        <p>
+          Tailscale setup can be tricky. Let the setup agents exchange connection details and
+          troubleshoot together—paste their handoffs between computers when needed. They can
+          handle the configuration and tell you when an account or network approval is needed.
+        </p>
         <PromptCard label="On the new computer" prompt={newComputerPrompt} />
         <details className="host-connect-finish">
           <summary>Then finish linking from your main computer</summary>

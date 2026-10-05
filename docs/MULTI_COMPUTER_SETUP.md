@@ -10,6 +10,14 @@ on that computer yourself. Afterwards, choose **Computer** in the app; projects,
 views, drafts and the native terminal follow that selection. No account switch or shell
 command is needed in the normal app journey.
 
+Tailscale setup can be tricky. Let the setup agents exchange connection details and troubleshoot
+together; paste their non-secret handoffs between computers when direct communication is not
+available. They can handle the configuration and identify any account or network approval needed.
+Include verified hostnames/IPs, host fingerprints and connection-test results in these handoffs,
+never private keys, passwords or app credentials. A laptop's access to two computers does not
+automatically let those computers connect to each other: the entry computer needs its own
+authorized route to the worker's SSH port.
+
 ## What stays where
 
 For access to the same workspace from a phone or laptop, pair its browser with the entry
