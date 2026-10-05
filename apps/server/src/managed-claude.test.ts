@@ -176,6 +176,17 @@ describe('managed Claude host lifecycle', () => {
     },
   );
 
+  it('retains the saved Chrome choice across host reopening and passes it to the native session', async () => {
+    store.updateAgent(managerId, { toolPolicy: 'native', nativeChrome: 'enabled' });
+    store.close();
+    store = new Store(join(root, 'dock.sqlite'));
+    await managed.close();
+    managed = new ManagedClaude(store, root, callbacks(), dependencies());
+    const session = await managed.prepare(store.agent(managerId));
+    expect(session.options).toMatchObject({ inheritNative: true, nativeChrome: 'enabled' });
+    expect((session as FixtureSession).submit).not.toHaveBeenCalled();
+  });
+
   it('preserves coordination-only built-ins for a restricted manager', async () => {
     store.updateAgent(managerId, { permission: 'read-only', toolPolicy: 'restricted' });
     const session = await managed.prepare(store.agent(managerId));

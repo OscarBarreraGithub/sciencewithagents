@@ -454,3 +454,51 @@ test('clearing a completed native goal explicitly permits a new goal without del
   await page.keyboard.press('Escape');
   await expect(page.getByText('Ready when you are.')).toBeVisible();
 });
+
+test('goal creation fits above the phone keyboard with one form scroller', async ({
+  page,
+}, info) => {
+  test.skip(
+    !['phone', 'small-phone', 'iphone-webkit'].includes(info.project.name),
+    'Tall phone viewport geometry.',
+  );
+  // Simulate keyboard geometry/events without claiming an actual iOS keyboard transition.
+  await page.addInitScript(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: 420 },
+      offsetTop: { configurable: true, value: 20 },
+      scale: { configurable: true, value: 1 },
+    });
+  });
+  const chat = await sharedChat(page);
+  await goalButton(page).click();
+  const objective = dialog(page).getByLabel('What should Codex accomplish?');
+  const text = 'Preserve the original evidence while checking the derivation.\n'.repeat(50);
+  await objective.fill(text);
+  const bounds = await dialog(page).boundingBox();
+  expect(bounds!.y).toBeGreaterThanOrEqual(20);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(441);
+  const field = await objective.boundingBox();
+  expect(field!.y).toBeGreaterThanOrEqual(20);
+  expect(field!.y + field!.height).toBeLessThanOrEqual(441);
+  const form = dialog(page).locator('form');
+  expect(await dialog(page).evaluate((el) => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  expect(await form.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  await form.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  const set = dialog(page).getByRole('button', { name: 'Set goal' });
+  const action = await set.boundingBox();
+  expect(action!.y).toBeGreaterThanOrEqual(20);
+  expect(action!.y + action!.height).toBeLessThanOrEqual(441);
+  const close = dialog(page).getByRole('button', { name: 'Close dialog' });
+  const closing = await close.boundingBox();
+  expect(closing!.y).toBeGreaterThanOrEqual(20);
+  expect(closing!.y + closing!.height).toBeLessThanOrEqual(441);
+  await page.screenshot({ path: info.outputPath('phone-goal-keyboard.png') });
+  await close.click();
+  await goalButton(page).click();
+  await expect(objective).toHaveValue(text);
+  await form.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await set.click();
+  await expect.poll(() => chat.posts.length).toBe(1);
+  expect(chat.posts[0].action === 'create' && chat.posts[0].objective).toBe(text.trim());
+});

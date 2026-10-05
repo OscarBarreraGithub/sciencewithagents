@@ -266,6 +266,7 @@ export class ManagedClaude {
       accountAffinity: identity.affinity,
       writableDirectories,
       inheritNative: agent.toolPolicy === 'native',
+      nativeChrome: agent.nativeChrome,
       unattended: agent.toolPolicy === 'native',
       role:
         agent.surface || agent.resourceAssistant?.mode === 'interactive'

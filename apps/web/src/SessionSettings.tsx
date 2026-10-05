@@ -26,6 +26,7 @@ export function SessionSettings({
   const [effort, setEffort] = useState<string>(agent.effort);
   const [permission, setPermission] = useState(agent.permission);
   const [toolPolicy, setToolPolicy] = useState(agent.toolPolicy ?? 'restricted');
+  const [nativeChrome, setNativeChrome] = useState(agent.nativeChrome ?? 'inherit');
   const [mcpServers, setMcpServers] = useState(agent.mcpServers);
   const [pluginsEnabled, setPluginsEnabled] = useState(agent.pluginsEnabled);
   const [webSearch, setWebSearch] = useState(agent.webSearch);
@@ -45,6 +46,7 @@ export function SessionSettings({
     setEffort(agent.effort);
     setPermission(agent.permission);
     setToolPolicy(agent.toolPolicy ?? 'restricted');
+    setNativeChrome(agent.nativeChrome ?? 'inherit');
     setMcpServers(agent.mcpServers);
     setPluginsEnabled(agent.pluginsEnabled);
     setWebSearch(agent.webSearch);
@@ -99,6 +101,18 @@ export function SessionSettings({
                 Use my native {agent.provider === 'codex' ? 'Codex' : 'Claude'} settings
               </option>
               <option value="restricted">Keep app restrictions</option>
+            </select>
+          </label>
+        )}
+        {agent.provider === 'claude' && toolPolicy === 'native' && !agent.interview && (
+          <label>
+            Chrome browser
+            <select
+              value={nativeChrome}
+              onChange={(event) => setNativeChrome(event.target.value as 'inherit' | 'enabled')}
+            >
+              <option value="inherit">Inherit my native setting</option>
+              <option value="enabled">Enable for this conversation</option>
             </select>
           </label>
         )}
@@ -286,6 +300,7 @@ export function SessionSettings({
               effort,
               permission,
               toolPolicy,
+              ...(agent.provider === 'claude' && toolPolicy === 'native' ? { nativeChrome } : {}),
               ...(agent.provider === 'codex' && toolPolicy !== 'native' ? { mcpServers } : {}),
               ...(pluginsEnabled !== agent.pluginsEnabled ? { pluginsEnabled } : {}),
               ...(webSearch !== agent.webSearch ? { webSearch } : {}),

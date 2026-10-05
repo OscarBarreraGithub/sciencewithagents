@@ -49,6 +49,11 @@ to launch an inherited Codex conversation. Native manager children join the exis
 family; they are not independent managers with fresh budgets. See VERIFICATION.md for evidence.
 
 Claude adds only the private Dock MCP integration and appends coordination instructions.
+For a native Claude conversation or manager, open **Advanced controls → Session settings →
+Chrome browser** and choose **Enable for this conversation** while idle. This uses Claude's
+official `--chrome` option for that conversation without changing your global preference.
+**Inherit my native setting** remains the default; saved restricted sessions keep Chrome off.
+The Claude in Chrome extension must be connected, and its site permissions still apply.
 Unattended launches deny residual permission requests instead of leaving work waiting for
 routine approval; human questions remain answerable. Saved restricted sessions forward their
 original permission requests. Read-only workers retain native plan permissions. The private

@@ -144,6 +144,8 @@ export const agentSchema = z.object({
   permission: permissionSchema,
   // Missing on saved conversations means the earlier explicit app restrictions.
   toolPolicy: z.enum(['native', 'restricted']).optional(),
+  // Omission inherits the owner's native Chrome preference without changing it.
+  nativeChrome: z.enum(['inherit', 'enabled']).optional(),
   mcpServers: mcpSelectionSchema.default([]),
   pluginsEnabled: z.boolean().default(false),
   webSearch: webSearchSchema.default('disabled'),
@@ -432,6 +434,7 @@ export const settingsSchema = z
     effort: effortSchema,
     permission: permissionSchema,
     toolPolicy: z.enum(['native', 'restricted']).optional(),
+    nativeChrome: z.enum(['inherit', 'enabled']).optional(),
     mcpServers: mcpSelectionSchema.optional(),
     pluginsEnabled: z.boolean().optional(),
     webSearch: webSearchSchema.optional(),

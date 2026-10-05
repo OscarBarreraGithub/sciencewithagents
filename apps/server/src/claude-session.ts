@@ -324,6 +324,8 @@ export type ClaudeSessionOptions = {
   accountAffinity: string;
   role: 'manager' | 'read-only' | 'implementer';
   inheritNative?: boolean;
+  /** Official per-session Chrome opt-in; omission preserves native preferences. */
+  nativeChrome?: 'inherit' | 'enabled';
   /** Native scoped execution; permissions needing a person are denied, questions remain visible. */
   unattended?: boolean;
   model: string;
@@ -462,6 +464,7 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
     'stdio',
     '--permission-prompts',
     'host',
+    ...(options.inheritNative && options.nativeChrome === 'enabled' ? ['--chrome'] : []),
     ...(!options.inheritNative
       ? [
           '--restricted',

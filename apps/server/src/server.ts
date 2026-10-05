@@ -1422,6 +1422,8 @@ export async function createServer(
         ? 'restricted'
         : (agent.toolPolicy ?? 'restricted'));
     const inherits = toolPolicy === 'native';
+    if (settings.nativeChrome !== undefined && (provider !== 'claude' || !inherits))
+      throw new Conflict('Chrome browser settings are available for native Claude conversations.');
     if (inherits && runtime.resources.isSnapshot(target))
       throw new Conflict('The resource assistant remains a bounded read-only check.');
     if (inherits && runtime.frontdesk.isFrontdesk(target))

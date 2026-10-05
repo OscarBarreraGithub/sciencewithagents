@@ -30,6 +30,10 @@ button.native-goal-entry {
   overflow-y: auto;
 }
 dialog.native-goal-dialog[open] {
+  position: fixed;
+  inset-block-start: var(--modal-top, 0px);
+  inset-block-end: calc(100dvh - var(--modal-top, 0px) - var(--modal-height, 100dvh));
+  max-height: calc(var(--modal-height, 100dvh) - 44px);
   display: flex;
   flex-direction: column;
   overflow: hidden;

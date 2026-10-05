@@ -404,6 +404,24 @@ describe('Claude native launch policy', () => {
     });
     expect(f.session.canAnswer(question.request_id)).toBe(true);
   });
+  it('enables Chrome only for an explicit native conversation and leaves inherited settings untouched', () => {
+    const inherited = options({ inheritNative: true, unattended: true, role: 'manager' });
+    const defaults = claudeArguments(inherited);
+    expect(defaults).not.toContain('--chrome');
+    expect(defaults).not.toContain('--no-chrome');
+    expect(claudeArguments({ ...inherited, nativeChrome: 'inherit' })).toEqual(defaults);
+    const enabled = claudeArguments({ ...inherited, nativeChrome: 'enabled' });
+    expect(enabled).toContain('--chrome');
+    expect(enabled).toContain('bypassPermissions');
+    expect(enabled).not.toContain('--settings');
+    const restricted = claudeArguments({
+      ...inherited,
+      inheritNative: false,
+      nativeChrome: 'enabled',
+    });
+    expect(restricted).toContain('--no-chrome');
+    expect(restricted).not.toContain('--chrome');
+  });
   it('inherits native tools/configuration and appends coordination without overriding native permissions', async () => {
     const f = fixture(options({ inheritNative: true, hook: () => ({}) }));
     const args = claudeArguments(f.config);
