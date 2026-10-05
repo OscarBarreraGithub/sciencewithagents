@@ -61,8 +61,10 @@ Provider reserve baselines default to 20% for new settings; migrate an existing 
 reserve into both providers without lowering it. Only explicit owner controls change them.
 Optional timed release is off by default, with thresholds of 12 hours for Codex and 45 minutes
 for Claude. It lowers each actual reported window's effective reserve to zero only inside that
-window's fresh future reset interval; it never invents a refill or weekly meter. Shared pacing
-must be enabled explicitly. Adaptive spending to finish about 15 minutes before reset remains
+window's fresh future reset interval; it never invents a refill or weekly meter. New empty
+installations enable shared protection with 20% reserves. Existing saved settings and off
+choices are preserved; an owner explicitly enables protection when it is off.
+Adaptive spending to finish about 15 minutes before reset remains
 TODO, beyond this deterministic rule.
 
 Detailed accounting remains queryable by agents. QUARK forecasts five-hour capacity and sends
