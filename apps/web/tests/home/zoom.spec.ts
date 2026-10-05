@@ -240,6 +240,18 @@ for (const size of [
             const created = await (await page.request.get(`/api/agents/${managerId}`)).json();
             expect(created.runs).toEqual([]);
             expect(sent).toEqual([]);
+            // A backend project can exist before the resumed browser preparation
+            // has acknowledged all settings. Wait for this exact setup to settle.
+            await expect
+              .poll(() =>
+                page.evaluate((managerId) => {
+                  const saved = JSON.parse(
+                    localStorage.getItem('dock:local:project-spawn') ?? 'null',
+                  );
+                  return saved?.setupReady === true && saved.project?.managerId === managerId;
+                }, managerId),
+              )
+              .toBe(true);
 
             await page.route('**/api/project-options', (route) =>
               route.fulfill({ json: { canChooseFolder: true } }),
@@ -257,7 +269,9 @@ for (const size of [
               }),
             );
             // Folder layout is a separate fixture. Real navigation deliberately retains an
-            // unsent project's setup; remove only this test receipt after verifying its draft.
+            // unsent project's setup. Unmount its writer before clearing this test receipt.
+            await page.goto('http://127.0.0.1:4339/#/home');
+            await expect(page.locator('.project-config')).toHaveCount(0);
             await page.evaluate(() => {
               localStorage.removeItem('dock:local:project-spawn');
               sessionStorage.removeItem('dock:local:project-spawn:brief-open');
