@@ -9,6 +9,7 @@ test('attention and to-dos grow from compact panels to independently scrolling s
     todoCount = 0;
   let managerId = '',
     projectId = '';
+  const questionIds = new Set<string>();
   await page.route('**/api/snapshot', async (route) => {
     const response = await route.fetch();
     const snapshot = snapshotSchema.parse(await response.json());
@@ -45,6 +46,11 @@ test('attention and to-dos grow from compact panels to independently scrolling s
     snapshot.backups = [];
     await route.fulfill({ json: snapshot });
   });
+  const questionId = () => {
+    const id = randomUUID();
+    questionIds.add(id);
+    return id;
+  };
   await page.route('**/api/work-items', async (route) => {
     // Wait for the snapshot identity; this read never changes the demo database.
     await expect.poll(() => managerId).not.toBe('');
@@ -52,7 +58,7 @@ test('attention and to-dos grow from compact panels to independently scrolling s
     await route.fulfill({
       json: {
         items: Array.from({ length: questionCount + todoCount }, (_, n) => ({
-          id: randomUUID(),
+          id: n < questionCount ? questionId() : randomUUID(),
           projectId: n < questionCount ? projectId : null,
           managerId: n < questionCount ? managerId : null,
           taskId: null,
@@ -90,10 +96,11 @@ test('attention and to-dos grow from compact panels to independently scrolling s
   await expect(attention.locator('.attention-item')).toHaveCount(5);
   expect((await panel.boundingBox())!.height).toBeGreaterThan(emptyHeight);
   await expect(attention).not.toContainText('Routine check');
-  await expect(attention.getByRole('link', { name: /Question 1/ })).toHaveAttribute(
-    'href',
-    `#/chat/${managerId}`,
-  );
+  // A question opens its own answer form in the manager's conversation.
+  const question = attention.getByRole('link', { name: /Question 1/ });
+  await expect(question).toHaveAttribute('href', new RegExp(`^#/chat/${managerId}/answer/`));
+  const answerId = (await question.getAttribute('href'))!.split('/answer/')[1]!;
+  expect(questionIds.has(answerId)).toBe(true);
   await expect(attention.locator('a[href="#/work"]')).toHaveCount(1);
 
   questionCount = 30;

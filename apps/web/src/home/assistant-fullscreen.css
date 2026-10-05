@@ -59,7 +59,10 @@ dialog.assistant-fullscreen,
   border-radius: 0;
 }
 .assistant-fullscreen .flow-chat-notice {
-  display: none;
+  flex-shrink: 0;
+  max-height: 30%;
+  overflow: auto;
+  margin: 0;
 }
 .assistant-fullscreen .flow-chat-main .conversation {
   min-height: 48px;

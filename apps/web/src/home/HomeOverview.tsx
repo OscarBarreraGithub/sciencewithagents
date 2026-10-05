@@ -630,7 +630,34 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
       detail: job.reason,
     });
   }
-  return [...asks, ...snapshotNeeds, ...stopped.values(), ...budgets.values(), ...local];
+  // A cluster sign-in only the owner can restore; running batch jobs continue meanwhile.
+  const cluster = data.cluster.data;
+  const clusterNeeds: Need[] =
+    cluster?.settings?.enabled &&
+    (cluster.connection.state === 'sign-in-needed' || cluster.connection.state === 'host-key')
+      ? [
+          {
+            key: 'cluster:connection',
+            projectId: null,
+            href: '#/work',
+            project: cluster.settings.label,
+            label: cluster.connection.state === 'host-key' ? 'Cluster host key' : 'Cluster sign-in',
+            title:
+              cluster.connection.state === 'host-key'
+                ? `${cluster.settings.label}: check the changed host key`
+                : `${cluster.settings.label}: sign in again`,
+            detail: cluster.connection.message,
+          },
+        ]
+      : [];
+  return [
+    ...asks,
+    ...snapshotNeeds,
+    ...stopped.values(),
+    ...budgets.values(),
+    ...local,
+    ...clusterNeeds,
+  ];
 }
 
 function AttentionPanel({

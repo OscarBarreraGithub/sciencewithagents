@@ -1,0 +1,41 @@
+@@swa-begin squeue@@
+5059323050593230md-runRUNNINGNonegpu_testpi_e_labnormal2026-10-04T23:29:582026-10-04T23:30:064:16:001:58:3718Ggres/gpu:11node2016182664/n/home/other1/project-y/cryoEM
+5056659250566592pipelineRUNNINGNonegpu_testpi_f_labnormal2026-10-04T21:48:382026-10-04T22:12:558:00:003:15:48448Ggres/gpu:nvidia_a100_3g.20gb:11node3052105719/n/labs/pi_f_lab/Lab/other2
+50584563_47050584563sweepPENDINGJobArrayTaskLimitpi_c,pi_c_gpu_a100,pi_c_gpu_mixed,pi_c_gpu_mig,shared,sapphire,pi_c_requeue,serial_requeuepi_c_labnormal2026-10-04T22:48:47N/A1:30:000:00832GN/A11667064/n/node5/LABS/pi_c_lab/Everyone
+50584563_47150584563sweepPENDINGJobArrayTaskLimitpi_c,pi_c_gpu_a100,pi_c_gpu_mixed,pi_c_gpu_mig,shared,sapphire,pi_c_requeue,serial_requeuepi_c_labnormal2026-10-04T22:48:47N/A1:30:000:00832GN/A11667064/n/node5/LABS/pi_c_lab/Everyone
+50584563_[470-499%30]50584563sweepPENDINGJobArrayTaskLimitpi_c,pi_c_gpu_a100,pi_c_gpu_mixed,pi_c_gpu_mig,shared,sapphire,pi_c_requeue,serial_requeuepi_c_labnormal2026-10-04T22:48:47N/A1:30:000:00832GN/A11667064/n/node5/LABS/pi_c_lab/Everyone
+@@swa-end squeue 0@@
+@@swa-begin sprio@@
+49398451245051610000001450516000
+49485593100149910000001499000
+49505649100149910000001499000
+@@swa-end sprio 0@@
+@@swa-begin sacct@@
+
+@@swa-end sacct 0@@
+@@swa-begin tracked@@
+45088913editor-sessionsharedpi_a_labTIMEOUT0:02026-09-07T12:57:462026-09-07T12:57:492026-09-10T10:58:1625202742008billing=12,cpu=8,mem=16G,node=11-10:44:09/n/home/researcherslurm-%j.out
+45088913.batchbatchpi_a_labCANCELLED0:152026-09-07T12:57:492026-09-07T12:57:492026-09-10T10:58:232520348cpu=8,mem=16G,node=100:00.014776K
+45088913.externexternpi_a_labCOMPLETED0:02026-09-07T12:57:492026-09-07T12:57:492026-09-10T10:58:242520358billing=12,cpu=8,mem=16G,node=11-10:44:0916026364K
+45133362_0reviewserial_requeuepi_a_labCANCELLED by 100010:02026-09-07T15:07:002026-09-07T15:07:012026-09-07T15:12:2031918048billing=30,cpu=48,mem=48G,node=101:11:42/n/labs/pi_a_lab/Lab/researcher/project-x/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.out/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.err
+45133362_0.batchbatchpi_a_labCANCELLED0:152026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2132048cpu=48,mem=48G,node=101:11:425872812K
+45133362_0.externexternpi_a_labCOMPLETED0:02026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2232148billing=30,cpu=48,mem=48G,node=100:00:00
+45133362_1reviewserial_requeuepi_a_labCANCELLED by 100010:02026-09-07T15:07:002026-09-07T15:07:012026-09-07T15:12:2031918048billing=30,cpu=48,mem=48G,node=101:08:06/n/labs/pi_a_lab/Lab/researcher/project-x/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.out/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.err
+45133362_1.batchbatchpi_a_labCANCELLED0:152026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2132048cpu=48,mem=48G,node=101:08:063302736K
+45133362_1.externexternpi_a_labCOMPLETED0:02026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2232148billing=30,cpu=48,mem=48G,node=100:00:00
+45133362_2reviewserial_requeuepi_a_labCANCELLED by 100010:02026-09-07T15:07:002026-09-07T15:07:012026-09-07T15:12:2031918048billing=30,cpu=48,mem=48G,node=101:02:43/n/labs/pi_a_lab/Lab/researcher/project-x/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.out/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.err
+45133362_2.batchbatchpi_a_labCANCELLED0:152026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2132048cpu=48,mem=48G,node=101:02:433220648K
+45133362_2.externexternpi_a_labCOMPLETED0:02026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2232148billing=30,cpu=48,mem=48G,node=100:00:00
+45133362_3reviewserial_requeuepi_a_labCANCELLED by 100010:02026-09-07T15:07:002026-09-07T15:07:012026-09-07T15:12:2031918048billing=30,cpu=48,mem=48G,node=101:08:06/n/labs/pi_a_lab/Lab/researcher/project-x/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.out/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.err
+45133362_3.batchbatchpi_a_labCANCELLED0:152026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2132048cpu=48,mem=48G,node=101:08:063295740K
+45133362_3.externexternpi_a_labCOMPLETED0:02026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2232148billing=30,cpu=48,mem=48G,node=100:00:00
+45133362_4reviewserial_requeuepi_a_labCANCELLED by 100010:02026-09-07T15:07:002026-09-07T15:07:012026-09-07T15:12:2031918048billing=30,cpu=48,mem=48G,node=101:11:47/n/labs/pi_a_lab/Lab/researcher/project-x/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.out/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.err
+45133362_4.batchbatchpi_a_labCANCELLED0:152026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2132048cpu=48,mem=48G,node=101:11:475827380K
+45133362_4.externexternpi_a_labCOMPLETED0:02026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2232148billing=30,cpu=48,mem=48G,node=100:00:00
+45133362_5reviewserial_requeuepi_a_labCANCELLED by 100010:02026-09-07T15:07:002026-09-07T15:07:012026-09-07T15:12:2031918048billing=30,cpu=48,mem=48G,node=101:07:53/n/labs/pi_a_lab/Lab/researcher/project-x/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.out/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.err
+45133362_5.batchbatchpi_a_labCANCELLED0:152026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2132048cpu=48,mem=48G,node=101:07:533280224K
+45133362_5.externexternpi_a_labCOMPLETED0:02026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2232148billing=30,cpu=48,mem=48G,node=100:00:00
+45133362_6reviewserial_requeuepi_a_labCANCELLED by 100010:02026-09-07T15:07:002026-09-07T15:07:012026-09-07T15:12:2031918048billing=30,cpu=48,mem=48G,node=101:11:36/n/labs/pi_a_lab/Lab/researcher/project-x/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.out/n/labs/pi_a_lab/Lab/researcher/project-x/logs/review_2026_09_%A_%a.err
+45133362_6.batchbatchpi_a_labCANCELLED0:152026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2132048cpu=48,mem=48G,node=101:11:365798296K
+45133362_6.externexternpi_a_labCOMPLETED0:02026-09-07T15:07:012026-09-07T15:07:012026-09-07T15:12:2232148billing=30,cpu=48,mem=48G,node=100:00:00
+@@swa-end tracked 0@@

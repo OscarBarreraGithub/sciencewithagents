@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { ManagedClaude } from './managed-claude.js';
 import {
   ClaudeSession,
@@ -146,7 +147,10 @@ describe('managed Claude host lifecycle', () => {
         inheritNative: true,
         unattended: true,
         role: permission === 'workspace-write' ? 'manager' : 'read-only',
+        // The native session keeps its private folder; a writing manager also changes its project.
+        writableDirectories: permission === 'workspace-write' ? [store.agent(managerId).cwd] : [],
       });
+      expect(session.options.cwd).not.toBe(store.agent(managerId).cwd);
     },
   );
 
@@ -380,6 +384,34 @@ describe('managed Claude host lifecycle', () => {
       tool.invoke({}, { ...context, signal: new AbortController().signal }),
     ).rejects.toThrow('no longer connected');
     expect(invoke).toHaveBeenCalledOnce();
+  });
+  it('reports invalid coordination fields without echoing inputs or unexpected internal errors', async () => {
+    const session = await managed.prepare(store.agent(managerId));
+    const tool = session.options.tools[0]!;
+    const context = {
+      sessionId: session.options.sessionId,
+      requestId: 'invalid-reserve',
+      signal: new AbortController().signal,
+    };
+    const invalid = z
+      .object({ reservePercent: z.number().min(5) })
+      .safeParse({ reservePercent: 0 });
+    if (invalid.success) throw new Error('Fixture must fail its old contract.');
+    invoke.mockRejectedValueOnce(invalid.error);
+    const result = await tool.invoke(
+      { reservePercent: 0, reason: 'Private owner instruction' },
+      context,
+    );
+    expect(result).toMatchObject({ isError: true });
+    expect(result.content[0]?.text).toContain('reservePercent');
+    expect(result.content[0]?.text).toContain('Correct the input');
+    expect(result.content[0]?.text).not.toContain('Private owner instruction');
+    invoke.mockRejectedValueOnce(new Error('Private internal diagnostic'));
+    const unexpected = await tool.invoke({}, context);
+    expect(unexpected).toMatchObject({ isError: true });
+    expect(unexpected.content[0]?.text).toBe(
+      'Coordination failed. Inspect the recorded task before retrying.',
+    );
   });
   it('old process events cannot act after forget; shutdown closes only sessions it owns', async () => {
     const first = await managed.prepare(store.agent(managerId));

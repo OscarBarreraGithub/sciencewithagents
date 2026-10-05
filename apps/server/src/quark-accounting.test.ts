@@ -355,3 +355,24 @@ it.each([new Date(reset).toISOString(), null])(
     expect(quark.budgetStatus(cap).spentPercent).toBeCloseTo(2);
   },
 );
+
+it('forecasts account-wide reserve and exhaustion separately and compares the actual reset', () => {
+  const f = work('Forecast');
+  tokens(f, 100);
+  quark.sync();
+  advance(300_000);
+  reading('claude', 82, 300);
+  quark.sync();
+  const rates = quark.projectRates();
+  const account = rates.accounts.find((a) => a.provider === 'claude')!;
+  expect(account.estimatedPercentPerHour).toBeCloseTo(24);
+  expect(account.savedReservePercent).toBe(20);
+  expect(account.reserveAt).toBe(account.observedAt); //18% remaining is already below20%
+  expect(Date.parse(account.exhaustionAt!) - Date.parse(account.observedAt!)).toBeCloseTo(
+    (18 / 24) * 3600_000,
+  );
+  expect(account.resetBeforeReserve).toBe(false);
+  expect(
+    rates.rates.find((r) => r.projectId === f.project.id && r.provider === 'claude')!.history,
+  ).toHaveLength(24);
+});

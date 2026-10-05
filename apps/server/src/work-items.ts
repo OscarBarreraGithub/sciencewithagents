@@ -3,6 +3,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   managerWorkItemRequestSchema,
+  ownerRequestQuerySchema,
+  ownerRequestHttpQuerySchema,
+  ownerRequestPageSchema,
   projectNotesRequestSchema,
   projectNotesSchema,
   workItemQuerySchema,
@@ -17,6 +20,22 @@ import {
 } from '@dock/shared';
 import { Conflict, Missing, now, Store } from './store.js';
 
+const requestCursor = z
+  .object({
+    managerId: z.string().uuid(),
+    maximum: z.number().int().nonnegative(),
+    before: z.number().int().positive(),
+    includeHandled: z.boolean(),
+  })
+  .strict();
+// Native owner steering used a system entry before structured provenance existed.
+// It was written only after confirmation. Queued/cancelled runs remain visibly distinct.
+const ownerSourceSql = `e.agent_id=? AND (
+  (json_extract(e.body,'$.kind')='user' AND (json_extract(e.body,'$.ownerInput') IS NOT NULL OR
+    r.id IS NULL OR (json_extract(r.body,'$.sourceId') IS NULL AND json_extract(r.body,'$.kind')='user' AND (e.id!=r.id OR r.key NOT LIKE 'native:%'))))
+  OR (json_extract(e.body,'$.kind')='system' AND json_extract(e.body,'$.title')='Owner steering')
+)`;
+
 /** Durable asks, internal follow-ups and personal to-dos on the existing store/queue. */
 export class WorkItems {
   constructor(readonly store: Store) {
@@ -29,6 +48,16 @@ export class WorkItems {
         body TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS work_items_project ON work_items(project_id);
+      CREATE TABLE IF NOT EXISTS work_item_sources (
+        item_id TEXT NOT NULL REFERENCES work_items(id),
+        agent_id TEXT NOT NULL REFERENCES agents(id),
+        entry_id TEXT NOT NULL REFERENCES entries(id),
+        PRIMARY KEY(item_id,entry_id)
+      );
+      CREATE INDEX IF NOT EXISTS work_item_sources_entry ON work_item_sources(agent_id,entry_id);
+      INSERT OR IGNORE INTO work_item_sources(item_id,agent_id,entry_id)
+        SELECT w.id,json_extract(s.value,'$.agentId'),json_extract(s.value,'$.entryId')
+        FROM work_items w,json_each(w.body,'$.sourceMessages') s;
       CREATE TABLE IF NOT EXISTS project_notes (
         project_id TEXT PRIMARY KEY REFERENCES projects(id),
         body TEXT NOT NULL
@@ -93,6 +122,90 @@ export class WorkItems {
 
   save(raw: unknown): WorkItem {
     return this.mutate(workItemRequestSchema.parse(raw), null);
+  }
+
+  /** Durable inputs are paged independently of the recent conversation preview. */
+  ownerRequests(managerId: string, raw: unknown = {}) {
+    this.manager(managerId);
+    const query = ownerRequestQuerySchema.parse(raw);
+    let cursor: z.infer<typeof requestCursor> | undefined;
+    if (query.cursor) {
+      try {
+        cursor = requestCursor.parse(
+          JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8')),
+        );
+      } catch {
+        throw new Conflict('Invalid owner-request cursor. Refresh this list.');
+      }
+      if (cursor.managerId !== managerId || cursor.includeHandled !== query.includeHandled)
+        throw new Conflict('Owner-request cursor belongs to another manager or filter.');
+    }
+    const maximum =
+      cursor?.maximum ??
+      Number(
+        this.store.db.prepare('SELECT COALESCE(MAX(rowid),0) AS maximum FROM entries').get()!
+          .maximum,
+      );
+    const handled = query.includeHandled
+      ? ''
+      : " AND NOT EXISTS (SELECT 1 FROM work_item_sources s JOIN work_items w ON w.id=s.item_id WHERE s.agent_id=e.agent_id AND s.entry_id=e.id AND json_extract(w.body,'$.sourceDisposition') IS NOT NULL)";
+    const from = `FROM entries e LEFT JOIN runs r ON r.id=json_extract(e.body,'$.runId') AND r.agent_id=e.agent_id WHERE ${ownerSourceSql} AND e.rowid<=?${handled}`;
+    const total = Number(
+      this.store.db.prepare(`SELECT count(*) AS total ${from}`).get(managerId, maximum)!.total,
+    );
+    const rows = this.store.db
+      .prepare(
+        `SELECT e.rowid,e.body,json_extract(r.body,'$.status') AS run_status ${from} AND e.rowid<? ORDER BY e.rowid DESC LIMIT ?`,
+      )
+      .all(managerId, maximum, cursor?.before ?? Number.MAX_SAFE_INTEGER, query.limit + 1);
+    const selected = rows.slice(0, query.limit);
+    const items = selected.map((row) => {
+      const entry = JSON.parse(String(row.body)) as {
+        id: string;
+        text: string;
+        createdAt: string;
+        kind: string;
+        ownerInput?: { delivery: string };
+      };
+      const links = this.store.db
+        .prepare(
+          "SELECT w.id,json_extract(w.body,'$.sourceDisposition') AS disposition FROM work_item_sources s JOIN work_items w ON w.id=s.item_id WHERE s.agent_id=? AND s.entry_id=? ORDER BY w.id",
+        )
+        .all(managerId, entry.id);
+      return {
+        agentId: managerId,
+        entryId: entry.id,
+        text: entry.text.slice(0, 1200),
+        totalCharacters: entry.text.length,
+        createdAt: entry.createdAt,
+        delivery:
+          entry.ownerInput?.delivery ??
+          (entry.kind === 'system' ? 'submitted' : String(row.run_status ?? 'retained')),
+        coverage: links.some((link) => link.disposition !== null)
+          ? 'triaged'
+          : links.length
+            ? 'linked'
+            : 'untriaged',
+        workItemIds: links.map((link) => String(link.id)),
+      };
+    });
+    return ownerRequestPageSchema.parse({
+      items,
+      total,
+      nextCursor:
+        rows.length > query.limit
+          ? Buffer.from(
+              JSON.stringify({
+                managerId,
+                maximum,
+                before: Number(selected.at(-1)!.rowid),
+                includeHandled: query.includeHandled,
+              }),
+            ).toString('base64url')
+          : null,
+      notice:
+        'Retained owner messages, not automatically classified tasks. A source link alone leaves the message pending review. After reviewing the whole message and mapping all independent asks, record a sourceDisposition describing that triage or an explicit answer/cancellation/replacement. Triaged does not mean completed. Continue unrelated work. Delivery states do not claim failed, cancelled or uncertain input was received. Refresh for new inputs; use history/read for full text.',
+    });
   }
 
   saveForManager(managerId: string, raw: unknown): WorkItem {
@@ -168,6 +281,28 @@ export class WorkItems {
             throw new Conflict('An assigned to-do keeps its original project and manager.');
           if (previous?.humanReply && (kind !== previous.kind || taskId !== previous.taskId))
             throw new Conflict('An answered ask keeps its original kind and task.');
+          const sources = input.sourceMessages ?? previous?.sourceMessages ?? [];
+          const sourceKeys = (values: WorkItem['sourceMessages']) =>
+            values.map((source) => `${source.agentId}:${source.entryId}`).toSorted();
+          const sourcesChanged =
+            JSON.stringify(sourceKeys(sources)) !==
+            JSON.stringify(sourceKeys(previous?.sourceMessages ?? []));
+          if (sources.length && !managerId)
+            throw new Conflict('Source messages need their original project manager.');
+          for (const source of sources) {
+            if (source.agentId !== managerId)
+              throw new Conflict('Source messages belong to the receiving manager.');
+            if (
+              !this.store.db
+                .prepare(
+                  `SELECT e.id FROM entries e LEFT JOIN runs r ON r.id=json_extract(e.body,'$.runId') AND r.agent_id=e.agent_id WHERE ${ownerSourceSql} AND e.id=?`,
+                )
+                .get(managerId, source.entryId)
+            )
+              throw new Conflict('Source is not a retained owner message for this manager.');
+          }
+          if (input.sourceDisposition && !sources.length)
+            throw new Conflict('A source disposition needs a saved source message.');
           const timestamp = now();
           let status = input.status ?? previous?.status ?? (kind === 'human' ? 'waiting' : 'open');
           const value: WorkItem = {
@@ -187,6 +322,13 @@ export class WorkItems {
             createdAt: previous?.createdAt ?? timestamp,
             updatedAt: timestamp,
             resolvedAt: null,
+            sourceMessages: sources,
+            sourceDisposition:
+              input.sourceDisposition !== undefined
+                ? input.sourceDisposition
+                : sourcesChanged
+                  ? null
+                  : (previous?.sourceDisposition ?? null),
           };
           if (
             kind === 'human' &&
@@ -246,6 +388,12 @@ export class WorkItems {
       `,
             )
             .run(saved.id, projectId, managerId, taskId, JSON.stringify(saved));
+          this.store.db.prepare('DELETE FROM work_item_sources WHERE item_id=?').run(saved.id);
+          const link = this.store.db.prepare(
+            'INSERT INTO work_item_sources(item_id,agent_id,entry_id) VALUES(?,?,?)',
+          );
+          for (const source of saved.sourceMessages)
+            link.run(saved.id, source.agentId, source.entryId);
           this.store.event(
             previous ? 'work-item.updated' : 'work-item.created',
             projectId,
@@ -330,6 +478,12 @@ export class WorkItems {
 export function registerWorkItemRoutes(app: FastifyInstance, items: WorkItems, kick?: () => void) {
   const projectParams = z.object({ id: z.string().uuid() }).strict();
   app.get('/api/work-items', async (request) => items.list(request.query));
+  app.get('/api/agents/:id/owner-requests', async (request) =>
+    items.ownerRequests(
+      projectParams.parse(request.params).id,
+      ownerRequestHttpQuerySchema.parse(request.query),
+    ),
+  );
   app.post('/api/work-items', async (request) => {
     const item = items.save(request.body);
     // Only wakes the existing queue; the durable operation owns enqueue and deduplication.

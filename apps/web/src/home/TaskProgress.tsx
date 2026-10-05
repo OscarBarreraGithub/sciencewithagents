@@ -228,6 +228,7 @@ export function TaskProgress({ task, data }: { task: Task; data: HomeData }) {
                   (window) =>
                     window.provider === budget.provider && window.windowId === budget.windowId,
                 )?.label ?? budget.windowId}
+                {budget.period === 'hour' ? ' · rolling hour' : ''}
               </strong>
               <small>
                 {!budget.taskId
@@ -240,9 +241,11 @@ export function TaskProgress({ task, data }: { task: Task; data: HomeData }) {
                 <b>{budget.remainingPercent.toFixed(1)} percentage points left</b> of{' '}
                 {budget.limitPercent.toFixed(1)} allowed.
               </p>
+              {!budget.enabled && <p>This hourly limit is off.</p>}
               <p>
-                ≈ {budget.spentPercent.toFixed(1)} spent · {budget.reservedPercent.toFixed(1)}{' '}
-                reserved.
+                ≈ {budget.spentPercent.toFixed(1)} spent
+                {budget.period === 'hour' ? ' in the last hour' : ''} ·{' '}
+                {budget.reservedPercent.toFixed(1)} reserved.
               </p>
               {budget.reason && <p>{budget.reason}</p>}
             </article>
@@ -253,7 +256,7 @@ export function TaskProgress({ task, data }: { task: Task; data: HomeData }) {
                 ? 'Reading allowance limits…'
                 : accounting.error
                   ? 'Allowance limits could not be confirmed.'
-                  : 'No saved task, parent-task or project allowance cap. QUARK’s shared pacing and token budgets still apply.'}
+                  : 'No saved task, parent-task or project allowance cap. QUARK’s shared pacing and reserve still apply.'}
             </p>
           )}
           <p className="flow-note">

@@ -29,6 +29,11 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 }
+/** A request whose delivery is unknown: offline, timed out, or cut off by a tunnel/proxy. */
+export const connectionLost = (error: unknown) =>
+  error instanceof TypeError ||
+  (error instanceof ApiError &&
+    (error.code === 'OFFLINE' || error.code === 'REQUEST_TIMEOUT' || error.code === 'INTERRUPTED'));
 export async function api<T = unknown>(
   path: string,
   body?: unknown,
@@ -58,6 +63,7 @@ export async function api<T = unknown>(
       throw new ApiError(
         'The computer connection was interrupted. Your work is retained; try again when it reconnects.',
         response.status,
+        'INTERRUPTED',
       );
     const value = (await response.json()) as {
       error?: string;

@@ -46,6 +46,12 @@ function sample(at: number): ResourceSample {
     swapUsedBytes: 4 * 1024 ** 3,
     swapOutBytesPerSecond: 15 * 1024 ** 2,
     diskTotalBytes: 512 * 1024 ** 3,
+    diskReadBytesPerSecond: 3 * 1024 ** 2,
+    diskWriteBytesPerSecond: 1024 ** 2,
+    networkReceiveBytesPerSecond: 2 * 1024 ** 2,
+    networkSendBytesPerSecond: 0.5 * 1024 ** 2,
+    gpuUtilizationPercent: 37,
+    thermalWarning: 'none',
     processCount: 390,
     jobs: [
       {
@@ -77,7 +83,7 @@ function sample(at: number): ResourceSample {
         memoryChangeBytes: 0,
       },
     ],
-    unavailable: ['GPU, temperatures, disk I/O and network traffic are not measured.'],
+    unavailable: ['Temperatures are not measured; macOS exposes them only to administrator tools.'],
   };
 }
 function reading(now = Date.now()): ResourceStatus {
@@ -243,7 +249,7 @@ async function fixture(
     const saved = conversations.get(id);
     return saved ? route.fulfill({ json: saved }) : route.fallback();
   });
-  return { writes, conversations };
+  return { writes, conversations, drafts };
 }
 async function noHorizontalOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -322,9 +328,10 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
 
   await assistant.getByRole('radio', { name: 'Claude', exact: true }).click();
   await expect(assistant.getByRole('radio', { name: 'Claude', exact: true })).toBeChecked();
+  // Direct questions default to the stronger diagnosis model; routine checks stay lighter.
   await expect(
     assistant.getByRole('combobox', { name: 'Model', exact: true }).locator('option[value=""]'),
-  ).toHaveText('Sonnet example · routine-check default');
+  ).toHaveText('Opus example · diagnosis default');
   await assistant
     .getByRole('combobox', { name: 'Model', exact: true })
     .selectOption('fixture-opus');
@@ -340,7 +347,11 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   await expect(
     assistant.getByRole('alert').filter({ hasText: 'The request may have arrived' }),
   ).toBeVisible();
-  await expect(assistant.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  // One alert explains the uncertain send; the composer retries the same request.
+  await expect(assistant.getByRole('alert')).toHaveCount(1);
+  await expect(
+    assistant.getByRole('button', { name: 'Retry previous message', exact: true }),
+  ).toBeEnabled();
   await page.reload();
   await assistant.getByRole('button', { name: 'Model settings', exact: true }).click();
   await expect(assistant.getByRole('radio', { name: 'Claude', exact: true })).toBeChecked();
@@ -354,7 +365,7 @@ test('computer health opens read-only, then preserves provider choices, a lost-r
   await expect(assistant.getByRole('textbox', { name: 'Message Resource assistant' })).toHaveValue(
     'Why is Chrome slow at only 20% CPU?',
   );
-  await assistant.getByRole('button', { name: 'Send message', exact: true }).click();
+  await assistant.getByRole('button', { name: 'Retry previous message', exact: true }).click();
   await expect(
     assistant.getByText('Memory pressure is the clearest signal.', { exact: false }),
   ).toBeVisible();
@@ -437,7 +448,7 @@ for (const state of ['missing', 'stale'] as const) {
     );
 
     if (state === 'missing') {
-      await expect(snapshot.getByText('Not measured', { exact: true })).toHaveCount(5);
+      await expect(snapshot.getByText('Not measured', { exact: true })).toHaveCount(9);
       await expect(
         page.getByText('No app readings yet. This does not mean no apps are running.'),
       ).toBeVisible();
@@ -775,6 +786,17 @@ test('partial and out-of-range readings stay explicit instead of looking healthy
     await expect(
       snapshot.locator('.health-metric').filter({ hasText: label }).first().locator('strong'),
     ).toHaveText('Not measured');
+  // Disk, network, GPU and thermal readings come from their own sources.
+  for (const [label, value] of [
+    ['Disk activity', '4.0MB/s'],
+    ['Network', '2.5MB/s'],
+    ['GPU', '37%'],
+    ['Thermal', 'No warning'],
+  ])
+    await expect(
+      snapshot.locator('.health-metric').filter({ hasText: label }).first().locator('strong'),
+    ).toHaveText(value);
+  await expect(snapshot.getByText('3.0 read · 1.0 written')).toBeVisible();
   await expect(
     page
       .getByRole('region', { name: 'Apps and processes' })
@@ -977,7 +999,7 @@ for (const mode of ['interactive', 'snapshot'] as const) {
 
 // Different sibling keys matter here: a transcript and its composer must not share an ID.
 // This exercises real React reconciliation, including late polling and repeated transitions.
-test('new resource conversations remove old messages, preserve history and stay new after reload', async ({
+test('new resource diagnoses remove old messages, preserve history and stay new after reload', async ({
   page,
 }, info) => {
   const status = reading();
@@ -1021,7 +1043,7 @@ test('new resource conversations remove old messages, preserve history and stay 
     await route.fulfill({ json: history });
   });
   await expect.poll(() => polling).toBe(true);
-  await chat.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await chat.getByRole('button', { name: 'New diagnosis', exact: true }).click();
   finishPoll!();
   await expect(page).toHaveURL(/#\/resources\/chat$/);
   await expect(chat.locator('.conversation')).toHaveCount(0);
@@ -1029,16 +1051,30 @@ test('new resource conversations remove old messages, preserve history and stay 
   await expect(chat.locator('.health-intro')).toHaveCount(1);
   await expect(chat.getByRole('combobox')).toHaveCount(0);
   await expect(chat.getByRole('textbox', { name: 'Message Resource assistant' })).toHaveValue('');
+  await chat.getByRole('button', { name: 'Model settings', exact: true }).click();
+  const preservedModel = page.getByRole('dialog', {
+    name: 'Resource assistant model',
+    exact: true,
+  });
+  await expect(preservedModel.getByRole('combobox', { name: 'Model', exact: true })).toHaveValue(
+    'fixture-opus',
+  );
+  await expect(preservedModel.getByRole('combobox', { name: 'Thinking', exact: true })).toHaveValue(
+    'adaptive-v2',
+  );
+  await preservedModel.getByRole('button', { name: 'Done', exact: true }).click();
   expect(conversations.get(previous.agentId)).toEqual(history);
   expect(writes).toEqual([]);
   await page.reload();
   await expect(chat.locator('.health-intro')).toBeVisible();
   await expect(chat.locator('.conversation')).toHaveCount(0);
   const box = chat.getByRole('textbox', { name: 'Message Resource assistant' });
-  await page.goto(`/#/resources/${previous.agentId}`);
+  await chat.getByRole('button', { name: 'Diagnosis history', exact: true }).click();
+  const diagnosisHistory = page.getByRole('dialog', { name: 'Diagnosis history', exact: true });
+  await diagnosisHistory.getByRole('button', { name: new RegExp(previous.summary) }).click();
   await expect(box).toHaveValue('Unsent draft for the earlier conversation');
   await expect(chat.locator('.conversation')).toHaveCount(1);
-  await chat.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await chat.getByRole('button', { name: 'New diagnosis', exact: true }).click();
   await expect(box).toHaveValue('');
   await box.fill('What is running now?');
   await chat.getByRole('button', { name: 'Send message', exact: true }).click();
@@ -1052,7 +1088,7 @@ test('new resource conversations remove old messages, preserve history and stay 
   await expect(chat.locator('.conversation')).toHaveCount(1);
   await expect(chat.locator('.composer')).toHaveCount(1);
   await expect(chat.locator('.health-intro')).toHaveCount(0);
-  await chat.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await chat.getByRole('button', { name: 'New diagnosis', exact: true }).click();
   await box.fill('Keep this new draft while changing models');
   await chat.getByRole('button', { name: 'Model settings', exact: true }).click();
   const settings = page.getByRole('dialog', { name: 'Resource assistant model', exact: true });
@@ -1083,4 +1119,159 @@ test('new resource conversations remove old messages, preserve history and stay 
       path: `../../data/resource-chat-polish-20261003/${info.project.name}-new-${zoom}.png`,
     });
   }
+});
+
+test('expired diagnosis acknowledges once, retains later typing through draft reconnect and save failure, and filters history', async ({
+  page,
+}, info) => {
+  const previous = diagnosis(Date.now() - 2 * 60 * 60_000, 'Earlier owner diagnosis');
+  const automatic = {
+    ...diagnosis(Date.now() - 60_000, 'Automatic checkpoint evidence'),
+    reason: 'checkpoint' as const,
+  };
+  const formattedSummary =
+    '## **Latest owner follow-up**\nOne `python` process uses **91%** of a core; memory_tau = 1.2.\n- [Inspect processes](https://example.invalid)';
+  const duplicate = {
+    ...diagnosis(Date.now() - 60_000, formattedSummary),
+    agentId: previous.agentId,
+  };
+  const status = reading();
+  status.checks = [automatic, duplicate, previous];
+  const history = conversation(previous);
+  const { conversations, drafts } = await fixture(
+    page,
+    status,
+    new Map([[previous.agentId, history]]),
+  );
+  const next = diagnosis(Date.now(), 'Fresh diagnosis received exactly the submitted question');
+  conversations.set(next.agentId, conversation(next, 'Investigate this new slowdown'));
+  const asks: Record<string, unknown>[] = [];
+  let releaseFirst!: () => void;
+  const firstReply = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  await page.route('**/api/resources/ask', async (route) => {
+    asks.push(route.request().postDataJSON());
+    if (asks.length === 1) {
+      await firstReply;
+      await route.fulfill({
+        status: 503,
+        json: { error: 'Connection interrupted after acceptance.' },
+      });
+      return;
+    }
+    status.checks = [next, automatic, duplicate, previous];
+    await route.fulfill({ json: status });
+  });
+  let releaseDraft!: () => void;
+  const draftConnection = new Promise<void>((resolve) => {
+    releaseDraft = resolve;
+  });
+  let draftRequested = false;
+  const draftWrites: Record<string, unknown>[] = [];
+  await page.route(`**/api/workspace/*/drafts/${next.agentId}`, async (route) => {
+    if (route.request().method() === 'GET') {
+      draftRequested = true;
+      await draftConnection;
+    }
+    if (route.request().method() === 'POST') {
+      draftWrites.push(route.request().postDataJSON());
+      if (draftWrites.length === 1) {
+        await route.fulfill({
+          status: 503,
+          json: { error: 'Draft saving is temporarily unavailable.' },
+        });
+        return;
+      }
+    }
+    await route.fallback();
+  });
+  await page.goto(`/#/resources/${previous.agentId}`);
+  const chat = page.getByRole('dialog', { name: 'Resource assistant conversation', exact: true });
+  const box = chat.getByRole('textbox', { name: 'Message Resource assistant' });
+  await expect(chat.getByText(previous.summary, { exact: true })).toBeVisible();
+  await box.fill('Investigate this new slowdown');
+  await chat.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect.poll(() => asks.length).toBe(1);
+  await box.fill('Later typing while the acknowledgement is lost');
+  releaseFirst();
+  await expect(
+    chat.getByRole('button', { name: 'Retry previous message', exact: true }),
+  ).toBeEnabled();
+  await page.reload();
+  await expect(box).toHaveValue('Later typing while the acknowledgement is lost');
+  await chat.getByRole('button', { name: 'Retry previous message', exact: true }).click();
+  await expect.poll(() => draftRequested).toBe(true);
+  await expect(chat.getByText(previous.summary, { exact: true })).toBeVisible();
+  await expect(box).toHaveValue('Later typing while the acknowledgement is lost');
+  await box.fill('Later typing revised while the new draft reconnects');
+  await expect(chat.getByText(next.summary, { exact: true })).toHaveCount(0);
+  releaseDraft();
+  await expect(chat.getByRole('button', { name: 'Retry saving draft', exact: true })).toBeVisible();
+  await expect(
+    chat.getByRole('button', { name: 'Retry saving draft', exact: true }),
+  ).toBeInViewport({ ratio: 1 });
+  await expect(chat.getByRole('button', { name: 'Keep draft here', exact: true })).toBeInViewport({
+    ratio: 1,
+  });
+  await expect(chat.getByText(previous.summary, { exact: true })).toBeVisible();
+  await expect(box).toHaveValue('Later typing revised while the new draft reconnects');
+  await expect(
+    chat.getByRole('button', { name: 'Retry previous message', exact: true }),
+  ).toHaveCount(0);
+  expect(asks).toHaveLength(2);
+  await mkdir('../../data/resource-history-ui-checks', { recursive: true });
+  await page.screenshot({
+    path: `../../data/resource-history-ui-checks/${info.project.name}-save-recovery.png`,
+  });
+  await chat.getByRole('button', { name: 'Retry saving draft', exact: true }).click();
+  await expect(chat.getByText(next.summary, { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`#/resources/${next.agentId}$`));
+  await expect(box).toHaveValue('Later typing revised while the new draft reconnects');
+  expect(asks).toHaveLength(2);
+  expect(asks[1]).toEqual(asks[0]);
+  expect(asks[0]).toMatchObject({
+    agentId: previous.agentId,
+    question: 'Investigate this new slowdown',
+  });
+  expect(drafts.get(next.agentId)?.text).toBe(
+    'Later typing revised while the new draft reconnects',
+  );
+  expect(draftWrites).toHaveLength(2);
+  expect(draftWrites[1]).toEqual(draftWrites[0]);
+  await page.reload();
+  await expect(box).toHaveValue('Later typing revised while the new draft reconnects');
+  await chat.getByRole('button', { name: 'Model settings', exact: true }).click();
+  const model = page.getByRole('dialog', { name: 'Resource assistant model', exact: true });
+  await expect(model.getByRole('combobox', { name: 'Model', exact: true })).toHaveValue(
+    'fixture-opus',
+  );
+  await expect(model.getByRole('combobox', { name: 'Thinking', exact: true })).toHaveValue(
+    'adaptive-v2',
+  );
+  await model.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await chat.getByRole('button', { name: 'Diagnosis history', exact: true }).click();
+  const saved = page.getByRole('dialog', { name: 'Diagnosis history', exact: true });
+  await expect(saved.locator('.health-diagnosis-history li')).toHaveCount(2);
+  await expect(saved.getByText(automatic.summary, { exact: true })).toHaveCount(0);
+  await expect(saved.locator('strong').filter({ hasText: 'Latest owner follow-up' })).toHaveText(
+    'Latest owner follow-up One python process uses 91% of a core; memory_tau = 1.2. Inspect processes',
+  );
+  expect(duplicate.summary).toBe(formattedSummary);
+  await noHorizontalOverflow(page);
+  await page.screenshot({
+    path: `../../data/resource-history-ui-checks/${info.project.name}-history-dialog.png`,
+  });
+  await saved.getByRole('button', { name: /Latest owner follow-up/ }).click();
+  await expect(box).toHaveValue('Later typing revised while the new draft reconnects');
+  await expect(chat.getByText(previous.summary, { exact: true })).toBeVisible();
+  await expect(chat.getByRole('button', { name: 'New diagnosis', exact: true })).toBeInViewport();
+  await expect(
+    chat.getByRole('button', { name: 'Diagnosis history', exact: true }),
+  ).toBeInViewport();
+  await noHorizontalOverflow(page);
+  await mkdir('../../data/resource-history-ui-checks', { recursive: true });
+  await page.screenshot({
+    path: `../../data/resource-history-ui-checks/${info.project.name}-history.png`,
+  });
 });

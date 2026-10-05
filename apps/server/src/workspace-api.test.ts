@@ -87,6 +87,62 @@ it('atomically sends copied device drafts once and resolves either browser recei
   });
   expect(changed.statusCode).toBe(409);
   expect(store.runs()).toHaveLength(1);
+  expect((await get(`/api/agents/${project.managerId}/owner-requests`)).json().items).toMatchObject(
+    [{ entryId: one.json().id, delivery: 'queued' }],
+  );
+});
+
+it('retains exact canonical steering provenance for confirmed and uncertain sends without replay', async () => {
+  const { store, runtime, project, get, post } = await fixture();
+  const manager = project.managerId;
+  store.updateAgent(manager, {
+    threadId: randomUUID(),
+    turnId: 'observed-turn',
+    status: 'running',
+  });
+  const provider = new DemoProvider();
+  let calls = 0;
+  let loseResponse = false;
+  provider.request = async (method) => {
+    expect(method).toBe('turn/steer');
+    calls++;
+    if (loseResponse) throw new Error('Lost response');
+    return {};
+  };
+  runtime.clients.set(manager, provider);
+  const confirmed = { key: randomUUID(), text: 'Continue A and also handle B.', steer: true };
+  expect((await post(`/api/agents/${manager}/messages`, confirmed)).statusCode).toBe(200);
+  expect((await post(`/api/agents/${manager}/messages`, confirmed)).statusCode).toBe(200);
+  expect(calls).toBe(1);
+  const source = store.savedEntry(manager, `owner-steering:${confirmed.key}`)!;
+  expect(source).toMatchObject({
+    text: confirmed.text,
+    kind: 'user',
+    ownerInput: { delivery: 'submitted' },
+  });
+  loseResponse = true;
+  const uncertain = { key: randomUUID(), text: 'Another independent ask', steer: true };
+  expect((await post(`/api/agents/${manager}/messages`, uncertain)).statusCode).toBe(500);
+  expect((await post(`/api/agents/${manager}/messages`, uncertain)).statusCode).toBe(409);
+  expect(calls).toBe(2);
+  expect(
+    (await get(`/api/agents/${manager}/receipts/${uncertain.key}`)).json().submitted,
+  ).toBeNull();
+  expect((await get(`/api/agents/${manager}/owner-requests`)).json().items).toMatchObject([
+    { entryId: `owner-steering:${uncertain.key}`, delivery: 'uncertain' },
+    { entryId: source.id, delivery: 'submitted' },
+  ]);
+  store.updateAgent(manager, { turnId: null });
+  expect(
+    (
+      await post(`/api/agents/${manager}/messages`, {
+        key: randomUUID(),
+        text: 'Not sent',
+        steer: true,
+      })
+    ).statusCode,
+  ).toBe(409);
+  expect(runtime.workItems.ownerRequests(manager).total).toBe(2);
 });
 
 it('rejects cross-host draft sends and refuses inactive steering without claiming delivery', async () => {

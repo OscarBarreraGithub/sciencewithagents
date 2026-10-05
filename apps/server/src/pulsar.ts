@@ -6,6 +6,8 @@ import {
   modelPolicySchema,
   jobEstimateSchema,
   pulsarPolicySchema,
+  providerReservePolicy,
+  effectiveProviderReserve,
   pulsarPolicyUpdateSchema,
   pulsarStatusSchema,
   jobControlSchema,
@@ -17,7 +19,7 @@ import {
   type LocalResources,
 } from '@dock/shared';
 import { Conflict, Store, type PrivateRun } from './store.js';
-import { readCapacity } from './capacity.js';
+import { readCapacity, capacityMaxAge } from './capacity.js';
 import { localJobPriority } from './local-jobs.js';
 
 const leaseSchema = z.object({
@@ -27,6 +29,7 @@ const leaseSchema = z.object({
   taskId: z.string().nullable(),
   model: z.string().nullable(),
   estimate: jobEstimateSchema,
+  estimateBasis: z.enum(['turn', 'task-forecast']).default('task-forecast'),
   startedAt: z.string(),
   finishedAt: z.string().nullable(),
   baselineTokens: z.number().nullable(),
@@ -64,14 +67,44 @@ export class Pulsar {
     private clock = Date.now,
   ) {}
   policy() {
-    return pulsarPolicySchema.parse(this.store.getSetting('pulsar:policy') ?? {});
+    const policy = pulsarPolicySchema.parse(this.store.getSetting('pulsar:policy') ?? {});
+    return {
+      ...policy,
+      providerReserves: {
+        codex: providerReservePolicy(policy, 'codex'),
+        claude: providerReservePolicy(policy, 'claude'),
+      },
+    };
   }
   savePolicy(raw: unknown) {
     const input = pulsarPolicyUpdateSchema.parse(raw);
     return this.store.operation(input.key, { kind: 'pulsar.policy', ...input }, () => {
-      this.store.setSetting('pulsar:policy', input.policy);
-      this.store.event('pulsar.policy', null, null, input.policy);
-      return input.policy;
+      const current = this.policy();
+      if (input.policy.revision !== current.revision)
+        throw new Conflict('Shared allowance settings changed. Reload before saving.');
+      // A legacy client editing the global field still explicitly adjusts both providers.
+      const legacyEdit =
+        input.policy.reservePercent !== current.reservePercent &&
+        (!input.policy.providerReserves ||
+          JSON.stringify(input.policy.providerReserves) ===
+            JSON.stringify(current.providerReserves));
+      const base = legacyEdit
+        ? { ...input.policy, providerReserves: undefined }
+        : {
+            ...input.policy,
+            providerReserves: input.policy.providerReserves ?? current.providerReserves,
+          };
+      const policy = {
+        ...input.policy,
+        revision: current.revision + 1,
+        providerReserves: {
+          codex: providerReservePolicy(base, 'codex'),
+          claude: providerReservePolicy(base, 'claude'),
+        },
+      };
+      this.store.setSetting('pulsar:policy', policy);
+      this.store.event('pulsar.policy', null, null, policy);
+      return policy;
     });
   }
   private leases(): Lease[] {
@@ -86,6 +119,15 @@ export class Pulsar {
   }
   hasReservation(runId: string) {
     return this.lease(runId) !== null;
+  }
+  /** Includes admitted jobs awaiting provider startup; no second reservation ledger. */
+  allowanceReservations(since: number) {
+    return this.store.db
+      .prepare(
+        "SELECT body FROM pulsar_leases WHERE json_extract(body,'$.finishedAt') IS NULL OR json_extract(body,'$.finishedAt')>?",
+      )
+      .all(new Date(since).toISOString())
+      .map((row) => leaseSchema.parse(JSON.parse(String(row.body))));
   }
   private saveLease(lease: Lease) {
     this.store.db
@@ -112,11 +154,24 @@ export class Pulsar {
     if (saved) return jobEstimateSchema.parse(saved);
     const taskId = this.taskId(run);
     const task = taskId ? this.store.task(taskId) : null;
+    const agent = this.store.agent(run.agentId);
     const project = quarkProjectPolicySchema.parse(
       this.store.getSetting(`quark:project:${this.store.agent(run.agentId).projectId}`) ?? {},
     );
     return jobEstimateSchema.parse({
-      ...(task?.scheduling ?? {}),
+      // A task forecast is not the cost of every coordination reply. Managers
+      // can reassess or delegate in a bounded turn, charged to the same task.
+      // Explicit per-run estimates above still describe deliberate larger turns.
+      ...(agent.role === 'manager' && !agent.nativeRootId
+        ? {
+            priority: task?.scheduling.priority ?? 'normal',
+            expectedTokens: 4000,
+            quotaPercent: 0.5,
+            expectedSeconds: 120,
+            estimateNote:
+              'Bounded manager coordination starter estimate, not a whole-task forecast or a guaranteed ceiling. Actual usage remains supervised and charged to its task/project.',
+          }
+        : (task?.scheduling ?? {})),
       ...(project.priority !== null ? { priority: project.priority } : {}),
       ...(['user', 'resume'].includes(run.kind) ? { priority: 'interactive' } : {}),
     });
@@ -135,28 +190,91 @@ export class Pulsar {
       this.store.getSetting(`quark:project:${this.store.agent(run.agentId).projectId}`) ?? {},
     ).weight;
   }
-  examples() {
-    return this.leases()
-      .filter((l) => l.finishedAt)
-      .slice(-8)
-      .reverse()
-      .map((l) => ({
-        project: this.store.project(this.store.agent(this.store.run(l.runId).agentId).projectId)
-          .name,
-        provider: l.provider,
-        model: l.model,
-        task: l.taskId ? this.store.task(l.taskId).title : 'Manager or unassigned turn',
-        durationBasis:
-          'Admitted wall time including provider/tool/permission waits; excludes prior queue time.',
-        estimatedSeconds: l.estimate.expectedSeconds,
-        actualSeconds: Math.max(
-          0,
-          Math.round((Date.parse(l.finishedAt!) - Date.parse(l.startedAt)) / 1000),
+  examples(target?: {
+    projectId: string;
+    provider: 'codex' | 'claude';
+    model: string | null;
+    taskId?: string | null;
+  }) {
+    const candidates = this.store.db
+      .prepare(
+        "SELECT body FROM pulsar_leases WHERE json_extract(body,'$.finishedAt') IS NOT NULL ORDER BY json_extract(body,'$.finishedAt') DESC, rowid DESC LIMIT 100",
+      )
+      .all()
+      .map((row) => {
+        const lease = leaseSchema.parse(JSON.parse(String(row.body)));
+        const run = this.store.run(lease.runId),
+          agent = this.store.agent(run.agentId);
+        const comparison = target
+          ? {
+              sameTask: !!target.taskId && lease.taskId === target.taskId,
+              sameProject: agent.projectId === target.projectId,
+              sameProvider: lease.provider === target.provider,
+              sameModel: !!target.model && lease.model === target.model,
+            }
+          : null;
+        const score = comparison
+          ? Number(comparison.sameTask) * 8 +
+            Number(comparison.sameProject) * 4 +
+            Number(comparison.sameModel) * 2 +
+            Number(comparison.sameProvider)
+          : 0;
+        return { lease, run, agent, comparison, score };
+      })
+      .sort((a, b) => b.score - a.score);
+    // Prefer comparable work while retaining provider/model variety. Never
+    // present only the most recent unrelated turn as a universal forecast.
+    const selected: typeof candidates = [],
+      groups = new Map<string, number>();
+    for (const candidate of candidates) {
+      const group = `${candidate.lease.provider}:${candidate.lease.model}:${candidate.agent.role}`;
+      if ((groups.get(group) ?? 0) >= 2) continue;
+      selected.push(candidate);
+      groups.set(group, (groups.get(group) ?? 0) + 1);
+      if (selected.length === 8) break;
+    }
+    for (const candidate of candidates) {
+      if (selected.length === 8) break;
+      if (!selected.includes(candidate)) selected.push(candidate);
+    }
+    return selected.map(({ lease: l, run, agent, comparison }) => ({
+      project: this.store.project(agent.projectId).name,
+      provider: l.provider,
+      model: l.model,
+      task: l.taskId ? this.store.task(l.taskId).title : 'Manager or unassigned turn',
+      role: agent.role,
+      turnKind: run.kind,
+      comparison,
+      estimateBasis: l.estimateBasis,
+      estimateNote: l.estimate.estimateNote,
+      comparisonNotice:
+        l.estimateBasis === 'turn'
+          ? 'Compare with similar individual turns, not whole-task elapsed time.'
+          : 'Inherited task forecast (legacy source may be unknown); do not treat its difference from one turn as forecast error.',
+      durationBasis:
+        'Admitted wall time including provider/tool/permission waits; excludes prior queue time.',
+      estimatedSeconds: l.estimate.expectedSeconds,
+      actualSeconds: Math.max(
+        0,
+        Math.round((Date.parse(l.finishedAt!) - Date.parse(l.startedAt)) / 1000),
+      ),
+      expectedTokens: l.estimate.expectedTokens,
+      tokens: l.tokensCharged,
+      tokenBasis: l.tokenBasis,
+      estimatedAllowancePercent: l.estimate.quotaPercent,
+      attributedAllowance: this.store.db
+        .prepare(
+          "SELECT json_extract(i.body,'$.windowId') AS windowId, json_extract(i.body,'$.label') AS label, SUM(json_extract(a.value,'$.percent')) AS percent, MAX(json_extract(i.body,'$.observedAt')) AS observedAt FROM quark_intervals i INDEXED BY quark_intervals_observed, json_each(i.body,'$.allocations') a WHERE json_extract(i.body,'$.observedAt')>=? AND json_extract(i.body,'$.observedAt')<=? AND json_extract(i.body,'$.provider')=? AND json_extract(a.value,'$.runId')=? GROUP BY windowId,label",
+        )
+        .all(
+          l.startedAt,
+          new Date(Date.parse(l.finishedAt!) + capacityMaxAge(l.provider) + 120_000).toISOString(),
+          l.provider,
+          l.runId,
         ),
-        expectedTokens: l.estimate.expectedTokens,
-        tokens: l.tokensCharged,
-        tokenBasis: l.tokenBasis,
-      }));
+      allowanceBasis:
+        'Estimated attribution of reported allowance changes; delayed observations can still arrive. No row means unavailable, not zero.',
+    }));
   }
   /** One owner-requested diagnosis can run alongside the normal work slots. */
   isInteractiveDiagnostic(run: PrivateRun) {
@@ -337,13 +455,24 @@ export class Pulsar {
             (!!window.model && l.model?.toLowerCase().includes(window.model)),
         )
         .reduce((n, l) => n + l.estimate.quotaPercent, 0);
-      let ceiling = estimate.priority === 'interactive' ? 98 : 100 - policy.reservePercent;
-      if (estimate.priority === 'background' && window.windowMinutes === 300 && window.resetsAt) {
+      const reserve = effectiveProviderReserve(
+        policy,
+        capacity,
+        window,
+        this.clock(),
+      ).effectivePercent;
+      let ceiling = 100 - reserve;
+      if (
+        estimate.priority === 'background' &&
+        window.windowMinutes === 300 &&
+        window.resetsAt &&
+        !(agent.provider === 'claude' && policy.maximizeClaudeFiveHour)
+      ) {
         const elapsed = Math.max(
           0,
           Math.min(1, 1 - (Date.parse(window.resetsAt) - this.clock()) / (300 * 60_000)),
         );
-        ceiling = Math.min(ceiling, 15 + elapsed * (85 - policy.reservePercent));
+        ceiling = Math.min(ceiling, 15 + elapsed * (85 - reserve));
       }
       if (!override && window.usedPercent + reserved + estimate.quotaPercent > ceiling)
         return reject(
@@ -371,6 +500,10 @@ export class Pulsar {
         taskId: this.taskId(run),
         model: agent.model,
         estimate,
+        estimateBasis:
+          this.store.getSetting(`pulsar:estimate:${run.id}`) || agent.role === 'manager'
+            ? 'turn'
+            : 'task-forecast',
         startedAt,
         finishedAt: null,
         baselineTokens: agent.threadId ? (this.tokens(run)?.total.totalTokens ?? null) : 0,

@@ -12,6 +12,7 @@ import {
 import { Store } from './store.js';
 import { Pulsar } from './pulsar.js';
 import { capacityMaxAge, parseCapacity } from './capacity.js';
+import { Quark } from './quark.js';
 
 let root: string, store: Store, pulsar: Pulsar, clock: number, machine: MachineCapacity;
 beforeEach(() => {
@@ -100,6 +101,7 @@ function job(
   name: string,
   priority: 'normal' | 'background' | 'interactive' = 'normal',
   percent = 3,
+  provider: 'codex' | 'claude' = 'claude',
 ) {
   const project = store.register(join(root, name), name, '');
   const task = store.addTask(project.id, {
@@ -116,7 +118,7 @@ function job(
     role: 'researcher',
     name,
     cwd: root,
-    provider: 'claude',
+    provider,
   });
   const queued = store.enqueue(
     worker.id,
@@ -127,6 +129,115 @@ function job(
   );
   return { run: store.run(queued.id), worker, task, project };
 }
+it('opt-in Claude five-hour utilization advances eligible work while preserving preferences, pauses and all caps', () => {
+  const background = job('Useful Claude background', 'background', 1);
+  store.updateAgent(background.worker.id, { model: 'claude-opus-5.5', effort: 'high' });
+  usage(20);
+  expect(pulsar.decision(background.run).eligible).toBe(false); // early gradual release
+  pulsar.savePolicy({
+    key: randomUUID(),
+    policy: { ...pulsar.policy(), maximizeClaudeFiveHour: true },
+  });
+  expect(pulsar.decision(background.run).eligible).toBe(true);
+  expect(store.agent(background.worker.id)).toMatchObject({
+    provider: 'claude',
+    model: 'claude-opus-5.5',
+    effort: 'high',
+  });
+  pulsar.control({ key: randomUUID(), runId: background.run.id, action: 'hold' });
+  expect(pulsar.decision(background.run).eligible).toBe(false);
+  pulsar.control({ key: randomUUID(), runId: background.run.id, action: 'release' });
+  const quark = new Quark(store, pulsar, () => clock);
+  pulsar.allowanceDecision = (run) => quark.reason(run, run.status === 'queued');
+  quark.saveBudget({
+    key: randomUUID(),
+    projectId: background.project.id,
+    provider: 'claude',
+    windowId: 'primary',
+    period: 'hour',
+    limitPercent: 0.9,
+  });
+  expect(pulsar.decision(background.run).reason).toContain('hourly');
+  const other = job('Other Claude background', 'background', 2);
+  usage(79);
+  expect(pulsar.decision(other.run).eligible).toBe(false); // reserve remains protected
+  const codex = job('Codex unchanged', 'background', 1, 'codex');
+  usage(20);
+  expect(pulsar.decision(codex.run).eligible).toBe(false);
+  store.updateRun(codex.run.id, { status: 'cancelled' });
+  clock += 7 * 60_000;
+  expect(pulsar.decision(other.run).eligible).toBe(false); // stale is never spare
+  store.close();
+  store = new Store(join(root, 'dock.sqlite'));
+  pulsar = new Pulsar(
+    store,
+    () => machine,
+    () => clock,
+  );
+  expect(pulsar.policy().maximizeClaudeFiveHour).toBe(true);
+});
+
+it('selects comparable provider/model examples and labels task forecasts separately from actual turns and allowance', () => {
+  const relevant = job('Comparable');
+  store.updateAgent(relevant.worker.id, { model: 'claude-opus-5.5' });
+  store.setSetting(
+    `pulsar:estimate:${relevant.run.id}`,
+    jobEstimateSchema.parse({ quotaPercent: 1, expectedSeconds: 120 }),
+  );
+  expect(pulsar.reserve(relevant.run, new Set())).toBe(true);
+  clock += 30_000;
+  store.updateRun(relevant.run.id, { status: 'completed' });
+  pulsar.settle(relevant.run.id);
+  store.db.prepare('INSERT INTO quark_intervals(receipt,body) VALUES(?,?)').run(
+    randomUUID(),
+    JSON.stringify({
+      provider: 'claude',
+      windowId: 'primary',
+      label: 'Five-hour',
+      resetsAt: null,
+      observedAt: new Date(clock).toISOString(),
+      delta: 0.7,
+      unattributed: 0,
+      allocations: [
+        {
+          runId: relevant.run.id,
+          projectId: relevant.project.id,
+          taskIds: [relevant.task.id],
+          percent: 0.7,
+        },
+      ],
+    }),
+  );
+  for (let n = 0; n < 10; n++) {
+    const unrelated = job(`Other ${n}`);
+    store.updateAgent(unrelated.worker.id, { model: 'claude-sonnet-5' });
+    usage(10);
+    expect(pulsar.reserve(unrelated.run, new Set())).toBe(true);
+    clock += 60_000;
+    store.updateRun(unrelated.run.id, { status: 'completed' });
+    pulsar.settle(unrelated.run.id);
+  }
+  const examples = pulsar.examples({
+    projectId: relevant.project.id,
+    provider: 'claude',
+    model: 'claude-opus-5.5',
+    taskId: relevant.task.id,
+  });
+  expect(examples).toHaveLength(8);
+  expect(examples[0]).toMatchObject({
+    project: 'Comparable',
+    model: 'claude-opus-5.5',
+    estimateBasis: 'turn',
+    estimatedSeconds: 120,
+    actualSeconds: 30,
+    estimatedAllowancePercent: 1,
+    attributedAllowance: [{ windowId: 'primary', percent: 0.7 }],
+    comparison: { sameTask: true, sameModel: true },
+  });
+  expect(examples[1]).toMatchObject({ estimateBasis: 'task-forecast', attributedAllowance: [] });
+  expect(examples[1]!.comparisonNotice).toContain('do not treat');
+  expect(examples[1]!.allowanceBasis).toContain('not zero');
+});
 it('reserves shared provider headroom across managers before async starts and persists the reservation', () => {
   usage(70);
   const first = job('First', 'normal', 6),

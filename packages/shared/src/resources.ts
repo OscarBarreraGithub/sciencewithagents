@@ -50,6 +50,14 @@ export const resourceSampleSchema = z
     swapUsedBytes: z.number().nonnegative().nullable(),
     swapOutBytesPerSecond: z.number().nonnegative().nullable(),
     diskTotalBytes: z.number().nonnegative().nullable(),
+    // Rates come from unprivileged OS counters between samples; null when unavailable.
+    diskReadBytesPerSecond: z.number().nonnegative().nullable().default(null),
+    diskWriteBytesPerSecond: z.number().nonnegative().nullable().default(null),
+    networkReceiveBytesPerSecond: z.number().nonnegative().nullable().default(null),
+    networkSendBytesPerSecond: z.number().nonnegative().nullable().default(null),
+    gpuUtilizationPercent: z.number().min(0).max(100).nullable().default(null),
+    // The OS thermal/performance warning, not a temperature.
+    thermalWarning: z.enum(['none', 'reported', 'unknown']).default('unknown'),
     groups: z.array(resourceGroupSchema).max(20),
     jobs: z.array(resourceJobSchema).max(100).default([]),
     processes: z.array(resourceProcessSchema).max(20).default([]),

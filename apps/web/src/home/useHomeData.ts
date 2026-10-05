@@ -8,6 +8,7 @@ import {
   pulsarStatusSchema,
   resourceStatusSchema,
   snapshotSchema,
+  clusterStatusSchema,
 } from '@dock/shared';
 import { api } from '../api';
 import { trackRefresh } from './refreshHome';
@@ -76,6 +77,7 @@ export function useHomeData() {
     work: useReading('/pulsar', pulsarStatusSchema.parse),
     resources: useReading('/resources', resourceStatusSchema.parse),
     local: useReading('/local-jobs', localJobsStatusSchema.parse),
+    cluster: useReading('/cluster', clusterStatusSchema.parse),
     mirrors: useReading('/vscode/windows', mirrorsSchema.parse),
   };
 }

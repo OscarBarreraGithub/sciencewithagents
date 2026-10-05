@@ -116,20 +116,21 @@ test('pull refresh leaves scrolling panels, editing, sideways gestures and other
   await expect(page.locator('.home-pull-refresh')).toHaveCount(0);
 });
 
-test('orb is idle until tapped, settles again and respects reduced motion', async ({
+test('orb drifts quietly, varies on tap without an outline and pauses when hidden or reduced', async ({
   page,
+  browserName,
 }, info) => {
   await page.addInitScript(() => {
     const clear = CanvasRenderingContext2D.prototype.clearRect;
     CanvasRenderingContext2D.prototype.clearRect = function (...args) {
-      if (this.canvas.closest('.home-orb'))
-        this.canvas.dataset.draws = String(Number(this.canvas.dataset.draws ?? 0) + 1);
+      // Count on the button: each new shape draws on a fresh canvas.
+      const orb = this.canvas.closest<HTMLElement>('.home-orb');
+      if (orb) orb.dataset.draws = String(Number(orb.dataset.draws ?? 0) + 1);
       return clear.apply(this, args);
     };
   });
   await page.goto('/#/home');
   const button = page.getByRole('button', { name: 'Change orb shape', exact: true });
-  const canvas = button.locator('canvas');
   await expect(page.locator('.home-header .home-orb')).toHaveCount(0);
   const orbBox = (await button.boundingBox())!;
   const destinations = (await page.locator('.overview-destinations').boundingBox())!;
@@ -139,11 +140,22 @@ test('orb is idle until tapped, settles again and respects reduced motion', asyn
     expect(orbBox.x).toBeGreaterThanOrEqual(readings.x + readings.width);
     expect(orbBox.height).toBe(80);
   }
-  await expect(canvas).toHaveAttribute('data-draws', /\d+/);
-  const idle = await canvas.getAttribute('data-draws');
-  await page.waitForTimeout(300);
-  expect(await canvas.getAttribute('data-draws')).toBe(idle);
-  const before = await canvas.evaluate((e: HTMLCanvasElement) => e.toDataURL());
+  const draws = async () => Number((await button.getAttribute('data-draws')) ?? 0);
+  // Idle motion continues without a tap, at a low frame rate.
+  await expect.poll(draws).toBeGreaterThan(1);
+  let start = await draws();
+  await page.waitForTimeout(1000);
+  const idle = (await draws()) - start;
+  expect(idle).toBeGreaterThanOrEqual(5);
+  expect(idle).toBeLessThanOrEqual(16);
+  const before = await button.locator('canvas').evaluate((e: HTMLCanvasElement) => e.toDataURL());
+  await page.waitForTimeout(400);
+  expect(await button.locator('canvas').evaluate((e: HTMLCanvasElement) => e.toDataURL())).not.toBe(
+    before,
+  );
+
+  let form = await button.getAttribute('data-form');
+  const forms = new Set([form]);
   await button.click();
   expect(
     await button.evaluate((element) => {
@@ -155,21 +167,64 @@ test('orb is idle until tapped, settles again and respects reduced motion', asyn
       };
     }),
   ).toEqual({ background: 'rgba(0, 0, 0, 0)', outline: 'none', shadow: 'none' });
-  await expect
-    .poll(async () => Number(await canvas.getAttribute('data-draws')))
-    .toBeGreaterThan(Number(idle) + 2);
-  await page.waitForTimeout(2000);
-  const after = await canvas.evaluate((e: HTMLCanvasElement) => e.toDataURL());
-  expect(after).not.toBe(before);
-  const settled = await canvas.getAttribute('data-draws');
-  await page.waitForTimeout(300);
-  expect(await canvas.getAttribute('data-draws')).toBe(settled);
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await button.click();
+  // A tap livens the motion briefly instead of freezing it.
+  start = await draws();
+  await page.waitForTimeout(500);
+  expect((await draws()) - start).toBeGreaterThan(idle / 2 + 2);
+  for (let tap = 0; tap < 12; tap += 1) {
+    const next = await button.getAttribute('data-form');
+    expect(next).not.toBe(form);
+    form = next;
+    forms.add(form);
+    await button.click();
+  }
+  expect(forms.size).toBeGreaterThanOrEqual(4);
+  for (const square of ['shaping', 'solving']) expect(forms.has(square)).toBe(false);
+
+  const visibility = (hidden: boolean) =>
+    page.evaluate((hidden) => {
+      if (hidden) {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => 'hidden',
+        });
+      } else {
+        delete (document as { hidden?: boolean }).hidden;
+        delete (document as { visibilityState?: string }).visibilityState;
+      }
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, hidden);
+  await visibility(true);
   await page.waitForTimeout(100);
-  const reduced = await canvas.getAttribute('data-draws');
+  const hidden = await draws();
+  await page.waitForTimeout(600);
+  expect(await draws()).toBe(hidden);
+  await visibility(false);
+  await expect.poll(draws).toBeGreaterThan(hidden);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.waitForTimeout(150);
+  const reduced = await draws();
+  await page.waitForTimeout(500);
+  expect(await draws()).toBe(reduced);
+  await button.click();
   await page.waitForTimeout(300);
-  expect(await canvas.getAttribute('data-draws')).toBe(reduced);
+  expect(await draws()).toBe(reduced + 1);
+
+  // Keyboard focus still shows the accessible outline. WebKit's default Tab skips buttons.
+  if (browserName !== 'webkit') {
+    await button.evaluate((element) => element.blur());
+    for (
+      let press = 0;
+      press < 20 && !(await button.evaluate((e) => e === document.activeElement));
+      press += 1
+    )
+      await page.keyboard.press('Tab');
+    expect(await button.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
+      'none',
+    );
+  }
   const controls = page.locator('.home-header-actions');
   const box = (await controls.boundingBox())!;
   expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);

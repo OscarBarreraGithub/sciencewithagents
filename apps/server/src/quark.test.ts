@@ -119,6 +119,36 @@ function advance(ms = 60000) {
   vi.setSystemTime(Date.now() + ms);
 }
 
+it('admits bounded task-associated manager reassessment without inheriting the whole-task forecast', () => {
+  const f = fixture('Task forecast', 'codex');
+  store.updateTask(f.task.id, {
+    scheduling: jobEstimateSchema.parse({ quotaPercent: 4, expectedSeconds: 1800 }),
+  });
+  budget(f, 3);
+  const reports = Array.from({ length: 3 }, () => {
+    const run = store.enqueue(f.p.managerId, randomUUID(), 'Reassess saved work', 'user');
+    store.setSetting(`pulsar:task:${run.id}`, f.task.id);
+    return run;
+  });
+  expect(pulsar.estimate(f.run).quotaPercent).toBe(4);
+  for (const run of reports) {
+    expect(pulsar.estimate(run)).toMatchObject({ quotaPercent: 0.5, expectedSeconds: 120 });
+    expect(pulsar.reserve(run, new Set())).toBe(true);
+    quark.issueManagerLease(run);
+    quark.begin(run);
+    store.updateRun(run.id, { status: 'running' });
+  }
+  expect(quark.budgetStatus(quark.budgets()[0]!).reservedPercent).toBe(1.5);
+  const tooLarge = store.enqueue(f.p.managerId, randomUUID(), 'Larger implementation', 'user');
+  store.setSetting(`pulsar:task:${tooLarge.id}`, f.task.id);
+  store.setSetting(`pulsar:estimate:${tooLarge.id}`, jobEstimateSchema.parse({ quotaPercent: 4 }));
+  expect(quark.reason(tooLarge, true)).toContain('exceed');
+  quark.hold(reports[0]!, 'Owner pause', false, 'manual');
+  expect(quark.reason(reports[1]!, true)).toContain('Owner pause');
+  expect(quark.budgets()[0]!.limitPercent).toBe(3);
+  expect(store.task(f.task.id).scheduling.quotaPercent).toBe(4);
+});
+
 it('retains per-run, agent and project counters without duplicate charges after reopen', () => {
   const f = fixture();
   launch(f);
@@ -822,8 +852,10 @@ it('reports spare five-hour capacity using account-wide readings without grantin
     quark.sync();
   };
   setSession(5);
-  vi.setSystemTime(start + 30 * 60_000);
-  setSession(10);
+  for (let n = 1; n <= 6; n++) {
+    vi.setSystemTime(start + n * 5 * 60_000);
+    setSession(5 + (n * 5) / 6);
+  }
   const policy = pulsar.policy();
   const spare = quark.utilization().find((row) => row.provider === 'claude')!;
   expect(spare).toMatchObject({
@@ -834,8 +866,10 @@ it('reports spare five-hour capacity using account-wide readings without grantin
   });
   expect(spare.reservePercent).toBe(policy.reservePercent);
   expect(pulsar.policy()).toEqual(policy);
-  vi.setSystemTime(start + 60 * 60_000);
-  setSession(55);
+  for (let n = 1; n <= 6; n++) {
+    vi.setSystemTime(start + (30 + n * 5) * 60_000);
+    setSession(10 + n * 7.5);
+  }
   expect(quark.utilization().find((row) => row.provider === 'claude')?.state).toBe('fast');
   vi.setSystemTime(start + 61 * 60_000);
   setSession(1, sessionReset + 5 * 3600_000);

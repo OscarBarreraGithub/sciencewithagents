@@ -41,23 +41,15 @@ The [agent usage/dispatch guide](AGENT_USAGE_ACCESS.md) and source-packaged
 submission through a private local client. Managed agents already receive typed tools and
 charters; the external client grants no orchestration lease and cannot increase caps.
 
-## Cluster integration boundary
+## Slurm cluster (advisory)
 
-FASRC cached SSH access and read-only Slurm/account queries have been exercised. They are
-not yet connected to QUARK. The next bounded slice is one collector for queue state/pending
-reasons, account fairshare, requested/allocated resources, recent exit states and efficiency.
-Use native Slurm structured output; project-specific progress scripts remain optional probes,
-not frequent whole-filesystem scans. Fairshare affects scheduling priority; it is not a fixed
-remaining CPU allowance or a reliable completion-time promise.
-
-Before managed submission, record the approved account/partition, per-job CPU/GPU/memory/time
-limits and aggregate running/pending/array limits. One designated controller should issue
-receipts tied to Slurm job IDs and reconcile an uncertain submission before retrying it.
-Local QUARK limits do not currently govern remote Slurm work or coordinate multiple hosts.
-Batch jobs can outlive the Mac connection; monitoring resumes by job ID after reconnect.
-Interactive notebooks need a compute allocation and a private, reconnectable SSH tunnel.
-Expired SSH authentication requires a visible re-login path; a control socket cannot survive
-a powered-off client. Do not run compute work on login nodes or alter unrelated cluster jobs.
+QUARK shows a connected Slurm cluster's queue, pending reasons, fairshare, native limits and
+recent exits/efficiency to you, its coordinator and managers from one cached collector per
+computer. Cluster monitoring is advisory: QUARK imposes no cluster limits, account choice or
+submission gate, and native site rules still apply. Fairshare affects priority; it is not
+remaining capacity. AI allowance caps never govern cluster resources. Batch jobs outlive the
+Mac connection; detected submissions are followed, best effort, by job ID under the alias
+configured when they were seen. See [Slurm cluster](CLUSTER.md).
 
 ## Managers need a QUARK lease
 
@@ -132,7 +124,7 @@ this same cache; no per-manager monitoring terminal is needed. See [usage setup]
 Open **Work queue → QUARK** to enable pacing, inspect waiting reasons, choose shared
 headroom and worker limits, or pause/release queued work. The message composer defaults to
 **Do this soon — I’m waiting**. Task creation and **Change priority or budget** expose
-priority, rough tokens, task budget, allowance reservation, CPU, memory, time and optional
+priority, token estimates, allowance reservation, CPU, memory, time and optional
 planning cost/deadline. Editing a task-associated job also updates its task’s future budget.
 Queued work blocked by an explicit allowance cap appears in Home’s
 **For your attention** and links to its QUARK budget card, even before its first admission.
@@ -156,16 +148,19 @@ Work still needs clear assignments and completion criteria; QUARK does not inven
   admission. Input order within one conversation is preserved, even at identical timestamps.
 - One Claude slot by default, three Codex slots, plus the existing overall group limit.
   All managers on this host reserve from the same transactionally saved allowance ledger.
-- Default 20% allowance reserve and two minutes between background starts. Background
-  five-hour use is released gradually through the window, and yields to foreground jobs.
+- Separate Codex and Claude remaining reserves default to 20% for new settings. Existing
+  saved global reserves become both provider baselines. Two minutes separate background starts;
+  five-hour use is released gradually through the window and yields to foreground jobs.
   General and applicable model windows are checked together, never added as spare capacity.
 - A reset needs a refreshed provider report; missing/stale data makes automatic work wait.
   Completed reservations remain until a later report can reflect their use. Owner overrides
   can accept an estimate/unknown capacity; a known exhausted or elapsed window still waits.
 - Task budgets count worker turns and task-associated manager reports, including reserved
-  pending work. Measured counters replace estimates when available. Default planning budget
-  is 500,000 tokens, including cache input; it is configurable and not a price or hard
-  mid-turn cutoff. Unassigned manager conversations have no fabricated task budget.
+  pending work. Measured counters replace estimates when available. Ordinary manager
+  coordination uses its own bounded turn estimate rather than the whole task forecast.
+  Optional project/task rolling-hour limits use percentage points of each reported provider
+  allowance, alongside window grants. Token estimates never act as admission budgets.
+  Unassigned manager conversations have no fabricated task budget.
 - CPU, memory and disk observations include other computer activity. Owned jobs also reserve
   resources. macOS available memory includes an explicitly labeled reclaimable estimate.
   These are admission estimates, not OS-enforced CPU/RAM limits or GPU scheduling.
@@ -209,11 +204,53 @@ stop. A completed provider turn alone does not prove its terminal children stopp
 conversation identity and unsent messages remain available for explicit continuation.
 
 Raw token counts remain useful for attribution and estimates, but never block admission.
-A displayed percentage-per-hour is a measured rate, not an enforced rolling hourly budget.
+**Project usage rates** shows current estimated Codex and Claude use beside each saved rate,
+with the last 12 hours of observed history. Release a slider to save, or type an exact rate and
+leave the field/press Enter. Rates use percentage points of the full named allowance per
+rolling hour. Ordinary uncapped work remains on shared pace until you choose a limit.
+Zero pauses only that project's chosen provider while retaining progress. Raising from zero
+permits recovery only after a confirmed stop, fresh readings and room under all other holds.
+Lowering below recent spending can wait for older usage to leave the hour; in-flight work can
+overshoot while stopping. **Total allowance caps** remain secondary cumulative controls.
+Task caps can also use a rolling hour. See [accounting](QUARK_ACCOUNTING.md).
 If ordinary work waits unexpectedly, **Help → Report a bug** preserves its queue reason and
 assigns a bounded investigation without raising the owner’s allowance limits.
 
+## Shared reserve controls
+
+Above project rates, separate Codex and Claude sliders save a minimum remaining percentage
+of each full reported allowance. Zero is permitted. Saving a reserve does not turn on shared
+capacity pacing; **Enable shared protection** explicitly enables the existing saved policy.
+Existing project/window caps and owner pauses stay independent.
+
+**Optional timed release** is off by default. Its ready-to-use thresholds are 12 hours before
+each actual Codex window reset and 45 minutes before each actual Claude window reset. Enabling
+it releases that window's effective reserve to zero only with a fresh successful reading and
+a future reported reset inside the interval. Saved baseline and effective reserve are shown
+separately. A verified new window restores the baseline outside the interval; stale data or
+an elapsed clock cannot establish renewed capacity. A Codex five-hour window is always
+inside a 12-hour threshold, while its weekly window is released only in its final 12 hours.
+Model-specific windows keep their own resets, and an unreported weekly window is never invented.
+
+Account forecasts compare recent account-wide use, including external/unattributed activity,
+with time to the protected reserve, exhaustion and the reported reset. Current zero or unknown
+rates do not produce an infinite forecast. History uses bounded half-hour buckets, reports
+observed coverage and leaves missing, unattributed and reset intervals as gaps. These are
+approximate measurements and forecasts, not a validated 2–3% attribution guarantee.
+
+TODO: adaptive QUARK-directed spending aimed at finishing about 15 minutes before reset is
+not implemented. The timed reserve rule is deterministic and does not launch filler work.
+
 ## Spare reset-window capacity
+
+**Queue controls → Shared headroom and pacing → Maximize useful Claude work before the
+five-hour reset** is off by default. With shared pacing enabled, it releases available
+Claude five-hour headroom to eligible queued background work without the normal gradual
+release schedule. Foreground work still comes first. Exact models, project provider
+preferences, hourly/window caps, owner pauses, worker slots and reserves remain enforced.
+The coordinator can advance authorized useful work within those choices; it cannot invent
+filler work, lower reserves or switch existing conversations. No full-window utilization is
+guaranteed, and a sleeping computer or missing backlog can leave allowance unused.
 
 QUARK compares at least five minutes of fresh readings from the same account window with
 time to reset and the saved reserve. The board and manager context show observed and target

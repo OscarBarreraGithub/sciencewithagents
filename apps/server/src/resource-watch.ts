@@ -49,7 +49,7 @@ type Dependencies = {
   probe: Pick<ResourceProbe, 'sample'>;
   models: (provider: ProviderId) => Promise<Model[]>;
   policy?: ModelPolicy;
-  queue: () => unknown;
+  queue: (full?: boolean) => unknown;
   waitReason: (runId: string) => string | null;
   release: (agentId: string) => Promise<boolean>;
   interrupt: (agentId: string, reason?: string) => Promise<void>;
@@ -224,6 +224,22 @@ export class ResourceWatch {
   private saved(): SavedCheck[] {
     return (this.store.getSetting(prefix + 'checks') as SavedCheck[] | undefined) ?? [];
   }
+  private diagnoses(checks: SavedCheck[]) {
+    const seen = new Set<string>();
+    return [...checks]
+      .reverse()
+      .filter((check) => {
+        if (check.reason !== 'asked' || check.escalatedFrom || seen.has(check.agentId))
+          return false;
+        seen.add(check.agentId);
+        return true;
+      })
+      .slice(0, 8);
+  }
+  private retainChecks(checks: SavedCheck[]) {
+    const ids = new Set([...checks.slice(-92), ...this.diagnoses(checks)].map((check) => check.id));
+    return checks.filter((check) => ids.has(check.id));
+  }
   private attempts(): number[] {
     return ((this.store.getSetting(prefix + 'attempts') as number[] | undefined) ?? []).filter(
       (t) => t > this.clock() - day,
@@ -235,6 +251,12 @@ export class ResourceWatch {
     const latest = value.success ? value.data : null;
     const settings = this.settings();
     const next = this.store.getSetting(prefix + 'nextCheckpoint') as number | undefined;
+    const saved = this.saved();
+    const selected = new Set(this.diagnoses(saved).map((check) => check.id));
+    for (const check of [...saved].reverse()) {
+      if (selected.size >= 20) break;
+      selected.add(check.id);
+    }
     return resourceStatusSchema.parse({
       latest,
       stale: !latest?.machine || now - Date.parse(latest.observedAt) > 45_000,
@@ -251,8 +273,8 @@ export class ResourceWatch {
         : [],
       findings: (this.store.getSetting(prefix + 'findings') as ResourceFinding[] | undefined) ?? [],
       settings,
-      checks: this.saved()
-        .slice(-20)
+      checks: saved
+        .filter((check) => selected.has(check.id))
         .reverse()
         .map((check) => {
           const run = this.store.run(check.runId);
@@ -444,7 +466,7 @@ export class ResourceWatch {
       );
     this.requesting = true;
     try {
-      const previous = input.agentId ? this.followupAgent(input.agentId) : null;
+      let previous = input.agentId ? this.followupAgent(input.agentId) : null;
       if (previous && reason !== 'asked')
         throw new Conflict('Only an owner question can continue a resource conversation.');
       if (
@@ -458,6 +480,26 @@ export class ResourceWatch {
       // Finish a cleanup already in flight before admitting another turn on its agent.
       // While requesting is true, maintenance cannot start another release.
       if (previous) await this.releasing.get(previous.id);
+      // User inactivity expires the diagnosis only at the next safe owner send.
+      // Monitoring/assistant replies do not keep a native conversation alive.
+      const choice = previous;
+      const latestAsked = previous
+        ? this.saved().findLast(
+            (check) => check.agentId === previous!.id && check.reason === 'asked',
+          )?.createdAt
+        : null;
+      const latestInput = previous ? this.store.latestOwnerInputAt(previous.id) : null;
+      const lastOwnerAt = Math.max(
+        ...[latestAsked, latestInput].map((at) => Date.parse(at ?? '')).filter(Number.isFinite),
+      );
+      const freshFrom =
+        previous &&
+        reason === 'asked' &&
+        Number.isFinite(lastOwnerAt) &&
+        this.clock() - lastOwnerAt >= 3600_000
+          ? previous
+          : null;
+      if (freshFrom) previous = null;
       const interactive =
         reason === 'asked' &&
         (!previous ||
@@ -475,10 +517,10 @@ export class ResourceWatch {
           ...(interactive ? { tier: 'grad' as const } : {}),
           mode: reason === 'asked' ? 'manual' : 'automatic',
           difficulty: 'unspecified',
-          ...(input.provider || previous ? { provider: input.provider ?? previous!.provider } : {}),
-          ...(input.model || previous?.model ? { model: input.model ?? previous!.model } : {}),
-          ...(input.effort || previous ? { effort: input.effort ?? previous!.effort } : {}),
-          ...(previous?.assignment?.tier === 'grad' ? { tier: 'grad' } : {}),
+          ...(input.provider || choice ? { provider: input.provider ?? choice!.provider } : {}),
+          ...(input.model || choice?.model ? { model: input.model ?? choice!.model } : {}),
+          ...(input.effort || choice ? { effort: input.effort ?? choice!.effort } : {}),
+          ...(choice?.assignment?.tier === 'grad' ? { tier: 'grad' } : {}),
         },
         true,
       );
@@ -540,10 +582,11 @@ export class ResourceWatch {
         const projectId = selectedProject;
         const project = this.store.project(projectId);
         const primary = this.store.agent(project.managerId);
-        const current = previous ? this.followupAgent(previous.id) : null;
+        const original = choice ? this.followupAgent(choice.id) : null;
+        const current = previous ? original : null;
         if (
-          current &&
-          (current.provider !== assignment.provider || current.model !== assignment.model)
+          original &&
+          (original.provider !== assignment.provider || original.model !== assignment.model)
         )
           throw new Conflict(
             'This resource conversation changed during model selection. Refresh before continuing.',
@@ -584,16 +627,16 @@ export class ResourceWatch {
           assignment,
           resourceAssistant: classification,
           permission: interactive
-            ? current && this.isInteractive(current.id)
-              ? current.permission
+            ? original && this.isInteractive(original.id)
+              ? original.permission
               : 'workspace-write'
             : 'read-only',
           scope: interactive
-            ? 'Investigate the requested computer issue using native capabilities within the workspace permission boundary.'
+            ? 'Investigate the requested computer issue using native capabilities; preserve explicit saved permissions and unrelated work.'
             : 'One read-only resource diagnosis; no execution or delegation.',
           toolPolicy: interactive
-            ? current && this.isInteractive(current.id)
-              ? current.toolPolicy
+            ? original && this.isInteractive(original.id)
+              ? original.toolPolicy
               : 'native'
             : 'restricted',
         });
@@ -625,8 +668,14 @@ export class ResourceWatch {
           model: model.id,
           tier: assignment.tier === 'grad' ? 'grad' : 'undergrad',
         };
-        this.store.setSetting(prefix + 'checks', [...this.saved(), check].slice(-100));
+        this.store.setSetting(prefix + 'checks', this.retainChecks([...this.saved(), check]));
         this.store.event('resources.check_requested', projectId, agent.id, check);
+        if (freshFrom)
+          this.store.event('resources.diagnosis_renewed', projectId, agent.id, {
+            previousAgentId: freshFrom.id,
+            previousThreadId: freshFrom.threadId,
+            reason: 'owner-inactive-one-hour',
+          });
         return check;
       });
       this.message = '';
@@ -649,6 +698,14 @@ export class ResourceWatch {
     )
       throw new Conflict('Choose a saved resource-assistant conversation from Computer health.');
     if (
+      agent.turnId ||
+      ['running', 'waiting'].includes(agent.status) ||
+      this.store
+        .agents()
+        .some(
+          (child) =>
+            child.nativeRootId === id && ['queued', 'running', 'waiting'].includes(child.status),
+        ) ||
       this.store
         .runs()
         .some((run) => run.agentId === id && ['queued', 'running'].includes(run.status))
@@ -683,12 +740,35 @@ export class ResourceWatch {
       tier: 'grad',
       escalatedFrom: parent.id,
     };
-    this.store.setSetting(prefix + 'checks', [...this.saved(), check].slice(-100));
+    this.store.setSetting(prefix + 'checks', this.retainChecks([...this.saved(), check]));
     this.store.event('resources.escalated', this.projectId(), agentId, check);
     return check;
   }
-  context(agentId?: string) {
+  context(agentId?: string, fullHistory = false) {
     const status = this.status();
+    const compact = (sample: ResourceSample | null) => {
+      if (!sample) return null;
+      const { processes, jobs, groups, ...reading } = sample;
+      return {
+        ...reading,
+        groups: groups.slice(0, 5),
+        omitted: {
+          processes: processes.length,
+          jobs: jobs.length,
+          groups: Math.max(0, groups.length - 5),
+        },
+      };
+    };
+    const evidence =
+      agentId && this.isAgent(agentId)
+        ? this.store.getSetting(prefix + 'evidence:' + agentId)
+        : null;
+    const sampled =
+      evidence && typeof evidence === 'object' ? (evidence as Record<string, unknown>) : null;
+    const preview = (raw: unknown) => {
+      const parsed = resourceSampleSchema.safeParse(raw);
+      return parsed.success ? compact(parsed.data) : raw;
+    };
     return {
       hostRuntime: {
         name: 'sciencewithagents server',
@@ -701,15 +781,18 @@ export class ResourceWatch {
       stale: status.stale,
       findings: status.findings,
       requestEvidence:
-        agentId && this.isAgent(agentId)
-          ? this.store.getSetting(prefix + 'evidence:' + agentId)
-          : null,
+        fullHistory || !sampled
+          ? evidence
+          : { ...sampled, sample: preview(sampled.sample), baseline: preview(sampled.baseline) },
       history: status.history
         .filter((_, i, all) => i % Math.max(1, Math.floor(all.length / 24)) === 0)
-        .slice(-25),
-      quark: this.deps.queue(),
+        .slice(fullHistory ? -25 : -6)
+        .map((sample) => (fullHistory ? sample : compact(sample))),
+      historyDetail:
+        'Current processes remain in latest. dock_inspect {resources:true,history:true} retrieves detailed sampled history and original request readings on demand.',
+      quark: this.deps.queue(fullHistory),
       limits:
-        'CPU percentages are of the whole computer; multiply by core count / 100 for cores in use. jobs.id connects process.jobId to a supervised agent or local job, and to quark.jobs.agentId or quark.localJobs.id. A null jobId means untracked by these supervisors, not malicious or unintentional. Process entry points are script basenames or module names; full command arguments, inline code, URLs, environment and file contents are not retained. QUARK reservations are estimates; compare measured use and task scope before declaring an overrun. GPU, thermal, disk-I/O and network readings may be unavailable.',
+        'CPU percentages are of the whole computer; multiply by core count / 100 for cores in use. jobs.id connects process.jobId to a supervised agent or local job, and to quark.jobs.agentId or quark.localJobs.id. A null jobId means untracked by these supervisors, not malicious or unintentional. Process entry points are script basenames or module names; full command arguments, inline code, URLs, environment and file contents are not retained. QUARK reservations are estimates; compare measured use and task scope before declaring an overrun. Disk I/O sums block-storage drivers; network sums physical en* interfaces (not VPN tunnels); GPU is the driver-reported device utilization; thermalWarning is the OS warning state, never a temperature. Null or unavailable entries mean no unprivileged source answered, not zero.',
     };
   }
   async stop(raw: unknown) {

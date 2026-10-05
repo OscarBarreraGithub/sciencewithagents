@@ -2,6 +2,7 @@ import { test, expect, type Page } from './fixture';
 import { randomUUID } from 'node:crypto';
 
 async function openChats(page: Page) {
+  await expect(page.locator('.topbar')).toBeVisible();
   const menu = page.getByRole('button', { name: /Open chats|Open projects/ });
   if (await menu.isVisible()) await menu.click();
 }
@@ -145,11 +146,15 @@ test('checking an unknown delivery never resends a request that missed the gatew
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByRole('button', { name: 'Check delivery', exact: true }).click();
   await expect(
-    page.getByText('No receipt is available. Inspect VS Code. Nothing was resent.'),
+    page
+      .locator('.mirror-delivery-status summary')
+      .filter({ hasText: 'No receipt is available. Inspect VS Code. Nothing was resent.' }),
   ).toBeVisible();
   expect(sends).toBe(1);
   expect(checks).toBe(1);
-  await expect(page.getByLabel('Message Codex')).toBeDisabled();
+  await expect(page.getByLabel('Message Codex')).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Check delivery', exact: true })).toBeEnabled();
   await expect(page.getByLabel('Message Codex')).toHaveValue('Do not send this twice');
   await page.unrouteAll({ behavior: 'wait' });
 });

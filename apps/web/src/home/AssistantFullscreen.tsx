@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { ArrowLeft } from 'lucide-react';
+import { fitToVisibleViewport } from '../useVisibleViewport';
 import './assistant-fullscreen.css';
 
 /** A full-screen chat in the top layer; opening and returning never send a message. */
@@ -19,20 +20,10 @@ export function AssistantFullscreen({
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const element = dialog.current!;
-    const viewport = window.visualViewport;
-    const resize = () => {
-      element.style.setProperty('--assistant-height', `${viewport?.height ?? innerHeight}px`);
-      element.style.setProperty('--assistant-top', `${viewport?.offsetTop ?? 0}px`);
-    };
-    resize();
+    const stop = fitToVisibleViewport(element, 'assistant');
     element.showModal();
-    viewport?.addEventListener('resize', resize);
-    viewport?.addEventListener('scroll', resize);
-    window.addEventListener('resize', resize);
     return () => {
-      viewport?.removeEventListener('resize', resize);
-      viewport?.removeEventListener('scroll', resize);
-      window.removeEventListener('resize', resize);
+      stop();
       element.close();
     };
   }, []);

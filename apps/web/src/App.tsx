@@ -65,6 +65,7 @@ import { FrontdeskSettings } from './FrontdeskSettings';
 import { RecoveryBackups } from './RecoveryBackups';
 import { VscodeMirror, MirrorHome, MirrorChatList } from './VscodeMirror';
 import { useMirrorChats, mirrorKey } from './useMirrorChats';
+import { useVisibleViewport } from './useVisibleViewport';
 const NativeTerminal = lazy(() =>
   import('./NativeTerminal').then((module) => ({ default: module.NativeTerminal })),
 );
@@ -87,28 +88,9 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
     }
   });
   const mirrorOpen = mirrorSelection !== null;
-  const [mirrorView, setMirrorView] = useState<{ height: number; top: number }>();
+  // The fixed mirror shell covers the area above an open keyboard; see useVisibleViewport.
+  const mirrorView = useVisibleViewport(mirrorOpen);
   const mirrorHeight = mirrorView?.height;
-  useEffect(() => {
-    if (!mirrorOpen || !window.visualViewport) return;
-    const viewport = window.visualViewport;
-    // Mobile keyboards shrink and pan the visible viewport (offsetTop) without
-    // changing 100dvh. The fixed shell covers exactly that area, so the page never
-    // scrolls under it. Do not resize the chat while the user is pinch-zooming.
-    const resize = () => {
-      if (viewport.scale !== 1) return;
-      const height = viewport.height;
-      const top = viewport.offsetTop;
-      setMirrorView((old) => (old?.height === height && old.top === top ? old : { height, top }));
-    };
-    resize();
-    viewport.addEventListener('resize', resize);
-    viewport.addEventListener('scroll', resize);
-    return () => {
-      viewport.removeEventListener('resize', resize);
-      viewport.removeEventListener('scroll', resize);
-    };
-  }, [mirrorOpen]);
   const mirrorChat = mirrors.chats.find((chat) => mirrorKey(chat) === mirrorSelection);
   useEffect(() => {
     try {
@@ -456,7 +438,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
     <div
       className={`app-shell ${mirrorOpen ? 'mirror-view' : ''} ${mirrorOpen && mirrorHeight && mirrorHeight < 500 ? 'compact-view' : ''}`}
       style={
-        mirrorOpen && mirrorView
+        mirrorView?.keyboard
           ? {
               position: 'fixed',
               top: mirrorView.top,

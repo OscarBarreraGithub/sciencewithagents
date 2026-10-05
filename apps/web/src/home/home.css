@@ -236,6 +236,22 @@ body:has(.home-shell) {
 .home-topline .home-orb {
   margin-left: auto;
 }
+.home-orb-canvas {
+  display: block;
+  pointer-events: none;
+  animation: home-orb-in 420ms ease-out;
+}
+@keyframes home-orb-in {
+  from {
+    opacity: 0.25;
+    scale: 0.88;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-orb-canvas {
+    animation: none;
+  }
+}
 .home-pull-refresh {
   position: sticky;
   top: 0;

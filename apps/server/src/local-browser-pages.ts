@@ -40,7 +40,7 @@ async function connect(){
   const migrated=!recover && localStorage.getItem(marker)==='1';
   const response=await fetch(migrated?'/api/local-access/status':'/api/local-access/migrate',migrated?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source,recover})});
   if(!response.ok){
-   if(response.status===401){waiting=true;fail('Open the installed sciencewithagents app on this computer. Return to this tab and it will reconnect automatically. Your drafts are still here.');link('Open desktop app','sciencewithagents://open');button('Check connection',connect);return;}
+   if(response.status===401){waiting=true;fail('Opening the installed sciencewithagents app connects your default browser. If that is this browser, return to this tab and it will reconnect. Otherwise, make this browser your default browser, then open the app again. Your drafts are still here.');link('Open desktop app','sciencewithagents://open');button('Check connection',connect);return;}
    throw Error('The browser could not reconnect. Your retained drafts have not been changed.');
   }
   if(migrated){location.replace(workspace());return;}

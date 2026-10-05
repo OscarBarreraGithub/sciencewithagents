@@ -68,7 +68,11 @@ type ArchiveRow = {
   created_at: string;
 };
 
-function scopeFor(projectId: string, query: HistoryQuery, eligibleAgentIds?: readonly string[]) {
+function scopeFor(
+  projectId: string | null,
+  query: HistoryQuery,
+  eligibleAgentIds?: readonly string[],
+) {
   return createHash('sha256')
     .update(
       JSON.stringify([
@@ -119,8 +123,26 @@ export function historyPage(
   // Host-only finder selection; ordinary project history includes all workers.
   eligibleAgentIds?: readonly string[],
 ) {
+  return savedHistoryPage(store, projectId, raw, eligibleAgentIds);
+}
+
+/** Owner route only; manager inspection always uses the project-bound wrapper. */
+export function ownerHistoryPage(store: Store, raw: unknown) {
+  return savedHistoryPage(store, null, raw);
+}
+
+function savedHistoryPage(
+  store: Store,
+  projectId: string | null,
+  raw: unknown,
+  eligibleAgentIds?: readonly string[],
+) {
   const query = historyQuerySchema.parse(raw);
-  projectScope(store, projectId, query.agentId, query.taskId);
+  if (projectId) projectScope(store, projectId, query.agentId, query.taskId);
+  else {
+    if (query.agentId) store.agent(query.agentId);
+    if (query.taskId) store.task(query.taskId);
+  }
   const scope = scopeFor(projectId, query, eligibleAgentIds);
   let cursor: z.infer<typeof cursorSchema> | undefined;
   if (query.cursor) {
@@ -141,11 +163,12 @@ export function historyPage(
     cursor?.decisions ??
     Number(store.db.prepare('SELECT COALESCE(MAX(rowid),0) AS value FROM decisions').get()!.value);
   const throughEventId = cursor?.throughEventId ?? store.head;
-  const where = [
-    'project_id=?',
-    "((source='entry' AND ordinal<=?) OR (source='decision' AND ordinal<=?))",
-  ];
-  const args: SQLInputValue[] = [projectId, entries, decisions];
+  const where = ["((source='entry' AND ordinal<=?) OR (source='decision' AND ordinal<=?))"];
+  const args: SQLInputValue[] = [entries, decisions];
+  if (projectId) {
+    where.unshift('project_id=?');
+    args.unshift(projectId);
+  }
   if (eligibleAgentIds) {
     where.push('agent_id IN (SELECT value FROM json_each(?))');
     args.push(JSON.stringify(eligibleAgentIds));
@@ -204,13 +227,19 @@ export function historyPage(
 
 /** Read all retained characters in bounded chunks, without a filesystem or raw JSON endpoint. */
 export function historyRead(store: Store, projectId: string, raw: unknown) {
+  return savedHistoryRead(store, projectId, raw);
+}
+export function ownerHistoryRead(store: Store, raw: unknown) {
+  return savedHistoryRead(store, null, raw);
+}
+function savedHistoryRead(store: Store, projectId: string | null, raw: unknown) {
   const input = historyReadSchema.parse(raw);
-  projectScope(store, projectId);
+  if (projectId) projectScope(store, projectId);
   const row = store.db
     .prepare(
-      `WITH archive AS (${archiveSql}) SELECT * FROM archive WHERE project_id=? AND source=? AND id=?`,
+      `WITH archive AS (${archiveSql}) SELECT * FROM archive WHERE ${projectId ? 'project_id=? AND ' : ''}source=? AND id=?`,
     )
-    .get(projectId, input.source, input.id) as ArchiveRow | undefined;
+    .get(...(projectId ? [projectId] : []), input.source, input.id) as ArchiveRow | undefined;
   if (!row) throw new Missing('Saved evidence was not found in this project.');
   if (input.offset > row.text.length)
     throw new Conflict('This saved item changed. Open it again from the beginning.');

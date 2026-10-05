@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { connectionLost } from './api';
 
 /** Keep failures where the user is working, with one pending submission at a time. */
 export function useFormAction(act: (fn: () => Promise<unknown>) => Promise<void>) {
@@ -16,7 +17,7 @@ export function useFormAction(act: (fn: () => Promise<unknown>) => Promise<void>
           return await fn();
         } catch (error) {
           setError(
-            error instanceof TypeError
+            connectionLost(error)
               ? 'We lost the connection. Your details are still here. Please try again.'
               : error instanceof Error
                 ? error.message

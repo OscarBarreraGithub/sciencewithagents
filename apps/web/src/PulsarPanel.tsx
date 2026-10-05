@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   pulsarStatusSchema,
+  providerReservePolicy,
   type JobEstimate,
   type PulsarStatus,
   type PulsarPolicy,
@@ -112,6 +113,16 @@ export function PulsarPanel({
             >
               <div className="estimate-grid">
                 <label>
+                  <input
+                    type="checkbox"
+                    checked={policy.maximizeClaudeFiveHour}
+                    onChange={(e) =>
+                      setPolicy({ ...policy, maximizeClaudeFiveHour: e.target.checked })
+                    }
+                  />
+                  Maximize useful Claude work before the five-hour reset
+                </label>
+                <label>
                   Automatic turns before a progress check
                   <input
                     type="number"
@@ -123,18 +134,30 @@ export function PulsarPanel({
                     }
                   />
                 </label>
-                <label>
-                  Allowance reserved for active work (%)
-                  <input
-                    type="number"
-                    min="5"
-                    max="80"
-                    value={policy.reservePercent}
-                    onChange={(e) =>
-                      setPolicy({ ...policy, reservePercent: e.target.valueAsNumber })
-                    }
-                  />
-                </label>
+                {(['codex', 'claude'] as const).map((provider) => (
+                  <label key={provider}>
+                    {provider === 'codex' ? 'Codex' : 'Claude'} minimum remaining reserve (%)
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={providerReservePolicy(policy, provider).reservePercent}
+                      onChange={(event) =>
+                        setPolicy({
+                          ...policy,
+                          providerReserves: {
+                            codex: providerReservePolicy(policy, 'codex'),
+                            claude: providerReservePolicy(policy, 'claude'),
+                            [provider]: {
+                              ...providerReservePolicy(policy, provider),
+                              reservePercent: event.target.valueAsNumber,
+                            },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                ))}
                 <label>
                   Concurrent Claude workers
                   <select
@@ -198,6 +221,12 @@ export function PulsarPanel({
                   />
                 </label>
               </div>
+              <p className="muted">
+                With shared pacing on, this lets eligible Claude background work use available
+                five-hour headroom without the gradual release schedule. Project provider/model
+                choices, hourly/window caps, pauses and the reserve still apply. It creates no
+                filler work and cannot guarantee using the full window.
+              </p>
               <button className="secondary" disabled={busy}>
                 Save pacing rules
               </button>

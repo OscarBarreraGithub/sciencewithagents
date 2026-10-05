@@ -443,6 +443,8 @@ describe('isolated computer connections', () => {
       '/project-rates',
       '/conversations',
       '/work-items',
+      '/archive/editors',
+      `/agents/${agentId}/owner-requests`,
       `/projects/${agentId}/workflow`,
       `/projects/${agentId}/notes`,
     ])
@@ -451,6 +453,14 @@ describe('isolated computer connections', () => {
       `/api/work-items?projectId=${agentId}`,
     );
     expect(proxyPath('GET', '/work-items?projectId=unknown')).toBeNull();
+    expect(
+      proxyPath(
+        'GET',
+        `/agents/${agentId}/owner-requests?limit=10&includeHandled=true&cursor=c29tZQ`,
+      ),
+    ).toBe(`/api/agents/${agentId}/owner-requests?limit=10&includeHandled=true&cursor=c29tZQ`);
+    expect(proxyPath('GET', `/agents/${agentId}/owner-requests?limit=100`)).toBeNull();
+    expect(proxyPath('GET', `/agents/${agentId}/owner-requests?projectId=${agentId}`)).toBeNull();
     expect(proxyPath('GET', `/workspace/${agentId}/drafts/${agentId}/history?before=20`)).toBe(
       `/api/workspace/${agentId}/drafts/${agentId}/history?before=20`,
     );
@@ -460,6 +470,8 @@ describe('isolated computer connections', () => {
     for (const path of [
       '/work-items',
       '/conversations',
+      '/archive/search',
+      '/archive/read',
       `/projects/${agentId}/workflow`,
       `/projects/${agentId}/notes`,
       `/projects/${agentId}/open-in-editor`,

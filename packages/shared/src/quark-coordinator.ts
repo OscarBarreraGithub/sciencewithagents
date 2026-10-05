@@ -28,6 +28,36 @@ export const quarkCoordinatorSaveSchema = z
     settings: quarkCoordinatorSettingsSchema,
   })
   .strict();
+export const quarkCoordinatorInspectSchema = z
+  .object({
+    view: z
+      .enum([
+        'overview',
+        'projects',
+        'jobs',
+        'budgets',
+        'decisions',
+        'timing',
+        'cluster',
+        'conversation',
+      ])
+      .default('overview'),
+    projectId: z.uuid().optional(),
+    offset: z.number().int().min(0).max(100_000).default(0),
+    limit: z.number().int().min(1).max(20).default(10),
+    entryId: z.string().min(1).max(400).optional(),
+    textOffset: z.number().int().min(0).max(1_000_000).default(0),
+    textLimit: z.number().int().min(1).max(8000).default(4000),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      (!value.entryId || value.view === 'conversation') &&
+      (value.view !== 'conversation' || !value.projectId),
+    {
+      message: 'Conversation reads use this coordinator’s own entryId, without projectId.',
+    },
+  );
 export const quarkProjectPrioritySchema = z.enum(['high', 'normal', 'background']).nullable();
 export const quarkProjectPolicySchema = z
   .object({
@@ -65,15 +95,24 @@ export const quarkControlSchema = z.discriminatedUnion('action', [
       projectId: z.string().uuid(),
       provider: providerIdSchema,
       windowId: z.string().min(1).max(160),
-      limitPercent: z.number().positive().max(100),
+      period: z.enum(['window', 'hour']).default('window'),
+      enabled: z.boolean().default(true),
+      limitPercent: z.number().min(0).max(100),
       expectedRevision: z.number().int().nonnegative(),
       reason: z.string().trim().min(1).max(1500),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (value) => value.period === 'hour' || value.limitPercent > 0,
+      'Only hourly rates can be zero.',
+    ),
   z
     .object({
       action: z.literal('reserve'),
-      reservePercent: z.number().min(5).max(80),
+      reservePercent: z.number().min(0).max(100),
+      provider: providerIdSchema.optional(),
+      releaseEnabled: z.boolean().optional(),
+      releaseBeforeResetMinutes: z.number().int().min(1).max(10080).optional(),
       reason: z.string().trim().min(1).max(1500),
     })
     .strict(),

@@ -147,3 +147,55 @@ test('a shared phone chat retries the same upload, preserves typing, and sends t
   expect(chatImageIds(String(sends[0].text))).toHaveLength(1);
   await expect(page.getByRole('img', { name: 'Attached screenshot 1' })).toHaveCount(0);
 });
+
+test('a remote shared chat preserves saved screenshots for removal and sends text without uploading', async ({
+  page,
+}, info) => {
+  const state: MirrorState = {
+    windowId: randomUUID(),
+    threadId: randomUUID(),
+    provider: 'codex',
+    label: 'Remote editor',
+    title: 'Remote screenshot limit',
+    status: 'idle',
+    message: '',
+    paged: true,
+    entries: [{ id: 'reply', role: 'assistant', text: 'Remote chat is available.' }],
+  };
+  let remote = false;
+  const current = () => ({ ...state, ...(remote ? { canAttachImages: false } : {}) });
+  await page.route('**/api/vscode/windows', (route) => {
+    const { entries: _, ...summary } = current();
+    return route.fulfill({ json: [summary] });
+  });
+  await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
+    route.fulfill({ json: mirrorPage(current()) }),
+  );
+  const sends: Record<string, unknown>[] = [];
+  await page.route(`**/api/vscode/windows/${state.windowId}/send`, (route) => {
+    sends.push(route.request().postDataJSON());
+    return route.fulfill({ json: { state: 'sent', message: 'Sent' } });
+  });
+  await page.goto(`/#/chats/vscode/${encodeURIComponent('codex:' + state.threadId)}`);
+  const input = page.getByRole('textbox', { name: 'Message Codex' });
+  await input.fill('Saved draft');
+  await pick(page);
+  await visiblePreview(page);
+  remote = true;
+  await page.reload();
+  await visiblePreview(page);
+  await expect(input).toHaveValue('Saved draft');
+  await expect(page.getByRole('button', { name: 'Attach screenshot', exact: true })).toBeDisabled();
+  await expect(
+    page.getByText('Remote screenshots are unavailable.', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove screenshot 1' })).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('remote-screenshot-limit.png') });
+  await page.getByRole('button', { name: 'Remove screenshot 1' }).click();
+  await expect(page.getByRole('img', { name: 'Attached screenshot 1' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => sends.length).toBe(1);
+  expect(sends[0]).toMatchObject({ text: 'Saved draft', threadId: state.threadId });
+  expect(chatImageIds(String(sends[0].text))).toEqual([]);
+});

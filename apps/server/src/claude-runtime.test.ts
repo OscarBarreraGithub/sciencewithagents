@@ -18,6 +18,7 @@ import {
 } from './claude-session.js';
 import { git } from './workspaces.js';
 import { createInterview, nativeDiscussionBoundary } from './interviews.js';
+import { parseCapacity } from './capacity.js';
 
 const identity = parseClaudeIdentity({
   loggedIn: true,
@@ -157,6 +158,120 @@ function request(session: FixtureSession, requestId = randomUUID()) {
 }
 
 describe('Claude uses the shared runtime without Codex protocol substitution', () => {
+  it('starts QUARK checks in a fresh native context while keeping its identity, saved archive and durable decisions', async () => {
+    await runtime.coordinator.save({
+      key: randomUUID(),
+      settings: {
+        ...runtime.coordinator.settings(),
+        automatic: false,
+        model: { ...runtime.coordinator.settings().model, model: 'default' },
+      },
+    });
+    const id = (await runtime.coordinator.start({ key: randomUUID() })).agentId!;
+    store.setSetting(
+      'capacity:v1:claude',
+      parseCapacity(
+        'claude',
+        [
+          {
+            provider: 'claude',
+            source: 'oauth',
+            usage: {
+              updatedAt: new Date().toISOString(),
+              secondary: {
+                usedPercent: 10,
+                windowMinutes: 10080,
+                resetsAt: new Date(Date.now() + 86400_000).toISOString(),
+              },
+            },
+          },
+        ],
+        Date.now(),
+      ),
+    );
+    const first = await start(id, 'Owner question');
+    first.session.send({
+      type: 'message',
+      id: 'old-archive-evidence',
+      role: 'assistant',
+      text: 'Distinctive prior transcript retained only in archive',
+    });
+    finish(first.session, first.run.id);
+    await vi.waitFor(() => expect(store.run(first.run.id).status).toBe('completed'));
+    store.setSetting('quark:decision:retained-fixture', {
+      key: 'retained-fixture',
+      at: new Date().toISOString(),
+      source: 'owner',
+      instruction: 'Keep the owner pause.',
+      action: {
+        action: 'project',
+        projectId: project,
+        expectedRevision: 0,
+        paused: true,
+        reason: 'Owner decision retained.',
+      },
+    });
+    const before = instances.length;
+    const automatic = store.enqueue(id, randomUUID(), 'One automatic check', 'report');
+    await vi.waitFor(() => expect(instances.length).toBe(before + 1));
+    const next = instances.at(-1)!;
+    await vi.waitFor(() => expect(next.submit).toHaveBeenCalledOnce());
+    expect(next.options.sessionId).not.toBe(first.session.options.sessionId);
+    expect(next.options.resume).toBe(false);
+    expect(runtime.coordinator.identity()?.agentId).toBe(id);
+    expect(
+      store
+        .entries(id)
+        .some((entry) => entry.text === 'Distinctive prior transcript retained only in archive'),
+    ).toBe(true);
+    expect(next.submit.mock.calls[0]![0].text).toContain('Keep the owner pause.');
+    expect(next.submit.mock.calls[0]![0].text).not.toContain('Distinctive prior transcript');
+    expect(
+      store
+        .events(0, 2000)
+        .filter((event) => event.type === 'session.retired')
+        .at(-1)?.data,
+    ).toMatchObject({ threadId: first.session.options.sessionId });
+    expect(runtime.resources.isAgent(id)).toBe(false);
+    finish(next, automatic.id);
+    await vi.waitFor(() => expect(store.run(automatic.id).status).toBe('completed'));
+  });
+  it('does not revive a stopped QUARK turn while its previous context is closing', async () => {
+    await runtime.coordinator.save({
+      key: randomUUID(),
+      settings: {
+        ...runtime.coordinator.settings(),
+        automatic: false,
+        model: { ...runtime.coordinator.settings().model, model: 'default' },
+      },
+    });
+    const id = (await runtime.coordinator.start({ key: randomUUID() })).agentId!;
+    const first = await start(id);
+    finish(first.session, first.run.id);
+    await vi.waitFor(() => expect(store.run(first.run.id).status).toBe('completed'));
+    const oldAt = new Date(Date.now() - 3600_001).toISOString();
+    store.updateRun(first.run.id, { createdAt: oldAt });
+    store.entry({
+      ...store.entries(id).find((entry) => entry.id === first.run.id)!,
+      createdAt: oldAt,
+    });
+    let release!: () => void;
+    first.session.close.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const pending = store.enqueue(id, randomUUID(), 'An owner returns after one hour');
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    await runtime.interrupt(id);
+    expect(store.run(pending.id).status).toBe('cancelled');
+    release();
+    await vi.waitFor(() => expect(runtime.executing.has(id)).toBe(false));
+    expect(store.run(pending.id).status).toBe('cancelled');
+    expect(instances).toHaveLength(1);
+    expect(store.agent(id).status).not.toBe('running');
+  });
   it('discusses a completed native reply in a separate read-only copy, preserving task and excluding inherited spending', async () => {
     const task = store.addTask(project, {
       title: 'Research',

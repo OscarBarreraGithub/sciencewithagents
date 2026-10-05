@@ -9,7 +9,7 @@ import {
   projectTrackingSchema,
   type Project,
 } from '@dock/shared';
-import { api, apiScope, ApiError } from './api';
+import { api, apiScope, ApiError, connectionLost } from './api';
 import { Modal } from './Modal';
 import { FolderBrowser } from './FolderBrowser';
 
@@ -165,9 +165,9 @@ export function ProjectModal({
         if (value.project) await onCreated(projectSchema.parse(value.project));
       }
     } catch (error) {
-      if (!(error instanceof TypeError)) clearFolderReceipt();
+      if (!connectionLost(error)) clearFolderReceipt();
       setError(
-        error instanceof TypeError
+        connectionLost(error)
           ? 'We lost the connection. Try again when you’re connected; your project will not be duplicated.'
           : error instanceof Error
             ? error.message
@@ -217,7 +217,7 @@ export function ProjectModal({
             await onCreated(project);
           } catch (error) {
             setError(
-              error instanceof TypeError
+              connectionLost(error)
                 ? 'We lost the connection. Your details are saved—try Create project again when you’re connected.'
                 : error instanceof Error
                   ? error.message

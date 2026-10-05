@@ -116,10 +116,13 @@ export function PhoneGate({
         <section className="phone-card">
           <Smartphone size={32} aria-hidden="true" />
           <h1>Open your workspace</h1>
-          <p>Open the installed sciencewithagents app on this computer to connect your browser.</p>
           <p>
-            Your saved drafts stay in this tab. Reconnect it after opening the app; pending messages
-            will not be resent.
+            Opening the installed sciencewithagents app connects your default browser on this
+            computer. Other browsers cannot reuse that connection.
+          </p>
+          <p>
+            Your saved drafts stay in this browser and pending messages will not be resent. To use
+            this browser, make it your default browser, then open the app again.
           </p>
           <div className="phone-actions">
             <a href="sciencewithagents://open">Open desktop app</a>
@@ -129,8 +132,8 @@ export function PhoneGate({
             </button>
           </div>
           <p className="muted">
-            If the button does not open the app, open sciencewithagents from Applications, then
-            return here.
+            If the button does not open the app, open sciencewithagents from Applications. Return
+            here only if this is your default browser.
           </p>
         </section>
       </main>

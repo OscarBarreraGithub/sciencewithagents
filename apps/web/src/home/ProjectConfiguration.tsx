@@ -24,7 +24,7 @@ import {
   type Project,
   type ProviderId,
 } from '@dock/shared';
-import { api, apiScope, ApiError, detail, models } from '../api';
+import { api, apiScope, ApiError, connectionLost, detail, models } from '../api';
 import { SessionSettings } from '../SessionSettings';
 import {
   modelFamilies,
@@ -825,7 +825,7 @@ export function ProjectConfiguration({
       await step(spawn);
     } catch (reason) {
       setError(
-        reason instanceof TypeError
+        connectionLost(reason)
           ? folder
             ? 'The connection was interrupted. Choose a folder again to recover the saved selection.'
             : 'The connection was interrupted. Your choices are saved; retrying continues the same project.'

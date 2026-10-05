@@ -1,20 +1,27 @@
 # Managed Claude conversations
 
-**Unattended native execution (2026-09-30):** new inherited launches use native scoped
-execution and do not queue routine permission prompts. Managers/write-enabled workers
-approve Bash through Claude's own permissions while its strict sandbox enforces command
-writes; file edits use native edit acceptance. Read-only roles retain plan permissions and
-explicitly deny command writes inside their assigned workspace through the native sandbox.
-Residual permission requests are denied, and actual human questions remain answerable.
+**Unattended native execution (2026-10-05):** new inherited launches do not queue routine
+permission prompts. Managers, write-enabled workers, conversations and requested resource
+assistants run in Claude's documented `bypassPermissions` mode with no app-added sandbox
+settings: files, local servers, browsers and SSH (including cluster copy-back) use the owner's
+own user permissions. A manager's project folder is an additional working directory and its
+intended scope, not hard containment. The owner's own Claude sandbox settings and provider or
+organization policy still apply. Read-only roles retain plan permissions and a strict native
+sandbox that denies command writes inside their assigned workspace. Residual permission
+requests are denied, and actual human questions (AskUserQuestion) remain answerable.
 Native plan mode can ask before Dock MCP coordination even with a CLI allow rule. The host
 accepts only mode-based requests for its exact registered private SDK tools during an active
 unattended native turn; their existing role/task checks still govern execution. Reviewers call
 `dock_review` directly while staying in plan mode. Explicit native ask rules, interaction
 requirements, external MCP requests, source-write requests and `ExitPlanMode` are not granted
-by this exception. The beta check resumed an actual Opus reviewer, read the assignment and recorded its
-`changes_requested` verdict through the scoped tool while remaining in plan mode. A separate
-live probe verified file reads and a Bash calculation, while both file-tool and Bash writes to
-disposable source sentinels were denied. This boundary does not sandbox external MCP services.
+by this exception. External MCP services are not sandboxed by any of these modes.
+
+Evidence: a 2026-10-05 Sonnet manager fixture in `bypassPermissions` moved project files, took
+a Chromium screenshot, ran `ssh`/`scp` copy-back from a cluster alias without any prompt,
+denial or sandbox retry, and its AskUserQuestion waited for and resumed with the owner's
+answer. Earlier (2026-09-30, read-only policy unchanged since): an Opus reviewer recorded a
+`changes_requested` verdict in plan mode, and a live probe verified reads and a Bash
+calculation while file-tool and Bash writes to source sentinels were denied.
 The older pending-approval descriptions below apply to saved restricted contexts. See
 [current controls and live evidence](WORKER_TOOLS.md).
 

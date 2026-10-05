@@ -7,8 +7,12 @@ import { defaultModelPolicy, resourceSampleSchema, type ProviderId } from '@dock
 import { Store } from './store.js';
 import { ResourceWatch, resourceFindings } from './resource-watch.js';
 import {
+  parseBlockStorage,
+  parseGpu,
+  parseInterfaces,
   parsePressure,
   parseProcesses,
+  parseThermal,
   parseSwap,
   parseVm,
   processEntrypoint,
@@ -237,6 +241,90 @@ it('rejects foreign or unregistered agents and incompatible follow-up model choi
   expect(models.mock.calls).toHaveLength(calls);
   expect(store.runs()).toHaveLength(1);
 });
+it('starts a fresh diagnosis after an hour of owner inactivity, retaining identity, evidence and retry receipts', async () => {
+  const { watch, store, advance, now } = fixture();
+  await watch.tick();
+  const first = (
+    await watch.ask({ key: randomUUID(), question: 'Original diagnosis', effort: 'high' })
+  ).checks[0]!;
+  // This watcher fixture owns a clock; align persisted owner input with it.
+  store.updateRun(first.runId, { createdAt: new Date(now()).toISOString() });
+  store.entry({
+    ...store.entries(first.agentId).find((entry) => entry.id === first.runId)!,
+    createdAt: new Date(now()).toISOString(),
+  });
+  store.updateAgent(first.agentId, { threadId: 'saved-diagnosis-thread', status: 'idle' });
+  advance(60 * 60_000);
+  await expect(
+    watch.ask({ key: randomUUID(), agentId: first.agentId, question: 'Queued work is preserved' }),
+  ).rejects.toThrow('already queued');
+  expect(store.agent(first.agentId).threadId).toBe('saved-diagnosis-thread');
+  store.updateRun(first.runId, { status: 'completed' });
+  // A new assistant reply does not count as owner activity.
+  store.entry({
+    id: randomUUID(),
+    agentId: first.agentId,
+    runId: first.runId,
+    kind: 'assistant',
+    title: '',
+    text: 'Original report retained',
+    status: 'complete',
+    createdAt: new Date(now()).toISOString(),
+  });
+  const input = { key: randomUUID(), agentId: first.agentId, question: 'Fresh current diagnosis' };
+  const fresh = (await watch.ask(input)).checks[0]!;
+  expect(fresh.agentId).not.toBe(first.agentId);
+  expect(store.agent(fresh.agentId)).toMatchObject({
+    provider: 'claude',
+    model: 'opus-fixture',
+    effort: 'high',
+    permission: 'workspace-write',
+    toolPolicy: 'native',
+    threadId: null,
+  });
+  expect(watch.isAgent(fresh.agentId)).toBe(true);
+  expect(store.agent(first.agentId).threadId).toBe('saved-diagnosis-thread');
+  expect(
+    store.entries(first.agentId).some((entry) => entry.text === 'Original report retained'),
+  ).toBe(true);
+  await watch.ask(input);
+  expect(store.runs()).toHaveLength(2);
+  expect(
+    store.events().find((event) => event.type === 'resources.diagnosis_renewed')?.data,
+  ).toMatchObject({ previousAgentId: first.agentId, previousThreadId: 'saved-diagnosis-thread' });
+});
+it('reserves owner diagnoses in bounded recent history despite many automatic reports', async () => {
+  const { watch, store, now } = fixture();
+  await watch.tick();
+  const original = (await watch.ask({ key: randomUUID(), question: 'Keep this owner diagnosis' }))
+    .checks[0]!;
+  store.updateRun(original.runId, { status: 'completed' });
+  const checks = [original];
+  for (let i = 0; i < 110; i++) {
+    const run = store.enqueue(
+      original.agentId,
+      randomUUID(),
+      'Historical automatic report',
+      'message',
+    );
+    store.updateRun(run.id, { status: 'completed' });
+    checks.push({
+      ...original,
+      id: randomUUID(),
+      runId: run.id,
+      reason: 'checkpoint',
+      createdAt: new Date(now() + i).toISOString(),
+    });
+  }
+  store.setSetting('resources:checks', checks);
+  expect(watch.status().checks).toHaveLength(20);
+  expect(watch.status().checks.some((check) => check.id === original.id)).toBe(true);
+  await watch.ask({ key: randomUUID(), question: 'A new owner diagnosis' });
+  const retained = store.getSetting('resources:checks') as { id: string }[];
+  expect(retained.length).toBeLessThanOrEqual(100);
+  expect(retained.some((check) => check.id === original.id)).toBe(true);
+  expect(watch.status().checks.some((check) => check.id === original.id)).toBe(true);
+});
 it('does not release or time-limit native assistance while the same agent has an active follow-up', async () => {
   const { watch, store, release, advance, interrupt } = fixture();
   await watch.tick();
@@ -308,6 +396,31 @@ it('reads safe app identities and distinguishes dispatch pressure flags from ker
   expect(
     parseVm('page size of 16384 bytes\nPages occupied by compressor: 20.\nSwapouts: 4.'),
   ).toEqual({ compressedBytes: 20 * 16384, swapOutBytes: 4 * 16384 });
+  expect(
+    parseBlockStorage(
+      '"Statistics" = {"Bytes (Read)"=10,"Bytes (Write)"=20}\n"Statistics" = {"Bytes (Write)"=5,"Bytes (Read)"=1}',
+    ),
+  ).toEqual({ devices: 2, read: 11, written: 25 });
+  expect(parseBlockStorage('')).toBeNull();
+  expect(
+    parseInterfaces(
+      [
+        'en0* 1500 <Link#7> d0:11:e5:ac:48:bc 0 0 0 0 0 0 0',
+        'en1 1500 <Link#15> 1a:20:72:d2:27:3c 17 0 1300 14 0 900 0',
+        'en1 1500 fe80::1%en1 fe80:f::1 17 - 1300 14 - 900 -',
+        'bridge0 1500 <Link#16> 36:3e:fa:bb:60:80 9 0 999 9 0 999 0',
+        'utun5 1280 <Link#24> 870262 0 58984453 2550007 0 2845313002 0',
+      ].join('\n'),
+    ),
+  ).toEqual({ devices: 2, received: 1300, sent: 900 });
+  expect(parseInterfaces('lo0 16384 <Link#1> 1 0 5 1 0 5 0')).toBeNull();
+  expect(parseGpu('"Device Utilization %"=4 "Device Utilization %"=37')).toBe(37);
+  expect(parseGpu('"PerformanceStatistics" = {}')).toBeNull();
+  expect(parseThermal('Note: No thermal warning level has been recorded')).toBe('none');
+  expect(parseThermal('Thermal warning level set to 2.')).toBe('reported');
+  expect(parseThermal('CPU_Scheduler_Limit = 100\nCPU_Speed_Limit = 100')).toBe('none');
+  expect(parseThermal('CPU_Speed_Limit = 70')).toBe('reported');
+  expect(parseThermal('')).toBe('unknown');
 });
 it('requires persistence, ignores old swap and resets sustained evidence after sleep', () => {
   const now = Date.now(),
@@ -318,6 +431,31 @@ it('requires persistence, ignores old swap and resets sustained evidence after s
   expect(resourceFindings(sample, first, now + 120_000, true)[0]?.sustained).toBe(true);
   expect(resourceFindings(sample, first, now + 120_000, false)[0]?.sustained).toBe(false);
   expect(resourceFindings({ ...base(now), memoryPressure: 'unknown' }, [], now, false)).toEqual([]);
+});
+it('gives the assistant disk, network, GPU and thermal readings without starting checks', async () => {
+  const { watch, store, dependencies, now } = fixture();
+  let step = 0;
+  dependencies.probe.sample = async () =>
+    resourceSampleSchema.parse({
+      ...base(now()),
+      diskReadBytesPerSecond: 1024 * ++step,
+      networkSendBytesPerSecond: 2048,
+      gpuUtilizationPercent: 12,
+      thermalWarning: 'reported',
+    });
+  for (let i = 0; i < 4; i++) await watch.tick();
+  const context = watch.context();
+  expect(context.latest).toMatchObject({
+    diskReadBytesPerSecond: 4096,
+    networkSendBytesPerSecond: 2048,
+    gpuUtilizationPercent: 12,
+    thermalWarning: 'reported',
+  });
+  expect(context.limits).toContain('never a temperature');
+  // Older saved samples without these fields still read as unavailable, not zero.
+  expect(base(now())).toMatchObject({ diskReadBytesPerSecond: null, thermalWarning: 'unknown' });
+  expect(watch.status().findings).toEqual([]);
+  expect(store.agents()).toHaveLength(0);
 });
 it('retains a bounded history across restarts without starting agents on reads', async () => {
   const { watch, store, advance, root, dependencies, now } = fixture();
@@ -333,6 +471,58 @@ it('retains a bounded history across restarts without starting agents on reads',
   advance(60_000);
   expect(restored.status().stale).toBe(true);
   await restored.close();
+});
+it('keeps current process evidence while compacting default history and preserving detail on request', async () => {
+  const { store, watch, now } = fixture();
+  const sample = base(now());
+  sample.jobs = Array.from({ length: 60 }, (_, i) => ({
+    id: randomUUID(),
+    projectId: null,
+    projectName: null,
+    kind: 'agent',
+    status: 'running',
+    name: `Computation ${i}`,
+    processes: 4,
+    cpuPercent: 2,
+    memoryBytes: 1e9,
+    memoryChangeBytes: 100,
+  }));
+  sample.processes = Array.from({ length: 20 }, (_, i) => ({
+    pid: i + 1,
+    parentPid: 0,
+    startedAt: sample.observedAt,
+    name: 'python',
+    entrypoint: `computation${i}.py`,
+    parentName: null,
+    cpuPercent: 2,
+    memoryBytes: 1e9,
+    jobId: sample.jobs[i]!.id,
+    projectId: null,
+  }));
+  store.setSetting('resources:latest', sample);
+  store.setSetting('resources:baseline', sample);
+  const minute = Math.floor(now() / 60_000);
+  for (let i = 0; i < 30; i++)
+    store.db
+      .prepare('INSERT INTO resource_samples(minute,body) VALUES (?,?)')
+      .run(minute - i, JSON.stringify(sample));
+  const check = (await watch.ask({ key: randomUUID(), question: 'Which computation is busy?' }))
+    .checks[0]!;
+  const compact = watch.context(check.agentId);
+  const detailed = watch.context(check.agentId, true);
+  const before = Buffer.byteLength(JSON.stringify(detailed));
+  const after = Buffer.byteLength(JSON.stringify(compact));
+  expect(after).toBeLessThan(before / 2);
+  expect(compact.latest?.processes).toHaveLength(20);
+  expect(compact.history).toHaveLength(6);
+  expect(compact.requestEvidence).toMatchObject({
+    sample: { omitted: { processes: 20, jobs: 60 } },
+  });
+  expect(detailed.requestEvidence).toMatchObject({
+    sample: { processes: sample.processes, jobs: sample.jobs },
+  });
+  expect(detailed.history[0]?.jobs).toHaveLength(60);
+  console.info(`Resource context bytes: ${before} -> ${after}`);
 });
 it('uses a single durable request, an exact catalog model and the existing queue', async () => {
   const { watch, store, release, cpu } = fixture();

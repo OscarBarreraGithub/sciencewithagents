@@ -126,6 +126,31 @@ it('adds coalesced QUARK changes to original Codex tool replies without starting
     first.quarkUpdate.providers.map((provider: { provider: string }) => provider.provider).sort(),
   ).toEqual(['claude', 'codex']);
   expect(await invoke()).not.toHaveProperty('quarkUpdate');
+  runtime.ownerSteering(
+    manager,
+    randomUUID(),
+    'Preserve the original work and also review new evidence.',
+    'submitted',
+  );
+  const steering = await invoke();
+  expect(steering.quarkUpdate.ownerRequests.items).toContainEqual(
+    expect.objectContaining({
+      text: 'Preserve the original work and also review new evidence.',
+      delivery: 'submitted',
+    }),
+  );
+  expect(await invoke()).not.toHaveProperty('quarkUpdate');
+  client.emit('notification', 'thread/compacted', { threadId: managerState.threadId });
+  await vi.waitFor(() =>
+    expect(store.entries(manager).some((entry) => entry.title === 'Context compacted')).toBe(true),
+  );
+  expect((await invoke()).quarkUpdate.ownerRequests.total).toBe(2);
+  const restored = JSON.parse(
+    runtime.context(store.agent(manager)).split('\n').slice(1).join('\n'),
+  );
+  expect(restored.ownerRequests.items.map((item: { text: string }) => item.text)).toContain(
+    'Bounded work',
+  );
   const child = worker(),
     childRun = await start(child.id);
   expect(await invoke()).not.toHaveProperty('quarkUpdate'); // Routine progress is coalesced.

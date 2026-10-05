@@ -1,0 +1,74 @@
+@@swa-begin version@@
+slurm 26.05.4
+@@swa-end version 0@@
+@@swa-begin groups@@
+pi_a_lab pi_c_lab svc_users inst_d_lab svc_group training cluster_users pi_b_lab
+@@swa-end groups 0@@
+@@swa-begin fairshare@@
+pi_c_lab||21439|0.005966|12255632911|0.015587||0.000000
+ pi_c_lab|researcher|parent|0.005966|0|0.015587|0.163485|
+inst_d_lab||27929|0.007772|9201538877|0.011703||0.000000
+ inst_d_lab|researcher|parent|0.007772|0|0.011703|0.352117|
+pi_a_lab||700|0.000195|10675|0.000000||0.000000
+ pi_a_lab|researcher|parent|0.000195|10675|0.000000|0.999952|
+pi_b_lab||700|0.000195|358710285|0.000456||0.000000
+ pi_b_lab|researcher|parent|0.000195|0|0.000456|0.197190|
+@@swa-end fairshare 0@@
+@@swa-begin assoc@@
+cluster1|pi_c_lab|||||||10100|10100||||normal|
+cluster1|inst_d_lab|||||||10100|10100||||normal|
+cluster1|pi_a_lab|||||||10100|10100||||normal|
+cluster1|pi_b_lab|||||||10100|10100||||normal|
+@@swa-end assoc 0@@
+@@swa-begin accounts@@
+cluster1|pi_c_lab|div_parent|||||||10100|10100||||normal||
+cluster1|inst_d_lab|div_parent|||||||10100|10100||||normal||
+cluster1|pi_a_lab|div_parent|||||||10100|10100||||normal||
+cluster1|pi_b_lab|div_parent|||||||10100|10100||||normal||
+cluster1|div_parent||||||||10100|10100||||normal||
+@@swa-end accounts 0@@
+@@swa-begin partitions@@
+PartitionName=pi_c AllowGroups=pi_c_lab,slurm-admin AllowAccounts=ALL AllowQos=ALL AllocNodes=ALL Default=NO QoS=N/A DefaultTime=NONE DisableRootJobs=NO Exclusive=NO GraceTime=0 Hidden=NO MaxNodes=UNLIMITED MaxTime=3-00:00:00 MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED MaxCPUsPerSocket=UNLIMITED Nodes=node7c[18205-18212] PriorityJobFactor=1 PriorityTier=5 RootOnly=NO ReqResv=NO OverSubscribe=NO OverTimeLimit=NONE PreemptMode=OFF State=UP TotalCPUs=384 TotalNodes=8 SelectTypeParameters=NONE JobDefaults=(null) DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED TRES=cpu=384,mem=1540480M,node=8,billing=760 TRESBillingWeights=CPU=1.0,Mem=0.25G
+PartitionName=pi_c_gpu_a100 AllowGroups=pi_c_lab,slurm-admin AllowAccounts=ALL AllowQos=ALL AllocNodes=ALL Default=NO QoS=N/A DefaultTime=NONE DisableRootJobs=NO Exclusive=NO GraceTime=0 Hidden=NO MaxNodes=UNLIMITED MaxTime=3-00:00:00 MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED MaxCPUsPerSocket=UNLIMITED Nodes=node404 PriorityJobFactor=1 PriorityTier=5 RootOnly=NO ReqResv=NO OverSubscribe=NO OverTimeLimit=NONE PreemptMode=OFF State=UP TotalCPUs=64 TotalNodes=1 SelectTypeParameters=NONE JobDefaults=(null) DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED TRES=cpu=64,mem=1031177M,node=1,billing=3464,gres/gpu=28,gres/gpu:nvidia_a100_1g.10gb=28 TRESBillingWeights=CPU=0.9,Mem=0.06G,Gres/gpu=119.5
+PartitionName=inst_d_gpu AllowGroups=inst_d_lab,slurm-admin AllowAccounts=ALL AllowQos=ALL AllocNodes=ALL Default=NO QoS=inst_d_gpu DefaultTime=NONE DisableRootJobs=NO Exclusive=NO GraceTime=0 Hidden=NO MaxNodes=UNLIMITED MaxTime=3-00:00:00 MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED MaxCPUsPerSocket=UNLIMITED Nodes=node8a[27102-27103,27202-27203] PriorityJobFactor=1 PriorityTier=4 RootOnly=NO ReqResv=NO OverSubscribe=NO OverTimeLimit=NONE PreemptMode=OFF State=UP TotalCPUs=256 TotalNodes=4 SelectTypeParameters=NONE JobDefaults=(null) DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED TRES=cpu=256,mem=2060324M,node=4,billing=13815,gres/gpu=16,gres/gpu:nvidia_a100-sxm4-80gb=16 TRESBillingWeights=CPU=0.9,Mem=0.1G,Gres/gpu=836.5
+PartitionName=gpu AllowGroups=cluster_users,cluster_users_2,slurm-admin DenyAccounts=inst_k_lab_1,inst_k_lab_2,inst_k_lab_3 AllowQos=ALL AllocNodes=ALL Default=NO QoS=N/A DefaultTime=NONE DisableRootJobs=NO Exclusive=NO GraceTime=0 Hidden=NO MaxNodes=UNLIMITED MaxTime=3-00:00:00 MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED MaxCPUsPerSocket=UNLIMITED Nodes=node8a[22101-22106,22201-22206,22301-22306,22401-22406,22501-22506,22601-22606] PriorityJobFactor=1 PriorityTier=3 RootOnly=NO ReqResv=NO OverSubscribe=NO OverTimeLimit=NONE PreemptMode=OFF State=UP TotalCPUs=2304 TotalNodes=36 SelectTypeParameters=NONE JobDefaults=(null) DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED TRES=cpu=2304,mem=37122372M,node=36,billing=124704,gres/gpu=144,gres/gpu:nvidia_a100-sxm4-80gb=144 TRESBillingWeights=CPU=0.9,Mem=0.06G,Gres/gpu=836.5
+PartitionName=serial_requeue AllowGroups=cluster_users,cluster_users_2,slurm-admin DenyAccounts=inst_k_lab_1,inst_k_lab_2,inst_k_lab_3 AllowQos=ALL AllocNodes=ALL Default=YES QoS=N/A DefaultTime=NONE DisableRootJobs=NO Exclusive=NO GraceTime=0 Hidden=NO MaxNodes=UNLIMITED MaxTime=3-00:00:00 MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED MaxCPUsPerSocket=UNLIMITED Nodes=node7c[0521,0907-0914,0919,02103-02112,02201-02212,02301-02312,02401-02412,02501-02512,02601-02612,04101-04112,04201-04212,04301-04312,04401-04412,04501-04512,04601-04612,06101-06112,06201-06212,06301-06312,06401-06412,06501-06512,06601-06612,08101-08112,08201-08212,08301-08312,08401-08412,08501-08512,08601-08612,10101-10112,10201-10212,10301-10312,10401-10412,10501-10512,10601-10612,12101-12112,12201-12212,12301-12312,12401-12412,12501-12512,12601-12612,16101-16112,16201-16212,16301-16312,16401-16412,16501-16512,16601-16612,18101-18112,18201-18212,18301-18312,18401-18412,18501-18512,18601-18612,20101-20112,20201-20212,20301-20312,20401-20412,20501-20512,20601-20612,22501-22512,22601-22612,24101-24112,24201-24212,24301-24312,24401-24412,24501-24512,24601-24612,052801-052802,052901-052902,053401-053402,053501-053502,053601-053602,053701-053702,092401-092402,092501-092502,092601-092602,092701-092702],node8a[14101-14108,14201-14202,14301-14302,14401-14402,14501-14502,14601-14602,24103-24112,24201-24212,24303-24308,24311-24312,24403-24406,24503-24512,24603-24612,25101-25106,25201-25206,25301-25308,25401-25406,25501-25512,25601-25606,26103-26112,26201-26212,26303-26306,26309-26312,26403-26412,26503-26506,26603-26612,27107-27112,27207-27212,27307-27312,27407-27412,27507-27511,27603-27612,28101-28112,28201-28212,28301-28312,28401-28412,28501-28512,28601-28612,29101-29106,29207-29212,29301-29306,29405-29410,29501-29506,29601-29612,30101-30112,30201-30212,30301-30312,30401-30412,30501-30508,30511-30512,30601-30610,31101-31106,31208-31212,31301-31306,31405-31410,31501-31506,31601-31612,32101-32112,32201-32212,32301-32312,32401-32412,32501-32512,32601-32608],node7c[0522,0530,0705,0920,0928,1710,1713,1716,1728,1731,1734,1910,1913,1916,1928,1931,1934,2110,2113,2116,2128,2131,2134,2310,2313,2316,2328,2331,2334],node8a[03101-03104,03201-03204,03301-03304,03401-03404,03501-03504,03601-03604,05101-05104,05201-05204,05301-05304,05401-05404,05501-05504,05601-05604,06101-06104,06201-06204,06301-06304,06401-06404,06501-06504,06601-06604,09101-09104,09201-09204,09301-09304,09401-09404,09501-09504,09601-09604,10101-10102,10201-10202,10301-10302,10401-10402,10501,10601,11101-11104,11201-11204,11301-11304,11401-11404,11501-11504,11601-11604,12103-12104,12201-12204,12301-12304,12401-12404,12501-12504,12601-12604,13101-13104,13201-13204,13301-13304,13401-13404,13501-13504,13601-13604,15101-15104,15201-15204,15301-15304,15401-15404,15501-15504,15601-15604,16101-16104,16201-16204,16301-16304,16401-16404,16501-16504,16601-16603,17101-17104,17201-17204,17301-17304,17401-17404,17501-17504,17601-17604,18101-18104,18201-18204,18301-18304,18401-18404,18501-18502,18601-18602,19101-19106,19201-19206,19301-19306,19401-19406,19501-19506,19601-19606,22101-22106,22201-22206,22301-22306,22401-22406,22501-22506,22601-22606,24404-24405,25104-25106,25204-25206,25305-25306,25404-25406,26304,26504-26506,27101-27103,27201-27203,27301-27303,27401-27403,27501-27503,27601,29104-29106,29201-29203,29304-29306,29401-29402,29406,29504-29506,30505,31104-31106,31201-31203,31304-31306,31401-31402,31406,31504-31506] PriorityJobFactor=1 PriorityTier=1 RootOnly=NO ReqResv=NO OverSubscribe=NO OverTimeLimit=NONE PreemptMode=REQUEUE State=UP TotalCPUs=119648 TotalNodes=1704 SelectTypeParameters=NONE JobDefaults=(null) DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED TRES=cpu=119648,mem=1171523496M,node=1704,billing=1004199,gres/gpu=1916,gres/gpu:nvidia_a100-sxm4-40gb=144,gres/gpu:nvidia_a100-sxm4-80gb=339,gres/gpu:nvidia_a100_1g.10gb=35,gres/gpu:nvidia_a100_1g.5gb=28,gres/gpu:nvidia_a100_3g.20gb=64,gres/gpu:nvidia_a40=16,gres/gpu:nvidia_h100_80gb_hbm3=384,gres/gpu:nvidia_h200=712,gres/gpu:nvidia_rtx_a6000=2,gres/gpu:nvidia_rtx_pro_6000_blackwell_server_edition=192 TRESBillingWeights=CPU=0.5,Mem=0.125G,Gres/gpu=418.25
+PartitionName=shared AllowGroups=cluster_users,cluster_users_2,slurm-admin DenyAccounts=inst_k_lab_1,inst_k_lab_2,inst_k_lab_3 AllowQos=ALL AllocNodes=ALL Default=NO QoS=N/A DefaultTime=NONE DisableRootJobs=NO Exclusive=NO GraceTime=0 Hidden=NO MaxNodes=UNLIMITED MaxTime=3-00:00:00 MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED MaxCPUsPerSocket=UNLIMITED Nodes=node7c[04101-04112,04201-04212,04301-04312,04401-04412,04501-04512,06101-06112,06201-06212,06301-06312,06401-06412,06501-06512,06601-06612,08101-08112,08201-08212,08301-08312,08401-08412,08501-08512,08601-08612,10101-10112,10201-10212,10301-10312,10401-10410,10601-10612,12101-12112,16101-16110,16407-16412,16501-16512,16607-16610,18201-18204,18301-18312,22501-22512,22601-22612,24101-24104,24201-24204,24301-24304,24401-24404,24501-24504,24601-24604] PriorityJobFactor=1 PriorityTier=3 RootOnly=NO ReqResv=NO OverSubscribe=NO OverTimeLimit=NONE PreemptMode=OFF State=UP TotalCPUs=17760 TotalNodes=370 SelectTypeParameters=NONE JobDefaults=(null) DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED TRES=cpu=17760,mem=71247200M,node=370,billing=35154 TRESBillingWeights=CPU=1.0,Mem=0.25G
+PartitionName=test AllowGroups=cluster_users,cluster_users_2,slurm-admin AllowAccounts=ALL AllowQos=ALL AllocNodes=ALL Default=NO QoS=test DefaultTime=NONE DisableRootJobs=NO Exclusive=NO GraceTime=0 Hidden=NO MaxNodes=UNLIMITED MaxTime=12:00:00 MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED MaxCPUsPerSocket=UNLIMITED Nodes=node8a[24101-24102,24301-24302,24401-24402,24501-24502,24601-24602,26101-26102,26301-26302,26401-26402,26501-26502,26601-26602] PriorityJobFactor=1 PriorityTier=5 RootOnly=NO ReqResv=NO OverSubscribe=NO OverTimeLimit=NONE PreemptMode=OFF State=UP TotalCPUs=2240 TotalNodes=20 SelectTypeParameters=NONE JobDefaults=(null) DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED TRES=cpu=2240,mem=20624340M,node=20 TRESBillingWeights=CPU=0.0,Mem=0.0G
+@@swa-end partitions 0@@
+@@swa-begin sinfo@@
+pi_cup3-00:00:004/0/4/8157/35/192/384
+pi_c_gpu_a100up3-00:00:001/0/0/128/36/0/64
+pi_c_h100up3-00:00:001/0/0/164/0/0/64
+pi_c_gpu_migup3-00:00:001/0/0/135/13/0/48
+pi_c_gpu_mixedup3-00:00:001/0/0/110/54/0/64
+pi_c_gpu_requeueup3-00:00:004/0/0/4137/103/0/240
+pi_c_requeueup3-00:00:008/0/4/12294/138/192/624
+inst_d_gpu_requeueup7-00:00:008/0/0/8345/167/0/512
+inst_d_gpuup3-00:00:004/0/0/4161/95/0/256
+bigmemup3-00:00:004/0/0/4319/129/0/448
+bigmem_intermediateup14-00:00:003/0/0/384/108/0/192
+gpuup3-00:00:0027/0/9/361000/728/576/2304
+gpu_h200up3-00:00:0021/0/1/22875/1381/208/2464
+gpu_requeueup3-00:00:00389/1/42/43216061/14451/3184/33696
+gpu_testup12:00:004/0/8/12173/83/512/768
+intermediateup14-00:00:0010/0/2/121095/25/224/1344
+sapphireup3-00:00:00181/0/3/18417234/2563/811/20608
+serial_requeueup3-00:00:001259/3/442/170463524/32037/24087/119648
+sharedup3-00:00:00182/1/187/3705565/3175/9020/17760
+testup12:00:009/8/3/20546/1358/336/2240
+unrestrictedup365-00:00:004/0/4/8123/69/192/384
+@@swa-end sinfo 0@@
+@@swa-begin qos@@
+gpu_test|2|2|cpu=64,gres/gpu=8,mem=512G||||||||||
+inst_d_gpu|||node=2||||||||||
+normal|||||||||||||
+test|5|5|cpu=112,mem=1000G||||||||||
+@@swa-end qos 0@@
+@@swa-begin config@@
+AccountingStorageEnforce = associations,limits,qos,safe
+MaxArraySize            = 10000
+MaxJobCount             = 300000
+PriorityFlags           = NO_FAIR_TREE
+PriorityType            = priority/multifactor
+@@swa-end config 0@@

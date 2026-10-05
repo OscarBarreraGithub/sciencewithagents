@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ImagePlus, X } from 'lucide-react';
+import { ImagePlus, RefreshCw, X } from 'lucide-react';
 import {
   chatImageIds,
   chatImageReference,
@@ -44,6 +44,7 @@ export function ChatImagePicker({
   currentText,
   setText,
   disabled,
+  uploadDisabled,
   maxLength,
   onBusy,
 }: {
@@ -51,6 +52,7 @@ export function ChatImagePicker({
   currentText: () => string;
   setText: (text: string) => void;
   disabled?: boolean;
+  uploadDisabled?: boolean;
   maxLength: number;
   onBusy: (busy: boolean) => void;
 }) {
@@ -68,7 +70,7 @@ export function ChatImagePicker({
     };
   }, []);
   async function upload(file?: File) {
-    if (busyRef.current) return;
+    if (busyRef.current || disabled || uploadDisabled) return;
     busyRef.current = true;
     setBusy(true);
     onBusy(true);
@@ -106,11 +108,20 @@ export function ChatImagePicker({
       <button
         type="button"
         className="chat-image-button"
-        disabled={disabled || busy || ids.length >= 4}
+        aria-label={busy ? 'Uploading…' : 'Attach screenshot'}
+        title="Attach screenshot"
+        disabled={disabled || uploadDisabled || busy || ids.length >= 4}
         onClick={() => fileInput.current?.click()}
       >
-        <ImagePlus size={18} />
-        <span>{busy ? 'Uploading…' : 'Attach screenshot'}</span>
+        {/* The label keeps its width while uploading; only the icon changes. */}
+        {busy ? (
+          <RefreshCw className="spin" size={18} aria-hidden="true" />
+        ) : (
+          <ImagePlus size={18} aria-hidden="true" />
+        )}
+        <span>
+          Attach<span className="chat-image-label-rest"> screenshot</span>
+        </span>
       </button>
       <input
         ref={fileInput}
@@ -158,7 +169,11 @@ export function ChatImagePicker({
         <div role="alert" className="chat-image-error">
           {error}
           {pending.current && (
-            <button type="button" disabled={disabled || busy} onClick={() => void upload()}>
+            <button
+              type="button"
+              disabled={disabled || uploadDisabled || busy}
+              onClick={() => void upload()}
+            >
               Retry upload
             </button>
           )}

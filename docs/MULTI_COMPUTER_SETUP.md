@@ -98,8 +98,9 @@ Cross-account assistant memory/routing is intentionally not automatic.
 
 ## Security and recovery
 
-- Only the exact typed application route/method/query allowlist is forwarded. Phone
-  pairing, computer administration, remote folder selection and raw provider RPC are not.
+- Only the exact typed application route/method/query allowlist is forwarded. The folder browser
+  selects host-issued folder IDs; it does not accept arbitrary filesystem paths from the client.
+  Phone pairing, computer administration and raw provider RPC are not forwarded.
   Each remote machine keeps its own queue; there is no cross-machine task migration.
 - The selected account is pinned for the life of a browser document. Switching performs
   a full reload; stale callbacks stay on the old route and drafts have a separate host key.

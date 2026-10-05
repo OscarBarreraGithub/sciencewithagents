@@ -996,6 +996,32 @@ small {
   align-items: center;
   gap: 10px;
 }
+/* Phone-width composers keep notepad, screenshot, priority and commands on one row.
+   Controls stay 44px tall and still wrap at large text sizes; no sideways scrolling. */
+.composer-toolbar {
+  container-type: inline-size;
+}
+@container (max-width: 499px) {
+  .composer-toolbar > div {
+    gap: 4px;
+  }
+  .composer-toolbar .composer-notepad,
+  .composer-toolbar .chat-image-button {
+    gap: 4px;
+    padding: 5px 7px;
+    font-size: var(--text-caption);
+  }
+  .composer-toolbar .composer-notepad-icon,
+  .composer-toolbar .chat-image-label-rest {
+    display: none;
+  }
+  .composer-toolbar .composer-priority {
+    min-height: 44px;
+    max-width: 118px;
+    padding: 5px 4px;
+    font-size: var(--text-caption);
+  }
+}
 .slash-icon {
   font-family: monospace;
   font-size: var(--text-lead);

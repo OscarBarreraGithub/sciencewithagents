@@ -72,6 +72,9 @@ export const mirrorStateSchema = z.object({
   // Capability omission means an older companion, or a provider without steering.
   canSteer: z.boolean().optional(),
   canQueue: z.boolean().optional(),
+  // Remote sockets cannot read screenshot files stored on the app computer.
+  // Omission preserves local behavior for older companions.
+  canAttachImages: z.boolean().optional(),
   queuedMessages: z
     .array(z.object({ id: z.string().min(1).max(128), text: z.string().max(32000) }).strict())
     .max(100)

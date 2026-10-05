@@ -304,6 +304,10 @@ export function claudeHelperResult(event: ClaudeHook) {
       }
     : null;
 }
+/** Shared by both providers' native writing roles; scope is intent, not containment. */
+export const nativeFullAccessNote =
+  "You run with native full access: commands, browsers and SSH use the owner's own user permissions without approval prompts. Your project folder is your intended working scope, not a hard boundary; keep changes there unless the owner asked otherwise.";
+
 export type ClaudeSessionOptions = {
   binary: string;
   cwd: string;
@@ -327,6 +331,8 @@ export type ClaudeSessionOptions = {
   beforeWrite?: (deliveryId: string) => void;
   /** Observe native events and gate continued work without defining its tools. */
   hook?: (event: ClaudeHook, deliveryId: string, receipt?: string) => Record<string, unknown>;
+  /** Host-chosen working folders a writing role also uses, such as a manager's project folder. */
+  writableDirectories?: string[];
 };
 export type ClaudeChannel = {
   readonly ownedProcessId?: number | null;
@@ -405,6 +411,14 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
   )
     throw new Error('Invalid coordination tool catalog.');
   for (const tool of options.tools) jsonObject.parse(tool.inputSchema);
+  if (
+    (options.writableDirectories ?? []).length > 4 ||
+    (options.writableDirectories ?? []).some(
+      (path) => !isAbsolute(path) || path.length > 400 || /[\0\n\r*?[\]]/.test(path),
+    )
+  )
+    throw new Error('Invalid private Claude session configuration.');
+  const writing = options.role !== 'read-only';
   const builtins =
     options.role === 'manager'
       ? []
@@ -423,7 +437,8 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
       ? options.role === 'read-only'
         ? ['--permission-mode', 'plan']
         : options.unattended
-          ? ['--permission-mode', 'acceptEdits']
+          ? // Documented full native access for writing roles; questions still reach the host.
+            ['--permission-mode', 'bypassPermissions', '--allow-dangerously-skip-permissions']
           : []
       : ['--permission-mode', 'manual']),
     '--permission-prompt-tool',
@@ -456,21 +471,13 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
             sandbox: { autoAllowBashIfSandboxed: false },
           }),
         ]
-      : options.unattended
+      : options.unattended && !writing
         ? [
             '--settings',
             JSON.stringify({
               // The native command parser can still ask for harmless variable
-              // expansions in acceptEdits mode. Approve Bash natively; the strict
-              // OS sandbox below keeps its filesystem boundary in force.
-              permissions: {
-                allow: [
-                  'Read(//**)',
-                  ...(options.role === 'read-only' ? [] : ['Bash']),
-                  'WebFetch',
-                  'WebSearch',
-                ],
-              },
+              // expansions. The strict OS sandbox keeps read-only Bash read-only.
+              permissions: { allow: ['Read(//**)', 'WebFetch', 'WebSearch'] },
               sandbox: {
                 enabled: true,
                 failIfUnavailable: true,
@@ -480,13 +487,20 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
                   disabled: false,
                   // Plan mode blocks file-edit tools, but sandboxed Bash still
                   // inherits a writable cwd unless the OS sandbox denies it.
-                  ...(options.role === 'read-only' ? { denyWrite: [options.cwd] } : {}),
+                  denyWrite: [options.cwd],
                 },
                 network: { allowedDomains: ['*'] },
               },
             }),
           ]
-        : []),
+        : options.unattended && options.writableDirectories?.length
+          ? [
+              '--settings',
+              JSON.stringify({
+                permissions: { additionalDirectories: options.writableDirectories },
+              }),
+            ]
+          : []),
     '--model',
     options.model,
     ...(options.effort === providerDefaultEffort ? [] : ['--effort', options.effort]),
@@ -498,6 +512,7 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
             'Use the registered Dock coordination tools directly without exiting plan mode or asking for routine approval. They enforce your host assignment scope; recording an assigned review verdict is authorized coordination even in plan mode.',
           ]
         : []),
+      ...(options.inheritNative && options.unattended && writing ? [nativeFullAccessNote] : []),
     ].join('\n\n'),
     ...(options.forkFrom
       ? [

@@ -14,6 +14,7 @@ import {
 import { api, ApiError, apiScope } from '../api';
 import { ReportText } from './health-shared';
 import { Modal } from '../Modal';
+import { ArchiveSearch } from './ArchiveSearch';
 import './assisted-search.css';
 
 type Pending = { key: string; query: string; provider: ProviderId; at: string };
@@ -224,9 +225,11 @@ export function AssistedSearch() {
             }}
           >
             <p className="assisted-search-note">
-              Describe what you remember. A small model searches your saved conversations when you
-              press Search. Your chat list filter stays unchanged.
+              Describe what you remember. A small model ranks a bounded set of saved excerpts and
+              editor titles when you press Search. For full retained text, expand Search saved text.
+              Your chat list filter stays unchanged.
             </p>
+            <ArchiveSearch />
             <label className="assisted-search-prompt">
               What are you looking for?
               <textarea

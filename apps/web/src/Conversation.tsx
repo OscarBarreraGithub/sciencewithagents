@@ -12,6 +12,7 @@ import {
   Layers3,
   Maximize2,
   RefreshCw,
+  RotateCcw,
   Search,
   Square,
   Terminal,
@@ -472,6 +473,8 @@ export function Composer({
   specialized = false,
   localHistory,
   messagePlaceholder,
+  onSent,
+  onDraftReady,
 }: {
   agent: Agent;
   workspace: WorkspaceSnapshot | null;
@@ -498,9 +501,16 @@ export function Composer({
   specialized?: boolean;
   messagePlaceholder?: string;
   localHistory?: { versions: { text: string; at: string }[]; restore: (text: string) => void };
+  /** Specialized conversations can follow an acknowledged replacement thread. */
+  onSent?: (remainingDraft: string) => void;
+  /** Uses the existing draft owner; callers must not replace conflicting typing. */
+  onDraftReady?: (draft: SharedDraft) => void;
 }) {
   const managedDraft = useSharedDraft(draftOverride ? null : workspace, agent.id);
   const sourceDraft = draftOverride ?? managedDraft;
+  useEffect(() => {
+    if (sourceDraft.ready) onDraftReady?.(sourceDraft);
+  }, [sourceDraft.ready, sourceDraft.text, sourceDraft.conflict, onDraftReady]);
   const draftRevision = useRef(0);
   const draft: SharedDraft = {
     ...sourceDraft,
@@ -733,6 +743,12 @@ export function Composer({
       retry.current = null;
       setPendingText(null);
       setSteer(null);
+      try {
+        onSent?.(draft.currentText());
+      } catch {
+        // Delivery is confirmed. A view transition must never create a send retry.
+        fail('Message accepted. Reopen this conversation to continue. Your draft is retained.');
+      }
       textarea.current?.focus({ preventScroll: true });
       return true;
     } catch (e) {
@@ -948,10 +964,18 @@ export function Composer({
       <button
         className="send-button"
         aria-label={pendingText !== null && !sending ? 'Retry previous message' : 'Send message'}
+        title={pendingText !== null && !sending ? 'Retry previous message' : undefined}
         onClick={() => void submit()}
         disabled={!canSend}
       >
-        {sending ? <RefreshCw className="spin" size={18} /> : <ArrowUp size={20} />}
+        {sending ? (
+          <RefreshCw className="spin" size={18} />
+        ) : pendingText !== null ? (
+          // Visible cue: this press re-checks the earlier unconfirmed message, not the new draft.
+          <RotateCcw size={18} />
+        ) : (
+          <ArrowUp size={20} />
+        )}
       </button>
       <DraftHandoff draft={draft} compact />
       {rejectedText !== null && (
@@ -1041,7 +1065,8 @@ export function Composer({
             aria-label="Open notepad"
             onClick={() => openNotepad('message')}
           >
-            <Maximize2 size={16} /> <span>Notepad</span>
+            <Maximize2 className="composer-notepad-icon" size={16} aria-hidden="true" />{' '}
+            <span>Notepad</span>
           </button>
           <ChatImagePicker
             key={agent.id}

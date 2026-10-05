@@ -7,9 +7,12 @@ import { registerDocumentRoutes } from './documents.js';
 import { registerChatImageRoutes } from './chat-images.js';
 import { registerDocumentFormattingRoutes } from './document-formatting.js';
 import { registerWorkItemRoutes } from './work-items.js';
+import { registerProjectAppRoutes } from './project-apps.js';
+import { registerPublishingAccountRoutes, type PublishingAccounts } from './publishing-accounts.js';
 import { registerConversationRoutes } from './conversations.js';
 import { QuarkFocus, registerQuarkFocusRoutes } from './quark-focus.js';
 import { registerConversationSearchRoutes } from './conversation-search.js';
+import { Archive, registerArchiveRoutes } from './archive.js';
 import { registerProjectWorkflowRoutes } from './project-workflow.js';
 import { openProjectEditor, type ProjectEditorOpener } from './project-editor.js';
 import { providerMaintenanceRequestSchema, providerIdSchema } from '@dock/shared';
@@ -117,6 +120,8 @@ export async function createServer(
     backupSetup?: SourceBackupSetup;
     hosts?: Hosts;
     mirrors?: VscodeMirrors;
+    /** Shared by both entries; absent in demo and embedded test servers. */
+    publishing?: PublishingAccounts;
     /** Main owns startup/shutdown admission; embedded servers are ready by default. */
     ready?: () => boolean;
   },
@@ -562,6 +567,14 @@ export async function createServer(
   registerRecoveryBackupRoutes(app, store, runtime.dataDir);
   registerProjectWorkflowRoutes(app, store, runtime.modelPolicy);
   registerWorkItemRoutes(app, runtime.workItems, () => runtime.kick());
+  runtime.apps.reserve([options.port, options.devPort, phone?.config?.port]);
+  // Loopback app addresses open only in a browser on this computer, not via phone or another host.
+  registerProjectAppRoutes(
+    app,
+    runtime.apps,
+    (request) => !options.remote && localRoles.get(request) !== 'host',
+  );
+  registerPublishingAccountRoutes(app, options.publishing);
   app.post('/api/projects/:id/open-in-editor', async (request) => {
     const project = store.project(agentId(request.params));
     const { key } = projectEditorOpenSchema.parse(request.body);
@@ -585,6 +598,7 @@ export async function createServer(
     new VscodeMirrors(store, undefined, (text) => runtime.chatImages.prompt(text));
   if (!options.remote) runtime.conversationSearchMirrorWindows = () => mirrors.windows();
   registerMirrorRoutes(app, mirrors, !!options.remote);
+  registerArchiveRoutes(app, new Archive(store, mirrors));
   registerConversationSearchRoutes(app, runtime.conversationSearch, () => runtime.kick());
   if (phone) {
     app.post('/api/phone/setup/check', async (request, reply) => {
@@ -776,6 +790,47 @@ export async function createServer(
   app.get('/api/attention', async () => attention(readSnapshot()));
   app.get('/api/project-rates', async () => runtime.quark.projectRates());
   app.get('/api/capacity', async () => runtime.capacity.status());
+  app.get('/api/cluster', async () => runtime.cluster.status());
+  app.post('/api/cluster/settings', async (request) => {
+    if (options.demo) throw new Conflict('Connect a cluster in your real installation.');
+    runtime.cluster.save(request.body);
+    void runtime.cluster.tick();
+    return runtime.cluster.status();
+  });
+  app.post('/api/cluster/refresh', async (request) => {
+    if (options.demo) return runtime.cluster.status();
+    return runtime.cluster.refresh(request.body);
+  });
+  // Owner-only browser routes; managers have no tool for them. Answers are never stored.
+  app.get('/api/cluster/sign-in', async () => runtime.clusterSignIn.status());
+  app.post('/api/cluster/sign-in', async (request) => {
+    if (options.demo) throw new Conflict('Cluster sign-in runs in your real installation.');
+    return runtime.clusterSignIn.start(request.body);
+  });
+  app.post('/api/cluster/sign-in/respond', async (request) =>
+    runtime.clusterSignIn.respond(request.body),
+  );
+  app.post('/api/cluster/sign-in/cancel', async (request) =>
+    runtime.clusterSignIn.cancel(request.body),
+  );
+  // Tunnels listen on this computer's loopback, so only its own browser can open them: not a
+  // paired phone, and not another computer's app proxying a selected-host request here.
+  const notebookBrowser = (request: FastifyRequest) =>
+    !options.remote && localRoles.get(request) !== 'host';
+  app.get('/api/cluster/notebooks', async (request) => ({
+    localBrowser: notebookBrowser(request),
+    notebooks: runtime.clusterNotebooks.list(),
+  }));
+  app.post('/api/cluster/notebooks/open', async (request) => {
+    if (!notebookBrowser(request) || options.demo)
+      throw new Conflict(
+        'Open notebooks in the browser of the computer connected to the cluster. Phones and other computers need a separate private address.',
+      );
+    return runtime.clusterNotebooks.open(request.body);
+  });
+  app.post('/api/cluster/notebooks/close', async (request) =>
+    runtime.clusterNotebooks.close(request.body),
+  );
   app.get('/api/resources', async () => runtime.resources.status());
   app.post('/api/resources/settings', async (request) => {
     if (options.demo)
@@ -1156,6 +1211,9 @@ export async function createServer(
               throw new Conflict('There is no running turn to steer.');
             const client = runtime.clients.get(target);
             if (!client?.ready) throw new Conflict('Codex is disconnected.');
+            // Save canonical provenance before native I/O. Lost responses remain uncertain;
+            // the durable external intent prevents replay into another native turn.
+            runtime.ownerSteering(target, key, value.text, 'uncertain');
             await client.request('turn/steer', {
               threadId: agent.threadId,
               expectedTurnId: agent.turnId,
@@ -1163,7 +1221,7 @@ export async function createServer(
                 { type: 'text', text: runtime.chatImages.prompt(value.text), text_elements: [] },
               ],
             });
-            runtime.system(target, 'Owner steering', value.text);
+            runtime.ownerSteering(target, key, value.text, 'submitted');
             return { status: 'submitted' };
           },
         );

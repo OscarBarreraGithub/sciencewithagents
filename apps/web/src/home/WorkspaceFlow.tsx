@@ -487,22 +487,27 @@ export function ChatPage({
   const [conversation, setConversation] = useState<AgentDetail | null>(null);
   const [readError, setReadError] = useState('');
   const [error, setError] = useState('');
-  const [connected, setConnected] = useState(false);
+  const [connectedId, setConnectedId] = useState<string | null>(null);
+  const connected = connectedId === id;
   const [busy, setBusy] = useState(false);
   const interviewKeys = useRef({ evidence: crypto.randomUUID(), native: crypto.randomUUID() });
   const [nativeDiscussion, setNativeDiscussion] = useState(true);
   const alive = useRef(true);
+  const currentId = useRef(id);
+  currentId.current = id;
+  const readSequence = useRef(0);
   const read = useCallback(async () => {
+    const sequence = ++readSequence.current;
     try {
       const value = await detail(id);
-      if (alive.current) {
+      if (alive.current && currentId.current === id && sequence === readSequence.current) {
         setConversation(value);
-        setConnected(true);
+        setConnectedId(id);
         setReadError('');
       }
     } catch (reason) {
-      if (alive.current) {
-        setConnected(false);
+      if (alive.current && currentId.current === id && sequence === readSequence.current) {
+        setConnectedId(null);
         setReadError(
           reason instanceof Error
             ? reason.message
@@ -513,6 +518,9 @@ export function ChatPage({
   }, [id]);
   useEffect(() => {
     alive.current = true;
+    setReadError('');
+    setError('');
+    setBusy(false);
     let pending = false;
     const reload = () => {
       if (!pending) {
@@ -534,8 +542,9 @@ export function ChatPage({
       window.clearInterval(timer);
     };
   }, [id, read]);
-  const agent = conversation?.agent ?? state.agents.find((a) => a.id === id);
-  const canForkDiscussion = conversation?.nativeDiscussion === 'available';
+  const currentConversation = conversation?.agent.id === id ? conversation : null;
+  const agent = currentConversation?.agent ?? state.agents.find((a) => a.id === id);
+  const canForkDiscussion = currentConversation?.nativeDiscussion === 'available';
   useEffect(() => {
     if (agent && workspace.state && workspace.state.client.selectedAgentId !== id)
       void workspace.open(id);
@@ -545,18 +554,19 @@ export function ChatPage({
     setBusy(true);
     try {
       await fn();
-      await read();
+      if (alive.current && currentId.current === id) await read();
       refresh();
     } catch (e) {
-      if (alive.current)
+      if (alive.current && currentId.current === id)
         setError(e instanceof Error ? e.message : 'The connection was interrupted. Try again.');
     } finally {
-      if (alive.current) setBusy(false);
+      if (alive.current && currentId.current === id) setBusy(false);
     }
   };
   if (!agent)
     return (
       <FlowEmpty title="Opening the conversation…">
+        {readError && <p role="alert">{readError}</p>}
         <button className="flow-button" onClick={() => void read()}>
           Try again
         </button>
@@ -693,8 +703,16 @@ export function ChatPage({
   );
   // The pane keeps the notice area for connection, errors and record explanations only.
   const showNotice =
-    !pane ||
-    !!(error || workspace.error || !connected || agent.interview || agent.nativeRootId || readOnly);
+    (!pane && !embedded) ||
+    !!(
+      error ||
+      workspace.error ||
+      readError ||
+      !connected ||
+      agent.interview ||
+      agent.nativeRootId ||
+      readOnly
+    );
   return (
     <section className={pane ? 'chat-pane-inner flow-chat' : 'flow-page flow-chat'}>
       {pane
@@ -744,7 +762,7 @@ export function ChatPage({
               ? 'This manager was removed. Its files and conversation history are saved; it cannot start more work.'
               : agent.interview
                 ? agent.interview.continuity === 'native-fork'
-                  ? `A separate read-only discussion using the saved ${agent.provider === 'claude' ? 'Claude' : 'Codex'} conversation. ${conversation?.nativeDiscussion === 'prepared' ? 'The native history has been copied.' : 'The copy is prepared when you send your first question.'} The original work and review stay unchanged. If that history is unavailable, open Original worker and choose Saved evidence only.`
+                  ? `A separate read-only discussion using the saved ${agent.provider === 'claude' ? 'Claude' : 'Codex'} conversation. ${currentConversation?.nativeDiscussion === 'prepared' ? 'The native history has been copied.' : 'The copy is prepared when you send your first question.'} The original work and review stay unchanged. If that history is unavailable, open Original worker and choose Saved evidence only.`
                   : 'A new read-only discussion using saved evidence. The original task, review and conversation stay unchanged.'
                 : agent.nativeRootId
                   ? 'Native helper activity is retained here. Direct input and stop controls belong to the owning conversation.'
@@ -770,7 +788,7 @@ export function ChatPage({
                 : undefined
             }
             agent={agent}
-            detail={conversation}
+            detail={currentConversation}
             approvals={approvals}
             act={act}
           />
@@ -845,11 +863,13 @@ export function ChatPage({
               agent={agent}
               workspace={workspace.state}
               disabled={!connected || busy}
-              onError={setError}
+              onError={(message) => {
+                if (currentId.current === id) setError(message);
+              }}
               send={async (text, key, steer, draft, scheduling) => {
                 setError('');
                 await api(`/agents/${id}/messages`, { text, key, steer, draft, scheduling });
-                await read();
+                if (alive.current && currentId.current === id) await read();
                 refresh();
               }}
               onCommand={(command) => {

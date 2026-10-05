@@ -10,8 +10,9 @@ explicit choices. QUARK observes logs, tool activity, helper identities and usag
 hooks supervise admission and stopping. Avoid a second scheduler, external Jira dependency,
 generic RPC gateway or tool-by-tool reimplementation of either provider.
 
-Use supported native unattended permissions: broad reads/network access, with writes scoped
-to the project/worktree where the provider supports it. Read-only roles remain restricted.
+Use supported native unattended permissions. Native writing roles use the provider's documented
+full access (Claude `bypassPermissions`, Codex `danger-full-access` + `never`); the project or
+worktree is the intended scope, not containment. Read-only and saved restricted roles remain restricted.
 Routine unsupported operations should fail visibly rather than wait indefinitely for approval.
 Real account sign-in, human questions and external policy requirements remain meaningful.
 External MCP services are not made safe by a filesystem prompt instruction.
@@ -51,15 +52,37 @@ supervision without managing lease renewal themselves. Forecast overruns notify 
 only authorized owner choices can increase caps or reduce reserves. Hard guards retain files
 and histories while stopping owned work. Bounded grace is not unlimited overspend.
 
-Use a conversation plus a simple status board, with project/task budget sliders and priorities.
+Use a conversation plus a simple status board. Primary controls are separate provider
+remaining reserves and saved per-project hourly rates, with current estimates and 12-hour
+observed history; cumulative allowance caps remain secondary. Zero hourly rates pause only
+the selected provider. Ordinary work stays uncapped until an owner sets a rate.
+
+Provider reserve baselines default to 20% for new settings; migrate an existing saved global
+reserve into both providers without lowering it. Only explicit owner controls change them.
+Optional timed release is off by default, with thresholds of 12 hours for Codex and 45 minutes
+for Claude. It lowers each actual reported window's effective reserve to zero only inside that
+window's fresh future reset interval; it never invents a refill or weekly meter. Shared pacing
+must be enabled explicitly. Adaptive spending to finish about 15 minutes before reset remains
+TODO, beyond this deterministic rule.
+
 Detailed accounting remains queryable by agents. QUARK forecasts five-hour capacity and sends
 advisory coordinator wakeups; using spare allowance stays agent-led, without guaranteed window
-use or forced provider switches.
+use or forced provider switches. An owner can opt into maximizing useful Claude five-hour
+work: eligible background jobs use available headroom without gradual release, while
+foreground priority, provider/model choices, hourly/window caps, pauses and reserves remain.
 Context-cache warming is off and deferred; do not send keepalive prompts as routine behavior.
 
 Routine work uses shared headroom without a mandatory per-task budget ceremony. Raw-token
 counts (including cache reads) are estimates/accounting only, not admission limits. Explicit
 provider allowance caps, remaining reserves, resource guards and owner pauses still apply.
+
+## Slurm clusters
+
+A connected cluster is observed, not governed. QUARK shares one cached reading of native
+queue, fairshare, limits and accounting; it adds no cluster limits or submission gate.
+Managers use the owner's native SSH account for files and jobs under the site's own rules.
+The app never chooses an account, stores passwords or codes, or equates fairshare or cluster
+resources with AI allowance.
 
 ## Models and customization
 

@@ -189,6 +189,238 @@ it('automatic messages cannot increase caps, lower the reserve, or resume an own
     /own active/,
   );
 });
+it('owner reserve tools accept zero independently, retain pacing and replay the same decision', async () => {
+  const { agent, run } = await active();
+  const before = pulsar.policy();
+  expect(before.enabled).toBe(false);
+  const action = {
+    action: 'reserve',
+    provider: 'codex',
+    reservePercent: 0,
+    reason: 'Owner chose zero for Codex.',
+  };
+  const key = randomUUID();
+  const result = coordinator.tool(agent.id, key, 'dock_quark_control', action, run);
+  expect(pulsar.policy()).toMatchObject({
+    enabled: false,
+    revision: before.revision + 1,
+    providerReserves: {
+      codex: { reservePercent: 0 },
+      claude: { reservePercent: before.providerReserves.claude.reservePercent },
+    },
+  });
+  expect(coordinator.tool(agent.id, key, 'dock_quark_control', action, run)).toEqual(result);
+  expect(pulsar.policy().revision).toBe(before.revision + 1);
+  coordinator.tool(
+    agent.id,
+    randomUUID(),
+    'dock_quark_control',
+    {
+      action: 'reserve',
+      provider: 'claude',
+      reservePercent: 0,
+      releaseEnabled: true,
+      releaseBeforeResetMinutes: 45,
+      reason: 'Owner chose Claude reserve and release.',
+    },
+    run,
+  );
+  expect(pulsar.policy().providerReserves.claude).toEqual({
+    reservePercent: 0,
+    releaseEnabled: true,
+    releaseBeforeResetMinutes: 45,
+  });
+  expect(coordinator.context().providerReserves).toEqual(pulsar.policy().providerReserves);
+});
+it('keeps the default context small and pages full saved instructions beyond the recent preview', async () => {
+  await coordinator.start({ key: randomUUID() });
+  for (let i = 0; i < 36; i++) {
+    const project = store.register(join(root, `Project${i}`), `Project ${i}`, '');
+    store.setSetting(`quark:project:${project.id}`, {
+      instruction: 'Detailed owner policy '.repeat(80),
+    });
+    store.enqueue(project.managerId, randomUUID(), 'Saved task', 'report');
+    const key = `context-fixture-${i}`;
+    store.setSetting(`quark:decision:${key}`, {
+      key,
+      at: new Date().toISOString(),
+      source: 'owner',
+      instruction: 'Original owner instruction '.repeat(150),
+      action: {
+        action: 'project',
+        projectId: project.id,
+        expectedRevision: 0,
+        reason: 'Full saved reasoning '.repeat(70),
+      },
+    });
+  }
+  const status = coordinator.status();
+  const old = {
+    settings: status.settings,
+    projects: status.projects.slice(0, 40),
+    jobs: status.queue.jobs.slice(0, 40),
+    budgets: status.accounting.budgets.slice(0, 40),
+    holds: status.accounting.holds.slice(0, 20),
+    capacity: status.capacity,
+    utilization: status.utilization,
+    decisions: status.decisions.slice(0, 12),
+    examples: pulsar.examples(),
+  };
+  const compact = coordinator.context();
+  const before = Buffer.byteLength(JSON.stringify(old));
+  const after = Buffer.byteLength(JSON.stringify(compact));
+  expect(after).toBeLessThan(before / 3);
+  expect(compact.jobs).toHaveLength(8);
+  expect(compact.omitted.jobs).toBe(28);
+  expect(compact.decisions[0]?.truncated).toBe(true);
+  expect(compact).not.toHaveProperty('examples');
+  const page = coordinator.inspect({ view: 'decisions', offset: 30, limit: 6 }) as {
+    total: number;
+    items: { instruction: string }[];
+    nextOffset: number | null;
+  };
+  expect(page.total).toBe(36);
+  expect(page.items).toHaveLength(6);
+  expect(page.items[0]?.instruction).toBe('Original owner instruction '.repeat(150));
+  expect(page.nextOffset).toBeNull();
+  console.info(`QUARK context bytes: ${before} -> ${after}`);
+});
+it('preserves cluster freshness with compact counts and retains full cached details on request', async () => {
+  const cached = {
+    connection: { state: 'connected', checkedAt: new Date().toISOString(), message: 'cached' },
+    stale: true,
+    queueObservedAt: '2026-09-29T14:00:00Z',
+    jobs: { running: 3, pending: 2, recentFailures: 1, pendingReasons: ['Resources'] },
+  };
+  coordinator = new QuarkCoordinator(
+    store,
+    root,
+    quark,
+    pulsar,
+    models,
+    Date.now,
+    () => [],
+    () => cached,
+  );
+  expect(coordinator.context().cluster).toEqual({
+    connection: { state: 'connected', checkedAt: cached.connection.checkedAt },
+    stale: true,
+    queueObservedAt: cached.queueObservedAt,
+    jobs: { running: 3, pending: 2, recentFailures: 1 },
+  });
+  expect(coordinator.inspect({ view: 'cluster' })).toEqual(cached);
+});
+it('retrieves its own retained conversation on demand, paging replies without tool blobs or another agent’s evidence', async () => {
+  const id = (await coordinator.start({ key: randomUUID() })).agentId!;
+  const oldText = 'Original detailed explanation. '.repeat(500);
+  const replyId = randomUUID();
+  store.entry({
+    id: replyId,
+    agentId: id,
+    runId: null,
+    kind: 'assistant',
+    title: 'Assistant',
+    text: oldText,
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+  });
+  store.entry({
+    id: randomUUID(),
+    agentId: id,
+    runId: null,
+    kind: 'tool',
+    title: 'Large tool',
+    text: 'Omitted tool data',
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+  });
+  const question = store.enqueue(id, randomUUID(), 'Why did you say that?');
+  const page = coordinator.inspect({ view: 'conversation', limit: 1 }) as {
+    items: { id: string; text: string; truncated: boolean }[];
+    total: number;
+    nextOffset: number | null;
+  };
+  expect(page).toMatchObject({
+    total: 2,
+    nextOffset: 1,
+    items: [{ id: question.id, text: 'Why did you say that?' }],
+  });
+  const older = coordinator.inspect({ view: 'conversation', offset: 1, limit: 1 }) as typeof page;
+  expect(older.items[0]).toMatchObject({
+    id: replyId,
+    text: oldText.slice(0, 1000),
+    truncated: true,
+  });
+  const chunk = coordinator.inspect({
+    view: 'conversation',
+    entryId: replyId,
+    textOffset: 3000,
+    textLimit: 8000,
+  });
+  expect(chunk).toMatchObject({
+    text: oldText.slice(3000, 11000),
+    nextTextOffset: 11000,
+    totalCharacters: oldText.length,
+  });
+  expect(
+    coordinator.inspect({
+      view: 'conversation',
+      entryId: replyId,
+      textOffset: 11000,
+      textLimit: 8000,
+    }),
+  ).toMatchObject({ text: oldText.slice(11000), nextTextOffset: null });
+  const foreign = store.register(join(root, 'foreign'), 'Other', '');
+  const foreignEntry = randomUUID();
+  store.entry({
+    id: foreignEntry,
+    agentId: foreign.managerId,
+    runId: null,
+    kind: 'assistant',
+    title: '',
+    text: 'Other conversation',
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+  });
+  expect(() => coordinator.inspect({ view: 'conversation', entryId: foreignEntry })).toThrow(
+    'saved entry',
+  );
+  expect(coordinator.context()).not.toHaveProperty('conversation');
+});
+it('renews automatic context only at an idle turn boundary and ages owner activity independently', async () => {
+  const id = (await coordinator.start({ key: randomUUID() })).agentId!;
+  store.updateAgent(id, { threadId: 'retained-native-thread' });
+  const first = store.enqueue(id, randomUUID(), 'Owner question');
+  store.updateRun(first.id, { status: 'completed' });
+  vi.advanceTimersByTime(59 * 60_000);
+  const automatic = store.enqueue(id, randomUUID(), 'Scheduled check', 'report');
+  expect(coordinator.startsFresh(automatic)).toBe(true);
+  store.updateRun(automatic.id, { status: 'completed' });
+  const recent = store.enqueue(id, randomUUID(), 'Within the hour');
+  expect(coordinator.startsFresh(recent)).toBe(false);
+  store.updateRun(recent.id, { status: 'completed' });
+  vi.advanceTimersByTime(60 * 60_000);
+  const next = store.enqueue(id, randomUUID(), 'Owner returned');
+  expect(coordinator.startsFresh(next)).toBe(true);
+  expect(coordinator.startsFresh(automatic)).toBe(false); // Retain the queued owner's context.
+  store.entry({
+    id: randomUUID(),
+    agentId: id,
+    runId: recent.id,
+    kind: 'message',
+    title: 'Owner steering',
+    text: 'A recent owner correction',
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+  });
+  expect(coordinator.startsFresh(next)).toBe(false);
+  expect(
+    coordinator.startsFresh({
+      ...next,
+      agentId: store.register(join(root, 'ordinary'), 'Ordinary', '').managerId,
+    }),
+  ).toBe(false);
+});
 it('owner allocation edits retain the original accounting baseline and prevent stale writes', async () => {
   const p = store.register(join(root, 'A'), 'A', '');
   const { agent, run } = await active();

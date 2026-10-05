@@ -100,6 +100,11 @@ function Snapshot({ reading, now }: { reading: HomeData['resources']; now: numbe
   const disk = machine?.diskAvailableBytes ?? null;
   const whole = (n: number | null | undefined) => (n == null ? null : String(Math.round(n)));
   const swap = sample?.swapOutBytesPerSecond ?? null;
+  const mbps = (n: number) => (n / 1024 ** 2).toFixed(n >= 10 * 1024 ** 2 ? 0 : 1);
+  const pair = (a: number | null | undefined, b: number | null | undefined) =>
+    a == null || b == null ? null : a + b;
+  const diskIo = pair(sample?.diskReadBytesPerSecond, sample?.diskWriteBytesPerSecond);
+  const net = pair(sample?.networkReceiveBytesPerSecond, sample?.networkSendBytesPerSecond);
   return (
     <section className="health-snapshot" aria-labelledby="health-now">
       <div className="health-section-heading">
@@ -171,6 +176,44 @@ function Snapshot({ reading, now }: { reading: HomeData['resources']; now: numbe
               ? `${Math.round((disk / sample.diskTotalBytes) * 100)}% free of ${gb(sample.diskTotalBytes)} on this workspace’s volume`
               : 'Free space on the volume holding this workspace'
           }
+        />
+        <Metric
+          label="Disk activity"
+          value={diskIo === null ? null : mbps(diskIo)}
+          unit="MB/s"
+          detail={
+            diskIo === null
+              ? 'Reads and writes on this computer’s disks'
+              : `${mbps(sample!.diskReadBytesPerSecond!)} read · ${mbps(sample!.diskWriteBytesPerSecond!)} written`
+          }
+        />
+        <Metric
+          label="Network"
+          value={net === null ? null : mbps(net)}
+          unit="MB/s"
+          detail={
+            net === null
+              ? 'Traffic on Wi-Fi and Ethernet'
+              : `${mbps(sample!.networkReceiveBytesPerSecond!)} in · ${mbps(sample!.networkSendBytesPerSecond!)} out on Wi-Fi/Ethernet`
+          }
+        />
+        <Metric
+          label="GPU"
+          value={whole(sample?.gpuUtilizationPercent)}
+          unit="%"
+          detail="Graphics processor use, as its driver reports it"
+        />
+        <Metric
+          label="Thermal"
+          value={
+            !sample || sample.thermalWarning === 'unknown'
+              ? null
+              : sample.thermalWarning === 'none'
+                ? 'No warning'
+                : 'Warning'
+          }
+          level={sample?.thermalWarning === 'reported' ? 'warning' : undefined}
+          detail="macOS heat/performance warning, not a temperature"
         />
       </div>
       {findings.length > 1 && (

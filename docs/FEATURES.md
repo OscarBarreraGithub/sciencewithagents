@@ -16,6 +16,7 @@ This describes connected source behavior, not a blanket release certification.
 | Manager continuity   | Persistent internal/human work items, checkpoints and concise requests; owner-only Notes                         | Managers continue independent work when one item awaits a person                                    |
 | Context maintenance  | Native Claude 60% compaction with handoff hooks; natural Codex compaction                                        | External native/editor sessions need their own supported integration; no perfect-memory claim       |
 | QUARK                | Shared queue, priority/weights, caps/reserves, spending sliders, leases, pauses and coordinator chat             | Estimated attribution and stopping latency prevent an exact provider-enforced spending ceiling      |
+| Slurm cluster        | Shared cached queue, pending reasons, fairshare, native limits, recent efficiency and submitted-job tracking     | Advisory only: no app cluster limits; native SSH sign-in and site rules apply                       |
 | Computer health      | Current pressure, charts, project/job attribution, grouped apps/processes and full-screen Ask                    | Detailed probes are macOS-specific; automatic checks are bounded and off on fresh installs          |
 | Phone                | Optional private Tailscale or configured domain, one-time passkey pairing and computer confirmation              | No recurring app lock; physical retention/reconnect needs device acceptance                         |
 | Multiple computers   | Select configured hosts with separate accounts/projects/history; two copyable setup prompts                      | Connection is agent-assisted over a verified private route, not automatic discovery                 |
@@ -47,13 +48,30 @@ host watcher check limits independently of the manager. Managers can pause owned
 QUARK can stop an unresponsive owned run while preserving its files and conversations.
 Routine work uses shared headroom without an invented per-task cap. Raw token counts, including
 cached context, are accounting evidence and never an admission limit. Owner-set allowance
-caps and reserves apply across concurrent projects. Unknown usage holds new protected work;
-transient read failures and quota exhaustion have distinct recovery paths.
+caps and reserves apply across concurrent projects. Optional per-project/task rolling hourly limits share reservations across simultaneous and
+pending work, separately for Codex and Claude's reported windows. Resets/restarts retain
+recent spend; hourly waits can recover after confirmed stopping and fresh capacity.
+The board shows current project rates and 12-hour history beside separate Codex/Claude
+controls; a zero hourly rate pauses that provider's project work. Separate reserve controls
+accept 0–100%, with opt-in timed release near reported resets. Depletion forecasts use observed
+account activity, including work outside the app; unknown intervals remain gaps.
+Unknown usage holds new protected work; transient read failures and quota exhaustion
+have distinct recovery paths.
 
 The coordinator stores its instructions outside project worktrees, uses a selectable central
 model and wakes for messages or bounded events rather than consuming tokens while idle.
+QUARK and the resource assistant receive compact current evidence and retrieve saved detail
+on demand. Managers use concise accounting totals and report provider/worker token breakdowns
+with cached and incomplete counters labelled.
+Automatic QUARK checks start fresh; idle owner conversations renew after an hour without owner
+input. Saved decisions and conversations remain available, without replaying the entire archive
+into each model turn. Resource diagnoses preserve the selected model when they renew.
 Saved estimated/actual timing examples help future forecasts; this is evidence, not model
-training. [QUARK](QUARK.md), [coordinator](QUARK_COORDINATOR.md), [accounting](QUARK_ACCOUNTING.md).
+training. Managers receive comparable project/provider/model turn examples with duration,
+token basis and estimated allowance attribution; inherited task forecasts are labelled.
+An optional Claude five-hour policy advances eligible background work without gradual
+release while retaining foreground priority, exact choices, caps, pauses and reserves.
+[QUARK](QUARK.md), [coordinator](QUARK_COORDINATOR.md), [accounting](QUARK_ACCOUNTING.md).
 
 Computer health links busy processes and script/module names to supervised QUARK projects
 and tasks. Sustained CPU, memory or process-group changes wake a bounded check; the assistant
@@ -63,8 +81,9 @@ Untracked processes remain distinguishable from app-owned work. See [resource mo
 ## Native capabilities and saved evidence
 
 New managed agents inherit native tools, skills, hooks and configured integrations. Supported
-native unattended policies provide broad reads/network access and role-appropriate writes;
-explicit saved restrictions remain editable. Provider/organization rules and external tool
+native unattended policies give writing roles full native access (files, browsers, SSH) with
+the project folder as intended scope; read-only roles stay sandboxed and explicit saved
+restrictions remain editable. Provider/organization rules and external tool
 boundaries still apply. [Worker tools](WORKER_TOOLS.md), [provider compatibility](PROVIDER_COMPATIBILITY.md).
 
 Managed turns include short work-item/Notes previews; `dock_inspect {}` retrieves their full
@@ -76,9 +95,16 @@ Stored app conversations and worker records remain searchable in project history
 the screen pages old messages. Managed chats show up to 200 entries per page; **Latest messages**
 returns to current replies without changing the draft. The Chats finder excludes background
 helpers and resource checks using saved identities before candidate limits; a matching title never
-hides a personal chat. Finder coverage remains partial: up to 20 recent projects, 32 saved chats,
-and 8 connected editor titles, with no editor transcript search. A bulk worker can recap requests
-with source references for a manager to check.
+hides a personal chat. Assisted model coverage remains partial: up to 20 recent projects,
+32 saved chats and 8 connected editor titles. Its **Search saved text** expansion separately
+pages full retained app text across all projects, plus selected available editor transcripts,
+including long messages and grouped tool activity. Empty pages retain continuation; offline or
+unshared native history remains an explicit omission. See [archive review](ARCHIVE_REVIEW.md).
+A bulk worker can recap requests
+with source references for a manager to check. Managers receive paged untriaged owner-message
+IDs after steering and compaction; work items retain structured source links and explicit
+dispositions. A bare link remains pending review; an explicit whole-message disposition records triage,
+not that every independent ask has been completed.
 Independent native/editor histories, unsent drafts and private reasoning have different
 retention boundaries. Original VS Code chats retain their native identity and model choices.
 The optional companion needs no separate editor login. [Companion](../apps/vscode-mirror/README.md).
@@ -92,9 +118,14 @@ the selected computer and passed to the existing agent through its native image-
 This supports screenshots and browser-readable images, not arbitrary file attachments.
 
 Apps keeps GitHub and Cloudflare sign-up instructions behind **Set up publishing accounts**.
-You can hide this shortcut once set up; that display preference is saved for this browser and
-selected computer. The full instructions remain in **Help and setup**. Hiding the shortcut
-does not verify or change account sign-in.
+Native GitHub and Cloudflare sign-in checks collapse completed steps; missing tools or
+sign-in retain copyable instructions. A browser-local hide preference remains available,
+and the full instructions stay in **Help and setup**. Hiding does not change account sign-in.
+
+Project managers can register a local app and an optional published HTTPS address in Apps.
+Tiles report whether its local port responds. Registration does not deploy the site or make
+a local port accessible from a phone; remote devices need the published address.
+See [project apps](APPS.md).
 
 All chat views render inline and displayed LaTeX equations automatically, including saved
 and shared VS Code messages. Wide equations scroll within their message; code remains literal.
@@ -106,8 +137,8 @@ LaTeX-backed reports also have adjustable, reflowing Reading mode: phone-width t
 
 ## Scope not presented as finished
 
-Custom project-app registration, guaranteed automatic reset-window exhaustion, setup-progress detection and some
-update/UI refinements remain incomplete. Personal-assistant and transcription backend
+Automatic reset-window exhaustion is not guaranteed; agent-assisted updates and physical
+phone behavior retain the acceptance limits in Status. Personal-assistant and transcription backend
 capabilities are retained for existing/advanced use, but are not advertised Home destinations.
 The legacy workspace is maintenance-only. See [Status](STATUS.md) before planning a rollout.
 
@@ -119,6 +150,7 @@ The legacy workspace is maintenance-only. See [Status](STATUS.md) before plannin
 | Runtime, tasks, persistence | `apps/server/src/runtime.ts`, `apps/server/src/store.ts`, [operations](OPERATIONS.md)               |
 | Provider/model routing      | `apps/server/src/model-policy.ts`, `packages/shared/src/model-policy.ts`, [policy](MODEL_POLICY.md) |
 | Queue and quotas            | `apps/server/src/pulsar.ts`, [QUARK accounting](QUARK_ACCOUNTING.md)                                |
+| Slurm cluster               | `apps/server/src/cluster.ts`, `apps/server/src/cluster-slurm.ts`, [cluster](CLUSTER.md)             |
 | Native editor bridge        | `apps/vscode-mirror/`, [maintenance](VSCODE_MIRROR.md)                                              |
 | Setup and local opening     | `scripts/setup.mjs`, `scripts/create-launcher.mjs`, [setup](CONTRIBUTOR_SETUP.md)                   |
 

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { ZodError } from 'zod';
 import {
   providerDefaultEffort,
   claudeSignInStatusSchema,
@@ -221,6 +222,15 @@ export class ManagedClaude {
         ? join(this.dataDir, 'managers', agent.id)
         : agent.cwd;
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
+    // A project manager keeps its private native session folder and also writes
+    // the project folder it manages; sessions stay keyed by the original cwd.
+    const writableDirectories =
+      agent.toolPolicy === 'native' &&
+      agent.permission === 'workspace-write' &&
+      !agent.resourceAssistant &&
+      cwd !== agent.cwd
+        ? [agent.cwd]
+        : [];
     const threadId = agent.threadId ?? randomUUID();
     const resume =
       this.store.getSetting(`claude:started:${threadId}`) === true ||
@@ -245,6 +255,7 @@ export class ManagedClaude {
       resume,
       forkFrom,
       accountAffinity: identity.affinity,
+      writableDirectories,
       inheritNative: agent.toolPolicy === 'native',
       unattended: agent.toolPolicy === 'native',
       role:
@@ -326,7 +337,15 @@ export class ManagedClaude {
                   text:
                     error instanceof Conflict
                       ? error.message
-                      : 'Coordination failed. Inspect the recorded task before retrying.',
+                      : error instanceof ZodError
+                        ? `Invalid coordination input: ${error.issues
+                            .slice(0, 5)
+                            .map(
+                              (issue) => `${issue.path.join('.') || 'request'}: ${issue.message}`,
+                            )
+                            .join('; ')
+                            .slice(0, 1000)}. Correct the input before retrying.`
+                        : 'Coordination failed. Inspect the recorded task before retrying.',
                 },
               ],
               isError: true,

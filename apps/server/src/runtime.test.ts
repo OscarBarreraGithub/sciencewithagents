@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'nod
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Store, publicTask } from './store.js';
+import { nativeFullAccessNote } from './claude-session.js';
 import { Runtime } from './runtime.js';
 import { DemoProvider } from './demo.js';
 import { git, checkpointWorktree, integrate, checkCheckpointFiles } from './workspaces.js';
@@ -126,7 +127,7 @@ it('gives managers a compact shared-budget view while retaining full task eviden
   });
 });
 
-it('native Codex inheritance avoids capability probes and keeps original manager permission requests', async () => {
+it('native Codex writing roles use documented full access without approval prompts', async () => {
   store.updateAgent(manager, { toolPolicy: 'native' });
   const client = await runtime.client(store.agent(manager));
   const request = vi.spyOn(client, 'request');
@@ -135,16 +136,38 @@ it('native Codex inheritance avoids capability probes and keeps original manager
     string,
     unknown
   >;
+  // The private manager session folder stays the cwd; full access reaches the project folder.
+  expect(start.cwd).not.toBe(store.agent(manager).cwd);
+  expect(start).toMatchObject({ sandbox: 'danger-full-access', approvalPolicy: 'never' });
   expect(start.config).toEqual({
     model_reasoning_effort: store.agent(manager).effort,
     'sandbox_workspace_write.network_access': true,
   });
-  expect(start).toHaveProperty('approvalPolicy', 'never');
   expect(start).toHaveProperty('threadSource', 'sciencewithagents');
+  expect(start.developerInstructions).toContain(nativeFullAccessNote);
+  expect(start.developerInstructions).toContain(
+    'Token report: the host automatically tracks Codex and Claude separately',
+  );
+  expect(start.developerInstructions).toContain(
+    'If your saved dock_inspect catalog lacks accounting',
+  );
   expect(store.getSetting(`codex:owned:${threadId}`)).toBe(manager);
   expect(
     request.mock.calls.some(([method]) => ['config/read', 'mcpServerStatus/list'].includes(method)),
   ).toBe(false);
+});
+
+it('keeps a read-only native role on never and its original permission requests', async () => {
+  store.updateAgent(manager, { toolPolicy: 'native', permission: 'read-only' });
+  const client = await runtime.client(store.agent(manager));
+  const request = vi.spyOn(client, 'request');
+  const { threadId } = await runtime.attach(manager);
+  const start = request.mock.calls.find(([method]) => method === 'thread/start')![1] as Record<
+    string,
+    unknown
+  >;
+  expect(start).toMatchObject({ sandbox: 'read-only', approvalPolicy: 'never' });
+  expect(start.developerInstructions).not.toContain(nativeFullAccessNote);
   const respond = vi.spyOn(client, 'respond');
   client.emit('request', 'original-native-request', 'item/commandExecution/requestApproval', {
     threadId,
@@ -1850,4 +1873,20 @@ it('gives a manager durable report links without launching work, and prevents pr
   await expect(
     runtime.tool(manager, randomUUID(), 'dock_document', { path: '../secret.tex' }),
   ).rejects.toThrow(/relative/);
+});
+
+it('reads project token totals without sending the recent scheduling ledger', async () => {
+  const run = store.enqueue(manager, randomUUID(), 'Accounting fixture');
+  runtime.quark.begin(run);
+  store.updateRun(run.id, { status: 'completed' });
+  const compact = await runtime.tool(manager, randomUUID(), 'dock_inspect', { accounting: true });
+  const detailed = await runtime.tool(manager, randomUUID(), 'dock_inspect', { scheduling: true });
+  expect(compact).toMatchObject({
+    totals: runtime.quark.status(project).totals,
+    scope: 'project-to-date',
+  });
+  expect(compact).not.toHaveProperty('runs');
+  expect(compact).not.toHaveProperty('history');
+  expect(detailed).toHaveProperty('accounting.runs');
+  expect(JSON.stringify(compact).length).toBeLessThan(JSON.stringify(detailed).length);
 });

@@ -15,7 +15,7 @@ test('QUARK shows chat entry, real queue columns and forecasts without starting 
   await page.getByRole('button', { name: 'Paused / needs input', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Waiting', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Active work', exact: true }).click();
-  await expect(page.getByText('Shared reserve', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Shared reserves', exact: true })).toBeVisible();
   expect(starts).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await mkdir('../../data/screenshots/quark-board', { recursive: true });

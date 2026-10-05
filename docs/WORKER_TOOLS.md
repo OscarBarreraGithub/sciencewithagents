@@ -1,22 +1,28 @@
 # Native capabilities and saved worker restrictions
 
-**Current native policy (2026-09-30):** broad reads and internet access with scoped native
-writes and no routine permission queue. New inherited Codex sessions use broad reads and
-network access with approval policy `never`. New project managers can write inside their project
-folder, including reports and manuscripts. Implementers write in task worktrees; reviewers and
-background checks remain read-only. Explicit saved permission choices are preserved. Changing
-file access reconnects the native session before the next turn. Claude managers/write-enabled workers use native
-edit acceptance and Bash approval inside its strict command sandbox; unsandboxed retries
-remain disabled. Read-only roles retain native plan permissions, and the native command sandbox
-explicitly denies writes to their workspace. Real questions still surface.
-This supersedes the earlier blanket bypass request. Saved explicit restrictions and native
-administrative rules remain; arbitrary MCP/remote tools have their own enforcement.
+**Current native policy (2026-10-05):** native writing roles (project managers, write-enabled
+workers, conversations and requested resource assistants) run with each provider's documented
+full access and no routine permission queue: Claude `bypassPermissions`, Codex
+`danger-full-access` with approval policy `never`. Files, local servers, browsers, Git and SSH
+work with the owner's own user permissions. The project folder or task worktree is the intended
+working scope, stated in their instructions; it is **not** hard containment. Managers keep the
+reviewed-change apply workflow; implementers still work in task worktrees. Read-only roles
+(reviewers, background checks, read-only discussions) keep native plan/read-only sandboxes;
+explicitly saved read-only or restricted choices are preserved. Changing file access reconnects
+the native session before the next turn. Real questions (AskUserQuestion) still surface; any
+remaining native prompt is declined rather than queued. QUARK leases and stop hooks, provider
+and organization policy (for example a disabled bypass mode) and the owner's own native sandbox
+settings still apply. This supersedes the 2026-09-30 sandboxed write policy, which blocked
+browsers, plain SSH and copy-back of cluster output.
 
-A real Claude run verified an outside-folder read, public HTTPS, scoped file/shell writes and
-rejection of an outside-folder write. Adding native Bash approval corrected refusal of a
-harmless shell-variable loop without changing that write boundary. This is one installed
-provider/platform acceptance, not proof that every external tool is contained. See
-[dated evidence](VERIFICATION.md) and [Anthropic's sandbox behavior](https://code.claude.com/docs/en/sandboxing).
+A real Claude fixture under the earlier sandbox verified project file moves, loopback and
+public HTTPS, a Chromium screenshot and one tiny FASRC job; the sandbox blocked cluster
+copy-back until an unsandboxed retry, which this policy removes. A Codex fixture recovered a
+sandboxed Chromium failure by escalation. Under this policy a Claude manager turn moved
+project files, took a Chromium screenshot and copied cluster output back with no prompt or
+retry, and its question still waited for the owner; no-model Codex App Server checks accepted
+`danger-full-access` + `never` and ran the same file, browser, HTTPS and SSH steps.
+See [dated evidence](VERIFICATION.md).
 
 ## Native inheritance
 
@@ -36,8 +42,8 @@ Native inheritance adds QUARK tools and observation without disabling the provid
 skills, plugins, web tools or configured MCPs. The launch policy above supplies unattended
 native controls; explicitly saved restricted sessions keep their separate settings.
 Codex read-only turns explicitly allow native network requests without granting file writes;
-workspace-write turns retain their native folder boundary and network access. Both paths have
-live macOS evidence, including a denied sibling-folder write and no routine approval wait.
+native writing turns use full access as above. Earlier live macOS evidence covers the read-only
+path and the former workspace-write boundary.
 Task file permissions and exact review/apply remain. No plugin inventory/probe thread is needed
 to launch an inherited Codex conversation. Native manager children join the existing supervised
 family; they are not independent managers with fresh budgets. See VERIFICATION.md for evidence.
@@ -105,6 +111,20 @@ not proof that the tool is signed in or will succeed in a later task worktree.
 Managers keep independent owner asks in durable work items; steering adds or corrects work
 unless the owner cancels or replaces it. Notes remain the owner's. The turn overview shows
 at most 60 unresolved items and reports `workItemsPage.omitted` and `nextCursor`.
+
+Managers also receive `ownerRequests`: retained owner messages without an explicit whole-message triage
+disposition. Page `dock_inspect {ownerRequests:{cursor:...}}` until `nextCursor` is null, including
+after steering or compaction. Read full wording with `read:{source:"entry",id:entryId}`.
+Link each independent ask through `dock_work_item.sourceMessages:[{agentId,entryId}]`;
+one message may link several items. After reviewing the whole message and mapping every independent ask, record
+`sourceDisposition` summarizing triage and linked items, or an answer, cancellation,
+replacement or nonactionable input. A bare link remains pending review; a disposition
+marks it triaged, not completed.
+Delivery remains queued/running/failed/cancelled for normal sends; steering is submitted or
+uncertain. Uncertain input is retained without automatic native replay. Sources stay owned
+by their receiving manager. Work-item revisions and append-only events preserve provenance.
+Changing a work item's source set clears its old disposition unless the manager explicitly
+renews whole-message triage; reordering the same sources does not clear it.
 Use `dock_inspect {workItems:{cursor:"…"}}` to continue, following each `nextCursor` until
 null; `includeDone:true` includes completed items. Reads stay within the caller's project.
 Raw prompts remain available through history/read, but prompt storage alone does not prove

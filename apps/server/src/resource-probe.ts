@@ -119,6 +119,48 @@ export function parsePressure(raw: string): ResourceSample['memoryPressure'] {
     'unknown'
   );
 }
+/** Cumulative bytes read/written by block storage drivers (ioreg, no administrator access). */
+export function parseBlockStorage(raw: string) {
+  const sum = (name: string) =>
+    [...raw.matchAll(new RegExp(`"Bytes \\(${name}\\)"=(\\d+)`, 'g'))].reduce(
+      (total, m) => total + Number(m[1]),
+      0,
+    );
+  const devices = raw.match(/"Statistics"\s*=/g)?.length ?? 0;
+  return devices ? { devices, read: sum('Read'), written: sum('Write') } : null;
+}
+/** Received/sent bytes of physical en* interfaces from netstat -ibn; tunnels and bridges repeat them. */
+export function parseInterfaces(raw: string) {
+  const total = { devices: 0, received: 0, sent: 0 };
+  for (const line of raw.split('\n')) {
+    const cells = line.trim().split(/\s+/);
+    if (!/^en\d+\*?$/.test(cells[0] ?? '') || !cells[2]?.startsWith('<Link#') || cells.length < 10)
+      continue;
+    const received = Number(cells.at(-5)),
+      sent = Number(cells.at(-2));
+    if (!Number.isFinite(received) || !Number.isFinite(sent)) continue;
+    total.devices++;
+    total.received += received;
+    total.sent += sent;
+  }
+  return total.devices ? total : null;
+}
+/** Busiest GPU's driver-reported device utilization (ioreg IOAccelerator), when the driver exposes it. */
+export function parseGpu(raw: string) {
+  const values = [...raw.matchAll(/"Device Utilization %"=(\d+)/g)].map((m) => Number(m[1]));
+  return values.length ? Math.min(100, Math.max(...values)) : null;
+}
+/** pmset -g therm: the OS thermal/performance warning state. It never reports temperatures. */
+export function parseThermal(raw: string): ResourceSample['thermalWarning'] {
+  const levels = [...raw.matchAll(/(?:thermal|performance) warning level[^\d\n]*(\d+)/gi)].map(
+    (m) => Number(m[1]),
+  );
+  const limits = [...raw.matchAll(/CPU_Speed_Limit\s*=\s*(\d+)/g)].map((m) => Number(m[1]));
+  if (levels.some((level) => level > 0) || limits.some((limit) => limit < 100)) return 'reported';
+  return /No thermal warning level has been recorded/.test(raw) || limits.length
+    ? 'none'
+    : 'unknown';
+}
 const read = (file: string, args: string[], signal: AbortSignal) =>
   new Promise<string>((resolve, reject) => {
     execFile(
@@ -211,6 +253,8 @@ export class ResourceProbe {
     cores: CpuInfo[];
     swap: number | null;
     swapAt: number | null;
+    disk: ReturnType<typeof parseBlockStorage>;
+    network: ReturnType<typeof parseInterfaces>;
     groups: ResourceGroup[];
     jobs: ResourceJob[];
   } | null = null;
@@ -225,6 +269,10 @@ export class ResourceProbe {
           read('/bin/ps', ['-axo', 'pid=,ppid=,lstart=,time=,rss=,comm='], signal),
           read('/usr/sbin/sysctl', ['-n', 'kern.memorystatus_vm_pressure_level'], signal),
           read('/usr/sbin/sysctl', ['vm.swapusage'], signal),
+          read('/usr/sbin/ioreg', ['-r', '-c', 'IOBlockStorageDriver', '-w0', '-d', '1'], signal),
+          read('/usr/sbin/netstat', ['-ibn'], signal),
+          read('/usr/sbin/ioreg', ['-r', '-c', 'IOAccelerator', '-w0', '-d', '1'], signal),
+          read('/usr/bin/pmset', ['-g', 'therm'], signal),
         ]
       : [];
     const values = await Promise.allSettled(calls);
@@ -385,6 +433,19 @@ export class ResourceProbe {
               : base.cpuUsedPercent,
           }
         : null;
+    const disk = parseBlockStorage(output(3) ?? '');
+    const network = parseInterfaces(output(4) ?? '');
+    const gpu = parseGpu(output(5) ?? '');
+    const thermal = parseThermal(output(6) ?? '');
+    // A reset or added/removed device gives no rate rather than a false spike.
+    const same = (a?: { devices: number } | null, b?: { devices: number } | null) =>
+      interval && !!a && a.devices === b?.devices;
+    const rate = (current: number | undefined, old: number | undefined, steady: boolean) =>
+      steady && current !== undefined && old !== undefined && current >= old
+        ? (current - old) / seconds
+        : null;
+    const diskSteady = same(disk, previous?.disk);
+    const networkSteady = same(network, previous?.network);
     const sample = resourceSampleSchema.parse({
       observedAt: new Date(now).toISOString(),
       machine,
@@ -403,6 +464,16 @@ export class ResourceProbe {
           ? (vm.swapOutBytes - previous.swap) / swapSeconds
           : null,
       diskTotalBytes: machine ? shared.diskTotalBytes : null,
+      diskReadBytesPerSecond: rate(disk?.read, previous?.disk?.read, diskSteady),
+      diskWriteBytesPerSecond: rate(disk?.written, previous?.disk?.written, diskSteady),
+      networkReceiveBytesPerSecond: rate(
+        network?.received,
+        previous?.network?.received,
+        networkSteady,
+      ),
+      networkSendBytesPerSecond: rate(network?.sent, previous?.network?.sent, networkSteady),
+      gpuUtilizationPercent: gpu,
+      thermalWarning: thermal,
       groups: selected,
       jobs: [...jobs.values()]
         .sort((a, b) => (b.cpuPercent ?? 0) - (a.cpuPercent ?? 0))
@@ -410,7 +481,9 @@ export class ResourceProbe {
       processCount: processes?.length ?? null,
       processes: selectedProcesses,
       unavailable: [
-        !mac ? 'Detailed process and memory probes currently support macOS.' : '',
+        !mac
+          ? 'Detailed process, memory, disk I/O, network, GPU and thermal probes currently support macOS.'
+          : '',
         mac && !processes ? 'App process readings unavailable.' : '',
         roots.some((root) => !jobs.has(root.id))
           ? 'Some owned process trees were not visible in this sample.'
@@ -421,7 +494,11 @@ export class ResourceProbe {
         parseSwap(output(2) ?? '') === null
           ? 'Some memory readings are unavailable.'
           : '',
-        'GPU, temperatures, disk I/O and network traffic are not measured.',
+        mac && !disk ? 'Disk I/O readings are unavailable.' : '',
+        mac && !network ? 'Network traffic readings are unavailable.' : '',
+        mac && gpu === null ? 'This computer’s graphics driver does not report GPU use.' : '',
+        mac && thermal === 'unknown' ? 'The thermal warning state is unavailable.' : '',
+        'Temperatures are not provided by these unprivileged probes.',
       ].filter(Boolean),
     });
     this.previous = {
@@ -430,6 +507,8 @@ export class ResourceProbe {
       cores,
       swap: vm.swapOutBytes,
       swapAt: vm.memoryObservedAt,
+      disk,
+      network,
       groups: [...groups.values()],
       jobs: [...jobs.values()],
     };

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CapacityWindow, ProviderCapacity } from './capacity.js';
 
 export const jobPrioritySchema = z.enum(['interactive', 'high', 'normal', 'background']);
 export const jobEstimateSchema = z
@@ -28,13 +29,30 @@ export const jobEstimateSchema = z
     deadline: z.string().datetime().nullable().default(null),
   })
   .strict();
+export const providerReserveSchema = z
+  .object({
+    reservePercent: z.number().min(0).max(100).default(20),
+    releaseEnabled: z.boolean().default(false),
+    releaseBeforeResetMinutes: z.number().int().min(1).max(10080),
+  })
+  .strict();
 export const pulsarPolicySchema = z
   .object({
     enabled: z.boolean().default(false),
-    reservePercent: z.number().min(5).max(80).default(20),
+    revision: z.number().int().nonnegative().default(0),
+    // Retained for older clients. Independent provider settings take precedence.
+    reservePercent: z.number().min(0).max(100).default(20),
+    providerReserves: z
+      .object({
+        codex: providerReserveSchema,
+        claude: providerReserveSchema,
+      })
+      .strict()
+      .optional(),
     claudeConcurrent: z.number().int().min(1).max(4).default(1),
     codexConcurrent: z.number().int().min(1).max(4).default(3),
     backgroundGapSeconds: z.number().int().min(0).max(3600).default(120),
+    maximizeClaudeFiveHour: z.boolean().default(false),
     maxCpuPercent: z.number().min(20).max(100).default(85),
     memoryReserveMb: z.number().int().min(256).max(131072).default(1024),
     maxAutomaticTurns: z.number().int().min(12).max(1000).default(100),
@@ -95,3 +113,33 @@ export const pulsarStatusSchema = z
 export type JobEstimate = z.infer<typeof jobEstimateSchema>;
 export type PulsarPolicy = z.infer<typeof pulsarPolicySchema>;
 export type PulsarStatus = z.infer<typeof pulsarStatusSchema>;
+
+/** Older saved global reserves migrate to both providers without lowering either. */
+export function providerReservePolicy(policy: PulsarPolicy, provider: 'codex' | 'claude') {
+  return (
+    policy.providerReserves?.[provider] ?? {
+      reservePercent: policy.reservePercent,
+      releaseEnabled: false,
+      releaseBeforeResetMinutes: provider === 'codex' ? 720 : 45,
+    }
+  );
+}
+/** Timed release applies to each actual reported window; elapsed resets never grant capacity. */
+export function effectiveProviderReserve(
+  policy: PulsarPolicy,
+  capacity: ProviderCapacity,
+  window: CapacityWindow,
+  now: number,
+) {
+  const saved = providerReservePolicy(policy, capacity.provider);
+  const minutes = window.resetsAt ? (Date.parse(window.resetsAt) - now) / 60_000 : null;
+  const released =
+    saved.releaseEnabled &&
+    capacity.state === 'ready' &&
+    !capacity.stale &&
+    !!capacity.observedAt &&
+    minutes !== null &&
+    minutes > 0 &&
+    minutes <= saved.releaseBeforeResetMinutes;
+  return { ...saved, effectivePercent: released ? 0 : saved.reservePercent, released };
+}

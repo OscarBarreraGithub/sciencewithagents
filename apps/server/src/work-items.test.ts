@@ -45,6 +45,159 @@ function ask() {
   });
 }
 
+it('keeps canonical owner sources and dispositions across retries and restart, without task inference', () => {
+  const first = store.enqueue(managerId, randomUUID(), 'Implement A and B; what is the status?');
+  const failed = store.enqueue(managerId, randomUUID(), 'Queued input whose execution failed');
+  store.updateRun(failed.id, { status: 'failed' });
+  const before = items.ownerRequests(managerId);
+  expect(before.items.map((source) => source.entryId)).toEqual([failed.id, first.id]);
+  expect(before.items[0]!.delivery).toBe('failed');
+  expect(items.list().items).toEqual([]);
+  const input = {
+    key: randomUUID(),
+    title: 'Implement A',
+    sourceMessages: [{ agentId: managerId, entryId: first.id }],
+  };
+  const item = items.saveForManager(managerId, input);
+  restart();
+  expect(items.saveForManager(managerId, input)).toEqual(item);
+  expect(items.ownerRequests(managerId).items.map((source) => source.entryId)).toEqual([
+    failed.id,
+    first.id,
+  ]);
+  expect(items.ownerRequests(managerId).items[1]!.coverage).toBe('linked');
+  const linked = items
+    .ownerRequests(managerId, { includeHandled: true })
+    .items.find((source) => source.entryId === first.id)!;
+  expect(linked.workItemIds).toEqual([item.id]);
+  const second = items.saveForManager(managerId, {
+    key: randomUUID(),
+    title: 'Implement B',
+    sourceMessages: item.sourceMessages,
+  });
+  const disposition = items.saveForManager(managerId, {
+    key: randomUUID(),
+    id: second.id,
+    expectedRevision: 1,
+    status: 'done',
+    sourceDisposition: 'Owner cancelled B; A continues independently.',
+  });
+  restart();
+  expect(items.get(second.id)).toEqual(disposition);
+  expect(items.ownerRequests(managerId).items.map((source) => source.entryId)).toEqual([failed.id]);
+  expect(items.ownerRequests(managerId, { includeHandled: true }).items[1]!.coverage).toBe(
+    'triaged',
+  );
+  expect(items.get(item.id).status).toBe('open');
+  expect(
+    store
+      .events()
+      .filter((event) => event.type === 'work-item.updated')
+      .at(-1)!.data,
+  ).toMatchObject({
+    item: {
+      sourceDisposition: disposition.sourceDisposition,
+      sourceMessages: disposition.sourceMessages,
+    },
+  });
+});
+
+it('pages every untriaged input with stable boundaries and rejects foreign or non-owner sources', () => {
+  const original = Array.from({ length: 67 }, (_, index) =>
+    store.enqueue(managerId, randomUUID(), `Owner ask ${index}`),
+  );
+  const first = items.ownerRequests(managerId, { limit: 17 });
+  store.enqueue(managerId, randomUUID(), 'Arrived after the snapshot');
+  const peer = store.addManager(projectId, 'Peer', 'Peer scope', 'codex');
+  const foreign = store.enqueue(peer.id, randomUUID(), 'Other owner request');
+  const report = store.enqueue(managerId, randomUUID(), 'Peer report', 'message', peer.id);
+  const assistantId = randomUUID();
+  store.entry({
+    id: assistantId,
+    agentId: managerId,
+    runId: null,
+    kind: 'assistant',
+    title: 'Reply',
+    text: 'Not owner input',
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+  });
+  for (const source of [
+    { agentId: peer.id, entryId: foreign.id },
+    { agentId: managerId, entryId: report.id },
+    { agentId: managerId, entryId: assistantId },
+    { agentId: managerId, entryId: randomUUID() },
+  ])
+    expect(() =>
+      items.saveForManager(managerId, {
+        key: randomUUID(),
+        title: 'Invalid claim',
+        sourceMessages: [source],
+      }),
+    ).toThrow(Conflict);
+  expect(() => items.ownerRequests(peer.id, { cursor: first.nextCursor })).toThrow(
+    'another manager',
+  );
+  expect(() =>
+    items.ownerRequests(managerId, { cursor: first.nextCursor, includeHandled: true }),
+  ).toThrow('another manager or filter');
+  const ids = first.items.map((source) => source.entryId);
+  let cursor = first.nextCursor;
+  restart();
+  while (cursor) {
+    const page = items.ownerRequests(managerId, { limit: 17, cursor });
+    ids.push(...page.items.map((source) => source.entryId));
+    cursor = page.nextCursor;
+  }
+  expect(ids).toEqual(original.toReversed().map((run) => run.id));
+  expect(new Set(ids).size).toBe(67);
+  expect(items.ownerRequests(managerId).total).toBe(68);
+});
+
+it('requires renewed whole-message triage when a saved item adds or replaces sources', () => {
+  const first = store.enqueue(managerId, randomUUID(), 'Original request');
+  const newer = store.enqueue(managerId, randomUUID(), 'New independent request');
+  const original = items.saveForManager(managerId, {
+    key: randomUUID(),
+    title: 'Original outcome',
+    sourceMessages: [{ agentId: managerId, entryId: first.id }],
+    sourceDisposition: 'Original request triaged to this outcome.',
+  });
+  const expanded = items.saveForManager(managerId, {
+    key: randomUUID(),
+    id: original.id,
+    expectedRevision: original.revision,
+    sourceMessages: [...original.sourceMessages, { agentId: managerId, entryId: newer.id }],
+  });
+  expect(expanded.sourceDisposition).toBeNull();
+  expect(items.ownerRequests(managerId).items.map((item) => item.entryId)).toEqual([
+    newer.id,
+    first.id,
+  ]);
+  const renewed = items.saveForManager(managerId, {
+    key: randomUUID(),
+    id: expanded.id,
+    expectedRevision: expanded.revision,
+    sourceDisposition: 'Both requests reviewed; this item covers both outcomes.',
+  });
+  const reordered = items.saveForManager(managerId, {
+    key: randomUUID(),
+    id: renewed.id,
+    expectedRevision: renewed.revision,
+    sourceMessages: renewed.sourceMessages.toReversed(),
+  });
+  expect(reordered.sourceDisposition).toBe(renewed.sourceDisposition);
+  const replaced = items.saveForManager(managerId, {
+    key: randomUUID(),
+    id: reordered.id,
+    expectedRevision: reordered.revision,
+    sourceMessages: [{ agentId: managerId, entryId: newer.id }],
+  });
+  expect(replaced.sourceDisposition).toBeNull();
+  restart();
+  expect(items.ownerRequests(managerId).total).toBe(2);
+});
+
 it('persists personal and manager to-dos with generated IDs, scoped reads and append-only history', () => {
   const key = randomUUID();
   const personal = items.save({ key, title: 'Read the methods paper' });

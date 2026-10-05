@@ -86,7 +86,7 @@ it('delivers native Codex launch and turn settings only to requested resource as
     unknown
   >;
   expect(thread).toMatchObject({
-    sandbox: 'workspace-write',
+    sandbox: 'danger-full-access',
     approvalPolicy: 'never',
     model: 'demo',
     cwd: join(root, 'managers', asked.agentId),
@@ -176,6 +176,12 @@ it('uses Claude native workspace controls for requested assistance and snapshot-
     },
   );
   cleanups.push(() => runtime.close());
+  // A Claude project manager receives the same charter, including the token report directive.
+  const managed = store.register(join(root, 'claude-project'), 'Claude project', '', 'claude');
+  store.updateAgent(managed.managerId, { model: 'sonnet-fixture', effort: 'low' });
+  expect((await runtime.claude.prepare(store.agent(managed.managerId))).options.charter).toContain(
+    'Token report: the host automatically tracks Codex and Claude separately',
+  );
   const asked = (await runtime.resources.ask({ key: randomUUID(), provider: 'claude' })).checks[0]!;
   const interactive = await runtime.claude.prepare(store.agent(asked.agentId));
   expect(interactive.options).toMatchObject({
@@ -187,7 +193,7 @@ it('uses Claude native workspace controls for requested assistance and snapshot-
     cwd: join(root, 'managers', asked.agentId),
   });
   const args = claudeArguments(interactive.options);
-  expect(args).toContain('acceptEdits');
+  expect(args).toContain('bypassPermissions');
   for (const restricted of [
     '--restricted',
     '--tools',
@@ -195,14 +201,8 @@ it('uses Claude native workspace controls for requested assistance and snapshot-
     '--disable-slash-commands',
   ])
     expect(args).not.toContain(restricted);
-  expect(JSON.parse(args[args.indexOf('--settings') + 1]!)).toMatchObject({
-    sandbox: {
-      enabled: true,
-      failIfUnavailable: true,
-      allowUnsandboxedCommands: false,
-      network: { allowedDomains: ['*'] },
-    },
-  });
+  // Full native access for the requested assistant; no project folder is added.
+  expect(args).not.toContain('--settings');
   store.updateRun(asked.runId, { status: 'completed' });
   store.updateAgent(asked.agentId, { status: 'idle' });
   runtime.resources.save({ key: randomUUID(), settings: { automatic: true } });
@@ -254,7 +254,7 @@ it('closes a legacy requested snapshot runtime and resumes its same history with
     string,
     unknown
   >;
-  expect(params).toMatchObject({ sandbox: 'workspace-write', approvalPolicy: 'never' });
+  expect(params).toMatchObject({ sandbox: 'danger-full-access', approvalPolicy: 'never' });
   expect(params.developerInstructions).toContain('using your native tools');
   expect(params.config).not.toHaveProperty('mcp_servers');
   expect(params.config).not.toHaveProperty('web_search');

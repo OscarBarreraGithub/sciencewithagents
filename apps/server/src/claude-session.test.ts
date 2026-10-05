@@ -9,6 +9,7 @@ import {
   ClaudeSubmissionCancelled,
   assertClaudeSubscriptionEnvironment,
   claudeArguments,
+  nativeFullAccessNote,
   normalizeClaudeEvent,
   parseClaudeIdentity,
   spawnClaudeChannel,
@@ -346,32 +347,44 @@ describe('Claude native launch policy', () => {
     interactive.emit(original);
     expect(interactive.session.canAnswer(original.request_id)).toBe(true);
   });
-  it('uses the native sandbox and denies unattended permission requests while retaining human questions', async () => {
+  it('gives writing roles documented full access and project folders; read-only keeps its sandbox', () => {
+    const f = fixture(options({ inheritNative: true, unattended: true, role: 'manager' }));
+    const settings = (config: ClaudeSessionOptions) => {
+      const args = claudeArguments(config);
+      return args.includes('--settings') ? JSON.parse(args[args.indexOf('--settings') + 1]!) : null;
+    };
+    const prompt = (config: ClaudeSessionOptions) => {
+      const args = claudeArguments(config);
+      return args[args.indexOf('--append-system-prompt') + 1]!;
+    };
+    const project = '/Users/person/project';
+    expect(settings({ ...f.config, writableDirectories: [project] })).toEqual({
+      permissions: { additionalDirectories: [project] },
+    });
+    expect(settings(f.config)).toBeNull();
+    expect(prompt(f.config)).toContain(nativeFullAccessNote);
+    const reader = settings({ ...f.config, role: 'read-only', writableDirectories: [project] });
+    expect(reader.permissions).toEqual({ allow: ['Read(//**)', 'WebFetch', 'WebSearch'] });
+    expect(reader.sandbox).toMatchObject({
+      enabled: true,
+      allowUnsandboxedCommands: false,
+      filesystem: { disabled: false, denyWrite: [f.config.cwd] },
+      network: { allowedDomains: ['*'] },
+    });
+    expect(prompt({ ...f.config, role: 'read-only' })).not.toContain(nativeFullAccessNote);
+    for (const unsafe of ['relative/project', '/tmp/*', '/tmp/a\nb'])
+      expect(() => claudeArguments({ ...f.config, writableDirectories: [unsafe] })).toThrow();
+  });
+  it('runs writing roles in bypassPermissions and denies remaining prompts while retaining human questions', async () => {
     const f = fixture(options({ inheritNative: true, unattended: true, role: 'implementer' }));
     const args = claudeArguments(f.config);
-    expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits');
-    expect(JSON.parse(args[args.indexOf('--settings') + 1]!)).toMatchObject({
-      permissions: { allow: ['Read(//**)', 'Bash', 'WebFetch', 'WebSearch'] },
-      sandbox: {
-        enabled: true,
-        failIfUnavailable: true,
-        allowUnsandboxedCommands: false,
-        filesystem: { disabled: false },
-      },
-    });
-    expect(JSON.parse(args[args.indexOf('--settings') + 1]!).sandbox.filesystem).not.toHaveProperty(
-      'denyWrite',
-    );
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('bypassPermissions');
+    expect(args).toContain('--allow-dangerously-skip-permissions');
+    expect(args).not.toContain('--settings');
     expect(args).not.toContain('--tools');
     const readOnly = claudeArguments({ ...f.config, role: 'read-only' });
     expect(readOnly[readOnly.indexOf('--permission-mode') + 1]).toBe('plan');
-    expect(
-      JSON.parse(readOnly[readOnly.indexOf('--settings') + 1]!).permissions.allow,
-    ).not.toContain('Bash');
-    expect(JSON.parse(readOnly[readOnly.indexOf('--settings') + 1]!).sandbox.filesystem).toEqual({
-      disabled: false,
-      denyWrite: [f.config.cwd],
-    });
+    expect(readOnly).not.toContain('--allow-dangerously-skip-permissions');
     await f.submit();
     const request = permission();
     f.emit(request);

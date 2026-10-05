@@ -16,6 +16,14 @@ class NativeRequestRejected extends Error {
     super(message);
   }
 }
+/** This Codex build cannot page complete turns; use its full-history read instead. */
+class PagingUnavailable extends Error {}
+const incompleteHistory =
+  'Codex did not return the complete saved transcript. Use VS Code; no partial history is presented as complete.';
+// Re-read only the newest turns while a long conversation changes.
+const tailTurns = 3;
+const turnPage = 20;
+const maxTurnPages = 5000;
 export interface Provider {
   onInitialized?: () => void;
   onResult?: (response: ObjectValue) => void;
@@ -75,6 +83,10 @@ export class MirrorConnection {
   private lastRead = 0;
   private dirty = true;
   private reading: Promise<MirrorState> | undefined;
+  // Complete turns for the shared thread, oldest first, kept between native page reads.
+  private history: { threadId: string; turns: ObjectValue[] } | undefined;
+  private pagingUnavailable = false;
+  private readonly turnEntries = new WeakMap<ObjectValue, MirrorState['entries']>();
   private state: MirrorState;
   private readonly live = new Map<string, MirrorState['entries'][number]>();
   constructor(
@@ -281,6 +293,8 @@ export class MirrorConnection {
     this.pendingStartUntil = 0;
     this.activityEpoch++;
     this.live.clear();
+    this.history = undefined;
+    this.pagingUnavailable = false;
     this.dirty = true;
     this.state = {
       ...this.state,
@@ -305,22 +319,8 @@ export class MirrorConnection {
     const reading = (async () => {
       this.dirty = false;
       try {
-        const thread = object(
-          object(await this.request('thread/read', { threadId, includeTurns: true })).thread,
-        );
+        const { thread, entries } = await this.thread(threadId);
         if (this.threadId !== threadId) return this.state;
-        // Native metadata can change after the picker ran. Provenance must also
-        // win at the read/write boundary, including a restored shared selection.
-        if (isBackgroundCodexThread(thread)) {
-          await this.select(null);
-          throw new Error(
-            'This is a background helper. Choose a personal conversation in VS Code to share it.',
-          );
-        }
-        if (thread.id !== threadId || !Array.isArray(thread.turns))
-          throw new Error(
-            'Codex did not return the complete saved transcript. Use VS Code; no partial history is presented as complete.',
-          );
         let queue: Pick<MirrorState, 'queuedMessages' | 'queueHasMore'> = {};
         let canQueue = false;
         let queueReadError: MirrorState['queueReadError'];
@@ -343,9 +343,8 @@ export class MirrorConnection {
         // overwrite newer native activity with that stale idle snapshot.
         if (epoch === this.activityEpoch) {
           this.busy =
-            status.type === 'active' ||
-            array(thread.turns).some((t) => object(t).status === 'inProgress');
-          const active = array(thread.turns).filter((t) => object(t).status === 'inProgress');
+            status.type === 'active' || thread.turns.some((t) => t.status === 'inProgress');
+          const active = thread.turns.filter((t) => t.status === 'inProgress');
           this.activeTurn = active.length === 1 ? str(object(active[0]).id) || null : null;
         }
         const attention = array(status.activeFlags).some(
@@ -355,7 +354,7 @@ export class MirrorConnection {
         this.state = {
           ...this.state,
           title: (str(thread.name) || str(thread.preview) || threadId).slice(0, 500),
-          entries: transcript(thread),
+          entries,
           queuedMessages: undefined,
           queueHasMore: undefined,
           ...queue,
@@ -396,6 +395,103 @@ export class MirrorConnection {
       return await reading;
     } finally {
       if (this.reading === reading) this.reading = undefined;
+    }
+  }
+  /**
+   * Metadata plus complete turns. Supported Codex builds page turns natively and only
+   * the newest few are re-read per change; others use their full-history read.
+   */
+  private async thread(
+    threadId: string,
+  ): Promise<{ thread: ObjectValue & { turns: ObjectValue[] }; entries: MirrorState['entries'] }> {
+    if (!this.pagingUnavailable) {
+      const thread = object(
+        object(await this.request('thread/read', { threadId, includeTurns: false })).thread,
+      );
+      this.checkThread(thread, threadId);
+      try {
+        const turns = await this.pagedTurns(threadId);
+        if (this.threadId === threadId) this.history = { threadId, turns };
+        return {
+          thread: { ...thread, turns },
+          entries: turns.flatMap((turn) => {
+            let entries = this.turnEntries.get(turn);
+            if (!entries) this.turnEntries.set(turn, (entries = transcript({ turns: [turn] })));
+            return entries;
+          }),
+        };
+      } catch (error) {
+        if (!(error instanceof NativeRequestRejected || error instanceof PagingUnavailable))
+          throw error;
+        // Explicit capability fallback for this shared thread; no version is assumed.
+        this.pagingUnavailable = true;
+        this.history = undefined;
+      }
+    }
+    const thread = object(
+      object(await this.request('thread/read', { threadId, includeTurns: true })).thread,
+    );
+    this.checkThread(thread, threadId);
+    if (!Array.isArray(thread.turns)) throw new Error(incompleteHistory);
+    return { thread: { ...thread, turns: thread.turns.map(object) }, entries: transcript(thread) };
+  }
+  private checkThread(thread: ObjectValue, threadId: string) {
+    // Native metadata can change after the picker ran. Provenance must also
+    // win at the read/write boundary, including a restored shared selection.
+    if (this.threadId === threadId && isBackgroundCodexThread(thread)) {
+      void this.select(null);
+      throw new Error(
+        'This is a background helper. Choose a personal conversation in VS Code to share it.',
+      );
+    }
+    if (thread.id !== threadId) throw new Error(incompleteHistory);
+  }
+  private async turnPage(threadId: string, limit: number, cursor: string | null) {
+    const page = object(
+      await this.request('thread/turns/list', {
+        threadId,
+        limit,
+        sortDirection: 'desc',
+        itemsView: 'full',
+        ...(cursor ? { cursor } : {}),
+      }),
+    );
+    if (!Array.isArray(page.data)) throw new PagingUnavailable();
+    const turns = page.data.map(object);
+    // A summary or unloaded turn is never presented as the complete saved transcript.
+    if (
+      turns.some(
+        (turn) =>
+          !str(turn.id) ||
+          !Array.isArray(turn.items) ||
+          (turn.itemsView !== undefined && turn.itemsView !== 'full'),
+      )
+    )
+      throw new PagingUnavailable();
+    return { turns: turns.reverse(), next: str(page.nextCursor) || null };
+  }
+  private async pagedTurns(threadId: string): Promise<ObjectValue[]> {
+    const cached = this.history?.threadId === threadId ? this.history.turns : undefined;
+    if (cached?.length) {
+      const latest = await this.turnPage(threadId, tailTurns, null);
+      if (!latest.next) return latest.turns;
+      // Completed turns do not change; replace from the oldest re-read turn onward.
+      const at = cached.findIndex((turn) => turn.id === latest.turns[0]?.id);
+      if (at >= 0) return [...cached.slice(0, at), ...latest.turns];
+      // More turns arrived than the tail covers: page the whole history again.
+    }
+    const pages: ObjectValue[][] = [];
+    const seen = new Set<string>();
+    let cursor: string | null = null;
+    for (let page = 0; ; page++) {
+      if (page >= maxTurnPages) throw new PagingUnavailable();
+      const result = await this.turnPage(threadId, turnPage, cursor);
+      pages.unshift(result.turns);
+      if (!result.next) return pages.flat();
+      // A repeated or empty-page cursor would loop; fall back once instead.
+      if (seen.has(result.next) || !result.turns.length) throw new PagingUnavailable();
+      seen.add(result.next);
+      cursor = result.next;
     }
   }
   async send(input: MirrorSend): Promise<MirrorResult> {

@@ -4,6 +4,7 @@ import {
   closeSync,
   fstatSync,
   readFileSync,
+  realpathSync,
   writeFileSync,
   renameSync,
   unlinkSync,
@@ -12,11 +13,14 @@ import { join } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import {
+  agentAppRequestSchema,
   agentTaskRequestSchema,
   agentTaskResultSchema,
+  projectAppSchema,
   projectSchema,
   capacityStatusSchema,
   resourceStatusSchema,
+  clusterStatusSchema,
   pulsarStatusSchema,
   quarkStatusSchema,
   localJobsStatusSchema,
@@ -121,6 +125,7 @@ export function registerAgentClient(
     );
     client.get('/api/agent-client/usage', async () => runtime.capacity.status());
     client.get('/api/agent-client/resources', async () => runtime.resources.status());
+    client.get('/api/agent-client/cluster', async () => runtime.cluster.status());
     client.get('/api/agent-client/jobs', async (request) => {
       const { projectId } = query.parse(request.query);
       if (projectId) store.project(projectId);
@@ -129,6 +134,14 @@ export function registerAgentClient(
         accounting: runtime.quark.status(projectId),
         localJobs: runtime.localJobs.status(projectId),
       });
+    });
+    client.post('/api/agent-client/apps', async (request) => {
+      const body = z
+        .object({ request: agentAppRequestSchema, file: z.string().min(1).max(4096) })
+        .strict()
+        .parse(request.body);
+      const { key, managerId, ...input } = body.request;
+      return runtime.saveAppFromClient(managerId, key, input, body.file);
     });
     client.post('/api/agent-client/tasks', async (request, reply) => {
       const input = agentTaskRequestSchema.parse(request.body);
@@ -183,25 +196,32 @@ export async function agentClientCommand(
         'quark projects',
         'quark usage',
         'quark resources',
+        'quark cluster',
         'quark jobs [project-id]',
         'quark dispatch <request.json>',
+        'quark app <request.json>',
       ],
       guide: 'docs/AGENT_USAGE_ACCESS.md',
     };
-  const reads = ['projects', 'usage', 'resources', 'jobs'];
-  if (!reads.includes(command) && command !== 'dispatch')
+  const reads = ['projects', 'usage', 'resources', 'cluster', 'jobs'];
+  const writes = ['dispatch', 'app'];
+  if (!reads.includes(command) && !writes.includes(command))
     throw new Error('Unknown QUARK command. Use quark help.');
-  if (args.length > (['jobs', 'dispatch'].includes(command) ? 1 : 0))
+  if (args.length > (['jobs', ...writes].includes(command) ? 1 : 0))
     throw new Error('Unexpected QUARK arguments.');
-  let body: z.infer<typeof agentTaskRequestSchema> | undefined;
-  if (command === 'dispatch') {
-    if (!args[0]) throw new Error('Dispatch needs a JSON request file with a saved UUID key.');
+  let body: unknown;
+  if (writes.includes(command)) {
+    if (!args[0]) throw new Error(`${command} needs a JSON request file with a saved UUID key.`);
     const fd = openSync(args[0], constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const stat = fstatSync(fd);
       if (!stat.isFile() || stat.size > 64 * 1024)
         throw new Error('Use a JSON request file under 64 KB.');
-      body = agentTaskRequestSchema.parse(JSON.parse(readFileSync(fd, 'utf8')));
+      const value: unknown = JSON.parse(readFileSync(fd, 'utf8'));
+      body =
+        command === 'app'
+          ? { request: agentAppRequestSchema.parse(value), file: realpathSync(args[0]) }
+          : agentTaskRequestSchema.parse(value);
     } finally {
       closeSync(fd);
     }
@@ -215,7 +235,7 @@ export async function agentClientCommand(
       'The private QUARK client is unavailable. Open sciencewithagents on this computer and use its configured data directory.',
     );
   }
-  const path = body ? 'tasks' : command;
+  const path = command === 'app' ? 'apps' : body ? 'tasks' : command;
   let response: Response;
   try {
     response = await fetch(
@@ -260,7 +280,12 @@ export async function agentClientCommand(
     };
   }
   if (command === 'resources') return resourceStatusSchema.parse(value);
+  if (command === 'cluster') return clusterStatusSchema.parse(value);
   if (command === 'projects') return z.array(projectSchema).parse(value);
   if (command === 'jobs') return jobsSchema.parse(value);
+  if (command === 'app')
+    return z
+      .union([projectAppSchema, z.object({ removed: z.literal(true), id: z.string() }).strict()])
+      .parse(value);
   return agentTaskResultSchema.parse(value);
 }

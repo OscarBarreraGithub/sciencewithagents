@@ -14,6 +14,21 @@ const detail = z.string().trim().max(8_000);
 const humanReply = z.string().trim().min(1).max(8_000);
 export const workItemKindSchema = z.enum(['human', 'internal', 'general']);
 export const workItemStatusSchema = z.enum(['open', 'in_progress', 'waiting', 'done']);
+/** Saved app entry identity, not a quoted title or a filesystem path. */
+export const ownerMessageReferenceSchema = z
+  .object({
+    agentId: workItemId,
+    entryId: z.string().min(1).max(1024),
+  })
+  .strict();
+const sourceMessages = z
+  .array(ownerMessageReferenceSchema)
+  .max(50)
+  .refine(
+    (values) =>
+      new Set(values.map((value) => `${value.agentId}:${value.entryId}`)).size === values.length,
+    'Link each source message once.',
+  );
 
 export const workItemSchema = z
   .object({
@@ -33,6 +48,8 @@ export const workItemSchema = z
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
     resolvedAt: z.string().datetime().nullable(),
+    sourceMessages: sourceMessages.default([]),
+    sourceDisposition: z.string().trim().min(1).max(2000).nullable().default(null),
   })
   .strict();
 
@@ -50,6 +67,8 @@ export const workItemRequestSchema = z
     detail: detail.optional(),
     status: workItemStatusSchema.optional(),
     humanReply: humanReply.optional(),
+    sourceMessages: sourceMessages.optional(),
+    sourceDisposition: z.string().trim().min(1).max(2000).nullable().optional(),
   })
   .strict();
 
@@ -77,6 +96,42 @@ export const workItemPageSchema = z
     total: z.number().int().nonnegative(),
     remaining: z.number().int().nonnegative(),
     nextCursor: workItemId.nullable(),
+  })
+  .strict();
+
+export const ownerRequestQuerySchema = z
+  .object({
+    cursor: z.string().min(1).max(2048).optional(),
+    limit: z.number().int().min(1).max(50).default(20),
+    includeHandled: z.boolean().default(false),
+  })
+  .strict();
+export const ownerRequestHttpQuerySchema = ownerRequestQuerySchema.extend({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  includeHandled: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+});
+export const ownerRequestPageSchema = z
+  .object({
+    items: z
+      .array(
+        ownerMessageReferenceSchema
+          .extend({
+            text: z.string().max(1200),
+            totalCharacters: z.number().int().nonnegative(),
+            createdAt: z.string(),
+            delivery: z.string(),
+            coverage: z.enum(['untriaged', 'linked', 'triaged']),
+            workItemIds: z.array(workItemId),
+          })
+          .strict(),
+      )
+      .max(50),
+    nextCursor: z.string().nullable(),
+    total: z.number().int().nonnegative(),
+    notice: z.string(),
   })
   .strict();
 

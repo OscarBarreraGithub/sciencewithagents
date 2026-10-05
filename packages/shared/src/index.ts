@@ -1,15 +1,16 @@
 export * from './work-items.js';
+export * from './archive.js';
 export * from './project-workflow.js';
 export * from './conversations.js';
 import { conversationSurfaceSchema } from './conversations.js';
-import { workItemPageQuerySchema } from './work-items.js';
+import { workItemPageQuerySchema, ownerRequestQuerySchema } from './work-items.js';
 import { z } from 'zod';
 export * from './browser-drafts.js';
 export * from './local-access.js';
 export * from './mirror-page.js';
 export * from './codex-transcript.js';
 export * from './codex-history.js';
-import { allowanceRequestSchema, allowanceSchema } from './quark.js';
+import { allowanceFieldsSchema, allowanceSchema } from './quark.js';
 import { mcpFormSchema, mcpFormValuesSchema } from './mcp-forms.js';
 import { mcpUrlRequestSchema } from './mcp-urls.js';
 import { backupStatusSchema } from './backups.js';
@@ -26,6 +27,7 @@ export * from './providers.js';
 export * from './usage.js';
 export * from './capacity.js';
 export * from './resources.js';
+export * from './cluster.js';
 export * from './pulsar.js';
 export * from './local-jobs.js';
 export * from './mcp-forms.js';
@@ -291,6 +293,10 @@ export const entrySchema = z.object({
   image: generatedImageSchema.optional(),
   status: z.string(),
   createdAt: z.string(),
+  ownerInput: z
+    .object({ delivery: z.enum(['submitted', 'uncertain']) })
+    .strict()
+    .optional(),
 });
 export const runSchema = z.object({
   id,
@@ -478,12 +484,15 @@ export const inspectSchema = z
     read: historyReadSchema.optional(),
     catalog: catalogQuerySchema.optional(),
     workItems: workItemPageQuerySchema.optional(),
+    ownerRequests: ownerRequestQuerySchema.optional(),
     models: z.literal(true).optional(),
     provider: providerIdSchema.optional(),
     changes: z.literal(true).optional(),
     capacity: z.literal(true).optional(),
     resources: z.literal(true).optional(),
     scheduling: z.literal(true).optional(),
+    accounting: z.literal(true).optional(),
+    cluster: z.literal(true).optional(),
   })
   .strict()
   .refine(
@@ -500,10 +509,13 @@ export const inspectSchema = z
         value.read,
         value.catalog,
         value.workItems,
+        value.ownerRequests,
         value.models,
         value.capacity,
         value.resources,
         value.scheduling,
+        value.accounting,
+        value.cluster,
       ].filter(Boolean).length <= 1,
     'Choose one inspection target.',
   );
@@ -566,11 +578,13 @@ export const agentTaskRequestSchema = taskRequestSchema
     }),
     allowances: z
       .array(
-        allowanceRequestSchema.pick({
-          provider: true,
-          windowId: true,
-          limitPercent: true,
-        }),
+        allowanceFieldsSchema
+          .pick({
+            provider: true,
+            windowId: true,
+            limitPercent: true,
+          })
+          .extend({ limitPercent: z.number().positive().max(100) }),
       )
       .min(1)
       .max(40)
@@ -594,3 +608,5 @@ export * from './app-updates.js';
 export * from './browser-setup.js';
 export * from './latex-reading.js';
 export * from './chat-images.js';
+export * from './project-apps.js';
+export * from './publishing-accounts.js';

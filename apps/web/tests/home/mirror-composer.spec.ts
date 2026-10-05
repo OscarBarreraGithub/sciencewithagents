@@ -194,3 +194,90 @@ test('unreadable queue is explicit while the chat and draft remain usable', asyn
   await expect(field).toHaveValue('Retain this draft while reconnecting.');
   await expect(page.getByText('Queue unavailable', { exact: true })).toBeVisible();
 });
+
+test('shared-chat status follows the newest reading through failed, slow and lost refreshes', async ({
+  page,
+}) => {
+  const busy: MirrorState = {
+    windowId: randomUUID(),
+    threadId: randomUUID(),
+    provider: 'codex',
+    label: 'Status check',
+    title: 'Long shared conversation',
+    status: 'busy',
+    message: 'Same conversation as VS Code. Drafts stay separate.',
+    canSteer: true,
+    steerToken: 'turn-1',
+    stopToken: 'turn-1',
+    paged: true,
+    entries: [{ id: 'reply', role: 'assistant', text: 'Still answering normally.' }],
+  };
+  const idle: MirrorState = {
+    ...busy,
+    status: 'idle',
+    steerToken: undefined,
+    stopToken: undefined,
+  };
+  const summary = ({ entries: _, ...window }: MirrorState) => window;
+  const failed = { ...summary(idle), status: 'offline', message: 'VS Code is not responding.' };
+  let phase: 'busy' | 'failed' | 'recovered' | 'gone' = 'busy';
+  let slowListAt = 0;
+  let slowListLanded = false;
+  let recoveredAt = 0;
+  const held: import('@playwright/test').Route[] = [];
+  await page.route('**/api/vscode/windows', async (route) => {
+    if (phase === 'gone') return route.fulfill({ json: [] });
+    if (phase === 'busy') return route.fulfill({ json: [summary(busy)] });
+    if (phase === 'failed') return route.fulfill({ json: [failed] });
+    if (recoveredAt) return route.fulfill({ json: [summary(idle)] });
+    // A list that began before the recovering read lands late with the older failure.
+    slowListAt ||= Date.now();
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    slowListLanded = true;
+    return route.fulfill({ json: [failed] });
+  });
+  await page.route(`**/api/vscode/windows/${busy.windowId}`, (route) => {
+    // The native read behind the failed refresh is still outstanding on the editor.
+    if (phase === 'failed') return void held.push(route);
+    if (phase === 'recovered') {
+      // Serve only a chat read that clearly started after the slow list did.
+      if (!recoveredAt && (!slowListAt || Date.now() - slowListAt < 200)) return route.abort();
+      recoveredAt ||= Date.now();
+      return route.fulfill({ json: mirrorPage(idle) });
+    }
+    return route.fulfill({ json: mirrorPage(busy) });
+  });
+  await page.goto(`/#/chats/vscode/${encodeURIComponent(`codex:${busy.threadId}`)}`);
+  await expect(page.getByText('Still answering normally.', { exact: true })).toBeVisible();
+  const draft = page.getByLabel('Message Codex');
+  await draft.fill('How is it going?');
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  const stop = page.getByRole('button', { name: 'Stop reply', exact: true });
+  await expect(send).toBeEnabled();
+  await expect(stop).toBeVisible();
+
+  // A failed native refresh is newer than the retained busy reading: no stale steer or stop.
+  phase = 'failed';
+  await expect(page.getByText('VS Code is not responding.', { exact: true })).toBeVisible();
+  await expect(send).toBeDisabled();
+  await expect(stop).toHaveCount(0);
+  await expect(draft).toHaveValue('How is it going?');
+
+  // A chat read that starts after the failure wins, even over a slower list carrying it.
+  phase = 'recovered';
+  for (const route of held.splice(0)) await route.abort();
+  await expect.poll(() => recoveredAt, { timeout: 8000 }).toBeGreaterThan(0);
+  expect(slowListLanded).toBe(false);
+  await expect(send).toBeEnabled({ timeout: 2000 });
+  await expect(page.getByText('VS Code is not responding.', { exact: true })).toHaveCount(0);
+  await expect.poll(() => slowListLanded, { timeout: 6000 }).toBe(true);
+  await page.waitForTimeout(300);
+  await expect(send).toBeEnabled();
+  await expect(page.getByText('VS Code is not responding.', { exact: true })).toHaveCount(0);
+
+  // A genuine disconnect removes the window from discovery; the draft stays.
+  phase = 'gone';
+  await expect(page.getByText(/^Offline\. Open VS Code/)).toBeVisible();
+  await expect(send).toBeDisabled();
+  await expect(draft).toHaveValue('How is it going?');
+});

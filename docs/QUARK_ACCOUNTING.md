@@ -17,7 +17,8 @@ allowance headroom and machine capacity. Managers use `dock_budget` for an owner
 allowance allocation, using each provider's actual reported window. Raw token counts remain
 accounting evidence; the legacy `tokenBudget` field is no longer an admission gate. Cached
 context rereads must not produce requests to approve millions of tokens.
-Existing task caps appear on task cards; project caps appear on project cards in **QUARK**.
+Existing task caps appear on task cards; cumulative project caps appear under **Total allowance
+caps** on project cards in **QUARK**.
 Move a slider up or down; release it to save. Estimated spent/remaining amounts refresh
 from the shared ledger every ten seconds while the page is visible. Provider readings can
 be older or unavailable; these are not instantaneous billing figures.
@@ -32,9 +33,36 @@ device’s edit is reported rather than overwritten. Raising a cap does not resu
 work by itself: use **Continue work** on the card after checking the remaining allowance.
 For a new project-wide cap, tell QUARK what to allocate (or set it during project setup).
 
+**Project usage rates** gives each project separate Codex and Claude sliders, current
+estimated percentage points/hour and the last 12 hours of observed coverage. Release to save,
+or type an exact rate and leave the field/press Enter. A 5% rate permits five percentage points
+of the full named allowance in a rolling 60 minutes; it is not five percent of the remaining
+balance. Zero pauses that project's chosen provider; window grants must remain positive.
+All managers and workers share the project rate, and task limits include descendants.
+Each reported provider/window is checked independently alongside cumulative caps and reserves.
+Uncapped work keeps shared pace until the owner chooses a rate. Lowering below already
+consumed usage may wait for older charges to leave the hour; stopping can overshoot in flight.
+
+`dock_budget` uses `period:"hour"` for an owner-requested task hourly limit; the default
+`period:"window"` retains the existing grant behavior. QUARK's owner-message budget control
+can set project limits with the same period. Only owner controls can raise or turn off a
+limit. Revision checks and retry receipts preserve concurrent edits and prior spending.
+Admission includes jobs reserved before provider startup. Attributed spending replaces
+finished estimates after a later positive report; missing/reset reports retain uncertain
+completed estimates for up to one hour. Delayed charges enter the hour when observed,
+conservatively. A reset or restart does not erase that hour or invent a spending delta.
+Running hourly overruns use the independent stop guard. After a provider-confirmed stop,
+fresh readings and room in the rolling hour can continue saved progress automatically;
+owner pauses and exhausted window grants retain their separate continuation requirements.
+
 A task cap includes its descendants, workers, associated manager reports and cache
 refreshes. A whole-project cap also includes general manager conversation overhead.
 Unassociated manager messages cannot be attributed to a particular task automatically.
+Ordinary manager coordination turns start with a separate 0.5-percentage-point reservation
+and two-minute estimate, instead of inheriting the entire task forecast. This lets a manager
+reassess saved work within the remaining grant. Explicit turn estimates take precedence;
+actual spending and concurrent turns remain charged to the same task/project, and pauses,
+stopping buffers and reserves still apply. This estimate cannot guarantee a tiny turn.
 Both project and task caps apply when present. Each provider has its own allowance units.
 The manager's `dock_budget` tool creates or tightens its owned task cap; it cannot increase
 or reset one. A percentage reservation in `dock_schedule` remains a planning estimate and
@@ -84,6 +112,25 @@ Native turns launched through this app's Codex terminal now use the admission ho
 running-turn watcher too. Independent editor/terminal sessions, other computers and
 provider-internal work remain outside the host's complete control. Local transcription does not spend provider tokens and is unaffected
 by these provider caps; its existing resource controls remain separate.
+
+## Manager token reports
+
+Project managers track Codex and Claude separately, including workers and native helpers.
+The host records workers automatically. Managers read `dock_inspect {accounting:true}`
+`totals` once at the start of a reporting period, when relevant to a decision, and at milestone/end:
+full project-to-date rows, with `agentId: null` as each provider's project row
+plus one row per agent. The recent `runs` list is capped at 200 and is never summed as the
+whole project. For a reporting period, the manager saves its scope and baseline totals in
+`dock_checkpoint`. A project-period delta can include concurrent work and is not task-only usage. At a finished project, milestone or handoff, it fetches the latest totals
+and reports a concise per-provider breakdown (manager and worker/helper rows, or linked detail
+for larger teams): input, cached input, cache writes, output, reasoning and total tokens, measured and
+incomplete runs, labelled project-to-date or scoped delta with its as-of time. Null counters
+are unknown or partial, not zero; `nativeOverlap` rows may overlap parent counters and are shown separately, excluded from
+project rollups; do not add them again or claim complete coverage. Tokens are evidence, separate from estimated allowance percentages, and no per-task token
+caps are set. The current reply's own tokens can arrive after the report.
+Current allowance comes from cached capacity and host notices, not repeated historical totals.
+Existing Codex contexts can retain an older strict tool catalog: if `accounting` is unavailable,
+use the established `scheduling:true` response's `accounting.totals` at the same reporting points.
 
 ## What the measurements mean
 

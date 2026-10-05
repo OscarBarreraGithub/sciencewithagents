@@ -63,6 +63,34 @@ export type CapacityStatus = z.infer<typeof capacityStatusSchema>;
 export function sameAllowanceReset(a: string | null, b: string | null) {
   return a === b || (a !== null && b !== null && Math.abs(Date.parse(a) - Date.parse(b)) < 60_000);
 }
+export const projectRateHistorySchema = z.object({
+  from: z.string().datetime(),
+  to: z.string().datetime(),
+  estimatedPercent: z.number().nonnegative().nullable(),
+  estimatedPercentPerHour: z.number().nonnegative().nullable(),
+  coverageMinutes: z.number().min(0).max(30),
+  samples: z.number().int().nonnegative(),
+  resetsAt: z.string().nullable(),
+  resetBoundary: z.boolean(),
+});
+export const accountRateForecastSchema = z.object({
+  provider: capacityProviderSchema,
+  windowId: z.string(),
+  label: z.string(),
+  observedAt: z.string().datetime().nullable(),
+  remainingPercent: z.number().min(0).max(100),
+  savedReservePercent: z.number().min(0).max(100),
+  effectiveReservePercent: z.number().min(0).max(100),
+  reserveReleased: z.boolean(),
+  resetsAt: z.string().datetime().nullable(),
+  estimatedPercentPerHour: z.number().nonnegative().nullable(),
+  reserveAt: z.string().datetime().nullable(),
+  exhaustionAt: z.string().datetime().nullable(),
+  resetBeforeReserve: z.boolean().nullable(),
+  stale: z.boolean(),
+  configuredProjectPercentPerHour: z.number().nonnegative(),
+  uncappedProjects: z.number().int().nonnegative(),
+});
 export const projectRatesSchema = z.object({
   observedAt: z.string().datetime(),
   rates: z.array(
@@ -78,8 +106,22 @@ export const projectRatesSchema = z.object({
       estimatedPercent: z.number().nonnegative(),
       samples: z.number().int().nonnegative(),
       stale: z.boolean(),
+      history: z.array(projectRateHistorySchema).max(24).default([]),
+      historyCoverageMinutes: z.number().min(0).max(720).default(0),
     }),
   ),
+  accounts: z.array(accountRateForecastSchema).default([]),
+  historyFrom: z.string().datetime().optional(),
+  historyTruncated: z.boolean().default(false),
   notice: z.string(),
 });
 export type ProjectRates = z.infer<typeof projectRatesSchema>;
+
+/** Friendly durations only where the provider actually reports that window. */
+export function allowanceWindowLabel(
+  window: Pick<CapacityWindow, 'label' | 'scope' | 'windowMinutes'>,
+) {
+  if (window.scope === 'general' && window.windowMinutes === 300) return 'Five-hour';
+  if (window.scope === 'general' && window.windowMinutes === 10080) return 'Weekly';
+  return window.label;
+}

@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Layers3, MessageCircle, Settings2, Clock3, Users } from 'lucide-react';
 import {
   latestFamily,
+  allowanceWindowLabel,
+  projectRatesSchema,
+  providerReservePolicy,
+  type ProjectRates,
   quarkCoordinatorStatusSchema,
   quarkDefaultFamilies,
   type Model,
@@ -9,7 +13,7 @@ import {
   type Task,
   type ProviderCapacity,
 } from '@dock/shared';
-import { api, models } from '../api';
+import { api, apiScope, models } from '../api';
 import { ProviderActions } from './ProviderActions';
 import { ago, resetLabel } from './HomeOverview';
 import { SchedulerPanel } from '../SchedulerPanel';
@@ -17,6 +21,9 @@ import { useReading, type HomeData } from './useHomeData';
 import { ChatPage, FlowHeading, FlowEmpty, stateNames } from './WorkspaceFlow';
 import { AssistantFullscreen } from './AssistantFullscreen';
 import { BudgetSlider, type BoardBudget, type BudgetEdits } from './BudgetSlider';
+import { ProviderReserveControl, SharedProtectionControl } from './ProviderReserveControl';
+import { ProjectHourlyBudget } from './ProjectHourlyBudget';
+import { QuarkCluster } from './QuarkCluster';
 import './quark-workspace.css';
 
 const columns = ['Waiting', 'Working', 'Paused / needs input', 'Completed'] as const;
@@ -85,10 +92,12 @@ function QuarkAllowance({
   provider,
   forecast,
   pacing,
+  accounts,
 }: {
   provider: ProviderCapacity;
   forecast: string;
   pacing: QuarkCoordinatorStatus['utilization'];
+  accounts: ProjectRates['accounts'];
 }) {
   const [open, setOpen] = useState(false);
   const stale = provider.stale || provider.state !== 'ready';
@@ -97,15 +106,54 @@ function QuarkAllowance({
     <div className="quark-account" aria-label={`${provider.label} allowance`}>
       <h2>{provider.label}</h2>
       {provider.windows.length ? (
-        provider.windows.map((window) => (
-          <div className="quark-account-window" key={window.id}>
-            <span>{window.label}</span>
-            <strong>
-              {Math.round(100 - window.usedPercent)}% left{stale && ' · old'}
-            </strong>
-            <small>{resetLabel(window.resetsAt, now)}</small>
-          </div>
-        ))
+        provider.windows.map((window) => {
+          const account = accounts.find((a) => a.windowId === window.id);
+          const when = (at: string) =>
+            new Date(at).toLocaleString([], {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            });
+          return (
+            <div className="quark-account-window" key={window.id}>
+              <span>{allowanceWindowLabel(window)}</span>
+              <strong>
+                {Math.round(100 - window.usedPercent)}% left{stale && ' · old'}
+              </strong>
+              <small>{resetLabel(window.resetsAt, now)}</small>
+              {account && (
+                <>
+                  <small>
+                    Account rate{' '}
+                    {account.estimatedPercentPerHour === null
+                      ? 'needs comparable readings'
+                      : `≈${Number(account.estimatedPercentPerHour.toFixed(1))}% / hour`}
+                    .
+                  </small>
+                  <small>
+                    {account.reserveAt && !account.stale
+                      ? account.resetBeforeReserve
+                        ? `Reset comes first, before the projected reserve at ${when(account.reserveAt)}.`
+                        : account.remainingPercent <= account.effectiveReservePercent
+                          ? 'Effective reserve already reached at the reading.'
+                          : `Reserve projected ${when(account.reserveAt)}.`
+                      : 'Reserve depletion time is not yet known.'}
+                    {account.exhaustionAt && !account.stale
+                      ? ` Zero projected ${when(account.exhaustionAt)}${window.resetsAt && Date.parse(window.resetsAt) < Date.parse(account.exhaustionAt) ? ' if the allowance did not reset first' : ''}.`
+                      : ' No exhaustion estimate from this rate.'}
+                  </small>
+                  <small>
+                    Saved project ceilings total{' '}
+                    {Number(account.configuredProjectPercentPerHour.toFixed(1))}% / hour ·{' '}
+                    {account.uncappedProjects} uncapped projects. External activity also uses this
+                    account.
+                  </small>
+                </>
+              )}
+            </div>
+          );
+        })
       ) : (
         <p>
           {provider.observedAt
@@ -115,6 +163,7 @@ function QuarkAllowance({
       )}
       <small>
         {stale ? 'Last reading' : 'Updated'} {ago(provider.observedAt, now) ?? 'not available'}
+        {provider.observedAt && ` · as of ${new Date(provider.observedAt).toLocaleString()}`}
       </small>
       <p>{forecast}</p>
       {pacing
@@ -154,6 +203,7 @@ function QuarkAllowance({
 
 export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: string }) {
   const reading = useReading('/quark/coordinator', quarkCoordinatorStatusSchema.parse);
+  const rateReading = useReading('/project-rates', projectRatesSchema.parse);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -173,6 +223,7 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
   }, [s?.agentId]);
   const refresh = () => {
     reading.retry();
+    rateReading.retry();
     data.snapshot.retry();
   };
   async function continueWork(runIds: string[]) {
@@ -442,10 +493,15 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
         <>
           <div className="quark-overview">
             <div>
-              <span>Shared reserve</span>
-              <strong>{s.queue.policy.reservePercent}%</strong>
+              <span>Shared allowance</span>
+              <strong>{s.queue.policy.enabled ? 'Protected' : 'Pacing off'}</strong>
               <small>
-                kept available {s.queue.policy.enabled ? 'across projects' : '· pacing is off'}
+                One account per provider on{' '}
+                {apiScope() === 'local'
+                  ? (data.hosts.data?.local.label ?? 'this computer')
+                  : (data.hosts.data?.hosts.find((h) => h.id === apiScope())?.label ??
+                    'the selected computer')}
+                .
               </small>
             </div>
             <div>
@@ -461,8 +517,19 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                 windows.length && !provider.stale
                   ? Math.max(
                       0,
-                      Math.min(...windows.map((w) => 100 - w.usedPercent)) -
-                        s.queue.policy.reservePercent,
+                      Math.min(
+                        ...windows.map(
+                          (w) =>
+                            100 -
+                            w.usedPercent -
+                            (s.utilization.find(
+                              (item) =>
+                                item.provider === provider.provider && item.windowId === w.id,
+                            )?.reservePercent ??
+                              providerReservePolicy(s.queue.policy, provider.provider)
+                                .reservePercent),
+                        ),
+                      ),
                     )
                   : null;
               const demand = s.queue.jobs
@@ -473,6 +540,11 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                   key={provider.provider}
                   provider={provider}
                   pacing={s.utilization.filter((window) => window.provider === provider.provider)}
+                  accounts={
+                    rateReading.data?.accounts.filter(
+                      (account) => account.provider === provider.provider,
+                    ) ?? []
+                  }
                   forecast={
                     room === null
                       ? 'Waiting for a fresh reading before starting more work.'
@@ -484,6 +556,26 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
               );
             })}
           </div>
+          <section className="quark-reserve-section" aria-label="Shared provider reserves">
+            <h2>Shared reserves</h2>
+            <p>
+              Keep this percentage of each full allowance available across projects. A zero reserve
+              removes this protection; provider limits and other caps still apply.
+            </p>
+            <div className="quark-reserve-controls">
+              {s.capacity.map((provider) => (
+                <ProviderReserveControl
+                  key={provider.provider}
+                  provider={provider}
+                  policy={s.queue.policy}
+                  pacing={s.utilization.filter((window) => window.provider === provider.provider)}
+                  refresh={refresh}
+                />
+              ))}
+            </div>
+            <SharedProtectionControl policy={s.queue.policy} refresh={refresh} />
+          </section>
+          <QuarkCluster reading={data.cluster} />
           <section className="quark-desk" aria-label="Talk to QUARK">
             <header>
               <div className="quark-desk-title">
@@ -587,20 +679,38 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
           </div>
           <div className="quark-board-heading">
             <div>
-              <h2>Projects and budgets</h2>
+              <h2>Project usage rates</h2>
               <p className="quark-budget-help">
-                Managers set starting task budgets. Adjust a slider to change one; it saves on
-                release. Spending updates automatically.
+                Adjust Codex and Claude separately for each project. Release a slider to save its
+                rate; 0 pauses that provider and keeps progress.
               </p>
               <small className="quark-budget-help">
-                Percentages refer to the full allowance. Project limits and the shared reserve still
-                apply.
+                Current rates are estimates; saved rates are rolling-hour ceilings. Total caps,
+                shared reserves and other pauses still apply. Charts leave gaps where readings are
+                missing.
               </small>
             </div>
             <a className="flow-button" href="#/projects">
               Projects <ArrowUpRight size={16} />
             </a>
           </div>
+          {rateReading.error && (
+            <p role="alert">
+              Rate readings could not update.{' '}
+              {rateReading.data ? 'Showing the last saved estimates.' : 'History is unavailable.'}{' '}
+              <button className="flow-button" onClick={rateReading.retry}>
+                Retry rates
+              </button>
+            </p>
+          )}
+          {rateReading.data && (
+            <p className="quark-footnote">
+              Rate view as of {new Date(rateReading.data.observedAt).toLocaleString()} on the
+              selected computer. Account depletion forecasts include shared and external activity.{' '}
+              {rateReading.data.historyTruncated &&
+                'History results were bounded; coverage may be partial.'}
+            </p>
+          )}
           <div className="quark-projects">
             {boardProjects.slice(0, projectLimit).map((p) => (
               <article
@@ -615,16 +725,33 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                 </a>
                 <span>{p.policy.paused ? 'Paused' : `Priority weight ${p.policy.weight}`}</span>
                 {p.policy.instruction && <small>{p.policy.instruction}</small>}
-                {s.accounting.budgets
-                  .filter((b) => b.projectId === p.id && !b.taskId)
-                  .map(budgetSlider)}
-                {!s.accounting.budgets.some((b) => b.projectId === p.id && !b.taskId) && (
-                  <small>
-                    {s.accounting.budgets.some((b) => b.projectId === p.id)
-                      ? 'No project cap. Task budgets are on the cards below.'
-                      : 'No allowance cap set. The shared reserve still applies.'}
-                  </small>
-                )}
+                {s.capacity.map((provider) => (
+                  <ProjectHourlyBudget
+                    key={provider.provider}
+                    projectId={p.id}
+                    provider={provider}
+                    budgets={s.accounting.budgets}
+                    rates={rateReading.data?.rates}
+                    refresh={refresh}
+                  />
+                ))}
+                <details className="quark-total-caps" open={p.id === taskId}>
+                  <summary>Total allowance caps</summary>
+                  <p>
+                    Optional cumulative caps use each actual reported allowance window, separately
+                    from hourly rates.
+                  </p>
+                  {s.accounting.budgets
+                    .filter((b) => b.projectId === p.id && !b.taskId && b.period === 'window')
+                    .map(budgetSlider)}
+                  {!s.accounting.budgets.some(
+                    (b) => b.projectId === p.id && !b.taskId && b.period === 'window',
+                  ) && (
+                    <small>
+                      No project total cap saved. Ask QUARK to set one using a reported window.
+                    </small>
+                  )}
+                </details>
               </article>
             ))}
             {boardProjects.length > projectLimit && (

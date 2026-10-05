@@ -152,7 +152,7 @@ describe('Codex exact-turn stop', () => {
     ]);
     // History and native queue reads are the only other calls; no turn/start,
     // thread/start or thread/queue/add may accompany a stop.
-    const allowed = ['thread/read', 'thread/queue/list', 'turn/interrupt'];
+    const allowed = ['thread/read', 'thread/turns/list', 'thread/queue/list', 'turn/interrupt'];
     expect(f.calls.every(({ method }) => allowed.includes(method))).toBe(true);
     const threads = f.calls.map(({ params }) => (params as { threadId?: string }).threadId);
     expect(new Set(threads)).toEqual(new Set(['thread']));

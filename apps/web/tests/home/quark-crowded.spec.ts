@@ -90,16 +90,16 @@ test('a crowded board bounds lists without hiding work and links land on their c
   await expect(waiting.locator('.quark-ticket')).toHaveCount(40);
   await expect(page.locator('.quark-project-card')).toHaveCount(6);
   await expect(page.locator('.quark-project-card').first()).toContainText(
-    'No project cap. Task budgets are on the cards below.',
+    'No project total cap saved. Ask QUARK to set one using a reported window.',
   );
   await expect(page.locator('.quark-project-card').nth(1)).toContainText(
-    'No allowance cap set. The shared reserve still applies.',
+    'No project total cap saved. Ask QUARK to set one using a reported window.',
   );
   await expect(page.getByRole('button', { name: 'Show all 30 projects' })).toBeVisible();
   // A project cap beyond the bounded list and a finished task are revealed and focused.
   await page.goto(`/#/work/${projects[29]!.id}`);
   const project = page.locator(`#quark-project-${projects[29]!.id}`);
-  await expect(project.getByRole('slider')).toBeVisible();
+  await expect(project.locator('.quark-total-caps').getByRole('slider')).toBeVisible();
   await expect(project).toBeFocused();
   await page.goto(`/#/work/${tasks[40]!.id}`);
   const done = page.locator(`#quark-task-${tasks[40]!.id}`);

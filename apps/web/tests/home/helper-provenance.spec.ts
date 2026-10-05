@@ -101,7 +101,11 @@ test('shared read failures remain visible and recover without submitting the ret
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
   await expect(draft).toHaveValue('Keep this unsent request.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByText('Fixture refuses delivery', { exact: true })).toBeVisible();
+  // The one-line receipt keeps its height; expanding it reveals the full wrapped message.
+  const receipt = page.getByRole('group', { name: 'Fixture refuses delivery', exact: true });
+  await expect(receipt).toBeVisible();
+  await receipt.locator('summary').click();
+  await expect(receipt.getByText('Fixture refuses delivery', { exact: true })).toHaveCount(2);
   await expect(draft).toHaveValue('Keep this unsent request.');
   expect(sends).toBe(1);
 });

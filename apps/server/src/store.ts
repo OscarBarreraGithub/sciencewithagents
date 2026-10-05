@@ -92,11 +92,13 @@ export class Store extends EventEmitter {
       CREATE TABLE IF NOT EXISTS operations (key TEXT PRIMARY KEY, input TEXT NOT NULL, result TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS pulsar_leases (run_id TEXT PRIMARY KEY REFERENCES runs(id), body TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS pulsar_leases_finished ON pulsar_leases(json_extract(body, '$.finishedAt') DESC);
       CREATE TABLE IF NOT EXISTS quark_runs (run_id TEXT PRIMARY KEY REFERENCES runs(id), body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS quark_allowances (id TEXT PRIMARY KEY, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS quark_intervals (id INTEGER PRIMARY KEY AUTOINCREMENT, receipt TEXT UNIQUE NOT NULL, body TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS quark_intervals_window ON quark_intervals(json_extract(body, '$.provider'),json_extract(body, '$.windowId'),id);
       CREATE INDEX IF NOT EXISTS quark_intervals_observed ON quark_intervals(json_extract(body, '$.observedAt'));
+      CREATE INDEX IF NOT EXISTS quark_intervals_window_observed ON quark_intervals(json_extract(body, '$.provider'),json_extract(body, '$.windowId'),json_extract(body, '$.observedAt'));
       CREATE TRIGGER IF NOT EXISTS quark_intervals_no_update BEFORE UPDATE ON quark_intervals BEGIN SELECT RAISE(ABORT, 'append-only allowance evidence'); END;
       CREATE TRIGGER IF NOT EXISTS quark_intervals_no_delete BEFORE DELETE ON quark_intervals BEGIN SELECT RAISE(ABORT, 'append-only allowance evidence'); END;
       CREATE TABLE IF NOT EXISTS local_jobs (id TEXT PRIMARY KEY, body TEXT NOT NULL);
@@ -288,6 +290,18 @@ export class Store extends EventEmitter {
       )
       .all(...statuses)
       .map((row) => JSON.parse(String(row.body)) as PrivateRun);
+  }
+  latestOwnerInputAt(agentId: string, excludeRunId?: string): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT MAX(at) AS latest FROM (
+      SELECT json_extract(body,'$.createdAt') AS at FROM runs WHERE agent_id=? AND id<>? AND json_extract(body,'$.kind')='user'
+      UNION ALL
+      SELECT json_extract(body,'$.createdAt') AS at FROM entries WHERE agent_id=? AND COALESCE(json_extract(body,'$.runId'),'')<>? AND (json_extract(body,'$.kind')='user' OR json_extract(body,'$.title')='Owner steering')
+    )`,
+      )
+      .get(agentId, excludeRunId ?? '', agentId, excludeRunId ?? '');
+    return typeof row?.latest === 'string' ? row.latest : null;
   }
   runsForAgent(agentId: string, limit = 50) {
     return this.db

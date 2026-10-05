@@ -8,6 +8,7 @@ Use the running installation's compiled CLI from its repository directory:
 ```sh
 node apps/server/dist/cli.js quark usage
 node apps/server/dist/cli.js quark resources
+node apps/server/dist/cli.js quark cluster
 node apps/server/dist/cli.js quark projects
 node apps/server/dist/cli.js quark jobs
 ```
@@ -41,8 +42,13 @@ increase an existing cap. Percentage attribution and cache expiry remain estimat
 App-managed managers already receive typed inspection/delegation tools and signed QUARK
 leases. Routine app-managed tasks use shared headroom without an invented task cap. Record an
 owner-requested cap with real provider/window IDs; the owner can adjust it on the QUARK board.
-Raw-token counters and the legacy tokenBudget estimate never block admission. A per-turn scheduling estimate is not the total task budget. Existing owner
-limits take precedence; do not invent a percentage when evidence is missing. Use those
+Raw-token counters and the legacy tokenBudget estimate never block admission. A per-turn
+scheduling estimate is not the total task budget.
+Project/task rolling-hour limits use percentage points of a reported provider allowance,
+separately from window grants. Managers use `dock_budget` with `period:"hour"` for an
+owner-requested task limit. Hourly waits retain recent spending across resets and restarts;
+they never authorize a replacement task or an increased cap.
+Existing owner limits take precedence; do not invent a percentage when evidence is missing. Use those
 tools inside managed turns, not this external client to sidestep a lease.
 The external client requests work from an existing app-managed manager. It cannot turn the
 calling terminal agent into a leased manager or control unrelated editor/terminal activity.

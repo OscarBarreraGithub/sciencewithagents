@@ -10,6 +10,10 @@ const probe = vi.hoisted(() => ({
   swaps: 4,
   processes: '',
   commands: '',
+  storage: '',
+  network: '',
+  gpu: '',
+  thermal: '',
 }));
 vi.mock('node:os', async (original) => ({
   ...(await original<typeof import('node:os')>()),
@@ -39,9 +43,17 @@ vi.mock('node:child_process', async (original) => ({
         ? args.includes('pid=,lstart=,command=')
           ? probe.commands
           : probe.processes || ' 101 1 Mon Sep 28 10:00:00 2026 00:01.00 100 /fixture/app'
-        : args.includes('vm.swapusage')
-          ? 'used = 4M'
-          : '1';
+        : file.endsWith('ioreg')
+          ? args.includes('IOAccelerator')
+            ? probe.gpu
+            : probe.storage
+          : file.endsWith('netstat')
+            ? probe.network
+            : file.endsWith('pmset')
+              ? probe.thermal
+              : args.includes('vm.swapusage')
+                ? 'used = 4M'
+                : '1';
     callback(null, output);
   },
 }));
@@ -58,6 +70,10 @@ beforeEach(() => {
     swaps: 4,
     processes: '',
     commands: '',
+    storage: '',
+    network: '',
+    gpu: '',
+    thermal: '',
   });
   root = mkdtempSync(join(tmpdir(), 'quark-shared-machine-'));
   store = new Store(join(root, 'dock.sqlite'));
@@ -154,6 +170,75 @@ it('shares CPU/volume/VM readings, uses VM timestamps for swap rate and resets a
   expect(afterSleep.machine?.cpuUsedPercent).toBeNull();
   expect(afterSleep.swapOutBytesPerSecond).toBeNull();
 });
+
+it.skipIf(process.platform !== 'darwin')(
+  'reports disk, network, GPU and thermal readings from counters and says what is unavailable',
+  async () => {
+    const watcher = new ResourceProbe(() => capacity.resourceReading());
+    const signal = new AbortController().signal;
+    const storage = (read: number, written: number, devices = 1) =>
+      Array.from(
+        { length: devices },
+        (_, i) =>
+          `"Statistics" = {"Bytes (Read)"=${i ? 5e9 : read},"Bytes (Write)"=${i ? 5e9 : written}}`,
+      ).join('\n');
+    const link = (name: string, received: number, sent: number) =>
+      `${name} 1500 <Link#7> d0:11:e5:ac:48:bc 10 0 ${received} 10 0 ${sent} 0`;
+    const network = (received: number, sent: number) =>
+      [
+        'Name Mtu Network Address Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll',
+        link('lo0', 9e9, 9e9).replace(' d0:11:e5:ac:48:bc', ''),
+        link('en1', received, sent),
+        'en1 1500 192.168.1 192.168.1.5 10 - 999999 10 - 999999 -',
+        link('utun5', 9e9, 9e9).replace(' d0:11:e5:ac:48:bc', ''),
+      ].join('\n');
+    const empty = await watcher.sample(signal, time);
+    expect(empty).toMatchObject({
+      diskReadBytesPerSecond: null,
+      networkReceiveBytesPerSecond: null,
+      gpuUtilizationPercent: null,
+      thermalWarning: 'unknown',
+    });
+    for (const text of [
+      'Disk I/O',
+      'Network traffic',
+      'GPU use',
+      'thermal warning',
+      'Temperatures',
+    ])
+      expect(empty.unavailable.join(' ')).toContain(text);
+    Object.assign(probe, {
+      storage: storage(1000, 2000),
+      network: network(100, 200),
+      gpu: '"PerformanceStatistics" = {"Device Utilization %"=4,"Renderer Utilization %"=3}',
+      thermal: 'Note: No thermal warning level has been recorded',
+    });
+    time += 15_000;
+    expect((await watcher.sample(signal, time)).diskReadBytesPerSecond).toBeNull();
+    Object.assign(probe, { storage: storage(16_000, 32_000), network: network(1600, 3200) });
+    time += 15_000;
+    const measured = await watcher.sample(signal, time);
+    expect(measured).toMatchObject({
+      diskReadBytesPerSecond: 1000,
+      diskWriteBytesPerSecond: 2000,
+      networkReceiveBytesPerSecond: 100,
+      networkSendBytesPerSecond: 200,
+      gpuUtilizationPercent: 4,
+      thermalWarning: 'none',
+    });
+    const notes = measured.unavailable.join(' ');
+    for (const text of ['Disk I/O', 'Network traffic', 'GPU use', 'thermal warning'])
+      expect(notes).not.toContain(text);
+    expect(notes).toContain('Temperatures are not measured');
+    // An added disk or a counter reset is not a burst of activity.
+    Object.assign(probe, { storage: storage(17_000, 33_000, 2), network: network(0, 0) });
+    time += 15_000;
+    expect(await watcher.sample(signal, time)).toMatchObject({
+      diskReadBytesPerSecond: null,
+      networkReceiveBytesPerSecond: null,
+    });
+  },
+);
 
 it.skipIf(process.platform !== 'darwin')(
   'identifies selected Python scripts, ties only supervised descendants to QUARK, and rejects reused PIDs',

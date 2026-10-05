@@ -5,9 +5,9 @@ How to check this source, and what the collected evidence does and does not show
 for the source actually checked. Historical passing runs do not certify a newer revision.
 Private logs, screenshots, disposable databases and native-session receipts stay under `data/`.
 
-## Historical evidence — recorded through 2026-10-04
+## Historical evidence — recorded through 2026-10-05
 
-This summarizes the beta verification notes recorded through October 4, 2026, including
+This summarizes the beta verification notes recorded through October 5, 2026, including
 earlier setup checks. They were not rerun for this page. Dated details are in Git history
 and private receipts; rerun the relevant checks when a change touches these areas.
 
@@ -32,12 +32,32 @@ and private receipts; rerun the relevant checks when a change touches these area
 - The installed host passed an authenticated screenshot upload, same-receipt retry and
   byte-for-byte download after an idle restart.
 - Both public domains redirected to GitHub and loaded the README in Chromium and iPhone WebKit.
+- Slurm: the read-only collector ran live over a cached FASRC session (Slurm 26.05.4); its
+  anonymized replies are the parser fixtures. A no-model Codex App Server sandbox and
+  Anthropic's standalone sandbox runtime showed which roles reach the SSH control socket. A
+  disposable local SSH server exercised the sign-in's background master and loopback notebook
+  forwards. The notebook template ran locally on loopback with JupyterLab 4.6.4 (jupyter_server
+  2.21.1): a log path with spaces became mode 600 before Jupyter wrote, a piped log was left
+  alone, and a log that could not be changed stopped the job before Jupyter started. Startup URLs
+  showed `token=...`; only a request error on a token-bearing URL printed the token. A bounded
+  real Slurm job subsequently completed through an app-managed Claude agent, including native
+  file creation, submission, polling, copy-back and scratch cleanup. Real password/code sign-in
+  remains unverified. A real compute-node Jupyter server subsequently returned HTTP 200
+  through the app's private loopback forward. Repeated open reused that forward; close
+  removed it. The test found and corrected split-DNS interface binding: the same node and
+  port became reachable when Jupyter listened on the compute node's IPv4 interfaces.
+  Connection and job-log files were private; the token was absent from stored app records.
+  Native writing-role checks exercised files, HTTPS, browser rendering and cached SSH without
+  app permission prompts; read-only roles remain restricted. A private Unix reverse forward
+  worked on FASRC, but an actual remote VS Code workspace still needs acceptance.
 
 **Fixture and emulated coverage:** focused backend checks and isolated demo servers, with
 browser checks at desktop, 412×915, 360×800, 915×412 and, for phone work, iPhone WebKit:
 
 - Failed requests and retry, idempotent resends, conflicting saves, saved and retained drafts,
   paged history, steering/queueing, queue states, keyboard layout and enlarged text/UI scale.
+  Synthetic visual-viewport events cover keyboard dismissal while zoomed, reordered or missing
+  final events, route changes, resume and rotation; Chromium also applies a real page scale.
 - Crowded fixtures: many projects and tasks, long titles, open human requests, stale readings
   and budget boundaries, with explicit continuation controls.
 - Phone pairing authorization, screenshot attachments, folder browsing, selected-host
@@ -48,6 +68,9 @@ browser checks at desktop, 412×915, 360×800, 915×412 and, for phone work, iPh
 - Scheduler recovery, provider-discovery outage and retry, SSE backpressure, startup with both
   providers unavailable and idle HTTP connection renewal.
 - Resource triggers, cooldowns, QUARK admission and read-only evidence retrieval.
+- Compact coordinator/resource evidence, bounded detail reads and totals-only manager
+  accounting. Fresh-context checks cover queued owner follow-ups, inactivity measured from
+  owner messages, retained choices/history and cancellation while a native session closes.
 - Retained classic-workspace regression checks.
 
 **Limits:**
@@ -58,8 +81,9 @@ browser checks at desktop, 412×915, 360×800, 915×412 and, for phone work, iPh
 - Ubuntu CI checks the source build, backend and emulated browsers. It does not certify native
   Linux desktop integration; Intel Mac and Windows remain unqualified.
 - Image delivery tests verify readable paths, not provider vision accuracy. Fixture browser
-  connections do not certify a real browser inventory. Resource checks do not validate GPU or
-  temperature telemetry or every generated diagnosis.
+  connections do not certify a real browser inventory. Native disk/network/GPU/thermal-warning
+  probes returned readings on the test Mac; they do not certify other drivers or every diagnosis.
+  Temperature readings are unavailable through these unprivileged probes.
 - Some formatted equations still scroll; no universal TeX equivalence or package support
   is claimed.
 - Live provider evidence applies to the versions used; do not extend it to later provider updates.

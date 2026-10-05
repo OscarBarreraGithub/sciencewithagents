@@ -89,6 +89,8 @@ be described as a failed core installation. Browser-test downloads are developer
    **sciencewithagents** app from Applications. For a source launch use
    `sh scripts/pnpm start` and `sh scripts/pnpm dock open` in this clone. The latter
    opens its private browser handoff; a bare localhost link is not the authenticated entry.
+   The handoff connects the default browser only; to use another browser, make it the
+   default and open the app again.
    Have them use **Welcome and setup → Choose team defaults**, keep or save their provider
    choice, return to **Check accounts and setup**, then **Check this computer → Create first
    project**. If the saved defaults already match their provider, continue directly to the

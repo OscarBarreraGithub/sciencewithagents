@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -86,6 +87,21 @@ function send(value: unknown, authorization = `Bearer ${config.secret}`) {
     url: '/api/agent-client/tasks',
     headers: { host: `127.0.0.1:${port}`, origin: config.origin, authorization },
     payload: value,
+  });
+}
+/** Route the CLI's loopback requests into the test server. */
+function injectFetch() {
+  return vi.fn(async (url: string, init: RequestInit) => {
+    const target = new URL(url);
+    expect(target.origin).toBe(config.origin);
+    expect(init.redirect).toBe('error');
+    const result = await app.inject({
+      method: init.method as 'GET' | 'POST',
+      url: target.pathname + target.search,
+      headers: { ...init.headers, host: target.host },
+      ...(init.body ? { payload: init.body as string } : {}),
+    });
+    return new Response(result.body, { status: result.statusCode });
   });
 }
 function read(path: string, authorization?: string) {
@@ -248,19 +264,7 @@ it('retains a private host capability through restart/port change and refuses sh
 });
 
 it('client uses the configured loopback entry, returns remaining readings, and retries the same dispatch receipt', async () => {
-  const transport = vi.fn(async (url: string, init: RequestInit) => {
-    const target = new URL(url);
-    expect(target.origin).toBe(config.origin);
-    expect(init.redirect).toBe('error');
-    const result = await app.inject({
-      method: init.method as 'GET' | 'POST',
-      url: target.pathname + target.search,
-      headers: { ...init.headers, host: target.host },
-      ...(init.body ? { payload: init.body as string } : {}),
-    });
-    return new Response(result.body, { status: result.statusCode });
-  });
-  vi.stubGlobal('fetch', transport);
+  vi.stubGlobal('fetch', injectFetch());
   const usage = (await agentClientCommand(root, 'usage', [])) as {
     providers: { windows: { remainingPercent: number }[] }[];
   };
@@ -284,6 +288,70 @@ it('client uses the configured loopback entry, returns remaining readings, and r
   expect(provider).not.toHaveBeenCalled();
 });
 
+it('a manager conversation that predates dock_app registers its app through the client from its active turn', async () => {
+  vi.stubGlobal('fetch', injectFetch());
+  const folder = join(root, 'news');
+  mkdirSync(folder);
+  const project = store.register(folder, 'AI News', '', 'codex');
+  const manager = store.agent(project.managerId);
+  // Codex keeps the old tool catalog; the refreshed host instructions name this route.
+  const charter = (runtime as unknown as { charter(agent: unknown): string }).charter(manager);
+  expect(charter).toContain('quark app');
+  expect(charter).toContain(manager.id);
+  const file = join(folder, 'app-request.json');
+  const save = (value: Record<string, unknown>, path = file) => {
+    writeFileSync(path, JSON.stringify(value));
+    return agentClientCommand(root, 'app', [path]);
+  };
+  const first = { key: randomUUID(), managerId: manager.id, name: 'Daily digest', port: 5173 };
+  await expect(save(first)).rejects.toThrow('active turn');
+  // Admit one manager turn with its host-signed lease, as the scheduler does.
+  const run = store.enqueue(manager.id, randomUUID(), 'Older conversation turn');
+  expect(runtime.pulsar.reserve(store.run(run.id), new Set())).toBeTruthy();
+  runtime.quark.issueManagerLease(store.run(run.id));
+  store.updateRun(run.id, { status: 'running' });
+  const created = await save(first);
+  expect(created).toMatchObject({
+    projectId: project.id,
+    managerId: manager.id,
+    port: 5173,
+    revision: 1,
+  });
+  // The same file and key return the original receipt.
+  expect(await save(first)).toEqual(created);
+  const id = (created as { id: string }).id;
+  const update = { managerId: manager.id, id, port: 5174 };
+  await expect(save({ ...update, key: randomUUID(), expectedRevision: 0 })).rejects.toThrow(
+    'current revision 1',
+  );
+  expect(await save({ ...update, key: randomUUID(), expectedRevision: 1 })).toMatchObject({
+    id,
+    port: 5174,
+    revision: 2,
+  });
+  // A request outside the project folder, a helper identity or a read-only manager owns nothing.
+  await expect(
+    save({ ...first, key: randomUUID(), name: 'Outside' }, join(root, 'outside.json')),
+  ).rejects.toThrow('inside this manager');
+  const helper = store.addAgent({
+    projectId: project.id,
+    taskId: null,
+    parentId: manager.id,
+    name: 'Reader',
+    role: 'researcher',
+    cwd: folder,
+  });
+  await expect(save({ ...first, key: randomUUID(), managerId: helper.id })).rejects.toThrow(
+    'Only a project manager',
+  );
+  store.updateAgent(manager.id, { permission: 'read-only' });
+  await expect(save({ ...first, key: randomUUID(), name: 'Other', port: 5180 })).rejects.toThrow(
+    'read-only',
+  );
+  expect(runtime.apps.list(project.id)).toHaveLength(1);
+  store.updateRun(run.id, { status: 'completed' });
+});
+
 it('does not expose the client capability when the entry has not enabled it', async () => {
   const disabled = await createServer(store, runtime, { port, ownsRuntime: false });
   try {
@@ -303,15 +371,22 @@ it('does not expose the client capability when the entry has not enabled it', as
 it('new client grants constrain the first manager and descendants and cannot be increased by a manager', async () => {
   const input = request();
   const response = (
-    await send({ ...input, allowances: [{ ...input.allowances[0], limitPercent: 1 }] })
+    await send({
+      ...input,
+      task: { ...input.task, scheduling: { quotaPercent: 2 } },
+      allowances: [{ ...input.allowances[0], limitPercent: 1 }],
+    })
   ).json();
   const run = store.run(response.runId);
+  // This deliberately larger turn cannot fit, even though a small manager reply can.
+  store.setSetting(`pulsar:estimate:${run.id}`, { quotaPercent: 2 });
   expect(runtime.quark.reason(run, true)).toMatch(/budget|allowance/i);
   const child = store.addTask(input.projectId, {
     title: 'Follow-up',
     goal: 'Check detail',
     acceptance: 'Evidence',
     parentId: response.task.id,
+    scheduling: { quotaPercent: 2 },
   });
   const worker = store.addAgent({
     projectId: input.projectId,

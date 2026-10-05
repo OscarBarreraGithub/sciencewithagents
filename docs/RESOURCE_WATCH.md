@@ -5,12 +5,12 @@ small IT desk: a local watcher plus a resource assistant that wakes only for a d
 Open the computer card on Home, then **Open Resource assistant** for a full-screen
 conversation. Add a symptom, read the findings, stop a pending check or return to the charts.
 Projects and jobs appear above Apps and processes. Past readings are inspected through the
-graphs; the page has no history list or conversation archive browser. Resource conversations,
-reports and their evidence remain saved and available to the resource assistant and history
-APIs, outside the normal chat list. Existing saved-conversation links still work.
+graphs. In the assistant, the clock button opens **Diagnosis history** with recent user
+conversations, including their saved drafts. Automatic reports stay available as evidence
+without crowding this history or the normal chat list. Older saved-conversation links still work.
 The model button opens provider, model and thinking choices without crowding the chat.
-**New conversation** opens a clean draft; previous messages remain saved and do not reappear
-on reload.
+**New diagnosis** opens a clean draft while keeping the selected model and thinking level.
+Previous messages and drafts remain recoverable from history and do not reappear on reload.
 
 ## What matters
 
@@ -24,6 +24,13 @@ on reload.
   it is not exact physical memory attribution or proof of a leak.
 - **Storage headroom and QUARK context:** free space on the workspace volume, running/waiting
   jobs, reasons and planning reservations. Reservations are not measured project CPU/RAM.
+- **Disk, network, GPU and thermal:** disk read/write rates summed over block-storage drivers
+  (`ioreg`), traffic on physical Wi-Fi/Ethernet interfaces (`netstat -ibn`, excluding VPN
+  tunnels and bridges), the GPU driver's reported device utilization, and the macOS thermal
+  or performance warning state (`pmset -g therm`). Rates need two readings; an added disk,
+  interface change or counter reset gives no rate instead of a spike. These readings add no
+  findings or automatic checks. Temperatures are not supplied by these unprivileged probes;
+  the app does not run administrator tools such as `powermetrics`.
 
 Computer health consumes QUARK's existing CPU, volume and VM readings. It does not query
 those counters a second time. Its additional read-only macOS process/pressure/swap probes
@@ -32,8 +39,8 @@ VM-reading timestamps, even when the watcher samples at a different cadence.
 A one-minute local history retains the last 24 hours; API/chart history is downsampled.
 CPU rates compare cumulative counters and process start identities. Sleep/restart gaps
 reset intervals and alert persistence. Unknown/stale readings stay explicit. Detailed
-process/memory probes currently support macOS; GPU, thermal, disk I/O and network diagnosis
-remain unmeasured. The app does not promise to identify a particular Chrome tab.
+process, memory, disk, network, GPU and thermal probes currently support macOS; elsewhere
+they are reported unavailable. The app does not promise to identify a particular Chrome tab.
 
 **Your work on this computer** groups measured CPU and resident memory by each app-owned
 agent or local job and its project. Existing supervisor handles establish ownership; process
@@ -58,7 +65,7 @@ not automatic deletion of saved work.
 
 The two reusable charters live in `apps/server/src/resource-watch.ts`. Managers can use
 `dock_inspect {resources:true}` without waking another model. Explicit owner questions use
-native diagnostic tools and the provider's normal workspace-write boundary. The assistant
+native diagnostic tools with full native access, like other writing roles. The assistant
 can inspect relevant system state or logs; it must distinguish actual findings from guesses.
 A question about failed login or switching users does not authorize logging out, restarting,
 killing processes or changing OS/account settings. Low CPU alone never proves a service works.
@@ -81,6 +88,15 @@ with measured process use. Either kind may request one
 bounded grad consultation, which cannot escalate again. Automatic consultations count against
 the same daily limit. Finished provider processes are released while saved history remains.
 No provider/model is silently substituted.
+
+After one hour without owner input, the next idle question starts a fresh diagnosis with the
+same provider, model and native settings. Opening the view alone never abandons queued or
+active work. Earlier diagnoses, native thread IDs and reports remain readable; assistant and
+monitoring activity do not prolong the owner inactivity clock. Browser drafts and notepad
+content are retained separately from native context.
+The bounded recent history reserves space for eight distinct owner diagnoses, so routine
+automatic reports cannot displace every owner conversation. Earlier reports remain in their
+saved conversations.
 
 An explicit owner question about a known saved report upgrades that same conversation to native
 assistance; merely opening it does not. Older reports that already contain owner questions also
@@ -135,3 +151,10 @@ as a combination of memory conditions rather than a RAM percentage. The macOS
 [pressure sysctl](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_memorystatus_notify.c)
 exports dispatch flags (1/2/4), which differ from the kernel’s internal enum. Missing or
 unrecognized values are unknown, never interpreted as healthy.
+
+Default assistant context includes current processes, compact trend readings and previews of
+the original question’s measurements. It omits repeated historical process/job lists.
+`dock_inspect {resources:true,history:true}` retrieves the detailed sampled history and original
+request readings when relevant. Native process inspection stays available for specific PIDs.
+Managers can read `dock_inspect {accounting:true}` for project token totals without loading the
+recent scheduling ledger; full scheduling and archive inspection remain available separately.

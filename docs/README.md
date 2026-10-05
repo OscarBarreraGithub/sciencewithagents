@@ -11,8 +11,9 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 - [Connect another computer](MULTI_COMPUTER_SETUP.md)
 - [Choose managers, workers and model defaults](MODEL_POLICY.md)
 - [QUARK queue and budgets](QUARK.md) and [its coordinator](QUARK_COORDINATOR.md)
-- [Computer health](RESOURCE_WATCH.md)
-- [LaTeX and PDF reader](LATEX.md), [phone LaTeX authoring](TEX_AUTHORING.md)
+- [Computer health](RESOURCE_WATCH.md) and [Slurm cluster](CLUSTER.md)
+- [Apps, project apps and publishing accounts](APPS.md), [LaTeX and PDF reader](LATEX.md),
+  [phone LaTeX authoring](TEX_AUTHORING.md)
 - [Update a customized installation](UPDATE_APP.md)
 - [Recovery copies](RECOVERY_COPIES.md) and [private source backups](SOURCE_BACKUPS.md)
 
@@ -25,6 +26,7 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 - [Shared usage collector](USAGE_COLLECTOR.md), [allowance accounting](QUARK_ACCOUNTING.md),
   [outside-agent access](AGENT_USAGE_ACCESS.md), [QUARK skill](../skills/quark/SKILL.md)
 - [VS Code companion](../apps/vscode-mirror/README.md) and [bridge maintenance](VSCODE_MIRROR.md)
+- [Saved requests and paged archive review](ARCHIVE_REVIEW.md)
 - [Verification](VERIFICATION.md), [maintenance scripts](../scripts/README.md),
   [browser checks](../apps/web/tests/README.md), [legacy workspace](CLASSIC_WORKSPACE.md)
 

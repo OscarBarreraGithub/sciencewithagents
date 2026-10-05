@@ -1,6 +1,6 @@
 # Current status
 
-Checked 2026-10-04. **Beta: current workflows have been exercised with real Codex/Claude
+Checked 2026-10-05. **Beta: current workflows have been exercised with real Codex/Claude
 projects and desktop/phone browser checks.** This is not a claim that every device or
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
@@ -9,7 +9,8 @@ The beta covers provider routing, Claude review, manager leases, owned-process s
 delayed allowance attribution, crowded attention/QUARK layouts, keyboard composers,
 concurrent drafts and helper search filtering. Product work below remains outside it.
 Paired devices can browse existing folders on the selected host. New project managers have
-scoped project-folder writes; explicit read-only choices and reviewer restrictions are preserved.
+full native access, with the project folder as their intended working scope; explicit
+read-only choices and reviewer restrictions are preserved.
 Spawn creates a fresh manager even for a previously connected folder. Chat configuration can
 remove a stopped manager, cancelling queued work while retaining files and saved history.
 Computer health links selected process/script identities to QUARK jobs and wakes bounded
@@ -38,36 +39,61 @@ on the actual device. The companion is installed from source; no marketplace rel
 Routine work is not stopped by raw-token estimates. Actual provider allowance caps,
 reserves, resource checks and saved pauses remain enforced. **Help → Report a bug** saves a
 private report and dispatches it to one maintenance manager through normal delegation/review.
+Optional project/task hourly limits now share rolling reservations across managers, workers
+and pending starts, separately for reported Codex and Claude windows. Focused scheduler
+checks and desktop/phone-width demo browser checks cover concurrency, retry, restart,
+delayed reports and resets; completed real-account hourly-window behavior remains unverified.
+QUARK foregrounds separate provider reserve controls and project hourly-rate controls, with
+current estimates, a bounded 12-hour history and account depletion forecasts. Zero hourly usage
+pauses that provider's project work. New reserve settings default to 20% per provider; existing
+settings are retained. An optional timed release lowers a reserve to zero near each fresh,
+reported reset (suggested thresholds: Codex 12 hours, Claude 45 minutes). It is off by default;
+shared pacing must be enabled for reserves to apply. Forecasts include external account activity
+and leave gaps when readings cannot support an estimate.
+An opt-in Claude five-hour policy advances useful eligible background work within existing
+preferences and limits. Manager timing examples now favor comparable project/provider/model
+turns, label inherited task forecasts and include observed allowance attribution. These are
+estimates; completed real-account five-hour utilization has not been validated or guaranteed.
 
 Provider outages do not block saved views: model discovery retries queued messages,
 provider preparation runs independently, and bounded queue/SSE work yields to HTTP requests.
 Browser drafts survive failed first reads and ambiguous sends; a cold reconnect can display
 the local draft for copying. This does not replace access to the running host for saved history.
 
-## Outstanding product work
+QUARK and resource investigations receive compact current evidence, with saved detail available
+on demand. Manager accounting reads can fetch project/provider/agent totals without rereading
+the recent run ledger; reports distinguish cached input, cache writes and incomplete counters.
+Automatic QUARK checks use fresh native contexts at safe turn boundaries. After an hour without
+owner input, the next idle QUARK/resource question starts fresh while saved messages, decisions
+and model choices remain. Active work is never discarded by an inactivity timer.
 
-- **Request coverage:** saved prompts, work items and handoffs retain evidence, but managers
-  still need to triage each request. There is no automatic proof that every small ask became
+## Additional workflows and limits
+
+- **Request coverage:** structured source-message links, dispositions and paged untriaged
+  inputs now survive steering, compaction and restarts. Managers still triage meaning;
+  read-only archive review pages full retained app text and selected available editor transcripts.
+  There is no automatic proof that every small ask became
   a task or was completed. RLM-assisted archive audits are being evaluated, not shipped.
-- **Cluster integration:** cached FASRC SSH access, monitoring-script inspection and read-only
-  job/account queries are verified. QUARK's cluster collector, submission guards, job tracking
-  and notebook tunnels remain unimplemented. See [the integration boundary](QUARK.md#cluster-integration-boundary).
+- **Slurm cluster:** QUARK's advisory collector, panel, manager inspection and job tracking
+  by submission output are connected and parser-tested on anonymized real Slurm 26.05 replies.
+  In-app SSH sign-in and notebook tunnels are checked with simulated prompts and a disposable
+  local SSH server. A bounded real Slurm job completed with native file creation, submission,
+  polling, copy-back and scratch cleanup. A real compute-node Jupyter server also opened
+  through the app's private SSH forward, including repeated-open and close checks. Real
+  password/code sign-in remains a device/site acceptance check. Phone notebook access needs
+  a separate private address. See [Slurm cluster](CLUSTER.md).
 
-- **Hourly allowance budgets:** per-provider `% usage / hour` is a measured estimate. Enforced
-  budgets are allocations within provider windows, not rolling hourly rate limits.
-- **Five-hour utilization:** QUARK reports account-wide burn and projected remaining allowance
-  at reset, and wakes the coordinator for sustained spare capacity while useful work exists.
-  Managers receive the signal and choose eligible work within provider preferences and caps.
-  It does not guarantee exhausting a window or force-switch existing conversations.
-- **Apps:** LaTeX/PDF reading is connected. Custom project-app registration and project-site
-  publication are not connected.
-- **Setup progress:** GitHub/Cloudflare copy prompts work, but do not yet detect completion
-  or hide completed steps. Native Codex/Claude sign-in/model checks are separate and connected.
+- **Apps:** LaTeX/PDF reading and manager-owned project-app registration are connected.
+  Local app ports and optional published HTTPS links are recorded; registration does not
+  publish or tunnel a project site. Remote devices need a reachable published address.
+- **Setup progress:** GitHub/Cloudflare status checks detect native sign-in and collapse
+  completed setup steps. Missing tools or sign-in retain the copyable instructions.
+  Native Codex/Claude sign-in/model checks remain separate.
 - **Updates:** Settings checks GitHub and assigns an agent after automatically verifying a
   database recovery copy. Local customization and source/build preparation remain agent-led;
   quit/reopen and running-app verification are explicit final steps, not unattended activation.
-- **Orb:** seven shapes, random selection and tap feedback exist; broader variety and the
-  requested longer, quiet animation remain unfinished.
+- **Orb:** quiet idle motion and varied shape parameters are connected; reduced-motion,
+  hidden-page and off-screen states suspend animation.
 
 ## Intentionally deferred
 
@@ -75,6 +101,8 @@ AI news, the personal-agent destination, a standalone public Guide/FAQ, marketpl
 distributed job migration and a packaged cross-platform installer. The README is the public
 landing; dedicated website design is deferred. Automatic cache-warming turns are disabled;
 [issue #1](https://github.com/OscarBarreraGithub/sciencewithagents/issues/1) tracks future work.
+Adaptive QUARK spending intended to exhaust an allowance roughly 15 minutes before reset is
+also deferred. The timed release above is a saved rule, not an autonomous burn-rate optimizer.
 
 Allowance attribution is estimated, without a validated 2–3 percentage-point error bound.
 No provider cache-retention guarantee exists. Native tools and external MCP services retain

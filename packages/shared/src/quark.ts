@@ -9,11 +9,19 @@ export const windowPacingSchema = z.object({
   label: z.string(),
   remainingPercent: percent,
   reservePercent: percent,
+  savedReservePercent: percent.optional(),
+  reserveReleased: z.boolean().default(false),
+  releaseEnabled: z.boolean().default(false),
+  releaseBeforeResetMinutes: z.number().int().positive().optional(),
   resetsAt: z.string().nullable(),
   minutesToReset: z.number().nonnegative().nullable(),
   observedPercentPerHour: z.number().nonnegative().nullable(),
   targetPercentPerHour: z.number().nonnegative().nullable(),
   projectedRemainingPercent: percent.nullable(),
+  observedAt: z.string().datetime().nullable().default(null),
+  reserveAt: z.string().datetime().nullable().default(null),
+  exhaustionAt: z.string().datetime().nullable().default(null),
+  resetBeforeReserve: z.boolean().nullable().default(null),
   state: z.enum(['unknown', 'protected', 'underused', 'on-track', 'fast']),
   message: z.string(),
 });
@@ -53,7 +61,7 @@ export const quarkSettingsSchema = z
 export const quarkSettingsUpdateSchema = z
   .object({ key: id, settings: quarkSettingsSchema })
   .strict();
-export const allowanceRequestSchema = z
+export const allowanceFieldsSchema = z
   .object({
     key: id,
     id: id.optional(),
@@ -62,13 +70,22 @@ export const allowanceRequestSchema = z
     taskId: id.nullable().default(null),
     provider: z.enum(['codex', 'claude']),
     windowId: z.string().min(1).max(160),
-    limitPercent: percent.refine((n) => n > 0),
+    period: z.enum(['window', 'hour']).default('window'),
+    enabled: z.boolean().default(true),
+    limitPercent: percent,
   })
   .strict();
-export const managerAllowanceSchema = allowanceRequestSchema
+const validAllowance = (value: { period: string; limitPercent: number }) =>
+  value.period === 'hour' || value.limitPercent > 0;
+export const allowanceRequestSchema = allowanceFieldsSchema.refine(validAllowance, {
+  message: 'Only hourly rates can be zero. Total allowance caps must be positive.',
+  path: ['limitPercent'],
+});
+export const managerAllowanceSchema = allowanceFieldsSchema
   .omit({ key: true, id: true, expectedRevision: true, projectId: true })
-  .extend({ taskId: id });
-export const allowanceSchema = allowanceRequestSchema
+  .extend({ taskId: id })
+  .refine(validAllowance);
+export const allowanceSchema = allowanceFieldsSchema
   .omit({ key: true, expectedRevision: true })
   .extend({
     id,
@@ -76,7 +93,8 @@ export const allowanceSchema = allowanceRequestSchema
     createdAt: z.string().datetime(),
     startSequence: z.number().int().nonnegative(),
     source: z.enum(['owner', 'manager', 'agent-client']),
-  });
+  })
+  .refine(validAllowance);
 export const quotaHoldSchema = z.object({
   runId: id,
   agentId: id,
@@ -84,7 +102,17 @@ export const quotaHoldSchema = z.object({
   reason: z.string(),
   // Old holds remain explicit. Never infer automatic recovery from message text.
   cause: z
-    .enum(['budget', 'monitoring', 'reset', 'headroom', 'manual', 'lease', 'cache', 'project'])
+    .enum([
+      'budget',
+      'hourly',
+      'monitoring',
+      'reset',
+      'headroom',
+      'manual',
+      'lease',
+      'cache',
+      'project',
+    ])
     .default('manual'),
   createdAt: z.string().datetime(),
   stopAcknowledgedAt: z.string().datetime().nullable().default(null),
@@ -119,10 +147,11 @@ export const quarkStatusSchema = z.object({
   settings: quarkSettingsSchema,
   since: z.string().datetime(),
   budgets: z.array(
-    allowanceSchema.extend({
+    allowanceSchema.safeExtend({
       spentPercent: z.number(),
       reservedPercent: z.number(),
       remainingPercent: z.number(),
+      nextEligibleAt: z.string().datetime().nullable().default(null),
       reason: z.string().nullable(),
     }),
   ),

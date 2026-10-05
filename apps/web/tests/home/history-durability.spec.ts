@@ -141,8 +141,11 @@ test('a delayed old receipt cannot discard a newer uncertain send or its latest 
   });
   const sends: { key: string; text: string }[] = [];
   await page.route(`**/api/agents/${agent.id}/messages`, async (route) => {
-    sends.push(route.request().postDataJSON());
-    await route.fetch();
+    const body = route.request().postDataJSON();
+    sends.push(body);
+    const response = await route.fetch();
+    // The original key is idempotent: retrying it returns the existing receipt.
+    if (body.key === accepted.key) return route.fulfill({ response });
     await route.fulfill({ status: 502, json: { error: 'Accepted; response lost' } });
   });
   try {
@@ -150,9 +153,16 @@ test('a delayed old receipt cannot discard a newer uncertain send or its latest 
     await expect.poll(() => oldRead).toBe(true);
     await expect(composer).toBeEnabled();
     await composer.fill(second);
+    // The unconfirmed earlier message is retried under its own key before new text is sent.
+    await page.getByRole('button', { name: 'Retry previous message', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+    await expect(composer).toHaveValue(second);
+    expect(sends.map(({ key, text }) => ({ key, text }))).toEqual([accepted]);
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(page.getByRole('alert').first()).toContainText('response lost');
-    expect(sends).toHaveLength(1);
+    expect(sends).toHaveLength(2);
+    expect(sends[1]).toMatchObject({ text: second });
+    expect(sends[1].key).not.toBe(accepted.key);
     await composer.fill(third);
     const oldResponse = page.waitForResponse(`**/api/agents/${agent.id}/receipts/${accepted.key}`);
     release();
@@ -162,14 +172,15 @@ test('a delayed old receipt cannot discard a newer uncertain send or its latest 
       .poll(async () =>
         page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? 'null')?.key, storageKey),
       )
-      .toBe(sends[0].key);
+      .toBe(sends[1].key);
     await page.reload();
     await expect(composer).toHaveValue(third);
     await expect
       .poll(async () => page.evaluate((key) => localStorage.getItem(key), storageKey))
       .toBeNull();
-    expect(sends).toHaveLength(1);
+    expect(sends).toHaveLength(2);
     const detail = await (await page.request.get(`/api/agents/${agent.id}`)).json();
+    expect(detail.runs.filter((run: { text: string }) => run.text === first)).toHaveLength(1);
     expect(detail.runs.filter((run: { text: string }) => run.text === second)).toHaveLength(1);
   } finally {
     release();

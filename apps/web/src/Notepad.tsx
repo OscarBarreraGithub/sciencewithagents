@@ -15,6 +15,7 @@ import { api, ApiError } from './api';
 import { parseDraftHistory } from './home/chat-contracts';
 import type { SharedDraft } from './useWorkspaceState';
 import { DraftHandoff } from './WorkspacePanel';
+import { fitToVisibleViewport } from './useVisibleViewport';
 import './Notepad.css';
 
 export type DraftSelection = { start: number; end: number };
@@ -76,15 +77,7 @@ export function Notepad({
   }, [draft.error, draft.conflict, notice]);
   useEffect(() => {
     const element = dialog.current;
-    const viewport = window.visualViewport;
-    const resize = () => {
-      element?.style.setProperty('--notepad-height', `${viewport?.height ?? innerHeight}px`);
-      element?.style.setProperty('--notepad-top', `${viewport?.offsetTop ?? 0}px`);
-    };
-    resize();
-    viewport?.addEventListener('resize', resize);
-    viewport?.addEventListener('scroll', resize);
-    window.addEventListener('resize', resize);
+    const stop = element && fitToVisibleViewport(element, 'notepad');
     if (element && !element.open) element.showModal();
     const area = editor.current;
     if (area) {
@@ -93,9 +86,7 @@ export function Notepad({
       area.setSelectionRange(Math.min(start, area.value.length), Math.min(end, area.value.length));
     }
     return () => {
-      viewport?.removeEventListener('resize', resize);
-      viewport?.removeEventListener('scroll', resize);
-      window.removeEventListener('resize', resize);
+      stop?.();
       if (element?.open) element.close();
     };
   }, []);

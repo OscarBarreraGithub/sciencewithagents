@@ -101,9 +101,11 @@ describe('native connection mirror', () => {
       await mirror.select('thread');
       const state = await mirror.read();
       expect(state.entries.map((e) => e.text)).toEqual(['Desktop message', 'Old reply']);
-      expect(calls.every((c) => ['thread/read', 'thread/queue/list'].includes(c.method))).toBe(
-        true,
-      );
+      expect(
+        calls.every((c) =>
+          ['thread/read', 'thread/turns/list', 'thread/queue/list'].includes(c.method),
+        ),
+      ).toBe(true);
     } finally {
       mirror.dispose();
     }
@@ -228,4 +230,179 @@ it('rechecks explicit helper provenance after sharing, without hiding a personal
   } finally {
     mirror.dispose();
   }
+});
+
+/** A Codex build with native turn paging; `turns` is oldest first. */
+function pagingFixture(
+  turnCount: number,
+  options: { pages?: 'unsupported' | 'summary' | 'repeating' } = {},
+) {
+  const providers = new Map<string, Provider>();
+  const calls: { method: string; params: Record<string, unknown> }[] = [];
+  const turn = (n: number) => ({
+    id: `turn-${n}`,
+    status: 'completed',
+    items: [
+      { id: 'u', type: 'userMessage', content: [{ type: 'text', text: `Question ${n}` }] },
+      { id: 'a', type: 'agentMessage', text: `Answer ${n}` },
+    ],
+  });
+  const state = { turns: Array.from({ length: turnCount }, (_, n) => turn(n)), active: false };
+  let failReads = false;
+  const connection: Connection = {
+    providers,
+    initialized: true,
+    registerProvider(name, p) {
+      providers.set(name, p);
+      return { dispose: () => providers.delete(name) };
+    },
+    sendRequest(p, id, method, params, delivery = false) {
+      this.sendProviderRequest(p, id, method, params, false, delivery);
+    },
+    sendProviderRequest(p, id, method, raw) {
+      const params = raw as Record<string, unknown>;
+      calls.push({ method, params });
+      const reply = (response: Record<string, unknown>) =>
+        queueMicrotask(() => providers.get(p)?.onResult?.({ id, ...response }));
+      const thread = {
+        id: 'thread',
+        name: 'Long conversation',
+        status: { type: state.active ? 'active' : 'idle' },
+      };
+      if (method === 'thread/read') {
+        if (failReads) return reply({ error: { code: -32000, message: 'Read failed.' } });
+        return reply({
+          result: { thread: params.includeTurns ? { ...thread, turns: state.turns } : thread },
+        });
+      }
+      if (method === 'thread/turns/list') {
+        if (options.pages === 'unsupported')
+          return reply({ error: { code: -32601, message: 'Method not found' } });
+        const newest = [...state.turns].reverse();
+        const start = Number(params.cursor ?? 0);
+        const data = newest.slice(start, start + Number(params.limit));
+        const next =
+          options.pages === 'repeating'
+            ? '0'
+            : start + data.length < newest.length
+              ? String(start + data.length)
+              : null;
+        return reply({
+          result: {
+            data:
+              options.pages === 'summary'
+                ? data.map((t) => ({ ...t, itemsView: 'summary' }))
+                : data,
+            nextCursor: next,
+          },
+        });
+      }
+      if (method === 'thread/queue/list') return reply({ result: { data: [] } });
+      reply({ result: {} });
+    },
+  };
+  const notify = () => {
+    for (const provider of providers.values())
+      provider.onNotification?.({ method: 'item/completed', params: { threadId: 'thread' } });
+  };
+  return {
+    calls,
+    state,
+    turn,
+    notify,
+    failReads: () => (failReads = true),
+    mirror: new MirrorConnection(connection, 'Paging fixture'),
+  };
+}
+const full = (turns: unknown[]) => transcript({ turns });
+
+describe('native turn paging', () => {
+  it('pages the saved history once, then re-reads only the newest turns', async () => {
+    const { mirror, calls, state, turn, notify } = pagingFixture(45);
+    try {
+      await mirror.select('thread');
+      // A fresh, unchanged reading is reused without another native request.
+      const first = await mirror.read();
+      // Identical entry IDs and text to the full-history read.
+      expect(first.entries).toEqual(full(state.turns));
+      expect(calls.filter((c) => c.method === 'thread/turns/list')).toHaveLength(3);
+      expect(calls.some((c) => c.method === 'thread/read' && c.params.includeTurns)).toBe(false);
+
+      calls.length = 0;
+      state.turns[44] = {
+        ...turn(44),
+        items: [...turn(44).items, { id: 'b', type: 'agentMessage', text: 'More' }],
+      };
+      state.turns.push(turn(45));
+      notify();
+      const next = await mirror.read(true);
+      expect(next.entries).toEqual(full(state.turns));
+      expect(calls.filter((c) => c.method === 'thread/turns/list')).toEqual([
+        {
+          method: 'thread/turns/list',
+          params: { threadId: 'thread', limit: 3, sortDirection: 'desc', itemsView: 'full' },
+        },
+      ]);
+
+      // More new turns than the tail covers: page the whole history again, never a gap.
+      calls.length = 0;
+      state.turns.push(turn(46), turn(47), turn(48), turn(49));
+      notify();
+      expect((await mirror.read(true)).entries).toEqual(full(state.turns));
+      expect(calls.filter((c) => c.method === 'thread/turns/list').length).toBeGreaterThan(1);
+      expect(calls.some((c) => c.params.includeTurns)).toBe(false);
+    } finally {
+      mirror.dispose();
+    }
+  });
+  it.each(['unsupported', 'summary', 'repeating'] as const)(
+    'falls back to the full-history read when native paging is %s',
+    async (pages) => {
+      const { mirror, calls, state, notify } = pagingFixture(5, { pages });
+      try {
+        await mirror.select('thread');
+        expect((await mirror.read()).entries).toEqual(full(state.turns));
+        // A repeated cursor is detected on its second appearance, then never retried.
+        expect(calls.filter((c) => c.method === 'thread/turns/list')).toHaveLength(
+          pages === 'repeating' ? 2 : 1,
+        );
+        expect(
+          calls.filter((c) => c.method === 'thread/read' && c.params.includeTurns),
+        ).toHaveLength(1);
+        calls.length = 0;
+        notify();
+        expect((await mirror.read(true)).entries).toEqual(full(state.turns));
+        // The capability result is kept for this shared thread.
+        expect(calls.map((c) => c.method)).not.toContain('thread/turns/list');
+        expect(
+          calls.filter((c) => c.method === 'thread/read' && c.params.includeTurns),
+        ).toHaveLength(1);
+      } finally {
+        mirror.dispose();
+      }
+    },
+  );
+  it('refuses a stale steer when the latest native read fails', async () => {
+    const { mirror, calls, state, failReads } = pagingFixture(2);
+    try {
+      state.turns[1] = { ...state.turns[1], status: 'inProgress' };
+      state.active = true;
+      await mirror.select('thread');
+      const busy = await mirror.read(true);
+      expect(busy).toMatchObject({ status: 'busy', steerToken: 'turn-1' });
+      failReads();
+      expect(
+        await mirror.send({
+          key: randomUUID(),
+          threadId: 'thread',
+          expectedTurnId: 'turn-1',
+          text: 'Stale steer',
+        }),
+      ).toMatchObject({ state: 'not_sent' });
+      expect((await mirror.read(true)).status).toBe('offline');
+      expect(calls.map((c) => c.method)).not.toContain('turn/steer');
+    } finally {
+      mirror.dispose();
+    }
+  });
 });

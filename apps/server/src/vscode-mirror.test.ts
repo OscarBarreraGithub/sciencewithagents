@@ -11,7 +11,12 @@ import { createServer } from './server.js';
 import { VscodeMirrors } from './vscode-mirror.js';
 import { repoRoot } from './paths.js';
 import { proxyPath } from './hosts.js';
-import { mirrorPage, type MirrorPageQuery, type MirrorState } from '@dock/shared';
+import {
+  chatImageReference,
+  mirrorPage,
+  type MirrorPageQuery,
+  type MirrorState,
+} from '@dock/shared';
 
 let root: string,
   store: Store,
@@ -19,6 +24,7 @@ let root: string,
   app: Awaited<ReturnType<typeof createServer>>,
   socket: WebSocket | undefined;
 const windowId = randomUUID();
+let preparedText: string[] = [];
 const headers = {
   host: '127.0.0.1:4999',
   origin: 'http://127.0.0.1:4999',
@@ -38,7 +44,11 @@ beforeEach(async () => {
   root = mkdtempSync(join(repoRoot, 'data/tests/mirror-'));
   store = new Store(join(root, 'dock.sqlite'));
   modelFixture(store);
-  mirrors = new VscodeMirrors(store);
+  preparedText = [];
+  mirrors = new VscodeMirrors(store, undefined, (text) => {
+    preparedText.push(text);
+    return text;
+  });
   const runtime = new Runtime(store, root, 'codex', async () => new DemoProvider());
   app = await createServer(store, runtime, { port: 4999, mirrors });
   await app.listen({ host: '127.0.0.1', port: 0 });
@@ -53,10 +63,13 @@ async function connect(
   handler: (v: { id: string; type: string; input?: unknown; page?: MirrorPageQuery }) => unknown,
   provider?: 'claude',
   paged = false,
+  autoPong = true,
+  capabilities: Partial<MirrorState> = {},
 ) {
   const address = app.server.address() as { port: number };
   socket = new WebSocket(`ws://127.0.0.1:${address.port}/api/vscode/bridge`, {
     headers: { Host: headers.host },
+    autoPong,
   });
   await new Promise<void>((resolve, reject) => {
     socket!.once('open', resolve);
@@ -66,13 +79,18 @@ async function connect(
   socket.send(
     JSON.stringify({
       type: 'hello',
-      window: { ...window, ...(provider ? { provider } : {}), ...(paged ? { paged: true } : {}) },
+      window: {
+        ...window,
+        ...capabilities,
+        ...(provider ? { provider } : {}),
+        ...(paged ? { paged: true } : {}),
+      },
     }),
   );
-  socket.on('message', (data) => {
+  socket.on('message', async (data) => {
     const command = JSON.parse(data.toString());
-    const value = handler(command);
-    if (value === undefined) return;
+    const value = await handler(command);
+    if (value === undefined || socket?.readyState !== WebSocket.OPEN) return;
     const text = JSON.stringify(value);
     for (let i = 0; i < text.length; i += 4096)
       socket!.send(
@@ -87,6 +105,34 @@ async function connect(
   await expect.poll(() => mirrors.windows().length).toBe(1);
 }
 describe('VS Code mirror gateway', () => {
+  it('refuses remote screenshots before resolving local image files and still sends text', async () => {
+    const sent: unknown[] = [];
+    await connect(
+      (command) => {
+        if (command.type === 'send') sent.push(command.input);
+        return { state: 'sent', message: 'Native send acknowledged.' };
+      },
+      undefined,
+      false,
+      true,
+      { canAttachImages: false },
+    );
+    const input = {
+      key: randomUUID(),
+      threadId: 'thread',
+      text: `Look\n\n${chatImageReference(randomUUID())}`,
+    };
+    expect(await mirrors.send(windowId, input)).toMatchObject({
+      state: 'not_sent',
+      message: expect.stringContaining('remote editor'),
+    });
+    expect(sent).toEqual([]);
+    expect(preparedText).toEqual([]);
+    expect(
+      await mirrors.send(windowId, { ...input, key: randomUUID(), text: 'Text only' }),
+    ).toMatchObject({ state: 'sent' });
+    expect(sent).toHaveLength(1);
+  });
   it('refreshes stale list status without opening the chat and shares reads across devices', async () => {
     const commands: unknown[] = [];
     let working = true;
@@ -129,13 +175,43 @@ describe('VS Code mirror gateway', () => {
     expect(idle.json()[0].steerToken).toBeUndefined();
     expect(commands).toHaveLength(2);
   });
-  it('bounds an unresponsive list read and recovers through the normal chat read', async () => {
+  it('keeps a slow but connected editor reading and applies the late transcript', async () => {
+    let release!: () => void;
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let commands = 0;
+    await connect(async () => {
+      commands++;
+      await delayed;
+      return { ...state, status: 'busy', canSteer: true, steerToken: 'turn', stopToken: 'turn' };
+    });
+    const started = Date.now();
+    const slow = await app.inject({ url: '/api/vscode/windows', headers });
+    expect(Date.now() - started).toBeLessThan(4000);
+    // The editor answers pings, so a long native read is not reported as offline.
+    expect(slow.json()[0]).toMatchObject({ status: 'idle' });
+    const detail = app.inject({ url: `/api/vscode/windows/${windowId}`, headers });
+    await app.inject({ url: '/api/vscode/windows', headers });
+    release();
+    expect((await detail).json()).toMatchObject({ status: 'busy', steerToken: 'turn' });
+    // Phone, desktop and list refreshes shared the one outstanding editor read.
+    expect(commands).toBe(1);
+    const updated = await app.inject({ url: '/api/vscode/windows', headers });
+    expect(updated.json()[0]).toMatchObject({ status: 'busy', steerToken: 'turn' });
+  });
+  it('reports a frozen editor offline promptly and recovers through the normal chat read', async () => {
     let respond = false;
     let commands = 0;
-    await connect(() => {
-      commands++;
-      return respond ? state : undefined;
-    });
+    await connect(
+      () => {
+        commands++;
+        return respond ? state : undefined;
+      },
+      undefined,
+      false,
+      false,
+    );
     const started = Date.now();
     const offline = await app.inject({ url: '/api/vscode/windows', headers });
     expect(Date.now() - started).toBeLessThan(4000);
@@ -145,10 +221,40 @@ describe('VS Code mirror gateway', () => {
     await app.inject({ url: '/api/vscode/windows', headers });
     expect(commands).toBe(1);
     respond = true;
-    await mirrors.read(windowId, {});
+    // The frozen latest read stays outstanding; any later successful reading recovers.
+    await mirrors.read(windowId, { before: 'newer' });
     const recovered = await app.inject({ url: '/api/vscode/windows', headers });
     expect(recovered.json()[0].status).toBe('idle');
     expect(commands).toBe(2);
+  });
+  it('marks a failed refresh offline without letting reads block a send', async () => {
+    const reads: string[] = [];
+    let sent = 0;
+    await connect((command) => {
+      if (command.type === 'send') {
+        sent++;
+        return { state: 'sent', message: 'Sent.' };
+      }
+      reads.push(command.id);
+      return reads.length === 1 ? { invalid: true } : undefined;
+    });
+    const failed = await app.inject({ url: '/api/vscode/windows', headers });
+    expect(failed.json()[0]).toMatchObject({ status: 'offline' });
+    // Four distinct history reads wait on the editor; the owner's send still goes through.
+    const waiting = ['a', 'b', 'c', 'd'].map((before) =>
+      mirrors.read(windowId, { before }).catch(() => undefined),
+    );
+    await expect.poll(() => reads.length).toBe(5);
+    await expect(mirrors.read(windowId, { before: 'e' })).rejects.toThrow('catching up');
+    const result = await mirrors.send(windowId, {
+      key: randomUUID(),
+      threadId: 'thread',
+      text: 'Still deliverable',
+    });
+    expect(result.state).toBe('sent');
+    expect(sent).toBe(1);
+    socket?.terminate();
+    await Promise.all(waiting);
   });
   it('requests a bounded page directly from an updated companion', async () => {
     const commands: unknown[] = [];

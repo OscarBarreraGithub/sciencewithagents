@@ -18,6 +18,7 @@ import { DemoProvider } from './demo.js';
 import { createServer } from './server.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { repoRoot } from './paths.js';
+import { nativeFullAccessNote } from './claude-session.js';
 import { conversationCharter, chatFormattingCharter } from './charters.js';
 
 let root: string, store: Store, runtime: Runtime, app: FastifyInstance;
@@ -174,9 +175,9 @@ it('uses the direct conversation charter with native capabilities and retains it
   const start = request.mock.calls.find(([method]) => method === 'thread/start')![1];
   expect(start).toMatchObject({
     cwd: store.agent(agent.id).cwd,
-    sandbox: 'workspace-write',
+    sandbox: 'danger-full-access',
     approvalPolicy: 'never',
-    developerInstructions: `${conversationCharter}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}`,
+    developerInstructions: `${conversationCharter}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}\n\n${nativeFullAccessNote}`,
     config: { 'sandbox_workspace_write.network_access': true },
   });
   expect(request.mock.calls.some(([method]) => method === 'turn/start')).toBe(false);

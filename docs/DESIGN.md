@@ -41,6 +41,8 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   the name into a clipped single line, including with larger text.
   When zoomed text and a keyboard leave too little height, the composer tools fold into one
   sideways-scrolling row, then the message area gives way, so Back, input and Send stay visible.
+  Closing the keyboard, including while pinch-zoomed, then changing screens or swiping back
+  returns the full screen without reopening the app. Native pinch zoom stays available.
 - During a running Codex reply, the composer offers “Steer now” or “Queue next”; priority
   applies only to queued messages. The notepad uses the same choice. Claude follow-ups queue.
   Sent steering appears as an ordinary user message, not a system notice.
@@ -136,7 +138,8 @@ Phone pairing remains protected; no repeated app lock or separate VS Code authen
 Apps uses rounded icons and titles. LaTeX opens a simple file/recent-document library and
 a full-screen PDF reader. Fit width, pinch/button zoom and page navigation must remain usable
 on phones. Document links open over mounted chats; closing or swiping out preserves the exact
-reading position and draft. Custom project-app registration is still pending.
+reading position and draft. Managers register project web apps; tiles show whether each is
+running and open loopback addresses only where they are reachable. See [Apps](APPS.md).
 For LaTeX sources, Reading reflows prose at a comfortable adjustable size. Format equations
 to fit before resorting to individual horizontal scroll regions with visible overflow cues.
 Optional AI formatting creates a separate copy with a selectable model, never replaces the original.

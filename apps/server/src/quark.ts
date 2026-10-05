@@ -1,11 +1,13 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   sameAllowanceReset,
+  effectiveProviderReserve,
   windowPacingSchema,
   projectRatesSchema,
   defaultModelPolicy,
   modelPolicySchema,
   allowanceRequestSchema,
+  allowanceFieldsSchema,
   allowanceSchema,
   quarkRunSchema,
   quarkSettingsSchema,
@@ -24,6 +26,7 @@ import { z } from 'zod';
 import { Store, Conflict, type PrivateRun } from './store.js';
 import { readCapacity, capacityMaxAge } from './capacity.js';
 import type { Pulsar } from './pulsar.js';
+import { currentRateSamples, rateHistory } from './quark-rates.js';
 
 const unknown: TokenCounts = {
   totalTokens: null,
@@ -49,6 +52,8 @@ const intervalSchema = z.object({
   resetsAt: z.string().nullable(),
   observedAt: z.string(),
   baseline: z.boolean().optional(),
+  from: z.string().nullable().optional(),
+  gap: z.boolean().optional(),
   delta: z.number(),
   unattributed: z.number(),
   allocations: z.array(allocation),
@@ -85,6 +90,7 @@ export class Quark {
   // model prompt, API response, repository or provider credential store.
   private readonly leaseSigner = randomBytes(32);
   private spentCache = new Map<string, { sequence: number; percent: number }>();
+  private runSpentCache = new Map<string, { sequence: number; percent: number }>();
   constructor(
     readonly store: Store,
     readonly pulsar: Pulsar,
@@ -477,6 +483,8 @@ export class Quark {
                 resetsAt: w.resetsAt,
                 observedAt: capacity.observedAt,
                 baseline: !same,
+                from: previous?.observedAt ?? null,
+                gap,
                 delta,
                 unattributed: allocations.length ? 0 : delta,
                 allocations,
@@ -577,12 +585,17 @@ export class Quark {
   /** Called only while creating a task in its durable transaction, after sync(). */
   createTaskBudget(raw: unknown) {
     if (!this.store.db.isTransaction) throw new Error('Task caps require an atomic request.');
-    const input = allowanceRequestSchema.omit({ id: true, expectedRevision: true }).parse(raw);
+    const input = allowanceFieldsSchema.omit({ id: true, expectedRevision: true }).parse(raw);
     if (!input.taskId || this.store.task(input.taskId).projectId !== input.projectId)
       throw new Conflict('Task is outside this project.');
     return this.writeBudget({ ...input, expectedRevision: 0 }, 'agent-client');
   }
   private writeBudget(input: z.infer<typeof allowanceRequestSchema>, source: Allowance['source']) {
+    allowanceRequestSchema.parse(input);
+    if (!input.enabled && input.period !== 'hour')
+      throw new Conflict(
+        'Only hourly limits can be turned off. Existing window grants remain enforced.',
+      );
     const old = this.budgets().find((b) => b.id === input.id);
     if (input.id && !old) throw new Conflict('Budget not found.');
     if (
@@ -591,10 +604,11 @@ export class Quark {
         old.projectId !== input.projectId ||
         old.taskId !== input.taskId ||
         old.provider !== input.provider ||
-        old.windowId !== input.windowId)
+        old.windowId !== input.windowId ||
+        old.period !== input.period)
     )
       throw new Conflict('Budget changed or its scope differs. Reload before saving.');
-    if (source !== 'owner' && old && input.limitPercent > old.limitPercent)
+    if (source !== 'owner' && (!input.enabled || (old && input.limitPercent > old.limitPercent)))
       throw new Conflict('Only the owner can increase an allowance budget.');
     if (
       !old &&
@@ -603,7 +617,8 @@ export class Quark {
           b.projectId === input.projectId &&
           b.taskId === input.taskId &&
           b.provider === input.provider &&
-          b.windowId === input.windowId,
+          b.windowId === input.windowId &&
+          b.period === input.period,
       )
     )
       throw new Conflict('This scope already has a budget. Update that budget instead.');
@@ -689,11 +704,151 @@ export class Quark {
       calibration ? Math.max(r.expectedTokens, this.score(r)) / calibration : 0,
     );
   }
-  budgetStatus(b: Allowance, ignorePause = false, allowRecentReading = false) {
+  private reservationRuns(since = this.clock() - 3600_000): QuarkRun[] {
+    const runs = this.runs(true, since);
+    const ids = new Set(runs.map((r) => r.runId));
+    for (const l of this.pulsar.allowanceReservations(since)) {
+      if (ids.has(l.runId)) continue;
+      const run = this.store.run(l.runId),
+        a = this.store.agent(run.agentId);
+      runs.push({
+        runId: run.id,
+        agentId: a.id,
+        projectId: a.projectId,
+        taskId: this.taskIds(run)[0] ?? null,
+        taskAncestors: this.taskIds(run),
+        nativeRootId: a.nativeRootId,
+        provider: a.provider,
+        model: l.model,
+        threadId: a.threadId,
+        startedAt: l.startedAt,
+        finishedAt: l.finishedAt,
+        observedAt: null,
+        baseline: unknown,
+        tokens: unknown,
+        basis: 'unknown',
+        expectedTokens: l.estimate.expectedTokens,
+        quotaPercent: l.estimate.quotaPercent,
+        expectedSeconds: l.estimate.expectedSeconds,
+        cacheNudge: false,
+      });
+    }
+    return runs;
+  }
+  private hourlyStatus(b: Allowance, allowRecentReading: boolean, excludeRunId?: string) {
+    const intervals = this.recentIntervals().filter(
+      (i) => i.provider === b.provider && i.windowId === b.windowId,
+    );
+    // Keep the rolling hour across account resets. New caps cannot erase recent spend.
+    const spentPercent = intervals
+      .flatMap((i) => i.allocations)
+      .filter((a) => a.projectId === b.projectId && (!b.taskId || a.taskIds.includes(b.taskId)))
+      .reduce((n, a) => n + a.percent, 0);
+    const reservations = this.reservationRuns().filter(
+      (r) => r.runId !== excludeRunId && !r.nativeRootId && this.applies(b, r),
+    );
+    let reservedPercent = 0;
+    const expiry: number[] = [];
+    for (const i of intervals)
+      if (
+        i.allocations.some(
+          (a) => a.projectId === b.projectId && (!b.taskId || a.taskIds.includes(b.taskId)),
+        )
+      )
+        expiry.push(Date.parse(i.observedAt) + 3600_000);
+    for (const r of reservations) {
+      // A later positive observation containing the finished run replaces its
+      // estimate. A reset, outage or zero-delta report alone cannot prove this.
+      const reflected =
+        r.finishedAt &&
+        intervals.some(
+          (i) =>
+            !i.baseline &&
+            Date.parse(i.observedAt) >= Date.parse(r.finishedAt!) + 30_000 &&
+            i.allocations.some((a) => a.runId === r.runId),
+        );
+      if (reflected) continue;
+      reservedPercent += Math.max(
+        0,
+        this.reservation(r, b.windowId) - this.runAttributed(r, b.windowId),
+      );
+      if (r.finishedAt) expiry.push(Date.parse(r.finishedAt) + 3600_000);
+    }
+    const cap = readCapacity(this.store, b.provider, this.clock());
+    const w = cap.windows.find((w) => w.id === b.windowId);
+    const atLimit =
+      spentPercent + reservedPercent >=
+      b.limitPercent - Math.min(this.settings().bufferPercent, b.limitPercent * 0.2);
+    const expired = w?.resetsAt && Date.parse(w.resetsAt) <= this.clock();
+    const unavailable = !this.usableReading(cap, allowRecentReading) || !w;
+    const cause = !b.enabled
+      ? null
+      : b.limitPercent === 0
+        ? ('hourly' as const)
+        : expired
+          ? ('reset' as const)
+          : unavailable
+            ? ('monitoring' as const)
+            : atLimit
+              ? ('hourly' as const)
+              : null;
+    const futureExpiry = expiry.filter((at) => at > this.clock());
+    const nextEligibleAt = futureExpiry.length ? stamp(Math.min(...futureExpiry)) : null;
+    return {
+      ...b,
+      spentPercent,
+      reservedPercent,
+      remainingPercent: Math.max(0, b.limitPercent - spentPercent),
+      nextEligibleAt,
+      cause,
+      reason:
+        cause === 'hourly'
+          ? b.limitPercent === 0
+            ? `Saved ${b.provider === 'claude' ? 'Claude' : 'Codex'} rate is 0%/hour. This project's provider work stays paused until you raise the rate.`
+            : 'Rolling hourly allowance limit reached its stopping buffer. Waiting for earlier spending or reservations to leave the hour.'
+          : cause === 'reset'
+            ? 'Waiting for a verified allowance reset.'
+            : cause === 'monitoring'
+              ? 'Waiting for a fresh report of this allowance.'
+              : null,
+    };
+  }
+  private runAttributed(r: QuarkRun, windowId: string) {
+    const key = `${r.runId}:${windowId}`;
+    const cached = this.runSpentCache.get(key) ?? { sequence: 0, percent: 0 };
+    const head = Number(
+      this.store.db.prepare('SELECT COALESCE(MAX(id),0) AS n FROM quark_intervals').get()!.n,
+    );
+    if (head > cached.sequence) {
+      const rows = this.store.db
+        .prepare(
+          "SELECT body FROM quark_intervals INDEXED BY quark_intervals_window_observed WHERE json_extract(body,'$.provider')=? AND json_extract(body,'$.windowId')=? AND json_extract(body,'$.observedAt')>=? AND id>? ORDER BY id",
+        )
+        .all(r.provider, windowId, r.startedAt, cached.sequence);
+      for (const row of rows)
+        cached.percent += intervalSchema
+          .parse(JSON.parse(String(row.body)))
+          .allocations.filter((a) => a.runId === r.runId)
+          .reduce((sum, a) => sum + a.percent, 0);
+      cached.sequence = head;
+      if (!this.runSpentCache.has(key) && this.runSpentCache.size >= 1000)
+        this.runSpentCache.delete(this.runSpentCache.keys().next().value!);
+      this.runSpentCache.set(key, cached);
+    }
+    return cached.percent;
+  }
+  budgetStatus(
+    b: Allowance,
+    ignorePause = false,
+    allowRecentReading = false,
+    excludeRunId?: string,
+  ) {
+    if (b.period === 'hour') return this.hourlyStatus(b, allowRecentReading, excludeRunId);
     const spentPercent = this.spent(b);
-    const reservedPercent = this.runs(true)
+    const reservedPercent = this.reservationRuns()
       .filter(
         (r) =>
+          r.runId !== excludeRunId &&
           this.applies(b, r) &&
           !r.nativeRootId &&
           (!r.finishedAt || this.clock() - Date.parse(r.finishedAt) < 90_000),
@@ -707,8 +862,9 @@ export class Quark {
     const paused = !ignorePause && this.store.getSetting(`quark:budget-paused:${b.id}`);
     const expired = w?.resetsAt && Date.parse(w.resetsAt) <= this.clock();
     const unavailable = !this.usableReading(cap, allowRecentReading) || !w;
-    const cause =
-      paused || atLimit
+    const cause = !b.enabled
+      ? null
+      : paused || atLimit
         ? ('budget' as const)
         : expired
           ? ('reset' as const)
@@ -729,6 +885,7 @@ export class Quark {
       spentPercent,
       reservedPercent,
       remainingPercent: Math.max(0, b.limitPercent - spentPercent),
+      nextEligibleAt: null,
       reason,
       cause,
     };
@@ -800,7 +957,10 @@ export class Quark {
           taskAncestors: this.taskIds(run),
         }),
       )
-      .map((b) => this.budgetStatus(b, ignoreBudgetPause, allowRecent));
+      .filter((b) => b.enabled)
+      .map((b) =>
+        this.budgetStatus(b, ignoreBudgetPause, allowRecent, admitting ? run.id : undefined),
+      );
     // A known exhausted grant outranks a telemetry outage. It must never become
     // an automatically recoverable hold when the collector fails at the same time.
     const exhausted = budgets.find((b) => b.cause === 'budget');
@@ -809,6 +969,13 @@ export class Quark {
         cause: 'budget',
         reason: exhausted.reason!,
         budgetTargetId: exhausted.taskId ?? a.projectId,
+      };
+    const zeroRate = budgets.find((b) => b.period === 'hour' && b.limitPercent === 0);
+    if (zeroRate)
+      return {
+        cause: 'hourly',
+        reason: zeroRate.reason!,
+        budgetTargetId: zeroRate.taskId ?? a.projectId,
       };
     const cap = readCapacity(this.store, a.provider, this.clock());
     const windows = cap.windows.filter(
@@ -840,7 +1007,11 @@ export class Quark {
       for (const w of windows) {
         if (w.resetsAt && Date.parse(w.resetsAt) <= this.clock())
           return { cause: 'reset', reason: 'Waiting for a verified allowance reset.' };
-        if (w.usedPercent >= 100 - this.pulsar.policy().reservePercent)
+        if (
+          w.usedPercent >=
+          100 -
+            effectiveProviderReserve(this.pulsar.policy(), cap, w, this.clock()).effectivePercent
+        )
           return { cause: 'headroom', reason: `${w.label} reached the shared headroom limit.` };
       }
     }
@@ -852,8 +1023,11 @@ export class Quark {
           b.limitPercent - Math.min(this.settings().bufferPercent, b.limitPercent * 0.2)
       )
         return {
-          cause: 'budget',
-          reason: 'This turn would exceed the remaining allowance budget and stopping buffer.',
+          cause: b.period === 'hour' ? 'hourly' : 'budget',
+          reason:
+            b.period === 'hour'
+              ? 'This turn would exceed the rolling hourly allowance limit and stopping buffer. Wait for room or refine its turn estimate.'
+              : 'This turn would exceed the remaining allowance budget and stopping buffer.',
           budgetTargetId: b.taskId ?? a.projectId,
         };
     }
@@ -870,13 +1044,16 @@ export class Quark {
       const old = this.holds().find((h) => h.runId === run.id);
       if (old && (!['manual', 'budget', 'lease'].includes(cause) || old.cause === cause))
         return old;
-      for (const b of this.budgets().filter((b) =>
-        this.applies(b, {
-          projectId: a.projectId,
-          provider: a.provider,
-          model: a.model,
-          taskAncestors: this.taskIds(run),
-        }),
+      for (const b of this.budgets().filter(
+        (b) =>
+          b.enabled &&
+          b.period === 'window' &&
+          this.applies(b, {
+            projectId: a.projectId,
+            provider: a.provider,
+            model: a.model,
+            taskAncestors: this.taskIds(run),
+          }),
       )) {
         const status = this.budgetStatus(b, true);
         if (
@@ -932,7 +1109,7 @@ export class Quark {
   recoverTransient(excluded: ReadonlySet<string>) {
     for (const h of this.holds()) {
       if (
-        !['monitoring', 'reset', 'headroom', 'cache'].includes(h.cause) ||
+        !['hourly', 'monitoring', 'reset', 'headroom', 'cache'].includes(h.cause) ||
         !h.stopAcknowledgedAt ||
         excluded.has(h.agentId)
       )
@@ -984,6 +1161,14 @@ export class Quark {
         )
     )
       throw new Conflict('The provider is still stopping. Wait for its acknowledgement.');
+    if (
+      automatic &&
+      (this.store.getSetting(`pulsar:held:${runId}`) === true ||
+        this.taskIds(run).some(
+          (taskId) => this.store.getSetting(`pulsar:held-task:${taskId}`) === true,
+        ))
+    )
+      throw new Conflict('Another saved queue pause still protects this work.');
     if (automatic && this.holds().some((other) => other.agentId === a.id && other.runId !== runId))
       throw new Conflict('Another pause still protects this conversation.');
     const reason = this.block(run, true, true, !automatic)?.reason;
@@ -1060,32 +1245,34 @@ export class Quark {
         };
       });
   }
-  private recentIntervals() {
-    const cutoff = stamp(this.clock() - 3600_000);
+  private recentIntervals(hours = 1) {
+    const cutoff = stamp(this.clock() - hours * 3600_000);
     return this.store.db
       .prepare(
-        "SELECT body FROM quark_intervals WHERE json_extract(body,'$.observedAt')>=? ORDER BY rowid",
+        `SELECT body FROM quark_intervals INDEXED BY quark_intervals_observed WHERE json_extract(body,'$.observedAt')>=? ORDER BY json_extract(body,'$.observedAt') DESC,id DESC ${hours > 1 ? 'LIMIT 12001' : ''}`,
       )
       .all(cutoff)
+      .reverse()
       .map((row) => intervalSchema.parse(JSON.parse(String(row.body))));
   }
   /** Account-wide observed burn, not a project allocation or permission to spend. */
   utilization() {
     const intervals = this.recentIntervals();
-    const reserve = this.pulsar.policy().reservePercent;
+    const policy = this.pulsar.policy();
     return (['codex', 'claude'] as const).flatMap((provider) => {
       const capacity = readCapacity(this.store, provider, this.clock());
       return capacity.windows
-        .filter((window) => window.scope === 'general')
+        .filter((window) => window.scope !== 'other')
         .map((window) => {
+          const protection = effectiveProviderReserve(policy, capacity, window, this.clock());
+          const reserve = protection.effectivePercent;
           const matching = intervals.filter(
             (row) =>
               row.provider === provider &&
               row.windowId === window.id &&
               sameAllowanceReset(row.resetsAt, window.resetsAt),
           );
-          const baseline = matching.findLastIndex((row) => row.baseline);
-          const samples = baseline >= 0 ? matching.slice(baseline) : matching;
+          const samples = currentRateSamples(matching, window.resetsAt, capacityMaxAge(provider));
           const hours =
             samples.length > 1
               ? (Date.parse(samples.at(-1)!.observedAt) - Date.parse(samples[0]!.observedAt)) /
@@ -1096,20 +1283,22 @@ export class Quark {
             ? (Date.parse(window.resetsAt) - this.clock()) / 3600_000
             : null;
           const fresh =
-            capacity.state === 'ready' && !capacity.stale && until !== null && until > 0;
+            capacity.state === 'ready' && !capacity.stale && (until === null || until > 0);
           const rate =
             fresh && hours >= 5 / 60
               ? samples.slice(1).reduce((sum, row) => sum + row.delta, 0) / hours
               : null;
-          const target = fresh ? Math.max(0, remaining - reserve) / until! : null;
+          const target = fresh && until !== null ? Math.max(0, remaining - reserve) / until : null;
           const projected =
-            rate !== null ? Math.max(0, Math.min(100, remaining - rate * until!)) : null;
+            rate !== null && until !== null
+              ? Math.max(0, Math.min(100, remaining - rate * until))
+              : null;
           const shortWindow = window.windowMinutes !== null && window.windowMinutes <= 360;
           const state = !fresh
             ? 'unknown'
             : remaining <= reserve
               ? 'protected'
-              : rate === null
+              : rate === null || projected === null
                 ? 'unknown'
                 : projected! < reserve
                   ? 'fast'
@@ -1122,11 +1311,35 @@ export class Quark {
             label: window.label,
             remainingPercent: remaining,
             reservePercent: reserve,
+            savedReservePercent: protection.reservePercent,
+            reserveReleased: protection.released,
+            releaseEnabled: protection.releaseEnabled,
+            releaseBeforeResetMinutes: protection.releaseBeforeResetMinutes,
             resetsAt: window.resetsAt,
             minutesToReset: until === null ? null : Math.max(0, Math.round(until * 60)),
             observedPercentPerHour: rate,
             targetPercentPerHour: target,
             projectedRemainingPercent: projected,
+            observedAt: capacity.observedAt,
+            reserveAt:
+              rate !== null && rate > 0 && capacity.observedAt
+                ? stamp(
+                    Date.parse(capacity.observedAt) +
+                      (Math.max(0, remaining - reserve) / rate) * 3600_000,
+                  )
+                : fresh && remaining <= reserve
+                  ? capacity.observedAt
+                  : null,
+            exhaustionAt:
+              rate !== null && rate > 0 && capacity.observedAt
+                ? stamp(Date.parse(capacity.observedAt) + (remaining / rate) * 3600_000)
+                : null,
+            resetBeforeReserve:
+              rate !== null && rate > 0 && capacity.observedAt && window.resetsAt
+                ? Date.parse(window.resetsAt) <
+                  Date.parse(capacity.observedAt) +
+                    (Math.max(0, remaining - reserve) / rate) * 3600_000
+                : null,
             state,
             message:
               state === 'underused'
@@ -1143,30 +1356,34 @@ export class Quark {
     });
   }
   projectRates() {
-    const intervals = this.recentIntervals();
-    const rates = [];
+    const now = this.clock(),
+      intervals = this.recentIntervals(12),
+      rates = [];
+    const projects = this.store.projects(),
+      budgets = this.budgets(),
+      pacing = this.utilization();
+    const accounts = [];
     for (const provider of ['codex', 'claude'] as const) {
-      const capacity = readCapacity(this.store, provider, this.clock());
-      for (const window of capacity.windows) {
-        const matching = intervals.filter(
-          (row) =>
-            row.provider === provider &&
-            row.windowId === window.id &&
-            sameAllowanceReset(row.resetsAt, window.resetsAt),
+      const capacity = readCapacity(this.store, provider, now);
+      for (const window of capacity.windows.filter((w) => w.scope !== 'other')) {
+        const historyRows = intervals.filter(
+          (row) => row.provider === provider && row.windowId === window.id,
         );
-        // A regressing reading also starts a new baseline, even if the provider
-        // omits a reset time or reports the same one. Never reuse its old chart.
-        const baseline = matching.findLastIndex((row) => row.baseline);
-        const samples = baseline >= 0 ? matching.slice(baseline) : matching;
+        const samples = currentRateSamples(
+          historyRows.filter((row) => Date.parse(row.observedAt) >= now - 3600_000),
+          window.resetsAt,
+          capacityMaxAge(provider),
+        );
         const from = samples[0]?.observedAt ?? null,
           to = samples.at(-1)?.observedAt ?? null;
         const hours = from && to ? (Date.parse(to) - Date.parse(from)) / 3600_000 : 0;
-        for (const project of this.store.projects()) {
+        for (const project of projects) {
           const estimatedPercent = samples
             .slice(1)
             .flatMap((row) => row.allocations)
             .filter((item) => item.projectId === project.id)
             .reduce((sum, item) => sum + item.percent, 0);
+          const history = rateHistory(historyRows, project.id, now, capacityMaxAge(provider));
           rates.push({
             projectId: project.id,
             provider,
@@ -1175,19 +1392,59 @@ export class Quark {
             resetsAt: window.resetsAt,
             from,
             to,
-            estimatedPercentPerHour: hours >= 5 / 60 ? estimatedPercent / hours : null,
+            estimatedPercentPerHour:
+              hours >= 5 / 60 && !samples.slice(1).some((row) => row.unattributed > 0)
+                ? estimatedPercent / hours
+                : null,
             estimatedPercent,
             samples: samples.length,
-            stale: capacity.stale,
+            stale: capacity.stale || capacity.state !== 'ready',
+            history,
+            historyCoverageMinutes: history.reduce((sum, point) => sum + point.coverageMinutes, 0),
           });
         }
+        const forecast = pacing.find(
+          (row) => row.provider === provider && row.windowId === window.id,
+        );
+        if (!forecast) continue;
+        const capped = budgets.filter(
+          (b) =>
+            !b.taskId &&
+            b.provider === provider &&
+            b.windowId === window.id &&
+            b.period === 'hour' &&
+            b.enabled,
+        );
+        accounts.push({
+          provider,
+          windowId: window.id,
+          label: window.label,
+          observedAt: capacity.observedAt,
+          remainingPercent: forecast.remainingPercent,
+          savedReservePercent: forecast.savedReservePercent ?? forecast.reservePercent,
+          effectiveReservePercent: forecast.reservePercent,
+          reserveReleased: forecast.reserveReleased,
+          resetsAt: window.resetsAt,
+          estimatedPercentPerHour: forecast.observedPercentPerHour,
+          reserveAt: forecast.reserveAt,
+          exhaustionAt: forecast.exhaustionAt,
+          resetBeforeReserve: forecast.resetBeforeReserve,
+          stale: capacity.stale || capacity.state !== 'ready',
+          configuredProjectPercentPerHour: capped.reduce((sum, b) => sum + b.limitPercent, 0),
+          uncappedProjects: projects.filter(
+            (p) => !p.internal && !capped.some((b) => b.projectId === p.id),
+          ).length,
+        });
       }
     }
     return projectRatesSchema.parse({
-      observedAt: stamp(this.clock()),
+      observedAt: stamp(now),
+      historyFrom: stamp(now - 12 * 3600_000),
+      historyTruncated: intervals.length >= 12001,
       rates,
+      accounts,
       notice:
-        'Estimated percentage points of each named allowance per hour over the displayed sample interval (up to one hour). Less than five minutes is insufficient evidence. Provider windows stay separate; shared and external activity makes attribution approximate.',
+        'Estimated percentage points of each full reported allowance per hour. Current rates use up to one comparable hour, with at least five minutes of readings. The last 12 hours show only observed coverage; missing, reset and unattributed intervals are gaps. Account forecasts include external activity and are approximate.',
     });
   }
   status(projectId?: string) {

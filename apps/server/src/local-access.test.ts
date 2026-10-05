@@ -543,3 +543,32 @@ it('connects a native loopback editor without credentials while consumer routes 
     await closed;
   }
 });
+
+it('treats selected-host cluster requests as remote browsers for notebook tunnels', async () => {
+  const api = await server();
+  const as = (role: LocalRole, method: 'GET' | 'POST', url: string, payload?: unknown) =>
+    api.inject({
+      method,
+      url,
+      headers: { ...headers, authorization: authorization(role, method, url) },
+      ...(payload ? { payload } : {}),
+    });
+  expect((await as('owner', 'GET', '/api/cluster/notebooks')).json()).toEqual({
+    localBrowser: true,
+    notebooks: [],
+  });
+  // Another computer's app proxies the owner's phone or laptop: its loopback is not this one.
+  expect((await as('host', 'GET', '/api/cluster/notebooks')).json()).toEqual({
+    localBrowser: false,
+    notebooks: [],
+  });
+  expect(
+    (await as('host', 'POST', '/api/cluster/notebooks/close', { jobId: '12' })).statusCode,
+  ).toBe(200);
+  const open = await as('host', 'POST', '/api/cluster/notebooks/open', {
+    key: randomUUID(),
+    jobId: '12',
+  });
+  expect(open.statusCode).toBe(401);
+  expect(open.body).not.toContain('token');
+});

@@ -84,6 +84,6 @@ test('QUARK reading failures recover without starting model work', async ({ page
   await page.goto('/#/work');
   await expect(page.getByRole('heading', { name: 'QUARK could not connect' })).toBeVisible();
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Projects and budgets' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Project usage rates' })).toBeVisible();
   expect(writes).toBe(0);
 });

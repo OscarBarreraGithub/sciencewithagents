@@ -473,6 +473,8 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
   const [historyQuery, setHistoryQuery] = useState('');
   const viewport = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
+  // When the latest successful chat read started (client clock), for freshness against discovery.
+  const readAt = useRef(0);
   // Where a following reader last was; only scrolling up from here reads history.
   const followTop = useRef(0);
   const mounted = useRef(true);
@@ -486,6 +488,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
     let ended = false;
     let received = false;
     let pendingRead = false;
+    readAt.current = 0;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       // An attached editor can temporarily report its provider offline. Keep
@@ -496,6 +499,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
         return;
       }
       pendingRead = true;
+      const started = Date.now();
       try {
         const raw = mirrorStateSchema.parse(
           await api(`/vscode/windows/${chat.windowId}${historyQuery}`),
@@ -513,6 +517,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
               : 'VS Code is sharing a different conversation. Choose it from your chat list, or share this one again.',
           );
         } else {
+          readAt.current = started;
           setState(value);
           setError('');
         }
@@ -592,7 +597,11 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
     follow.current = true;
     setFollowing(true);
   }
-  const status = chat.status === 'offline' ? 'offline' : (state?.status ?? 'offline');
+  // The newer reading wins. A chat read that started after discovery's failed refresh
+  // restores the chat; that failure clears send, steer and stop from an older reading.
+  const listFailed =
+    chat.online && chat.status === 'offline' && (chat.listedAt ?? Infinity) >= readAt.current;
+  const status = !chat.online || listFailed ? 'offline' : (state?.status ?? 'offline');
   const connecting = !!chat.online && !state && !error;
   const [sendTiming, setSendTiming] = useState<'steer' | 'queue'>('steer');
   const canSteer = status === 'busy' && !!state?.canSteer && !!state.steerToken;
@@ -721,6 +730,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           <div className="mirror-notice" role="status">
             {error ||
               (state?.status === status && state.message) ||
+              (listFailed && chat.message) ||
               (daemon
                 ? status === 'attention'
                   ? 'A request needs your attention on your computer. Approvals stay in the original Codex session there.'
@@ -927,6 +937,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
             setText={browserNotepad.draft.setText}
             maxLength={32000}
             disabled={busy || !!pending}
+            uploadDisabled={chat.canAttachImages === false || state?.canAttachImages === false}
             onBusy={setUploading}
           />
           <button
@@ -944,6 +955,11 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
             <NotebookPen size={16} /> Open notepad
           </button>
         </div>
+        {(chat.canAttachImages === false || state?.canAttachImages === false) && (
+          <p className="mirror-note">
+            Remote screenshots are unavailable. Remove saved images to send text; attach in VS Code.
+          </p>
+        )}
         <details className="mirror-delivery-status" title={receipt || undefined}>
           <summary aria-live="polite">{receipt || '\u00a0'}</summary>
           {receipt && <p>{receipt}</p>}

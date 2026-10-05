@@ -12,6 +12,7 @@ import { bridgeSymbol, patch, restore } from './patch.js';
 import { MirrorConnection, isCodexConnection } from './connection.js';
 import { claudeBridgeSymbol, patchClaude, restoreClaude } from './claude-patch.js';
 import { ClaudeMirrorConnection, isClaudeHost } from './claude-connection.js';
+import { bridgeTarget, MirrorTransport, remoteSetupInstructions } from './transport.js';
 
 type Provider = 'codex' | 'claude';
 interface Adapter {
@@ -35,10 +36,7 @@ const providers = {
 } as const;
 
 export async function activate(context: vscode.ExtensionContext) {
-  const bridges = new Map<
-    Provider,
-    { adapter: Adapter; socket?: WebSocket; retry?: NodeJS.Timeout }
-  >();
+  const bridges = new Map<Provider, { adapter: Adapter; transport?: MirrorTransport }>();
   const needsSetup = new Set<Provider>();
   let stopped = false;
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 5);
@@ -46,6 +44,12 @@ export async function activate(context: vscode.ExtensionContext) {
   status.tooltip = 'sciencewithagents: share Codex or Claude Code, open chats, or stop sharing';
   status.show();
   const port = () => vscode.workspace.getConfiguration('agentDockMirror').get<number>('port', 4330);
+  const target = () =>
+    bridgeTarget(
+      port(),
+      vscode.workspace.getConfiguration('agentDockMirror').get<string>('remoteSocketPath', ''),
+      vscode.env.remoteName,
+    );
   const enabled = (provider: Provider) =>
     context.globalState.get(
       `enabled.${provider}`,
@@ -67,7 +71,7 @@ export async function activate(context: vscode.ExtensionContext) {
   function updateStatus() {
     const sharing = [...bridges.entries()].filter(([, bridge]) => bridge.adapter.summary.threadId);
     const connected = sharing.filter(
-      ([, bridge]) => bridge.socket?.readyState === WebSocket.OPEN,
+      ([, bridge]) => bridge.transport?.socket?.readyState === WebSocket.OPEN,
     ).length;
     status.text = needsSetup.size
       ? '$(warning) sciencewithagents · setup needed'
@@ -76,89 +80,88 @@ export async function activate(context: vscode.ExtensionContext) {
         : sharing.length
           ? '$(device-mobile) sciencewithagents · reconnecting'
           : '$(device-mobile) sciencewithagents';
+    const issue = sharing.find(([, bridge]) => bridge.transport?.issue)?.[1].transport?.issue;
+    status.tooltip =
+      issue ??
+      (vscode.env.remoteName
+        ? 'sciencewithagents: private SSH connection · remote screenshots are unavailable'
+        : 'sciencewithagents: share Codex or Claude Code, open chats, or stop sharing');
   }
   function disconnect(provider: Provider) {
     const bridge = bridges.get(provider);
     if (!bridge) return;
-    clearTimeout(bridge.retry);
-    bridge.socket?.removeAllListeners();
-    bridge.socket?.on('error', () => {});
-    bridge.socket?.terminate();
-    bridge.socket = undefined;
+    bridge.transport?.stop();
     updateStatus();
   }
   function connect(provider: Provider) {
     const bridge = bridges.get(provider);
     if (stopped || !bridge?.adapter.summary.threadId) return;
     disconnect(provider);
-    const p = port();
-    if (!Number.isInteger(p) || p < 1024 || p > 65535) return;
-    const peer = new WebSocket(`ws://127.0.0.1:${p}/api/vscode/bridge`, {
-      perMessageDeflate: false,
-      maxPayload: 128 * 1024,
-      handshakeTimeout: 5000,
-    });
-    bridge.socket = peer;
-    peer.on('open', () => {
-      peer.send(
-        JSON.stringify({
-          type: 'hello',
-          window: { ...bridge.adapter.summary, paged: true, groupedActivity: true },
-        }),
-      );
-      updateStatus();
-    });
-    peer.on('message', async (data) => {
-      try {
-        const command = mirrorCommandSchema.parse(JSON.parse(data.toString()));
-        let result =
-          command.type === 'read'
-            ? await bridge.adapter.read()
-            : command.type === 'send'
-              ? await bridge.adapter.send(command.input)
-              : await bridge.adapter.control(command.input);
-        if (command.type === 'read' && command.page)
-          result = {
-            ...mirrorPage(result as MirrorState, command.page),
-            paged: true,
-            groupedActivity: true,
-          };
-        let text = JSON.stringify(result);
-        if (Buffer.byteLength(text) > 32 * 1024 * 1024) {
-          result = {
-            ...bridge.adapter.summary,
-            status: 'offline',
-            entries: [],
-            message:
-              'This saved conversation exceeds the 32 MiB preview limit. Read it in VS Code; no truncated transcript is shown as complete.',
-          };
-          text = JSON.stringify(result);
-        }
-        for (
-          let offset = 0;
-          offset < text.length && peer.readyState === WebSocket.OPEN;
-          offset += 4096
-        )
-          peer.send(
-            JSON.stringify({
-              type: 'chunk',
-              id: command.id,
-              text: text.slice(offset, offset + 4096),
-              last: offset + 4096 >= text.length,
-            }),
-          );
-      } catch {
-        peer.close(1008);
-      }
-    });
-    peer.on('error', () => {
-      /* Status provides recovery without logging private content. */
-    });
-    peer.on('close', () => {
-      if (bridge.socket !== peer || stopped) return;
-      updateStatus();
-      bridge.retry = setTimeout(() => void connect(provider), 4000);
-    });
+    bridge.transport = new MirrorTransport(
+      target,
+      (peer, destination) => {
+        const capabilities = destination.socketPath ? { canAttachImages: false } : {};
+        peer.send(
+          JSON.stringify({
+            type: 'hello',
+            window: {
+              ...bridge.adapter.summary,
+              ...capabilities,
+              paged: true,
+              groupedActivity: true,
+            },
+          }),
+        );
+        updateStatus();
+        peer.on('message', async (data) => {
+          try {
+            const command = mirrorCommandSchema.parse(JSON.parse(data.toString()));
+            let result =
+              command.type === 'read'
+                ? await bridge.adapter.read()
+                : command.type === 'send'
+                  ? await bridge.adapter.send(command.input)
+                  : await bridge.adapter.control(command.input);
+            if (command.type === 'read' && command.page)
+              result = {
+                ...mirrorPage(result as MirrorState, command.page),
+                paged: true,
+                groupedActivity: true,
+              };
+            if (command.type === 'read') result = { ...result, ...capabilities };
+            let text = JSON.stringify(result);
+            if (Buffer.byteLength(text) > 32 * 1024 * 1024) {
+              result = {
+                ...bridge.adapter.summary,
+                ...capabilities,
+                status: 'offline',
+                entries: [],
+                message:
+                  'This saved conversation exceeds the 32 MiB preview limit. Read it in VS Code; no truncated transcript is shown as complete.',
+              };
+              text = JSON.stringify(result);
+            }
+            for (
+              let offset = 0;
+              offset < text.length && peer.readyState === WebSocket.OPEN;
+              offset += 4096
+            )
+              peer.send(
+                JSON.stringify({
+                  type: 'chunk',
+                  id: command.id,
+                  text: text.slice(offset, offset + 4096),
+                  last: offset + 4096 >= text.length,
+                }),
+              );
+          } catch {
+            peer.close(1008);
+          }
+        });
+      },
+      updateStatus,
+    );
+    bridge.transport.start();
   }
   async function attach(provider: Provider) {
     const existing = bridges.get(provider);
@@ -282,6 +285,11 @@ export async function activate(context: vscode.ExtensionContext) {
         action: 'claude',
       },
       {
+        label: '$(plug) Connection status and setup',
+        description: 'Local app or private Remote SSH forward',
+        action: 'connection',
+      },
+      {
         label: '$(tools) Open native commands and settings',
         description: 'Models, slash commands, skills, MCPs and approvals stay in VS Code',
         action: 'native',
@@ -352,6 +360,28 @@ export async function activate(context: vscode.ExtensionContext) {
         provider === 'codex' ? 'chatgpt.openCommandMenu' : 'claude-vscode.editor.openLast',
       );
   });
+  command('agentDockMirror.connection', async () => {
+    const issue = [...bridges.values()].find((bridge) => bridge.transport?.issue)?.transport?.issue;
+    const choice = await vscode.window.showInformationMessage(
+      issue ??
+        (vscode.env.remoteName
+          ? 'Remote SSH sharing uses the configured private Unix forward. Keep the app, SSH connection and both remote extensions running. Remote screenshot attachments are unavailable.'
+          : 'Local sharing connects to sciencewithagents on this computer. Remote SSH sharing requires an explicit private Unix forward.'),
+      'Open connection settings',
+      'Copy remote setup instructions',
+    );
+    if (choice === 'Open connection settings')
+      await vscode.commands.executeCommand(
+        'workbench.action.openSettings',
+        '@ext:oscarphysics.agent-dock-mirror',
+      );
+    if (choice === 'Copy remote setup instructions') {
+      await vscode.env.clipboard.writeText(remoteSetupInstructions);
+      void vscode.window.showInformationMessage(
+        'Remote setup instructions copied. Give them to your setup agent on the computer running sciencewithagents.',
+      );
+    }
+  });
   command('agentDockMirror.open', async () =>
     vscode.env.openExternal(vscode.Uri.parse(`http://127.0.0.1:${port()}/?mirror=1`)),
   );
@@ -366,7 +396,10 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('agentDockMirror.port'))
+      if (
+        event.affectsConfiguration('agentDockMirror.port') ||
+        event.affectsConfiguration('agentDockMirror.remoteSocketPath')
+      )
         for (const provider of bridges.keys()) void connect(provider);
     }),
   );

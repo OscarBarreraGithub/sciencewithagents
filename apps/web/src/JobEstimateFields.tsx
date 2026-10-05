@@ -40,10 +40,11 @@ export function JobEstimateFields({
         </select>
       </label>
       <details>
-        <summary>Work estimate and budget</summary>
+        <summary>Work estimate</summary>
         <p className="muted">
-          Crude planning estimates. Your manager can refine these. A token budget limits future
-          turns; it cannot cut a running reply at an exact token count.
+          Planning estimates your manager can refine. Spending limits use percentage points of the
+          reported Codex or Claude allowance, including optional hourly limits in QUARK. Token
+          counts are accounting evidence.
         </p>
         <div className="estimate-grid">
           {number('expectedTokens', 'Estimated tokens per turn', 100, 10_000_000)}

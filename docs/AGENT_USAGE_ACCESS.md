@@ -14,6 +14,7 @@ The app must be open; these commands never start a background service or a model
 node apps/server/dist/cli.js quark projects
 node apps/server/dist/cli.js quark usage
 node apps/server/dist/cli.js quark resources
+node apps/server/dist/cli.js quark cluster
 node apps/server/dist/cli.js quark jobs
 node apps/server/dist/cli.js quark jobs PROJECT_UUID
 ```
@@ -21,7 +22,8 @@ node apps/server/dist/cli.js quark jobs PROJECT_UUID
 JSON usage includes both providers, exact window IDs, remaining percentage, reset time,
 observation time and stale/error state. It includes separate model windows when reported.
 Missing weekly windows stay missing. Resources includes cached pressure, trends and grouped
-process activity. Jobs includes queue reasons, planning estimates, token/accounting totals,
+process activity. Cluster is the cached advisory Slurm reading described in
+[Slurm cluster](CLUSTER.md); it never contacts the cluster. Jobs includes queue reasons, planning estimates, token/accounting totals,
 allowance holds and owned local jobs. Project filtering selects that project's job/accounting
 records; machine/provider readings and shared window totals still describe the whole host.
 Read commands neither refresh native authentication nor trigger a new provider usage request.

@@ -11,6 +11,7 @@ import {
   mirrorResultSchema,
   mirrorPageQuerySchema,
   mirrorPage,
+  chatImageIds,
   type MirrorPageQuery,
   type MirrorState,
   type MirrorSend,
@@ -29,9 +30,11 @@ type Peer = {
   socket: WebSocket;
   window: Omit<MirrorState, 'entries'>;
   summaryAt: number;
+  refreshing?: Promise<void>;
   pending: Map<
     string,
     {
+      read: boolean;
       text: string;
       bytes: number;
       timer: NodeJS.Timeout;
@@ -40,6 +43,8 @@ type Peer = {
     }
   >;
 };
+/** Too many reads are already waiting; the editor is connected, not offline. */
+class MirrorBusy extends Conflict {}
 const uncertain: MirrorResult = {
   state: 'uncertain',
   message:
@@ -50,6 +55,7 @@ const uncertain: MirrorResult = {
 export class VscodeMirrors {
   private peers = new Map<string, Peer>();
   private listing?: Promise<void>;
+  private reads = new Map<string, Promise<MirrorState>>();
   constructor(
     private readonly store: Store,
     private readonly daemon?: DaemonChats,
@@ -85,20 +91,11 @@ export class VscodeMirrors {
       ...[...this.peers.entries()].map(async ([id, peer]) => {
         if (Date.now() - peer.summaryAt < 5000) return;
         const previous = peer.summaryAt;
-        try {
-          await this.read(id, {}, 2000);
-        } catch {
-          if (this.peers.get(id) === peer && peer.summaryAt === previous) {
-            peer.summaryAt = Date.now();
-            peer.window = {
-              ...peer.window,
-              status: 'offline',
-              message: 'VS Code is not responding. Open the conversation to retry.',
-              stopToken: undefined,
-              steerToken: undefined,
-            };
-          }
-        }
+        // A long native transcript can take seconds to read. Keep waiting in the
+        // background and keep the last reading while the editor still answers
+        // pings; a frozen or unreachable editor is reported offline promptly.
+        if (await this.refresh(id, peer, 2000)) return;
+        if (!(await this.alive(peer))) this.offline(id, peer, previous);
       }),
     ]).then(() => {});
     try {
@@ -107,6 +104,61 @@ export class VscodeMirrors {
     } finally {
       this.listing = undefined;
     }
+  }
+  /** Resolves true when the shared refresh finished within `waitMs`. */
+  private refresh(id: string, peer: Peer, waitMs: number): Promise<boolean> {
+    peer.refreshing ??= (async () => {
+      const previous = peer.summaryAt;
+      try {
+        await this.read(id, {});
+      } catch (error) {
+        // Other reads are in flight; whichever finishes next updates the summary.
+        if (!(error instanceof MirrorBusy)) this.offline(id, peer, previous);
+      } finally {
+        peer.refreshing = undefined;
+      }
+    })();
+    let timer: NodeJS.Timeout | undefined;
+    return Promise.race([
+      peer.refreshing.then(() => true),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), waitMs);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  }
+  /** The extension host answers pings even while Codex is slow to return a transcript. */
+  private alive(peer: Peer, waitMs = 1000): Promise<boolean> {
+    if (peer.socket.readyState !== peer.socket.OPEN) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const pong = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        peer.socket.off('pong', pong);
+        resolve(false);
+      }, waitMs);
+      peer.socket.once('pong', pong);
+      try {
+        peer.socket.ping();
+      } catch {
+        clearTimeout(timer);
+        peer.socket.off('pong', pong);
+        resolve(false);
+      }
+    });
+  }
+  private offline(id: string, peer: Peer, previous: number) {
+    // A newer successful reading always wins over this failed refresh.
+    if (this.peers.get(id) !== peer || peer.summaryAt !== previous) return;
+    peer.summaryAt = Date.now();
+    peer.window = {
+      ...peer.window,
+      status: 'offline',
+      message: 'VS Code is not responding. Open the conversation to retry.',
+      stopToken: undefined,
+      steerToken: undefined,
+    };
   }
   private window(windowId: string) {
     return (
@@ -180,7 +232,13 @@ export class VscodeMirrors {
       throw new Missing(
         'This VS Code window is offline. Open it on the computer and share the conversation again.',
       );
-    if (peer.pending.size >= 4) throw new Conflict('The mirror is catching up. Please wait.');
+    // Reads are bounded separately so polling never blocks an owner's send or stop.
+    const read = value.type === 'read';
+    if (
+      (read && [...peer.pending.values()].filter((request) => request.read).length >= 4) ||
+      peer.pending.size >= 8
+    )
+      throw new MirrorBusy('The mirror is catching up. Please wait.');
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         peer.pending.delete(value.id);
@@ -190,7 +248,7 @@ export class VscodeMirrors {
           ),
         );
       }, timeoutMs);
-      peer.pending.set(value.id, { text: '', bytes: 0, timer, resolve, reject });
+      peer.pending.set(value.id, { read, text: '', bytes: 0, timer, resolve, reject });
       peer.socket.send(JSON.stringify(value), (error) => {
         if (error) {
           clearTimeout(timer);
@@ -200,18 +258,24 @@ export class VscodeMirrors {
       });
     });
   }
-  async read(windowId: string, page?: MirrorPageQuery, timeoutMs = 15_000) {
+  read(windowId: string, page?: MirrorPageQuery) {
+    // Phone, desktop and list refreshes poll the same latest page; share one editor read.
+    const key = JSON.stringify([windowId, page ?? null]);
+    let reading = this.reads.get(key);
+    if (!reading) {
+      reading = this.readOnce(windowId, page).finally(() => this.reads.delete(key));
+      this.reads.set(key, reading);
+    }
+    return reading;
+  }
+  private async readOnce(windowId: string, page?: MirrorPageQuery) {
     const window = this.window(windowId);
     // Old paged companions cannot expand a grouped activity query. Only this
     // deliberate drilldown falls back to a full read; normal polling stays paged.
     const paged =
       !!window?.paged && page !== undefined && (!page.activity || !!window.groupedActivity);
     const value = mirrorStateSchema.parse(
-      await this.request(
-        windowId,
-        { id: randomUUID(), type: 'read', ...(paged ? { page } : {}) },
-        timeoutMs,
-      ),
+      await this.request(windowId, { id: randomUUID(), type: 'read', ...(paged ? { page } : {}) }),
     );
     if (value.windowId !== windowId) throw new Conflict('The shared window identity changed.');
     const {
@@ -253,6 +317,12 @@ export class VscodeMirrors {
       return {
         state: 'not_sent',
         message: 'This conversation is no longer shared. Nothing was sent.',
+      };
+    if (window.canAttachImages === false && chatImageIds(input.text).length)
+      return {
+        state: 'not_sent',
+        message:
+          'Screenshots cannot be sent to this remote editor. Remove them from this draft and attach files in the native remote editor instead. Nothing was sent.',
       };
     const delivery = { ...input, text: this.prepareText(input.text) };
     if (delivery.text.length > 32000)

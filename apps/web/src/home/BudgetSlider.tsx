@@ -71,6 +71,8 @@ export function BudgetSlider({
           provider: b.provider,
           windowId: b.windowId,
           limitPercent: proposed.value,
+          period: b.period,
+          enabled: b.period === 'hour' ? true : b.enabled,
         },
       };
     }
@@ -101,22 +103,26 @@ export function BudgetSlider({
       if (again) void save();
     }
   };
-  const label = `${budget.provider === 'claude' ? 'Claude' : 'Codex'} · ${windowLabel}`;
+  const hourly = budget.period === 'hour';
+  const label = `${budget.provider === 'claude' ? 'Claude' : 'Codex'} · ${windowLabel}${hourly ? ' per hour' : ''}`;
   return (
     <section className="quark-budget-slider" aria-label={`${label} budget`}>
       <label>
         <span className="quark-budget-slider-heading">
           <span>{label}</span>
-          <strong>{pct(value)}</strong>
+          <strong>
+            {pct(value)}
+            {hourly ? ' / hour' : ''}
+          </strong>
         </span>
         <input
           type="range"
-          min="0.1"
+          min={hourly ? '0' : '0.1'}
           max="100"
           step="0.1"
           value={value}
           aria-label={`${label} spending limit`}
-          aria-valuetext={`${pct(value)} of the full allowance`}
+          aria-valuetext={`${pct(value)} of the full allowance${hourly ? ' in a rolling hour' : ''}`}
           // Not `disabled`: that drops keyboard focus to the page mid-adjustment.
           aria-disabled={error ? true : undefined}
           onChange={(event) => change(Number(event.target.value))}
@@ -149,14 +155,30 @@ export function BudgetSlider({
         aria-valuetext={`${pct(latest.spentPercent)} spent of ${pct(latest.limitPercent)}`}
       >
         <span
-          style={{ width: `${Math.min(100, (latest.spentPercent / latest.limitPercent) * 100)}%` }}
+          style={{
+            width: `${latest.limitPercent > 0 ? Math.min(100, (latest.spentPercent / latest.limitPercent) * 100) : 0}%`,
+          }}
         />
       </div>
       <p>
-        ≈{pct(latest.spentPercent)} spent · {pct(latest.remainingPercent)} left
+        ≈{pct(latest.spentPercent)} spent{hourly ? ' in the last hour' : ''} ·{' '}
+        {pct(latest.remainingPercent)} left
       </p>
       {latest.reservedPercent > 0 && <small>≈{pct(latest.reservedPercent)} in flight</small>}
       {latest.reason && <small>{latest.reason}</small>}
+      {hourly && !latest.enabled && <small>Hourly limit is off</small>}
+      {hourly && latest.enabled && latest.limitPercent === 0 && (
+        <small>
+          Provider paused at 0% / hour. Raise the rate to permit recovery after a confirmed stop and
+          fresh readings.
+        </small>
+      )}
+      {hourly && latest.nextEligibleAt && (
+        <small>
+          Earlier usage begins to leave the hour at{' '}
+          {new Date(latest.nextEligibleAt).toLocaleTimeString()}
+        </small>
+      )}
       <small role="status">
         {busy
           ? 'Saving…'

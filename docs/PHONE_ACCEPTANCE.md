@@ -44,7 +44,9 @@ result privately; browser emulation does not certify physical retention or conne
 6. Switch the phone to cellular, close/reopen it, and confirm history returns without
    resending messages. Check team/child history and native terminal. After a terminal
    disconnect, **Reconnect terminal** restores its view; **Take control here** deliberately
-   transfers input from the other device. Check the phone keyboard and orientation.
+   transfers input from the other device. Check the phone keyboard and orientation. Pinch
+   in slightly with the chat keyboard open, dismiss it and swipe back: the app must fill
+   the screen without reopening.
 7. Once work is idle, have the setup agent restart only sciencewithagents. Confirm the same
    conversation and enrollment return. Inspect interrupted work before resuming; neither
    command input nor approvals should replay automatically.

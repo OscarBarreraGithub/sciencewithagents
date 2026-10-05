@@ -7,11 +7,28 @@ control opens connection/setup instructions; conversations live in **Chats → S
 ## Architecture and boundaries
 
 The companion observes the selected provider's existing in-process connection, then sends
-bounded history and controls through an outbound loopback WebSocket to the app. No new CLI
+bounded history and controls through an outbound loopback WebSocket to the app. Remote SSH
+workspaces explicitly use a private Unix reverse forward to that same endpoint; there is no
+cluster TCP producer listener. The remote native provider and companion must share an extension
+host. No new CLI
 is launched, unloaded thread resumed, model changed or native approval answered. The gateway
 uses its existing authenticated browser/phone consumer routes. Native producer access is
 local-only, rejects browser origins and is unavailable through the phone/other-host proxy.
 There is no separate editor credential or login.
+
+`agentDockMirror.remoteSocketPath` is a machine-scoped opt-in. Remote extension hosts never
+fall back to cluster loopback. Before every connection, the companion checks a same-owner
+mode-0600 socket in an unlinked canonical mode-0700 directory. The WebSocket connection uses
+its fixed gateway path/Host with a Unix `createConnection` hook, no browser Origin or redirects.
+The owner manages the existing native SSH forward; the companion reconnects every four seconds,
+reports its failure in connection setup/status, and closes only its own sockets/timers on stop
+or setting changes. It never replays pending sends. The [remote setup guide](../apps/vscode-mirror/README.md#remote-ssh-workspaces)
+has a copyable setup prompt and exact-forward cancellation instructions.
+
+Actual private forwarding to a disposable loopback HTTP fixture was checked on FASRC, including
+0700/0600 permissions and exact cleanup. Disposable local Unix/WebSocket fixtures cover first-run
+failure/retry, permissions, reconnect and stop. Actual remote VS Code installation/native controls
+remain unverified; this transport preview does not certify remote provider builds or site policy.
 
 Codex uses observed native thread/turn identities for history, text sends, steering and Stop.
 Claude uses the selected loaded channel and its native input/interrupt lifecycle. Provider
@@ -28,6 +45,13 @@ Phone pages contain at most 40 entries and 64,000 text characters. Very long ent
 part navigation. Consecutive tool/reasoning activity is grouped so it does not displace the
 latest actual message. Tool bodies load on demand. Legacy full responses have an explicit
 32 MiB ceiling. Native history is the source of truth; unavailable history is not an empty log.
+Codex builds with native turn paging load complete turns once per share and then re-read
+only the newest turns as the conversation changes; builds without it keep the full-history
+read. Summary or unloaded turns are never shown as a complete transcript.
+
+A slow transcript read keeps the last reading while the editor still answers the bridge's
+ping. An editor that stops answering, or whose latest read fails, is shown offline and loses
+send, steer and Stop until a newer read succeeds. Polling reads never block a send or Stop.
 
 Drafts and saved views are scoped to computer/provider/conversation/browser. A reconnecting
 window can change connection ID without changing thread identity. If it shares a different
@@ -52,7 +76,10 @@ uploads use generated file IDs and stay under private `data/chat-images/` on the
 Saved drafts and send receipts retain the image references. Before forwarding to the existing
 native conversation, the server adds local image paths for its native image-reading tool;
 the app renders previews without exposing that transport note. This requires the native
-agent to read files on the same computer; remote-cluster editor attachments are not qualified.
+agent to read files on the same computer. Unix-forward companions advertise `canAttachImages:false`
+in hello and every read. The app disables uploads while retaining saved previews/removal, and the
+gateway refuses screenshot references before adding local paths. Remote chats remain text-capable;
+attach files in the native remote editor. No remote file-transfer protocol is implemented.
 
 ## Helper visibility
 

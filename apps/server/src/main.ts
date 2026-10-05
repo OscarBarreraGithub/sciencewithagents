@@ -11,6 +11,7 @@ import { DemoProvider, seedDemo } from './demo.js';
 import { PhoneAccess, readPhoneConfig } from './phone-access.js';
 import { Terminals } from './terminal.js';
 import { SourceBackups } from './source-backups.js';
+import { PublishingAccounts } from './publishing-accounts.js';
 import { PhoneTunnel } from './phone-tunnel.js';
 import { PhoneSetup } from './phone-setup.js';
 import { Hosts } from './hosts.js';
@@ -183,6 +184,8 @@ startup = (async () => {
   terminals = new Terminals(runtime);
   backups = new SourceBackups(store, root, undefined, demo ? [] : undefined);
   hosts = new Hosts(root, undefined, demo ? [] : undefined);
+  // Demo data never checks the real computer's GitHub or Cloudflare sign-in.
+  const publishing = demo ? undefined : new PublishingAccounts(store);
   if (demo)
     runtime.health = { ready: true, version: 'demo', message: 'Demo mode · no model calls' };
   else {
@@ -218,6 +221,7 @@ startup = (async () => {
           mirrors,
           backups,
           hosts,
+          publishing,
           remote: true,
           ownsRuntime: false,
           ready,
@@ -258,6 +262,7 @@ startup = (async () => {
     terminals,
     backups,
     hosts,
+    publishing,
     ownsRuntime: false,
     ready,
   });
@@ -279,6 +284,7 @@ startup = (async () => {
   if (!demo) {
     runtime.capacity.start();
     runtime.resources.start();
+    runtime.cluster.start();
   }
   checkStopping();
   tunnel.start();

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, RefreshCw, Settings2, Square } from 'lucide-react';
+import { Clock3, Plus, RefreshCw, Settings2, Square } from 'lucide-react';
 import {
   agentSchema,
   snapshotSchema,
@@ -15,11 +15,12 @@ import {
   type ProviderId,
   type ResourceCheck,
   type ResourceStatus,
+  type WorkspaceSnapshot,
 } from '@dock/shared';
 import { api, apiScope, detail, models as loadModels } from '../api';
 import { Conversation, Composer } from '../Conversation';
 import { Modal } from '../Modal';
-import { useWorkspaceState } from '../useWorkspaceState';
+import { useSharedDraft, useWorkspaceState, type SharedDraft } from '../useWorkspaceState';
 import { useBrowserNotepad } from '../useBrowserNotepad';
 import { useReading } from './useHomeData';
 import { resourceAssistantOf } from './resource-chat';
@@ -105,14 +106,29 @@ export function useHealthModels() {
 export type HealthModels = ReturnType<typeof useHealthModels>;
 
 type Selection = { kind: 'auto' } | { kind: 'new' } | { kind: 'thread'; id: string };
+/** Compact navigation text only; the saved report keeps its original formatting. */
+function diagnosisPreview(text: string) {
+  return text
+    .replace(/^ {0,3}(?:#{1,6}\s+|>\s?)/gm, '')
+    .replace(/^ {0,3}(?:[-*+]\s+|\d+[.)]\s+)/gm, '')
+    .replace(/```[^\n]*\n?/g, ' ')
+    .replace(/!?\[([^\]]*)\]\([^\n)]*\)/g, '$1')
+    .replace(/(\*\*|__|~~)(?=\S)([\s\S]*?\S)\1/g, '$2')
+    .replace(/(^|[\s(])([*_])(\S(?:[^\n]*?\S)?)\2(?=$|[\s.,;:!?])/g, '$1$3')
+    .replace(/`+([^`]+)`+/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 type Saved = {
   selection: Selection;
   provider: ProviderId | null;
   model: string;
   effort: string;
   draft: string;
+  handoff: string | null;
 };
 const storageKey = () => `swa:health-assistant:${apiScope()}`;
+const unconfirmedDelivery = 'Delivery was not confirmed. Send again to check the same request.';
 function restore(): Saved {
   const fallback: Saved = {
     selection: { kind: 'auto' },
@@ -120,6 +136,7 @@ function restore(): Saved {
     model: '',
     effort: '',
     draft: '',
+    handoff: null,
   };
   try {
     const value = JSON.parse(
@@ -138,10 +155,89 @@ function restore(): Saved {
       model: typeof value.model === 'string' ? value.model.slice(0, 100) : '',
       effort: typeof value.effort === 'string' ? value.effort.slice(0, 64) : '',
       draft: typeof value.draft === 'string' ? value.draft.slice(0, 1000) : '',
+      handoff:
+        typeof value.handoff === 'string' && /^[0-9a-f-]{36}$/i.test(value.handoff)
+          ? value.handoff
+          : null,
     };
   } catch {
     return fallback;
   }
+}
+
+/** The old composer remains visible until the replacement's existing CAS draft is saved. */
+function DiagnosisDraftHandoff({
+  workspace,
+  agentId,
+  text,
+  complete,
+  cancel,
+}: {
+  workspace: WorkspaceSnapshot | null;
+  agentId: string;
+  text: string;
+  complete: (text: string) => boolean;
+  cancel: () => void;
+}) {
+  const draft = useSharedDraft(workspace, agentId);
+  const seeded = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const latest = useRef({ text, complete });
+  latest.current = { text, complete };
+  const [error, setError] = useState('');
+  const save = async () => {
+    if (!alive.current || !draft.ready || draft.conflict) return;
+    if (!seeded.current && draft.currentText() && draft.currentText() !== latest.current.text) {
+      setError('The new diagnosis has a saved draft. Your current draft stays here.');
+      return;
+    }
+    seeded.current = true;
+    if (draft.currentText() !== latest.current.text) draft.setText(latest.current.text);
+    try {
+      await draft.flush();
+      if (!alive.current) return;
+      setError('');
+      if (
+        draft.currentText() === latest.current.text &&
+        latest.current.complete(draft.currentText())
+      )
+        alive.current = false;
+    } catch {
+      setError('Your message was accepted. Reconnect to save the draft in the new diagnosis.');
+    }
+  };
+  useEffect(() => {
+    void save();
+  }, [draft.ready, draft.conflict, text]);
+  return error || draft.error ? (
+    <div className="health-alert health-draft-recovery" role="alert">
+      <p>{error || draft.error}</p>
+      <div className="health-draft-recovery-actions">
+        <button
+          aria-label="Retry saving draft"
+          disabled={!draft.ready || draft.saving || draft.conflict}
+          onClick={() => void save()}
+        >
+          Retry save
+        </button>
+        <button
+          aria-label="Keep draft here"
+          onClick={() => {
+            alive.current = false;
+            cancel();
+          }}
+        >
+          Keep draft
+        </button>
+      </div>
+    </div>
+  ) : null;
 }
 
 export function HealthAssistant({
@@ -170,13 +266,27 @@ export function HealthAssistant({
   const [thread, setThread] = useState<AgentDetail | null>(null);
   const [modelEdit, setModelEdit] = useState<{ model: string; effort: string } | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [modelSaving, setModelSaving] = useState(false);
   const [modelError, setModelError] = useState('');
   const [error, setError] = useState('');
+  const [handoffText, setHandoffText] = useState('');
+  const [draftReady, setDraftReady] = useState(false);
+  const sourceDraft = useRef<SharedDraft | null>(null);
+  const acknowledgedAgent = useRef<string | null>(null);
   const workspace = useWorkspaceState();
   const snapshot = useReading('/snapshot', snapshotSchema.parse);
   const ask = useResourceActions(refresh);
   const checks = status?.checks ?? [];
+  const diagnoses = checks.filter(
+    (check, index, all) =>
+      check.reason === 'asked' &&
+      !check.escalatedFrom &&
+      all.findIndex(
+        (other) =>
+          other.reason === 'asked' && !other.escalatedFrom && other.agentId === check.agentId,
+      ) === index,
+  );
   const rootOf = (check: ResourceCheck) =>
     (check.escalatedFrom && checks.find((c) => c.id === check.escalatedFrom)?.agentId) ||
     check.agentId;
@@ -297,15 +407,16 @@ export function HealthAssistant({
           },
       key,
     );
-    if (!result)
-      throw new Error('Delivery was not confirmed. Send again to check the same request.');
+    if (!result) throw new Error(unconfirmedDelivery);
     const created =
       result.checks.find((c) => c.reason === 'asked' && !known.has(c.id)) ??
       result.checks.find((c) => c.reason === 'asked');
-    if (!threadId && created)
-      update({ selection: { kind: 'thread', id: created.agentId }, draft: '' });
+    acknowledgedAgent.current = created && created.agentId !== threadId ? created.agentId : null;
+    setError('');
     setNotice('');
   };
+  // The uncertain-delivery alert already explains an unconfirmed send; show it once.
+  const shownError = (ask.failure && error === unconfirmedDelivery ? '' : error) || workspace.error;
   const choose = (next: ProviderId) => {
     ask.clear();
     if (next === provider) return;
@@ -314,17 +425,21 @@ export function HealthAssistant({
   };
   const startNew = (nextProvider?: ProviderId) => {
     ask.clear();
+    local.checkpoint();
     update({
       selection: { kind: 'new' },
       provider: nextProvider ?? threadProvider ?? saved.provider,
-      model: '',
-      effort: '',
+      model: nextProvider && nextProvider !== provider ? '' : (threadModel ?? saved.model),
+      effort: nextProvider && nextProvider !== provider ? '' : (agent?.effort ?? saved.effort),
+      handoff: null,
+      draft: nextProvider && !threadId ? saved.draft : '',
     });
     setThread(null);
     setError('');
     setModelError('');
     setModelEdit(null);
     setModelOpen(false);
+    setHistoryOpen(false);
     setNotice('');
     // A deep link must not reopen the previous conversation after a reload.
     if (agentId) window.location.replace('#/resources/chat');
@@ -364,7 +479,7 @@ export function HealthAssistant({
             <p>
               {threadId
                 ? `Conversation${started ? ` from ${when(started)}` : ''}`
-                : 'New conversation'}
+                : 'New diagnosis'}
             </p>
           </div>
           <div className="health-assistant-tools">
@@ -388,13 +503,59 @@ export function HealthAssistant({
                   : (selectedModel?.label ?? (provider ? providerNames[provider] : 'Choose model'))}
               </span>
             </button>
-            {threadId && (
-              <button onClick={() => startNew()} disabled={!!ask.busy || modelSaving}>
-                <Plus size={18} aria-hidden="true" /> New conversation
-              </button>
-            )}
+            <button
+              className="health-history-button"
+              aria-label="Diagnosis history"
+              title="Diagnosis history"
+              disabled={!!ask.busy || modelSaving || !!saved.handoff}
+              onClick={() => setHistoryOpen(true)}
+            >
+              <Clock3 size={19} aria-hidden="true" />
+            </button>
+            <button
+              className="primary health-new-diagnosis"
+              onClick={() => startNew()}
+              disabled={!!ask.busy || modelSaving || !!saved.handoff}
+            >
+              <Plus size={18} aria-hidden="true" /> New diagnosis
+            </button>
           </div>
         </div>
+        {historyOpen && (
+          <Modal
+            title="Diagnosis history"
+            className="resource-history-dialog"
+            close={() => setHistoryOpen(false)}
+          >
+            {diagnoses.length ? (
+              <ul className="health-diagnosis-history">
+                {diagnoses.map((check) => (
+                  <li key={check.agentId}>
+                    <button
+                      aria-current={threadId === check.agentId ? 'true' : undefined}
+                      onClick={() => {
+                        ask.clear();
+                        update({ selection: { kind: 'thread', id: check.agentId } });
+                        setThread(null);
+                        setError('');
+                        setNotice('');
+                        setHistoryOpen(false);
+                        window.location.replace(`#/resources/${check.agentId}`);
+                      }}
+                    >
+                      <strong>{diagnosisPreview(check.summary || reportFallback(check))}</strong>
+                      <span>
+                        {when(check.createdAt)} · {modelsState.name(check.model)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No saved diagnoses yet.</p>
+            )}
+          </Modal>
+        )}
         {modelOpen && (
           <Modal
             title="Resource assistant model"
@@ -639,9 +800,9 @@ export function HealthAssistant({
             {stopError}
           </p>
         )}
-        {(error || workspace.error) && (
+        {shownError && (
           <p role="alert" className="health-alert">
-            {error || workspace.error}
+            {shownError}
           </p>
         )}
         {ask.failure && (
@@ -663,6 +824,24 @@ export function HealthAssistant({
           </p>
         )}
       </div>
+      {saved.handoff && draftReady && (
+        <DiagnosisDraftHandoff
+          key={saved.handoff}
+          workspace={workspace.state}
+          agentId={saved.handoff}
+          text={handoffText}
+          cancel={() => update({ handoff: null })}
+          complete={(text) => {
+            if (sourceDraft.current?.conflict || sourceDraft.current?.currentText() !== text)
+              return false;
+            const destination = saved.handoff!;
+            update({ selection: { kind: 'thread', id: destination }, handoff: null, draft: '' });
+            setDraftReady(false);
+            if (agentId) window.location.replace(`#/resources/${destination}`);
+            return true;
+          }}
+        />
+      )}
       <div className="health-chat-main flow-chat-main">
         {agent ? (
           <Conversation
@@ -712,9 +891,20 @@ export function HealthAssistant({
             messagePlaceholder="Ask about this computer…"
             localHistory={local.history}
             onNotepadClose={local.checkpoint}
-            disabled={!!blocked || !!ask.busy || (!!threadId && !agent)}
+            disabled={!!blocked || !!ask.busy || !!saved.handoff || (!!threadId && !agent)}
             onError={setError}
             send={send}
+            onDraftReady={(draft) => {
+              sourceDraft.current = draft;
+              setDraftReady(!draft.conflict);
+              if (saved.handoff) setHandoffText(draft.currentText());
+            }}
+            onSent={(remainingDraft) => {
+              if (!acknowledgedAgent.current) return;
+              setHandoffText(remainingDraft);
+              update({ handoff: acknowledgedAgent.current });
+              acknowledgedAgent.current = null;
+            }}
             onCommand={() => {}}
             onHelp={() => {}}
             onStop={() => running && onStop(running)}

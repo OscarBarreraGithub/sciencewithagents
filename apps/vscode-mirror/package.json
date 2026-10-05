@@ -44,6 +44,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "agentDockMirror.connection",
+        "title": "sciencewithagents: Connection Status and Setup"
+      },
+      {
         "command": "agentDockMirror.menu",
         "title": "sciencewithagents: Open Menu"
       },
@@ -95,13 +99,19 @@
     "configuration": {
       "title": "sciencewithagents Mirror",
       "properties": {
+        "agentDockMirror.remoteSocketPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Explicit private Unix socket for Remote SSH sharing, owned by this remote account: mode 0600 inside an unlinked mode-0700 directory. Set in Remote settings after preparing the SSH reverse forward. Remote screenshots are unavailable."
+        },
         "agentDockMirror.port": {
           "type": "number",
           "default": 4330,
           "minimum": 1024,
           "maximum": 65535,
           "scope": "machine",
-          "description": "Local sciencewithagents port. Never a public address. Phone access uses sciencewithagents's existing pairing."
+          "description": "Port of sciencewithagents on the app computer. Local sharing uses loopback; Remote SSH sharing requires remoteSocketPath and a private Unix forward. Phone access uses the app's existing pairing."
         }
       }
     }

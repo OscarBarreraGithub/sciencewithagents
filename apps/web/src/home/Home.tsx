@@ -38,6 +38,7 @@ import { ConnectionFlow, connectionPages } from './ConnectionFlow';
 import { AdvancedFlow } from './AdvancedFlow';
 import { Welcome } from './Welcome';
 import { useScrollHints } from './useScrollHints';
+import { useVisibleViewport } from '../useVisibleViewport';
 import { HomeOverview, ProviderMark, ago, providerName, resetLabel } from './HomeOverview';
 import { AppsGallery, SetupGuide } from './AppsGallery';
 import { AppUpdate } from './AppUpdate';
@@ -306,30 +307,8 @@ export function Home() {
     query.addEventListener('change', change);
     return () => query.removeEventListener('change', change);
   }, []);
-  const [visible, setVisible] = useState<{ height: number; top: number }>();
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    if (!viewport) return;
-    // iOS keyboards shrink the visible area and pan it (offsetTop) without updating
-    // 100dvh. The fixed shell covers exactly that area, so the page itself never
-    // scrolls and the composer stays above the keyboard. Pinch zoom is left alone.
-    const resize = () => {
-      if (viewport.scale !== 1) return;
-      const height = viewport.height;
-      // A full-height viewport can move during iOS rubber-band scrolling. Following
-      // that offset moves the whole app and opens blank bands. Only follow a pan
-      // while the keyboard actually reduces the visible height.
-      const top = height < window.innerHeight - 80 ? Math.max(0, viewport.offsetTop) : 0;
-      setVisible((old) => (old?.height === height && old.top === top ? old : { height, top }));
-    };
-    resize();
-    viewport.addEventListener('resize', resize);
-    viewport.addEventListener('scroll', resize);
-    return () => {
-      viewport.removeEventListener('resize', resize);
-      viewport.removeEventListener('scroll', resize);
-    };
-  }, []);
+  const view = useVisibleViewport();
+  const visible = view?.keyboard ? view : undefined;
   const data = useHomeData();
   const phone = useReading('/phone/status', phoneStatusSchema.parse);
   const [currentRoute, setPage] = useState(route);
@@ -522,7 +501,7 @@ export function Home() {
           ) : page === 'home' ? (
             <HomeOverview data={data} now={now} />
           ) : page === 'apps' ? (
-            <AppsGallery key={apiScope()} />
+            <AppsGallery key={apiScope()} route={currentRoute} computer={selectedHost(data)} />
           ) : page === 'latex' ? (
             <LatexApp initialId={currentRoute.split('/')[1]} />
           ) : flowPages.has(page) ? (
@@ -593,7 +572,7 @@ export function Home() {
               </section>
               <section>
                 <h3>Accounts for apps that publish online</h3>
-                <SetupGuide />
+                <SetupGuide computer={selectedHost(data)} />
               </section>
             </div>
           </Modal>

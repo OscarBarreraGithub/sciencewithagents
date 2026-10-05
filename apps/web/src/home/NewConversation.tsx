@@ -9,7 +9,7 @@ import {
   taskTiers,
   type ProviderId,
 } from '@dock/shared';
-import { api, apiScope } from '../api';
+import { api, apiScope, connectionLost } from '../api';
 import { useCatalogs } from './ProjectConfiguration';
 
 type Start = {
@@ -120,7 +120,7 @@ export function NewConversation({
       onCreated(agent.id);
     } catch (reason) {
       setError(
-        reason instanceof TypeError
+        connectionLost(reason)
           ? 'The connection was interrupted. Your choices are saved; trying again will not create a second conversation.'
           : reason instanceof Error
             ? reason.message

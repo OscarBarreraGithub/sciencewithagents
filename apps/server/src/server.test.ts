@@ -1427,7 +1427,7 @@ it('starts ordinary managers writable and applies permission changes to the next
   expect(next).not.toBe(client);
   expect(request).toHaveBeenCalledWith(
     'thread/resume',
-    expect.objectContaining({ threadId, sandbox: 'workspace-write', approvalPolicy: 'never' }),
+    expect.objectContaining({ threadId, sandbox: 'danger-full-access', approvalPolicy: 'never' }),
   );
   expect(store.runs()).toHaveLength(0);
   const reviewer = store.addAgent({

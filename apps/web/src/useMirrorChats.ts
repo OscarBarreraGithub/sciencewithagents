@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { mirrorWindowSchema, type MirrorState } from '@dock/shared';
 import { api, apiScope } from './api';
 
-export type MirrorChat = Omit<MirrorState, 'entries'> & { online?: boolean };
+/** `listedAt`: when the discovery read that produced this summary started (client clock). */
+export type MirrorChat = Omit<MirrorState, 'entries'> & { online?: boolean; listedAt?: number };
 export const mirrorKey = (chat: MirrorChat) => `${chat.provider ?? 'codex'}:${chat.threadId}`;
 export const mirrorProvider = (chat: MirrorChat) =>
   chat.provider === 'claude' ? 'Claude Code' : 'Codex';
@@ -39,6 +40,7 @@ export function useMirrorChats() {
     let ended = false;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
+      const listedAt = Date.now();
       try {
         const list = mirrorWindowSchema.array().parse(await api('/vscode/windows'));
         if (ended) return;
@@ -52,7 +54,7 @@ export function useMirrorChats() {
           // Keep the selected provider thread stable when the editor switches chats
           // or reconnects with a new window ID. Never redirect a saved draft.
           for (const chat of list)
-            if (chat.threadId) next.set(mirrorKey(chat), { ...chat, online: true });
+            if (chat.threadId) next.set(mirrorKey(chat), { ...chat, online: true, listedAt });
           const result = [...next.values()]
             .sort((a, b) => Number(a.status === 'offline') - Number(b.status === 'offline'))
             .slice(0, 50);
