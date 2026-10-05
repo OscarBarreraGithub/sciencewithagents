@@ -203,10 +203,23 @@ test('a manager accepts a screenshot-only message and restores attached drafts a
   const response = await delivered;
   expect(response.ok()).toBe(true);
   expect(chatFileIds(response.request().postDataJSON().text)).toHaveLength(1);
-  await expect(page.getByRole('img', { name: 'Attached image phone-screenshot.png' })).toHaveCount(
-    0,
-  );
-  await expect(page.locator('.conversation .chat-file-card img')).toBeVisible();
+  // The delivered chat card uses the same image alt text as the draft preview.
+  // Check the acknowledged conversation first, so a successful render cannot look
+  // like an uncleared composer attachment.
+  const deliveredImage = page
+    .locator('.conversation .chat-file-card')
+    .getByRole('img', { name: 'Attached image phone-screenshot.png', exact: true });
+  await expect(deliveredImage).toBeVisible();
+  await expect(
+    composer.getByRole('img', { name: 'Attached image phone-screenshot.png' }),
+  ).toHaveCount(0);
+  await expect(input).toHaveValue('');
+  await page.reload();
+  await expect(deliveredImage).toBeVisible();
+  await expect(
+    composer.getByRole('img', { name: 'Attached image phone-screenshot.png' }),
+  ).toHaveCount(0);
+  await expect(input).toHaveValue('');
 });
 
 test('a shared phone chat retries the same upload, preserves typing, and sends to the existing turn', async ({
@@ -270,9 +283,11 @@ test('a shared phone chat retries the same upload, preserves typing, and sends t
   await expect.poll(() => sends.length).toBe(1);
   expect(sends[0]).toMatchObject({ threadId: state.threadId, expectedTurnId: 'existing-turn' });
   expect(chatFileIds(String(sends[0].text))).toHaveLength(1);
-  await expect(page.getByRole('img', { name: 'Attached image phone-screenshot.png' })).toHaveCount(
-    0,
-  );
+  await expect(
+    page
+      .locator('.mirror-composer')
+      .getByRole('img', { name: 'Attached image phone-screenshot.png' }),
+  ).toHaveCount(0);
 });
 
 test('a remote shared chat preserves saved screenshots for removal and sends text without uploading', async ({
@@ -320,9 +335,11 @@ test('a remote shared chat preserves saved screenshots for removal and sends tex
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('remote-screenshot-limit.png') });
   await page.getByRole('button', { name: 'Remove phone-screenshot.png' }).click();
-  await expect(page.getByRole('img', { name: 'Attached image phone-screenshot.png' })).toHaveCount(
-    0,
-  );
+  await expect(
+    page
+      .locator('.mirror-composer')
+      .getByRole('img', { name: 'Attached image phone-screenshot.png' }),
+  ).toHaveCount(0);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => sends.length).toBe(1);
   expect(sends[0]).toMatchObject({ text: 'Saved draft', threadId: state.threadId });

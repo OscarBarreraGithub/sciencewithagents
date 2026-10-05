@@ -9,6 +9,9 @@ test.beforeEach(async ({ page }) => {
   owned.set(page, { settings: schedulerSettingsSchema.parse(baseline.settings), agents: [] });
 });
 test.afterEach(async ({ page, baseURL }) => {
+  // Fixture routes read the API themselves. Drain those callbacks while the
+  // request context is alive, before cleanup emits another queue update.
+  await page.unrouteAll({ behavior: 'wait' });
   const fixture = owned.get(page);
   if (!fixture) return;
   const headers = { Origin: baseURL! };
