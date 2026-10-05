@@ -117,15 +117,17 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 async function start(agentId = manager, text = 'One bounded fixture result') {
-  const before = instances.reduce((sum, session) => sum + session.submit.mock.calls.length, 0);
   const run = store.enqueue(agentId, randomUUID(), text);
+  // Completion reports can submit on another agent concurrently. Assert this receipt once.
   await vi.waitFor(() =>
-    expect(instances.reduce((sum, session) => sum + session.submit.mock.calls.length, 0)).toBe(
-      before + 1,
-    ),
+    expect(
+      instances
+        .flatMap((session) => session.submit.mock.calls)
+        .filter(([input]) => input.deliveryId === run.id),
+    ).toHaveLength(1),
   );
-  const session = instances.findLast(
-    (session) => session.options.sessionId === store.agent(agentId).threadId,
+  const session = instances.find((session) =>
+    session.submit.mock.calls.some(([input]) => input.deliveryId === run.id),
   )!;
   return { run, session };
 }
@@ -274,6 +276,19 @@ describe('Claude uses the shared runtime without Codex protocol substitution', (
     expect(store.agent(id).status).not.toBe('running');
   });
   it('discusses a completed native reply in a separate read-only copy, preserving task and excluding inherited spending', async () => {
+    // Hold the legitimate manager report until the interview is opening, as can happen in CI.
+    let releaseManager!: () => void;
+    const managerReady = new Promise<void>((resolve) => {
+      releaseManager = resolve;
+    });
+    const prepare = runtime.claude.prepare.bind(runtime.claude);
+    const preparing = vi.spyOn(runtime.claude, 'prepare').mockImplementation(async (agent) => {
+      if (agent.id === manager) await managerReady;
+      return prepare(agent);
+    });
+    configureSession = (session) => {
+      if (session.options.forkFrom) releaseManager();
+    };
     const task = store.addTask(project, {
       title: 'Research',
       goal: 'Compare approaches',
@@ -320,6 +335,18 @@ describe('Claude uses the shared runtime without Codex protocol substitution', (
     expect(instances).toHaveLength(connectedBefore);
     expect(store.getSetting(`claude:account:${discussion.id}`)).toBe(identity.affinity);
     const second = await start(discussion.id, 'Why that approach?');
+    const report = store
+      .runs()
+      .find((run) => run.agentId === manager && run.sourceId === source.id)!;
+    expect(report).toBeDefined();
+    await vi.waitFor(() =>
+      expect(
+        instances
+          .flatMap((session) => session.submit.mock.calls)
+          .filter(([input]) => input.deliveryId === report.id),
+      ).toHaveLength(1),
+    );
+    preparing.mockRestore();
     expect(second.session.options).toMatchObject({
       resume: false,
       forkFrom: { sessionId: original.threadId, messageId },

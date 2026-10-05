@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../../../server/dist/store.js';
@@ -13,6 +13,7 @@ import { localRequestProof } from '@dock/shared/dist/local-authorization.js';
 
 /** Browser transport is routed into the authenticated API; commands run in a real PTY. */
 async function fixture(page: Page, selected = false) {
+  const browser = page.context();
   const root = mkdtempSync(join(tmpdir(), 'owner-shell-browser-'));
   const store = new Store(join(root, 'dock.sqlite'));
   let launches = 0;
@@ -66,8 +67,8 @@ async function fixture(page: Page, selected = false) {
     return `Dock owner.${proof.nonce}.${localRequestProof(access.configuration.owner, 'http://127.0.0.1:4999', 'owner', challenge, proof.nonce, method, path)}`;
   };
   if (selected) {
-    await page.addInitScript((id) => localStorage.setItem('dock:host', id), hostId);
-    await page.route('**/api/hosts', async (route) => {
+    await browser.addInitScript((id) => localStorage.setItem('dock:host', id), hostId);
+    await browser.route('**/api/hosts', async (route) => {
       const response = await route.fetch();
       const data = await response.json();
       await route.fulfill({
@@ -85,11 +86,11 @@ async function fixture(page: Page, selected = false) {
         },
       });
     });
-    await page.route(`**${prefix}/**`, async (route) => {
+    await browser.route(`**${prefix}/**`, async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname.includes('/owner-terminal')) return route.fallback();
-      const response = await page.request.fetch(
-        `http://127.0.0.1:4339/api${url.pathname.slice(prefix.length)}${url.search}`,
+      const response = await browser.request.fetch(
+        `${url.origin}/api${url.pathname.slice(prefix.length)}${url.search}`,
         { method: route.request().method(), data: route.request().postData() ?? undefined },
       );
       await route.fulfill({ response });
@@ -98,7 +99,7 @@ async function fixture(page: Page, selected = false) {
   let loseClose = false;
   let delayedOpen: Promise<void> | undefined;
   let openRequested = false;
-  await page.route('**/api/**/owner-terminal**', async (route) => {
+  await browser.route('**/api/**/owner-terminal**', async (route) => {
     const request = route.request(),
       url = new URL(request.url());
     expect(url.pathname.startsWith(`${prefix}/owner-terminal`)).toBe(true);
@@ -130,7 +131,7 @@ async function fixture(page: Page, selected = false) {
       body: response.body,
     });
   });
-  await page.routeWebSocket('**/api/**/owner-terminal/*/socket', async (downstream) => {
+  await browser.routeWebSocket('**/api/**/owner-terminal/*/socket', async (downstream) => {
     const url = new URL(downstream.url());
     expect(url.pathname.startsWith(`${prefix}/owner-terminal`)).toBe(true);
     const path = `/api${url.pathname.slice(prefix.length)}`;
@@ -194,7 +195,7 @@ async function fixture(page: Page, selected = false) {
     },
     async close() {
       for (const connection of connections) connection.close();
-      await page.unrouteAll({ behavior: 'wait' });
+      await browser.unrouteAll({ behavior: 'wait' });
       shells.close();
       await app.close();
       await runtime.close();
@@ -226,7 +227,13 @@ for (const selected of [false, true])
         }),
       ).toBeVisible();
       await command(page, "printf 'once\\n' >> marker; printf 'PWD_%s\\n' \"$PWD\"");
-      await expect.poll(() => readFileSync(join(owned.root, 'marker'), 'utf8')).toBe('once\n');
+      await expect
+        .poll(() =>
+          existsSync(join(owned.root, 'marker'))
+            ? readFileSync(join(owned.root, 'marker'), 'utf8')
+            : null,
+        )
+        .toBe('once\n');
       await expect(page.locator('.xterm-rows')).toContainText(`PWD_${owned.root}`);
       expect(
         await page.locator('.owner-terminal-location').evaluate((e) => getComputedStyle(e).color),
@@ -255,7 +262,11 @@ for (const selected of [false, true])
       ).toBeVisible();
       await command(page, "printf 'alive\\n' >> marker");
       await expect
-        .poll(() => readFileSync(join(owned.root, 'marker'), 'utf8'))
+        .poll(() =>
+          existsSync(join(owned.root, 'marker'))
+            ? readFileSync(join(owned.root, 'marker'), 'utf8')
+            : null,
+        )
         .toBe('once\nalive\n');
       expect(
         owned.calls.filter((c) => c.method === 'POST' && c.path.endsWith('/owner-terminal')),
@@ -304,16 +315,12 @@ test('late owner-shell opening retains only its pinned computer receipt after le
     await expect
       .poll(() =>
         page.evaluate(
-          () =>
-            JSON.parse(sessionStorage.getItem('dock:local:owner-terminal') ?? 'null')?.id ?? null,
+          () => JSON.parse(localStorage.getItem('dock:local:owner-terminal') ?? 'null')?.id ?? null,
         ),
       )
       .not.toBeNull();
     expect(
-      await page.evaluate(
-        (id) => sessionStorage.getItem(`dock:${id}:owner-terminal`),
-        unrelatedHost,
-      ),
+      await page.evaluate((id) => localStorage.getItem(`dock:${id}:owner-terminal`), unrelatedHost),
     ).toBeNull();
     await page.getByRole('link', { name: /Open terminal/ }).click();
     await expect(
@@ -326,5 +333,92 @@ test('late owner-shell opening retains only its pinned computer receipt after le
   } finally {
     release();
     await owned.close();
+  }
+});
+
+test('owner-shell receipt survives a fully closed tab and migrates legacy storage without replay', async ({
+  page,
+  context,
+}) => {
+  const owned = await fixture(page);
+  const pages = [page];
+  try {
+    await page.goto('/#/terminal');
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Connected · owner shell' }),
+    ).toBeVisible();
+    await command(page, "printf 'once\\n' >> marker");
+    await expect
+      .poll(() =>
+        existsSync(join(owned.root, 'marker'))
+          ? readFileSync(join(owned.root, 'marker'), 'utf8')
+          : null,
+      )
+      .toBe('once\n');
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('dock:local:owner-terminal')!),
+    );
+    // Simulate the previous shipped receipt and migrate it without opening another PTY.
+    await page.evaluate(() => {
+      const key = 'dock:local:owner-terminal';
+      sessionStorage.setItem(key, localStorage.getItem(key)!);
+      localStorage.removeItem(key);
+    });
+    await page.reload();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Connected · owner shell' }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => JSON.parse(localStorage.getItem('dock:local:owner-terminal')!).id),
+    ).toBe(saved.id);
+    expect(
+      await page.evaluate(() => sessionStorage.getItem('dock:local:owner-terminal')),
+    ).toBeNull();
+    const other = await context.newPage();
+    pages.push(other);
+    await other.goto('/#/terminal');
+    await expect(
+      other.getByRole('status').filter({ hasText: 'Connected · owner shell' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Take control here' })).toBeVisible();
+    expect(
+      await other.evaluate(() => JSON.parse(localStorage.getItem('dock:local:owner-terminal')!).id),
+    ).toBe(saved.id);
+    await page.close();
+    await other.close();
+    const reopened = await context.newPage();
+    pages.push(reopened);
+    await reopened.goto('/#/terminal');
+    await expect(
+      reopened.getByRole('status').filter({ hasText: 'Connected · owner shell' }),
+    ).toBeVisible();
+    expect(
+      await reopened.evaluate(
+        () => JSON.parse(localStorage.getItem('dock:local:owner-terminal')!).id,
+      ),
+    ).toBe(saved.id);
+    await command(reopened, "printf 'after\\n' >> marker");
+    await expect
+      .poll(() =>
+        existsSync(join(owned.root, 'marker'))
+          ? readFileSync(join(owned.root, 'marker'), 'utf8')
+          : null,
+      )
+      .toBe('once\nafter\n');
+    expect(
+      owned.calls.filter((c) => c.method === 'POST' && c.path.endsWith('/owner-terminal')),
+    ).toHaveLength(1);
+    expect(owned.launches()).toBe(0);
+    await reopened.getByRole('button', { name: 'Close shell', exact: true }).click();
+    await expect(reopened.getByRole('dialog', { name: /Terminal ·/ })).toHaveCount(0);
+    expect(
+      await reopened.evaluate(() => localStorage.getItem('dock:local:owner-terminal')),
+    ).toBeNull();
+    expect(
+      await reopened.evaluate(() => sessionStorage.getItem('dock:local:owner-terminal')),
+    ).toBeNull();
+  } finally {
+    await owned.close();
+    for (const tab of pages) if (!tab.isClosed()) await tab.close();
   }
 });

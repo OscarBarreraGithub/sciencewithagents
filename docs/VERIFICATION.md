@@ -22,6 +22,22 @@ and private receipts; rerun the relevant checks when a change touches these area
 - Earlier isolated setup runs (dated in Git history) produced native Codex-only and Claude-only
   first replies. A clean source copy installed, built and compiled the Mac launcher; no owner
   accounts or installation changed.
+- A real bug-report journey on October 5 used a Codex manager and distinct Opus 5.5/xhigh
+  implementation and review turns. The exact reviewed one-line fix was applied, its tests
+  passed and the original report closed. A bounded observation timeout required an explicitly
+  authorized continuation of the same saved manager session; no duplicate report or worker
+  was created. Fixture servers closed and owned Codex sessions were archived through the
+  supported API; Claude histories remain private.
+- A separate real Settings update journey moved an older public source (`5df5b47`) to the
+  pinned public revision `b9e468c`, retaining two local page-title adaptations. A Codex manager
+  obtained independent Opus 5.5/xhigh review and applied the exact reviewed commit after
+  explicitly authorized bounded same-session continuations. The manager corrected `accept`
+  to `complete` for the approved task before preview/application. The recovery copy was verified; the
+  disposable installation was rebuilt and reopened with the same data. Actual HTTP/browser
+  checks retained its original project, history, unsent draft, model policy, preference, file
+  bytes and custom browser title. Reopening used no model turns. Three phone test failures
+  were independently traced to reloading before a Spawn acknowledgement; deterministic
+  exact-key recovery checks passed separately. The original failed results remain recorded.
 - Opus 5.5 workers ran bounded availability reviews. A Sonnet 5.5 formatting request completed
   through QUARK with its original unchanged; the copy was read at 360 and 412 pixels.
 - A 33-page LaTeX document with a shared parent-folder preamble compiled, opened, zoomed and
@@ -94,8 +110,9 @@ browser checks at desktop, 412×915, 360×800, 915×412 and, for phone work, iPh
 - Ubuntu CI checks the source build, backend and emulated browsers. It does not certify native
   Linux desktop integration; Intel Mac and Windows remain unqualified.
 - Image delivery tests verify readable paths, not provider vision accuracy. Fixture browser
-  connections do not certify a real browser inventory. Native disk/network/GPU/thermal-warning
-  probes returned readings on the test Mac; they do not certify other drivers or every diagnosis.
+  connections do not certify the owner's connected Chrome inventory, which remains unchecked.
+  Native disk/network/GPU/thermal-warning probes returned readings on the test Mac; they do
+  not certify other drivers or every diagnosis.
   Temperature readings are unavailable through these unprivileged probes.
 - Some formatted equations still scroll; no universal TeX equivalence or package support
   is claimed.

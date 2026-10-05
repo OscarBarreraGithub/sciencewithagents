@@ -66,8 +66,9 @@ it('lifetime IPC loss cleans up the exact owned process group', async () => {
 });
 it('keeps cleanup ownership when the group leader exits before a TERM-resistant descendant', async () => {
   const root = mkdtempSync(join(tmpdir(), 'swa-descendant-')),
-    path = join(root, 'pid');
-  const code = `process.on('SIGTERM',()=>{});require('node:fs').writeFileSync(${JSON.stringify(path)},String(process.pid));setInterval(()=>{},1000)`;
+    path = join(root, 'pid'),
+    ticks = join(root, 'ticks');
+  const code = `const fs=require('node:fs');process.on('SIGTERM',()=>{});fs.writeFileSync(${JSON.stringify(path)},String(process.pid));setInterval(()=>fs.appendFileSync(${JSON.stringify(ticks)},'x'),20)`;
   const leader = `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(code)}],{stdio:'ignore'});setInterval(()=>{},1000)`;
   const child = new LocalProcess(
     process.execPath,
@@ -80,8 +81,33 @@ it('keeps cleanup ownership when the group leader exits before a TERM-resistant 
     for (let n = 0; n < 80 && !existsSync(path); n++) await delay(25);
     pid = Number(readFileSync(path, 'utf8'));
     expect(pid).toBeGreaterThan(0);
+    await expect.poll(() => existsSync(ticks)).toBe(true);
     await child.close();
-    expect(() => process.kill(pid, 0)).toThrow();
+    // SIGKILL delivery/reaping can follow supervisor exit; a Linux zombie cannot execute.
+    await expect
+      .poll(
+        () => {
+          try {
+            process.kill(pid, 0);
+            if (process.platform === 'linux') {
+              const state = /^State:\s+(\w)/m.exec(
+                readFileSync(`/proc/${pid}/status`, 'utf8'),
+              )?.[1];
+              return state !== 'Z' && state !== 'X';
+            }
+            return true;
+          } catch (error) {
+            if (['ESRCH', 'ENOENT'].includes((error as NodeJS.ErrnoException).code ?? ''))
+              return false;
+            throw error;
+          }
+        },
+        { timeout: 1000 },
+      )
+      .toBe(false);
+    const stopped = readFileSync(ticks, 'utf8');
+    await delay(60);
+    expect(readFileSync(ticks, 'utf8')).toBe(stopped);
   } finally {
     await child.close();
     rmSync(root, { recursive: true, force: true });

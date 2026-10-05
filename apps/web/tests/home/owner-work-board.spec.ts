@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { snapshotSchema, workItemSchema, workItemsSchema } from '@dock/shared';
+import { projectSchema, snapshotSchema, workItemSchema, workItemsSchema } from '@dock/shared';
 
 test('Ideas stay distinct; selected ticket drafts, completion and Undo persist visibly', async ({
   page,
@@ -148,13 +148,47 @@ test('an idea opens independent project setup and project boards retain scoped o
     .click();
   await expect(page).toHaveURL(/#\/new\/idea\/[^/]+$/);
   await expect(page.getByLabel('Project name', { exact: true })).toHaveValue(idea.title);
-  await page.getByRole('button', { name: 'Spawn', exact: true }).click();
+  const requests: { key: string; name: string; description: string; provider: string }[] = [];
+  const projectIds: string[] = [];
+  let release = () => {};
+  const heldResponse = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/projects', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    requests.push(route.request().postDataJSON());
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    projectIds.push(projectSchema.parse(await response.json()).id);
+    if (requests.length === 1) {
+      // The host accepted setup, but reload must recover without that acknowledgement.
+      await heldResponse;
+      await route.abort('aborted').catch(() => {}); // Its original document has been replaced.
+    } else await route.fulfill({ response });
+  });
+  let sent = 0;
+  await page.route('**/api/agents/*/messages', (route) => {
+    sent++;
+    return route.abort();
+  });
   const editor = page.getByRole('textbox', { name: 'Project description', exact: true });
-  await expect(editor).toHaveValue(`1. ${idea.title}\n${idea.detail}`);
-  await page.getByRole('button', { name: 'Minimize', exact: true }).click();
-  await page.reload();
-  await page.getByRole('button', { name: /Continue writing|Finish setup/, exact: true }).click();
-  await expect(editor).toHaveValue(`1. ${idea.title}\n${idea.detail}`);
+  try {
+    await page.getByRole('button', { name: 'Spawn', exact: true }).click();
+    await expect(editor).toHaveValue(`1. ${idea.title}\n${idea.detail}`);
+    await expect.poll(() => projectIds.length).toBe(1);
+    await page.getByRole('button', { name: 'Minimize', exact: true }).click();
+    await page.reload();
+    // Without a project acknowledgement, Spawn resumes the saved exact request.
+    await page.getByRole('button', { name: 'Spawn', exact: true }).click();
+    await expect(editor).toHaveValue(`1. ${idea.title}\n${idea.detail}`);
+    await expect.poll(() => projectIds.length).toBe(2);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(new Set(projectIds).size).toBe(1);
+    expect(sent).toBe(0);
+  } finally {
+    release();
+  }
   const retained = workItemsSchema
     .parse(await (await page.request.get('/api/work-items')).json())
     .items.find((value) => value.id === idea.id)!;

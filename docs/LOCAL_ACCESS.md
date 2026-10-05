@@ -23,7 +23,8 @@ but no AI allowance, provider sign-in or QUARK admission. You can type native ma
 allowance and account commands yourself; opening the terminal does not run them.
 
 The computer chooses its configured login shell and home directory. **Back** keeps the
-shell alive; **Reconnect** returns to it without replaying input. **Close shell** stops that
+shell alive; reopening a tab or phone app in the same browser retains its shell identity.
+**Reconnect** returns to it without replaying input. **Close shell** stops that
 owned terminal. An app restart ends its shells; **New terminal** starts a fresh one explicitly.
 Phone control keys include Tab, arrows, Ctrl C, Ctrl D and Enter. Each connected worker
 computer needs this app version for its terminal routes. The unauthenticated demo cannot
@@ -43,6 +44,11 @@ cannot expose browser inventory outside an active conversation; the app reports 
 limit and supplies the native check instead of claiming a connection. Claude has its own
 extension and `/chrome` setup, described in the same panel. Run setup on the selected
 computer; a phone controls that computer's browser, not the phone's browser.
+
+Unattended Mac desktop and browser control depends on the native connection and session
+permissions. A missing physical monitor alone does not establish that control is unavailable.
+The native [Locked use](https://learn.chatgpt.com/docs/computer-use#locked-use) option enables
+desktop control while the Mac is locked if its owner chooses to enable it.
 
 The editor producer remains native loopback-only and rejects browser-origin connections;
 it is never registered on the public phone listener. This trusts local native programs on

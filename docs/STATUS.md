@@ -51,6 +51,9 @@ on the actual device. The companion is installed from source; no marketplace rel
 Routine work is not stopped by raw-token estimates. Actual provider allowance caps,
 reserves, resource checks and saved pauses remain enforced. **Help → Report a bug** saves a
 private report and dispatches it to one maintenance manager through normal delegation/review.
+A real disposable bug-report journey completed independent review, exact-preview application,
+passing fix tests and closure of the original report, including an authorized continuation
+after an observation timeout. The owner's installation and unrelated work were preserved.
 Optional project/task hourly limits now share rolling reservations across managers, workers
 and pending starts, separately for reported Codex and Claude windows. Focused scheduler
 checks and desktop/phone-width demo browser checks cover concurrency, retry, restart,
@@ -107,6 +110,10 @@ and model choices remain. Active work is never discarded by an inactivity timer.
 - **Updates:** Settings checks GitHub and assigns an agent after automatically verifying a
   database recovery copy. Local customization and source/build preparation remain agent-led;
   quit/reopen and running-app verification are explicit final steps, not unattended activation.
+  A real disposable customized update completed independent review, exact application and
+  reopen verification with its saved project, history, draft, model preferences, files and
+  browser title retained. It required explicit continuations of the same saved manager session;
+  the owner's installation was unchanged. This does not certify every future update.
 - **Orb:** quiet idle motion and varied shape parameters are connected; reduced-motion,
   hidden-page and off-screen states suspend animation.
 

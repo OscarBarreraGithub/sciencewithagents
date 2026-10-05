@@ -13,9 +13,9 @@ import '@xterm/xterm/css/xterm.css';
 import './OwnerTerminal.css';
 
 type Receipt = { key: string; id?: string };
-function receipt(storageKey: string): Receipt {
+function readReceipt(storage: Storage, storageKey: string): Receipt | null {
   try {
-    const value: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null');
+    const value: unknown = JSON.parse(storage.getItem(storageKey) ?? 'null');
     if (
       value &&
       typeof value === 'object' &&
@@ -25,11 +25,23 @@ function receipt(storageKey: string): Receipt {
     )
       return value as Receipt;
   } catch {
-    /* A new shell still requires this explicit terminal view. */
+    /* An invalid saved receipt does not select a shell. */
   }
-  const value = { key: crypto.randomUUID() };
-  sessionStorage.setItem(storageKey, JSON.stringify(value));
+  return null;
+}
+function receipt(storageKey: string): Receipt {
+  const value = readReceipt(localStorage, storageKey) ??
+    readReceipt(sessionStorage, storageKey) ?? { key: crypto.randomUUID() };
+  // Migrate once, after the durable write succeeds. Tabs and PWA windows share this identity.
+  localStorage.setItem(storageKey, JSON.stringify(value));
+  sessionStorage.removeItem(storageKey);
   return value;
+}
+function clearReceipt(storageKey: string, saved: Receipt | null) {
+  // Closing an older view must not forget a newer shell opened in another tab.
+  if (readReceipt(localStorage, storageKey)?.key === saved?.key)
+    localStorage.removeItem(storageKey);
+  sessionStorage.removeItem(storageKey);
 }
 
 /** Direct owner input only. No model, scheduler, command replay or native account changes. */
@@ -97,7 +109,8 @@ export function OwnerTerminal({ computer }: { computer: string }) {
         ),
       );
       saved.current.id = info.id;
-      sessionStorage.setItem(storageKey, JSON.stringify(saved.current));
+      if (readReceipt(localStorage, storageKey)?.key === saved.current.key)
+        localStorage.setItem(storageKey, JSON.stringify(saved.current));
       if (disposed) return;
       setSession(info);
       if (info.status === 'exited') {
@@ -171,7 +184,7 @@ export function OwnerTerminal({ computer }: { computer: string }) {
     setError('');
     try {
       await api(`/owner-terminal/${session.id}/close`, {});
-      sessionStorage.removeItem(storageKey);
+      clearReceipt(storageKey, saved.current);
       back();
     } catch (reason) {
       setError(
@@ -207,7 +220,7 @@ export function OwnerTerminal({ computer }: { computer: string }) {
           {(connection === 'exited' || connection === 'closed') && (
             <button
               onClick={() => {
-                sessionStorage.removeItem(storageKey);
+                clearReceipt(storageKey, saved.current);
                 saved.current = null;
                 setSession(null);
                 setAttempt((v) => v + 1);
