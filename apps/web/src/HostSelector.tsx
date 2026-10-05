@@ -75,7 +75,7 @@ export function HostSelector({
             if (id !== 'local') void connect(id);
           }}
         >
-          <option value="local">{state?.local.label ?? 'This computer'}</option>
+          <option value="local">{state?.local.label ?? 'Computer'}</option>
           {state?.hosts.map((item) => (
             <option key={item.id} value={item.id}>
               {item.label} · {item.accountLabel}

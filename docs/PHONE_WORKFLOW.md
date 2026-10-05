@@ -18,8 +18,8 @@ Actual runs belong in [Verification](VERIFICATION.md); person-only checks are in
    computer. This entire sequence shares the original deadline. Screen navigation alone
    makes no pairing request. Different/rejected codes return to code entry while preserving
    the nickname. Pairing then closes; a synced passkey alone cannot enroll another browser.
-4. Computer confirmation opens **Add sciencewithagents to your Home Screen**, with
-   iPhone/iPad and Android instructions. **Open my workspace** finishes setup and also
+4. Computer confirmation opens **Add sciencewithagents to your device**, with
+   iPhone/iPad, Android and laptop instructions. **Open my workspace** finishes setup and also
    works in the browser; it does not prove an icon was installed.
 5. Later, Phone access keeps the installation guide available. Failed setup saves offer
    retry without resetting pairing. Setup completion survives reload and server restart.
@@ -54,7 +54,15 @@ inactivity expiry. Actual browser retention is not guaranteed. Lost browser stor
 device, or a changed trusted origin may require deliberate re-pairing. Never automatically
 create enrollment or copy credentials to repair it.
 
-## Home Screen installation
+## App shortcuts on phones and laptops
+
+A laptop can use the same paired workspace without installing a second server. In Safari on
+Mac, use **Share → Add to Dock → Add**; the shortcut appears in the Dock and Applications.
+In desktop Chrome, use **More → Cast, save and share → Install page as app → Install**.
+The connected computer continues to run jobs. These steps also appear under **On a laptop
+or desktop** in the device installation guide. Keeping the paired page bookmarked is sufficient.
+[Safari instructions](https://support.apple.com/en-ca/104996),
+[desktop Chrome instructions](https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DDesktop&hl=en).
 
 Pair in the browser **before** creating the icon. On iPhone, use Safari's Share menu
 (under More in some layouts), **Add to Home Screen**, enable **Open as Web App** if offered,

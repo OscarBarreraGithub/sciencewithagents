@@ -294,9 +294,14 @@ test('paired phone shows readable installation help without computer-only contro
   );
   await page.goto('/#/phone');
   await expect(
-    page.getByRole('heading', { name: 'Add sciencewithagents to your Home Screen' }),
+    page.getByRole('heading', { name: 'Add sciencewithagents to your device' }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create a new code' })).toHaveCount(0);
+  await page.getByText('On a laptop or desktop', { exact: true }).click();
+  await expect(page.getByText('Share → Add to Dock', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('⋮ → Cast, save and share → Install page as app', { exact: true }),
+  ).toBeVisible();
   await expectPhoneLayout(page);
   await page.screenshot({ path: info.outputPath('phone-installation.png') });
   await page.evaluate(() => (document.documentElement.style.fontSize = '200%'));

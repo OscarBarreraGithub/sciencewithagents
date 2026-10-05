@@ -12,6 +12,12 @@ command is needed in the normal app journey.
 
 ## What stays where
 
+For access to the same workspace from a phone or laptop, pair its browser with the entry
+computer using [device pairing](PHONE_WORKFLOW.md). No worker installation or provider sign-in
+is needed on that client. Follow this guide when adding another computer that will run work.
+The entry computer is shown by its hostname (without a trailing `.local`), so its name stays
+the same from local and remote browsers; it does not refer to the device displaying the app.
+
 The entry computer serves the phone's paired HTTPS page. Other computers are reached
 through an existing SSH connection from that entry computer. Each runs its own Agent Dock
 and its own signed-in Codex or Claude. Provider credentials, repositories and provider threads never
@@ -20,9 +26,11 @@ The entry computer must also remain on for phone access. This is not cloud execu
 
 There is no shared sciencewithagents cloud account. Sign in to the chosen provider normally
 on each computer; using your own provider account on both does not copy app history or
-credentials. Provider allowance may be shared by that account, but QUARK admission and
-reservations currently stay per computer. Connecting hosts does not create a global allowance
-coordinator across machines.
+credentials. Each computer's QUARK admission, budgets and reservations stay independent by
+design, so separate provider accounts can be managed from one entry app without pooling their
+allowances. A global budget coordinator is not a required feature. If the same provider account
+is deliberately used on multiple computers, the provider may still share its allowance across
+those sign-ins; linking computers does not create cross-computer reservations.
 
 Each computer has its own personalized assistant. Its visibility defaults to no projects;
 selecting projects shares only those on that computer. Merely switching between personal,

@@ -9,8 +9,32 @@ export function HomeScreenGuide() {
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
   return (
     <section className="phone-install-guide" aria-label="Home Screen instructions">
-      {standalone && <p role="status">You’re already using the Home Screen app.</p>}
+      {standalone && <p role="status">You’re already using the app shortcut.</p>}
       <p>Pair in your browser first, then add this paired page. No App Store download is needed.</p>
+      <details>
+        <summary>On a laptop or desktop</summary>
+        <p>
+          This shortcut opens the connected computer’s app. Jobs run on that computer, not on this
+          laptop. You do not need to install the sciencewithagents server here.
+        </p>
+        <h3>Mac · Safari</h3>
+        <ol>
+          <li>Open this paired page in Safari.</li>
+          <li>
+            Choose <strong>Share → Add to Dock</strong>, then <strong>Add</strong>.
+          </li>
+          <li>Open sciencewithagents from your Dock or Applications folder.</li>
+        </ol>
+        <h3>Mac, Windows or Linux · Chrome</h3>
+        <ol>
+          <li>Open this paired page in Chrome.</li>
+          <li>
+            Choose <strong>⋮ → Cast, save and share → Install page as app</strong>, then{' '}
+            <strong>Install</strong>.
+          </li>
+        </ol>
+        <p>You can also bookmark this address and keep using the browser.</p>
+      </details>
       <h3>iPhone or iPad · Safari</h3>
       <ol>
         <li>Tap Share (the square with an upward arrow). It may be inside the More menu.</li>
@@ -96,13 +120,13 @@ export function PhoneDeviceSetup({
         <>
           <Smartphone size={32} aria-hidden="true" />
           <h1 ref={heading} tabIndex={-1}>
-            Add sciencewithagents to your Home Screen
+            Add sciencewithagents to your device
           </h1>
         </>
       ) : (
-        <h3>Add sciencewithagents to your Home Screen</h3>
+        <h3>Add sciencewithagents to your device</h3>
       )}
-      <p>Your phone is paired. It stays connected when you close and reopen the app.</p>
+      <p>Your device is paired. It stays connected when you close and reopen the app.</p>
       <HomeScreenGuide />
       {onboarding && (
         <>

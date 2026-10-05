@@ -35,10 +35,16 @@ work. Claude uses native 60% compaction with saved handoffs; Codex manages its c
 
 ## Shared budgets and computer capacity
 
-QUARK shares account/model windows across projects, including independently reported model
+QUARK shares account/model windows across projects on the same computer, including independently reported model
 allowances. Do not invent a weekly window for accounts that do not report one. Store expected
 cost/time/resources and compare them with actual evidence. Expose estimated attribution honestly;
 no validated 2–3% error bound or exact provider-enforced token ceiling is claimed.
+
+One entry app can manage multiple worker computers with separate provider accounts. Each
+computer keeps its own QUARK queue, allowance budgets and reservations; linking computers
+does not pool their accounts or budgets. This separation is intentional, not a missing global
+budget coordinator. A phone or laptop can be a browser client of the entry computer without
+running jobs or having a separate provider sign-in.
 
 Managers need host-signed leases before orchestration. Workers share admission and independent
 supervision without managing lease renewal themselves. Forecast overruns notify managers;

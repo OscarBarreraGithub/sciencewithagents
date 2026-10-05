@@ -327,7 +327,7 @@ test('rendered QR skips code entry and asks for a nickname before real passkey v
   await expect(settings.locator('.phone-qr')).toHaveCount(0);
   await expect(settings.locator('.phone-address')).toHaveCount(0);
   await expect(
-    page.getByRole('heading', { name: 'Add sciencewithagents to your Home Screen', exact: true }),
+    page.getByRole('heading', { name: 'Add sciencewithagents to your device', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('region', { name: 'Home Screen instructions' })).toContainText(
     'Open as Web App',
@@ -414,7 +414,7 @@ test('phone installation setup retries a failed save without repeating pairing',
   const pending = phone.access.status(false).pending!;
   phone.access.pairedDevices!.confirm({ id: pending.id, confirmation: pending.confirmation });
   await expect(
-    page.getByRole('heading', { name: 'Add sciencewithagents to your Home Screen' }),
+    page.getByRole('heading', { name: 'Add sciencewithagents to your device' }),
   ).toBeVisible();
   let saves = 0;
   await page.route('https://dock.example.test/api/phone/setup/complete', async (route) => {

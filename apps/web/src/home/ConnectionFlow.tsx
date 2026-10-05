@@ -75,6 +75,9 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
         <FlowHeading label="YOUR WORKSPACE" title="Settings">
           Choose how your team works and how you stay connected.
         </FlowHeading>
+        <p>
+          To connect a laptop that won’t run jobs, use <strong>Phone access</strong>.
+        </p>
         <div className="connection-grid">
           <SettingsCard to="welcome" title="Welcome and setup" icon={<ShieldCheck />}>
             Check native sign-in and model readiness, then choose your team and first project.

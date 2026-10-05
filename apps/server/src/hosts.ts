@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { createServer as reservePort } from 'node:net';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -304,7 +305,7 @@ export class Hosts {
   }
   status() {
     return hostsStatusSchema.parse({
-      local: { id: 'local', label: 'This computer' },
+      local: { id: 'local', label: hostname().replace(/\.local$/i, '') },
       setupError: this.setupError,
       hosts: [...this.states.values()].map((state) => ({
         id: state.host.id,

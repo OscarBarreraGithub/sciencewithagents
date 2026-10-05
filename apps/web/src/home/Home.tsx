@@ -240,7 +240,7 @@ function Allowances({ data, now }: { data: HomeData; now: number }) {
 function selectedHost(data: HomeData) {
   const scope = apiScope();
   return scope === 'local'
-    ? (data.hosts.data?.local.label ?? 'This computer')
+    ? (data.hosts.data?.local.label ?? 'Computer')
     : (data.hosts.data?.hosts.find((h) => h.id === scope)?.label ?? 'Selected computer');
 }
 function ComputerLink({ data }: { data: HomeData }) {
