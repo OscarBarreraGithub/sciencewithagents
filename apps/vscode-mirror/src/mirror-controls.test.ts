@@ -150,9 +150,12 @@ describe('Codex exact-turn stop', () => {
     expect(f.stops()).toEqual([
       { method: 'turn/interrupt', params: { threadId: 'thread', turnId: 'turn-one' } },
     ]);
-    expect(f.calls.every(({ method }) => ['thread/read', 'turn/interrupt'].includes(method))).toBe(
-      true,
-    );
+    // History and native queue reads are the only other calls; no turn/start,
+    // thread/start or thread/queue/add may accompany a stop.
+    const allowed = ['thread/read', 'thread/queue/list', 'turn/interrupt'];
+    expect(f.calls.every(({ method }) => allowed.includes(method))).toBe(true);
+    const threads = f.calls.map(({ params }) => (params as { threadId?: string }).threadId);
+    expect(new Set(threads)).toEqual(new Set(['thread']));
   });
   it('rejects another provider, another thread, stale tokens and idle conversations', async () => {
     const f = codexFixture();
