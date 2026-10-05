@@ -523,7 +523,9 @@ it('connects a native loopback editor without credentials while consumer routes 
       socket.once('error', reject);
     });
     socket.send(JSON.stringify({ type: 'hello', window }));
-    await expect.poll(async () => (await read('/api/vscode/windows')).json()).toEqual([window]);
+    await expect
+      .poll(async () => (await read('/api/vscode/windows')).json())
+      .toEqual([{ ...window, canQueue: true }]);
     // Listing may refresh the native editor summary. Count the explicit history
     // request independently, rather than assuming list reads never contact it.
     expect(commands.every((command) => command === 'read')).toBe(true);
@@ -556,11 +558,15 @@ it('treats selected-host cluster requests as remote browsers for notebook tunnel
   expect((await as('owner', 'GET', '/api/cluster/notebooks')).json()).toEqual({
     localBrowser: true,
     notebooks: [],
+    remoteAvailable: false,
+    remoteMessage: 'Phone notebooks need a separate notebook address on this computer.',
   });
   // Another computer's app proxies the owner's phone or laptop: its loopback is not this one.
   expect((await as('host', 'GET', '/api/cluster/notebooks')).json()).toEqual({
     localBrowser: false,
     notebooks: [],
+    remoteAvailable: false,
+    remoteMessage: 'Phone notebooks need a separate notebook address on this computer.',
   });
   expect(
     (await as('host', 'POST', '/api/cluster/notebooks/close', { jobId: '12' })).statusCode,
