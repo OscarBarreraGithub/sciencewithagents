@@ -20,6 +20,12 @@ and private receipts; rerun the relevant checks when a change touches these area
   archived and its editor/server closed. Separate browser checks covered all four layouts
   and WebKit, including lost acknowledgements, saved drafts and selected-computer routing.
   The owner’s active editor was not reloaded; this is not physical iPhone certification.
+- A real app-managed Claude manager used Opus 5.5/xhigh to inspect public Hollis through
+  native Chrome tools. An emulated phone enabled Chrome for that conversation through the
+  saved settings endpoint; the choice survived reload and database reopening. The admitted
+  Runtime/ManagedClaude turn opened one verified new tab, found the search interface and
+  closed only that tab. Native tool results stayed in the app history; project files were
+  unchanged. The fixture conversation was archived and its provider, browser and server closed.
 - Isolated live work exercised an Opus manager, Sol implementation, independent Opus review,
   one correction and manager integration while another project awaited a human answer. QUARK
   priority/pause instructions persisted; a quota stop ended an executing owned Python child
@@ -116,8 +122,9 @@ browser checks at desktop, 412×915, 360×800, 915×412 and, for phone work, iPh
   hardware keyboards need [phone acceptance](PHONE_ACCEPTANCE.md) on the actual device.
 - Ubuntu CI checks the source build, backend and emulated browsers. It does not certify native
   Linux desktop integration; Intel Mac and Windows remain unqualified.
-- Image delivery tests verify readable paths, not provider vision accuracy. Fixture browser
-  connections do not certify the owner's connected Chrome inventory, which remains unchecked.
+- Image delivery tests verify readable paths, not provider vision accuracy. The real Claude
+  Chrome check above does not certify Codex browser integration, arbitrary sites, sign-in or
+  other connected tabs.
   Native disk/network/GPU/thermal-warning probes returned readings on the test Mac; they do
   not certify other drivers or every diagnosis.
   Temperature readings are unavailable through these unprivileged probes.
