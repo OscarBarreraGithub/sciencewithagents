@@ -1,14 +1,16 @@
-import { memo, useMemo } from 'react';
-import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
+import { memo, useMemo, type ComponentType, type ComponentProps } from 'react';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import { DocumentLink } from './Documents';
 import { prepareChatMath } from './chatMath';
 import 'katex/dist/katex.min.css';
 import './chatMath.css';
-import { savedDocumentLinks } from '@dock/shared';
+import { savedDocumentLinks, chatImageId } from '@dock/shared';
+import { apiUrl } from './api';
+import './chatImages.css';
 
-const imagePlaceholder: Components['img'] = ({ alt }) => (
+const imagePlaceholder = ({ alt }: ComponentProps<'img'>) => (
   <span className="muted">[Image: {alt ?? 'image'}]</span>
 );
 
@@ -21,16 +23,25 @@ export const ChatMarkdown = memo(
     entry,
   }: {
     children: string;
-    image?: Components['img'];
+    image?: ComponentType<ComponentProps<'img'>>;
     report?: boolean;
     entry?: { agentId: string; id: string };
   }) {
-    const prepared = useMemo(() => prepareChatMath(children), [children]);
+    const prepared = useMemo(
+      () =>
+        prepareChatMath(
+          children.replace(/\n\n<!-- sciencewithagents screenshot attachments:[\s\S]*?\n-->/g, ''),
+        ),
+      [children],
+    );
     const links = useMemo(() => savedDocumentLinks(children), [children]);
+    const OtherImage = image;
     return (
       <div className="chat-markdown">
         <ReactMarkdown
-          urlTransform={(url) => (entry && links.includes(url) ? url : defaultUrlTransform(url))}
+          urlTransform={(url) =>
+            chatImageId(url) || (entry && links.includes(url)) ? url : defaultUrlTransform(url)
+          }
           remarkPlugins={[remarkGfm, prepared.remarkChatMath]}
           rehypePlugins={[
             [
@@ -60,7 +71,25 @@ export const ChatMarkdown = memo(
                     {children}
                   </DocumentLink>
                 ),
-            img: image,
+            img: ({ src, alt, ...props }) => {
+              const id = typeof src === 'string' ? chatImageId(src) : null;
+              return id ? (
+                <a
+                  className="chat-uploaded-image"
+                  href={apiUrl(`/chat-images/${id}`)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <img
+                    src={apiUrl(`/chat-images/${id}`)}
+                    alt={alt || 'Screenshot'}
+                    loading="lazy"
+                  />
+                </a>
+              ) : (
+                <OtherImage src={src} alt={alt} {...props} />
+              );
+            },
           }}
         >
           {prepared.text}

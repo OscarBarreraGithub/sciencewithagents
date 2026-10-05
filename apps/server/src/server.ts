@@ -1,6 +1,10 @@
 import { BugReports, registerBugReportRoutes } from './bug-reports.js';
+import { openBrowserSetup } from './browser-setup.js';
+import { browserSetupActionSchema } from '@dock/shared';
 import { repoRoot } from './paths.js';
 import { registerDocumentRoutes } from './documents.js';
+import { registerChatImageRoutes } from './chat-images.js';
+import { registerDocumentFormattingRoutes } from './document-formatting.js';
 import { registerWorkItemRoutes } from './work-items.js';
 import { registerConversationRoutes } from './conversations.js';
 import { QuarkFocus, registerQuarkFocusRoutes } from './quark-focus.js';
@@ -116,7 +120,14 @@ export async function createServer(
     ready?: () => boolean;
   },
 ) {
-  const app = Fastify({ logger: false, bodyLimit: 128 * 1024, requestTimeout: 30_000 });
+  const app = Fastify({
+    logger: false,
+    bodyLimit: 128 * 1024,
+    requestTimeout: 30_000,
+    // Retire idle HTTP sockets promptly. Longer-lived idle sockets reproduced
+    // stalled native fetch polling on Node 26; active SSE/WebSockets are unaffected.
+    keepAliveTimeout: 5000,
+  });
   const terminals = options.terminals ?? new Terminals(runtime);
   const phone = options.phone;
   if (options.remote && options.localAccess)
@@ -235,7 +246,10 @@ export async function createServer(
         : error instanceof Error
           ? runtime.errorText(error)
           : 'The operation failed.';
-    reply.code(status).send({ error: message });
+    reply.code(status).send({
+      error: message,
+      ...(error instanceof Conflict && error.code ? { code: error.code } : {}),
+    });
   });
   // Mark real upgrade requests before an early security/readiness rejection.
   // The plugin's onResponse then closes refused upgrade sockets; authentication
@@ -528,6 +542,18 @@ export async function createServer(
     () => runtime.kick(),
   );
   registerDocumentRoutes(app, runtime.documents);
+  registerChatImageRoutes(app, runtime.chatImages);
+  registerDocumentFormattingRoutes(app, runtime.documentFormatting);
+  app.get('/api/browser/setup', async () => runtime.browserSetup.status());
+  app.post('/api/browser/check', async (request) => {
+    z.object({}).strict().parse(request.body);
+    return runtime.browserSetup.check();
+  });
+  app.post('/api/browser/open-setup', async (request) => {
+    const { action } = browserSetupActionSchema.parse(request.body);
+    if (options.demo) throw new Conflict('Browser setup is unavailable in the demo.');
+    return openBrowserSetup(action);
+  });
   registerRecoveryBackupRoutes(app, store, runtime.dataDir);
   registerProjectWorkflowRoutes(app, store, runtime.modelPolicy);
   registerWorkItemRoutes(app, runtime.workItems, () => runtime.kick());
@@ -549,7 +575,9 @@ export async function createServer(
   registerConversationRoutes(app, store, runtime.modelPolicy, runtime.dataDir, (key, fn) =>
     runtime.withLock(key, fn),
   );
-  const mirrors = options.mirrors ?? new VscodeMirrors(store);
+  const mirrors =
+    options.mirrors ??
+    new VscodeMirrors(store, undefined, (text) => runtime.chatImages.prompt(text));
   if (!options.remote) runtime.conversationSearchMirrorWindows = () => mirrors.windows();
   registerMirrorRoutes(app, mirrors, !!options.remote);
   registerConversationSearchRoutes(app, runtime.conversationSearch, () => runtime.kick());
@@ -654,6 +682,7 @@ export async function createServer(
     pid: process.pid,
     demo: !!options.demo,
     provider: runtime.health,
+    schedulingError: runtime.schedulingError,
   }));
   const readSnapshot = () =>
     snapshotSchema.parse({
@@ -665,6 +694,7 @@ export async function createServer(
             p.internal === true ||
             runtime.resources.projectId() === p.id ||
             runtime.conversationSearch.projectId() === p.id ||
+            runtime.documentFormatting.projectId() === p.id ||
             runtime.frontdesk.status().projectId === p.id ||
             runtime.coordinator.identity()?.projectId === p.id ||
             !!store.agent(p.managerId).surface,
@@ -682,6 +712,7 @@ export async function createServer(
         .map((d) => decisionSchema.parse(d)),
       eventId: store.head,
       provider: runtime.health,
+      schedulingError: runtime.schedulingError,
     });
   app.get('/api/snapshot', async () => readSnapshot());
   app.get('/api/local-access/status', async () => ({ enabled: !!options.localAccess }));
@@ -949,11 +980,7 @@ export async function createServer(
             ? 'available'
             : undefined,
       entries,
-      runs: store
-        .runs()
-        .filter((r) => r.agentId === target)
-        .slice(-50)
-        .map((r) => runSchema.parse(r)),
+      runs: store.runsForAgent(target).map((r) => runSchema.parse(r)),
       hasMore: entries.length === 200,
     });
   });
@@ -1127,7 +1154,9 @@ export async function createServer(
             await client.request('turn/steer', {
               threadId: agent.threadId,
               expectedTurnId: agent.turnId,
-              input: [{ type: 'text', text: value.text, text_elements: [] }],
+              input: [
+                { type: 'text', text: runtime.chatImages.prompt(value.text), text_elements: [] },
+              ],
             });
             runtime.system(target, 'Owner steering', value.text);
             return { status: 'submitted' };
@@ -1538,41 +1567,67 @@ export async function createServer(
     const session = phoneSessions.get(request);
     const stopWatching = session ? phone!.watch(session, () => reply.raw.end()) : () => {};
     let pumping = false;
+    let blocked = false;
+    let scheduled: NodeJS.Immediate | null = null;
+    const schedule = () => {
+      if (scheduled || blocked || reply.raw.destroyed || reply.raw.writableEnded) return;
+      scheduled = setImmediate(() => {
+        scheduled = null;
+        pump();
+      });
+    };
+    const drained = () => {
+      blocked = false;
+      schedule();
+    };
     const pump = () => {
-      if (pumping || reply.raw.destroyed || reply.raw.writableEnded) return;
+      if (pumping || blocked || reply.raw.destroyed || reply.raw.writableEnded) return;
       pumping = true;
       try {
-        let events = store.events(cursor);
-        while (events.length) {
-          for (const event of events) {
-            // SSE is an invalidation stream. Fetch typed records; never serve private RPC payloads.
-            if (
-              !reply.raw.write(
-                `id: ${event.id}\nevent: change\ndata: ${JSON.stringify({ type: event.type, projectId: event.projectId, agentId: event.agentId })}\n\n`,
-              )
-            ) {
-              cursor = event.id;
-              reply.raw.once('drain', pump);
-              return;
-            }
+        const events = store.events(cursor);
+        for (const event of events) {
+          // SSE is an invalidation stream. Fetch typed records; never serve private RPC payloads.
+          if (
+            !reply.raw.write(
+              `id: ${event.id}\nevent: change\ndata: ${JSON.stringify({ type: event.type, projectId: event.projectId, agentId: event.agentId })}\n\n`,
+            )
+          ) {
             cursor = event.id;
+            blocked = true;
+            reply.raw.once('drain', drained);
+            return;
           }
-          events = events.length === 300 ? store.events(cursor) : [];
+          cursor = event.id;
         }
+        // Replaying a large history must yield to normal requests between batches.
+        if (events.length === 300) schedule();
+      } catch {
+        // Reconnect from Last-Event-ID instead of losing the host to a stream error.
+        reply.raw.destroy();
       } finally {
         pumping = false;
       }
     };
-    store.on('event', pump);
-    pump();
+    store.on('event', schedule);
+    schedule();
     const heartbeat = setInterval(() => {
-      if (!reply.raw.destroyed && !reply.raw.writableEnded) reply.raw.write(': keepalive\n\n');
+      if (
+        !blocked &&
+        !reply.raw.destroyed &&
+        !reply.raw.writableEnded &&
+        !reply.raw.write(': keepalive\n\n')
+      ) {
+        blocked = true;
+        reply.raw.once('drain', drained);
+      }
     }, 15_000);
     request.raw.on('close', () => {
       streams.delete(reply.raw);
       clearInterval(heartbeat);
+      if (scheduled) clearImmediate(scheduled);
+      reply.raw.off('drain', drained);
       stopWatching();
-      store.off('event', pump);
+      store.off('event', schedule);
     });
   });
   app.get('/api/agents/:id/terminal', { websocket: true }, (socket, request) => {

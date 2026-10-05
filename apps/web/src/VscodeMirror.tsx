@@ -1,4 +1,6 @@
+import { MessageQueue } from './MessageQueue';
 import { ChatMarkdown } from './ChatMarkdown';
+import { ChatImagePicker } from './ChatImages';
 import {
   createContext,
   memo,
@@ -18,6 +20,8 @@ import {
 } from 'lucide-react';
 import {
   mirrorStateSchema,
+  withoutChatImages,
+  withChatImageText,
   mirrorResultSchema,
   mirrorSendSchema,
   mirrorPage,
@@ -442,13 +446,18 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
   const [receipt, setReceipt] = useState('');
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<MirrorSend | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const pendingRef = useRef<MirrorSend | null>(null);
+  const busyRef = useRef(false);
+  const draftRevision = useRef(0);
   const [notepadOpen, setNotepadOpen] = useState(false);
   const selection = useRef<DraftSelection>({ start: 0, end: 0 });
   const refocus = useRef(false);
   const browserNotepad = useBrowserNotepad(draftKey, text, (value) => {
+    draftRevision.current++;
     setText(value);
     try {
-      save(value, pending);
+      save(value, pendingRef.current);
     } catch {
       setReceipt('Draft storage is unavailable. Keep this page open.');
     }
@@ -537,16 +546,17 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
         const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? '{}');
         setText(typeof saved.text === 'string' ? saved.text : '');
         const value = mirrorSendSchema.safeParse(saved.pending);
-        setPending(
+        pendingRef.current =
           value.success &&
-            value.data.threadId === chat.threadId &&
-            (value.data.provider ?? 'codex') === (chat.provider ?? 'codex')
+          value.data.threadId === chat.threadId &&
+          (value.data.provider ?? 'codex') === (chat.provider ?? 'codex')
             ? value.data
-            : null,
-        );
+            : null;
+        setPending(pendingRef.current);
       } catch {
         setText('');
         setPending(null);
+        pendingRef.current = null;
       }
     };
     restore();
@@ -584,20 +594,24 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
   }
   const status = chat.status === 'offline' ? 'offline' : (state?.status ?? 'offline');
   const connecting = !!chat.online && !state && !error;
+  const [sendTiming, setSendTiming] = useState<'steer' | 'queue'>('steer');
   const canSteer = status === 'busy' && !!state?.canSteer && !!state.steerToken;
   const canQueue = status === 'busy' && !!state?.canQueue;
+  const queueSelected = canQueue && (!canSteer || sendTiming === 'queue');
   const canSend = status === 'idle' || canSteer || canQueue;
   async function send() {
-    if (busy || !chat.threadId || (!pending && !canSend)) return;
+    if (busyRef.current || uploading || !chat.threadId || (!pending && !canSend)) return;
     const input = pending ?? {
       key: crypto.randomUUID(),
       threadId: chat.threadId,
       ...(chat.provider === 'claude' ? { provider: 'claude' as const } : {}),
-      ...(canSteer ? { expectedTurnId: state!.steerToken! } : {}),
-      ...(canQueue && !canSteer ? { mode: 'queue' as const } : {}),
+      ...(canSteer && !queueSelected ? { expectedTurnId: state!.steerToken! } : {}),
+      ...(queueSelected ? { mode: 'queue' as const } : {}),
       text: text.trim(),
     };
     if (!input.text) return;
+    const sentRevision = draftRevision.current;
+    busyRef.current = true;
     try {
       save(text, input);
     } catch {
@@ -607,6 +621,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           : 'Draft storage is unavailable. Keep this page open and inspect VS Code after any connection failure.',
       );
     }
+    pendingRef.current = input;
     setPending(input);
     setBusy(true);
     try {
@@ -621,15 +636,30 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
         try {
           const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? '{}');
           if (saved.pending?.key === input.key) {
-            save(result.state === 'sent' ? '' : text, null);
+            const currentText =
+              typeof saved.text === 'string' ? saved.text : browserNotepad.draft.currentText();
+            save(
+              result.state === 'sent' &&
+                draftRevision.current === sentRevision &&
+                currentText.trim() === input.text
+                ? ''
+                : currentText,
+              null,
+            );
             window.dispatchEvent(new CustomEvent('dock:mirror-draft', { detail: draftKey }));
           }
         } catch {
           /* The live view below still retains the result. */
         }
         if (mounted.current) {
+          pendingRef.current = null;
           setPending(null);
-          if (result.state === 'sent') setText('');
+          if (
+            result.state === 'sent' &&
+            draftRevision.current === sentRevision &&
+            browserNotepad.draft.currentText().trim() === input.text
+          )
+            setText('');
         }
       }
       if (mounted.current) setReceipt(result.message);
@@ -637,6 +667,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
       if (mounted.current)
         setReceipt('Delivery not confirmed. Use Check delivery; do not retype and resend.');
     } finally {
+      busyRef.current = false;
       if (mounted.current) setBusy(false);
     }
   }
@@ -677,9 +708,9 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
               <strong>Same chat, different screen</strong>
               <p>Sent messages sync both ways. Unsent drafts stay separate.</p>
               <p>
-                Use VS Code for permissions, models, slash commands and attachments. Stop reply is
-                available here when the connected provider supports it. No new agent is started
-                here. After an editor crash, reopen VS Code and the original chat.
+                Use VS Code for permissions, models and slash commands. Screenshots can be attached
+                here. Stop reply is available here when the connected provider supports it. No new
+                agent is started here. After an editor crash, reopen VS Code and the original chat.
               </p>
             </div>
           )}
@@ -808,6 +839,27 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           void send();
         }}
       >
+        <MessageQueue
+          messages={state?.queuedMessages ?? []}
+          hasMore={state?.queueHasMore}
+          error={state?.queueReadError}
+        />
+        {state?.canSteer && state?.canQueue && (
+          <label className="mirror-send-timing">
+            Send timing{' '}
+            <select
+              aria-label="Send timing"
+              value={sendTiming}
+              disabled={busy || !!pending || !canSteer}
+              onChange={(event) =>
+                setSendTiming(event.target.value === 'queue' ? 'queue' : 'steer')
+              }
+            >
+              <option value="steer">Steer now</option>
+              <option value="queue">Queue next</option>
+            </select>
+          </label>
+        )}
         {chat.threadId && (
           <MirrorStopReply
             windowId={chat.windowId}
@@ -821,12 +873,11 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           <textarea
             ref={input}
             aria-label={`Message ${provider}`}
-            value={text}
+            value={withoutChatImages(text)}
             rows={1}
             maxLength={32000}
-            disabled={busy || !!pending}
             placeholder={
-              canSteer
+              canSteer && !queueSelected
                 ? 'Update the current task…'
                 : canQueue
                   ? 'Add a follow-up…'
@@ -835,7 +886,9 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
                     : 'Write a draft…'
             }
             onChange={(e) => {
-              browserNotepad.draft.setText(e.target.value);
+              browserNotepad.draft.setText(
+                withChatImageText(browserNotepad.draft.currentText(), e.target.value),
+              );
             }}
             onKeyDown={(e) => {
               if (
@@ -857,51 +910,44 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
                 ? 'Checking delivery'
                 : pending
                   ? 'Check delivery'
-                  : canQueue
+                  : queueSelected
                     ? 'Queue follow-up'
                     : 'Send'
             }
-            disabled={busy || !text.trim() || (!pending && !canSend)}
+            disabled={busy || uploading || (!pending && (!text.trim() || !canSend))}
           >
             {busy ? '…' : pending ? 'Check delivery' : <ArrowUp size={20} />}
           </button>
         </div>
-        <button
-          type="button"
-          className="mirror-notepad"
-          onClick={() => {
-            if (input.current)
-              selection.current = {
-                start: input.current.selectionStart,
-                end: input.current.selectionEnd,
-              };
-            setNotepadOpen(true);
-          }}
-        >
-          <NotebookPen size={16} /> Open notepad
-        </button>
-        <p className="mirror-note">
-          {canSteer
-            ? daemon
-              ? 'Your message joins the current reply, together with anything typed on the computer. '
-              : 'Your message updates the current task. '
-            : canQueue
-              ? 'Your message joins Claude’s native queue. '
-              : status === 'busy'
-                ? daemon
-                  ? 'Codex is working; you can send when this reply finishes. '
-                  : (chat.provider ?? 'codex') === 'codex'
-                    ? 'Update the VS Code companion to send instructions while Codex works. '
-                    : 'Update the VS Code companion to queue follow-ups while Claude works. '
-                : ''}
-          Drafts stay on this device.{' '}
-          <span className="desktop-only">Enter to send · Shift + Enter for a new line.</span>
-        </p>
-        {receipt && (
-          <p className="mirror-receipt" role="status">
-            {receipt}
-          </p>
-        )}
+        <div className="mirror-compose-tools">
+          <ChatImagePicker
+            key={identity}
+            text={text}
+            currentText={browserNotepad.draft.currentText}
+            setText={browserNotepad.draft.setText}
+            maxLength={32000}
+            disabled={busy || !!pending}
+            onBusy={setUploading}
+          />
+          <button
+            type="button"
+            className="mirror-notepad"
+            onClick={() => {
+              if (input.current)
+                selection.current = {
+                  start: input.current.selectionStart,
+                  end: input.current.selectionEnd,
+                };
+              setNotepadOpen(true);
+            }}
+          >
+            <NotebookPen size={16} /> Open notepad
+          </button>
+        </div>
+        <details className="mirror-delivery-status" title={receipt || undefined}>
+          <summary aria-live="polite">{receipt || '\u00a0'}</summary>
+          {receipt && <p>{receipt}</p>}
+        </details>
         {notepadOpen && (
           <Notepad
             draft={browserNotepad.draft}
@@ -913,8 +959,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
             localOnly
             localHistory={browserNotepad.history}
             maxLength={32000}
-            readOnly={busy || !!pending}
-            canSend={!busy && !!text.trim() && (!!pending || canSend)}
+            canSend={!busy && !uploading && (!!pending || (!!text.trim() && canSend))}
             sending={busy}
             notice={receipt}
             onMinimize={() => {
@@ -929,10 +974,10 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
               <p className="mirror-note">
                 {pending
                   ? 'Check delivery resolves the original receipt before another message can be sent.'
-                  : canSteer
+                  : canSteer && !queueSelected
                     ? 'Sends an update to the current reply.'
                     : canQueue
-                      ? 'Queues a follow-up for Claude.'
+                      ? `Queues a follow-up for ${provider}.`
                       : 'Sends to this shared conversation.'}
               </p>
             }
@@ -949,12 +994,12 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
                 )
               ) {
                 try {
-                  save('', null);
+                  save(browserNotepad.draft.currentText(), null);
                 } catch {
                   /* Keep in-memory receipt explicit. */
                 }
+                pendingRef.current = null;
                 setPending(null);
-                setText('');
                 setReceipt('Previous receipt cleared after your check.');
               }
             }}

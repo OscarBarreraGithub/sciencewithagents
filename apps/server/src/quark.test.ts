@@ -794,3 +794,55 @@ it('keeps reset-clock jitter in one window and reports distinct project rates ov
       ?.estimatedPercentPerHour,
   ).toBeNull();
 });
+
+it('reports spare five-hour capacity using account-wide readings without granting extra budget', () => {
+  const sessionReset = start + 5 * 3600_000;
+  const setSession = (used: number, end = sessionReset) => {
+    store.setSetting(
+      'capacity:v1:claude',
+      parseCapacity(
+        'claude',
+        [
+          {
+            provider: 'claude',
+            source: 'oauth',
+            usage: {
+              updatedAt: new Date().toISOString(),
+              primary: {
+                usedPercent: used,
+                windowMinutes: 300,
+                resetsAt: new Date(end).toISOString(),
+              },
+            },
+          },
+        ],
+        Date.now(),
+      ),
+    );
+    quark.sync();
+  };
+  setSession(5);
+  vi.setSystemTime(start + 30 * 60_000);
+  setSession(10);
+  const policy = pulsar.policy();
+  const spare = quark.utilization().find((row) => row.provider === 'claude')!;
+  expect(spare).toMatchObject({
+    state: 'underused',
+    remainingPercent: 90,
+    observedPercentPerHour: 10,
+    projectedRemainingPercent: 45,
+  });
+  expect(spare.reservePercent).toBe(policy.reservePercent);
+  expect(pulsar.policy()).toEqual(policy);
+  vi.setSystemTime(start + 60 * 60_000);
+  setSession(55);
+  expect(quark.utilization().find((row) => row.provider === 'claude')?.state).toBe('fast');
+  vi.setSystemTime(start + 61 * 60_000);
+  setSession(1, sessionReset + 5 * 3600_000);
+  expect(quark.utilization().find((row) => row.provider === 'claude')).toMatchObject({
+    state: 'unknown',
+    observedPercentPerHour: null,
+  });
+  vi.setSystemTime(start + 120 * 60_000);
+  expect(quark.utilization().find((row) => row.provider === 'claude')?.state).toBe('unknown');
+});

@@ -102,6 +102,15 @@ not proof that the tool is signed in or will succeed in a later task worktree.
 
 ## Manager contract
 
+Managers keep independent owner asks in durable work items; steering adds or corrects work
+unless the owner cancels or replaces it. Notes remain the owner's. The turn overview shows
+at most 60 unresolved items and reports `workItemsPage.omitted` and `nextCursor`.
+Use `dock_inspect {workItems:{cursor:"…"}}` to continue, following each `nextCursor` until
+null; `includeDone:true` includes completed items. Reads stay within the caller's project.
+Raw prompts remain available through history/read, but prompt storage alone does not prove
+every request was recognized or completed. Managers reconcile the list with source evidence
+after compaction and before reporting completion; no automatic perfect-recall claim is made.
+
 `dock_inspect {}` and ordinary host state include `workerTools`, with its `toolPolicy`, revision and
 the owner-granted Codex ceiling. Optional `dock_delegate.tools` accepts:
 
@@ -135,3 +144,10 @@ tools and permissions. Existing restricted contexts retain their original consen
 
 Native integration still needs compatibility checks when provider protocols change. See
 [Provider compatibility](PROVIDER_COMPATIBILITY.md) and [current release status](STATUS.md).
+
+Browser workflows additionally need the provider's native browser integration and its site
+permissions. Shell/network access does not grant browser access. **Chats → Browser** provides
+a token-free Codex setup check and native Codex/Claude instructions; providers that require
+an active conversation for inventory are reported as unverified. A failed check never widens
+permissions. Report the specific missing setup once and continue independent work rather
+than repeatedly retrying a denied browser action.

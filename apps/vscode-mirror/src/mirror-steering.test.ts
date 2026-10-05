@@ -15,6 +15,12 @@ function fixture() {
   const acknowledgements: (() => void)[] = [];
   const state = {
     turn: 'original-turn',
+    queue: undefined as
+      | { id: string; input: { type: string; text: string }[]; clientUserMessageId: string }[]
+      | undefined,
+    queueMore: false,
+    queueReadFailure: undefined as string | undefined,
+    rejectQueue: false,
     flags: [] as string[],
     defer: false,
     malformedAck: false,
@@ -68,6 +74,30 @@ function fixture() {
         state.afterRead = undefined;
         afterRead?.();
       }
+      if (method === 'thread/queue/list') {
+        if (state.queueReadFailure) error = { code: -32000, message: state.queueReadFailure };
+        else if (state.queue)
+          result = { data: state.queue, nextCursor: state.queueMore ? 'next' : null };
+        else error = { code: -32601, message: 'Method not found' };
+      }
+      if (method === 'thread/queue/add') {
+        if (state.rejectQueue) error = { code: -32600, message: 'Queue refused' };
+        else {
+          accepted.push(params);
+          const item = {
+            id: randomUUID(),
+            input: params.input as { type: string; text: string }[],
+            clientUserMessageId: String(params.clientUserMessageId),
+          };
+          state.queue?.push(item);
+          result = {
+            queuedSubmission: {
+              ...item,
+              clientUserMessageId: state.malformedAck ? 'wrong' : item.clientUserMessageId,
+            },
+          };
+        }
+      }
       if (method === 'turn/steer') {
         state.beforeSteer?.();
         if (state.turn !== params.expectedTurnId || !state.turn)
@@ -79,7 +109,8 @@ function fixture() {
       }
       const reply = () =>
         providers.get(provider)?.onResult?.({ id, ...(error ? { error } : { result }) });
-      if (method === 'turn/steer' && state.defer) acknowledgements.push(reply);
+      if (['turn/steer', 'thread/queue/add'].includes(method) && state.defer)
+        acknowledgements.push(reply);
       else queueMicrotask(reply);
     },
   };
@@ -189,4 +220,90 @@ it('treats a lost or mismatched acknowledgement as uncertain and never falls bac
   await malformed.mirror.select('thread');
   malformed.state.malformedAck = true;
   expect((await malformed.mirror.send(input())).state).toBe('uncertain');
+});
+
+it('reads the ordered native queue including messages sent elsewhere, and advertises pagination honestly', async () => {
+  const f = fixture();
+  f.state.queue = [
+    {
+      id: 'external',
+      clientUserMessageId: 'desktop',
+      input: [{ type: 'text', text: 'Sent in the editor' }],
+    },
+  ];
+  f.state.queueMore = true;
+  await f.mirror.select('thread');
+  expect(await f.mirror.read()).toMatchObject({
+    canQueue: true,
+    queuedMessages: [{ id: 'external', text: 'Sent in the editor' }],
+    queueHasMore: true,
+  });
+  const message = {
+    key: randomUUID(),
+    threadId: 'thread',
+    mode: 'queue' as const,
+    text: 'Do this next',
+  };
+  expect((await f.mirror.send(message)).state).toBe('sent');
+  expect(f.accepted[0]).toMatchObject({ clientUserMessageId: message.key, threadId: 'thread' });
+  expect((await f.mirror.read(true)).queuedMessages?.map((item) => item.text)).toEqual([
+    'Sent in the editor',
+    'Do this next',
+  ]);
+  f.state.queue = [];
+  expect((await f.mirror.read(true)).queuedMessages).toEqual([]);
+  expect(f.calls.some((call) => call.method === 'turn/start')).toBe(false);
+});
+it('keeps unsupported queue sends unsent and never falls back to starting or steering', async () => {
+  const f = fixture();
+  await f.mirror.select('thread');
+  expect((await f.mirror.read()).canQueue).toBe(false);
+  expect(
+    (await f.mirror.send({ key: randomUUID(), threadId: 'thread', mode: 'queue', text: 'Next' }))
+      .state,
+  ).toBe('not_sent');
+  expect(f.accepted).toHaveLength(0);
+});
+it.each(['reject', 'wrong-ack', 'timeout'])(
+  'preserves native queue failure semantics (%s)',
+  async (failure) => {
+    vi.useFakeTimers();
+    const f = fixture();
+    f.state.queue = [];
+    await f.mirror.select('thread');
+    f.state.rejectQueue = failure === 'reject';
+    f.state.malformedAck = failure === 'wrong-ack';
+    f.state.defer = failure === 'timeout';
+    const message = { key: randomUUID(), threadId: 'thread', mode: 'queue' as const, text: 'Next' };
+    const result = f.mirror.send(message);
+    if (failure === 'timeout') await vi.advanceTimersByTimeAsync(12001);
+    expect((await result).state).toBe(failure === 'reject' ? 'not_sent' : 'uncertain');
+    if (failure !== 'reject') expect((await f.mirror.send(message)).state).toBe('not_sent');
+    expect(f.calls.filter((call) => call.method === 'thread/queue/add')).toHaveLength(1);
+  },
+);
+
+it('keeps chat readable and exposes a transient queue error separately from unsupported native operations', async () => {
+  const f = fixture();
+  f.state.queue = [];
+  await f.mirror.select('thread');
+  f.state.queueReadFailure = 'Temporarily unavailable';
+  const unreadable = await f.mirror.read(true);
+  expect(unreadable).toMatchObject({
+    status: 'busy',
+    canSteer: true,
+    canQueue: false,
+    queueReadError: 'unavailable',
+  });
+  expect(unreadable.entries[0]?.text).toBe('Original work');
+  expect(unreadable.queuedMessages).toBeUndefined();
+  f.state.queue = undefined;
+  f.state.queueReadFailure = undefined;
+  expect((await f.mirror.read(true)).queueReadError).toBe('unsupported');
+  f.state.queue = [];
+  expect(await f.mirror.read(true)).toMatchObject({
+    canQueue: true,
+    queuedMessages: [],
+    queueReadError: undefined,
+  });
 });

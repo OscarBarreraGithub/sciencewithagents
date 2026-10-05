@@ -383,7 +383,9 @@
 .overview-side {
   padding: 0;
   align-self: start;
-  --overview-side-max: max(200px, calc(var(--home-visible-height, 100dvh) - 136px));
+  /* Keep content geometry independent of the keyboard. Only the outer scrolling
+     viewport shrinks, otherwise focusing the to-do moves the field under Safari. */
+  --overview-side-max: max(200px, calc(100svh - 136px));
   max-height: var(--overview-side-max);
   overflow: hidden;
 }
@@ -704,7 +706,7 @@
   .overview-destinations {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: repeat(3, minmax(min-content, 1fr));
-    height: calc(var(--home-visible-height, 100svh) * 0.42);
+    height: 42svh;
     min-height: 0;
     gap: 8px;
   }
@@ -723,7 +725,7 @@
     display: block;
   }
   .overview-side {
-    --overview-side-max: max(200px, calc(var(--home-visible-height, 100dvh) - 64px));
+    --overview-side-max: max(200px, calc(100svh - 64px));
   }
   .overview-panel {
     padding: 12px 14px 10px;
@@ -800,10 +802,10 @@
 }
 @media (min-width: 701px) and (max-width: 1099px) and (max-height: 500px) {
   .overview-side {
-    --overview-side-max: max(240px, calc(var(--home-visible-height, 100dvh) - 64px));
+    --overview-side-max: max(240px, calc(100svh - 64px));
   }
   .overview-destinations {
-    height: calc(var(--home-visible-height, 100svh) * 0.42);
+    height: 42svh;
     min-height: 0;
   }
   .destination {

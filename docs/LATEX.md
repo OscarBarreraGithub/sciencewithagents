@@ -25,12 +25,22 @@ System Settings → Privacy & Security, then retry. The app does not bypass oper
 
 When LaTeX source is available, **Reading** opens a reflowing, phone-width document with
 adjustable text size. Paragraphs, headings, tables and figures fit the screen; long equations
-scroll individually. Reading position is saved locally. A PDF with a same-name `.tex` beside
+scroll individually, with a visible “More equation” cue on the hidden side. Standard numbered equations count unlabeled rows too; manual tags render once. Reading position is saved locally. A PDF with a same-name `.tex` beside
 it also offers Reading mode. **Original PDF** retains fixed pages, fit-to-width, whole-page
 view, zoom buttons, pinch zoom, page navigation, selectable text and download. A manager’s document link opens over the
 conversation. Back, browser Back, or a right swipe at fitted width returns to the same
 chat position and keeps the draft. When zoomed in, horizontal gestures pan the page.
 Reading position is also remembered locally for recent documents.
+
+## Format for phone
+
+Use **Format for phone** in Reading mode to request a separate AI-formatted copy. The
+selectable model defaults to the latest Sonnet family through central model policy.
+It uses an ordinary QUARK-supervised turn, shows queue/failure state and never overwrites
+original source or PDF. Read either version from the same viewer. Source changes invalidate
+an older copy; deterministic checks protect labels, references, tags and the preamble,
+not arbitrary mathematical equivalence. Follow [phone LaTeX conventions](TEX_AUTHORING.md)
+across manager and worker reports. Larger text and some matrices still need local scrolling.
 
 ## Share from a manager
 

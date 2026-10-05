@@ -27,14 +27,14 @@ export function EditorStatus({ data }: { data: HomeData }) {
     <>
       <button
         type="button"
-        className={`home-chip home-editor tone-${tone}`}
+        className={`connection-check home-editor tone-${tone}`}
         onClick={() => setOpen(true)}
         aria-label={`VS Code on this computer: ${text}. Show setup status and extension instructions`}
         aria-haspopup="dialog"
       >
         <Code size={15} aria-hidden="true" />
         <span>VS Code</span>
-        <span className="home-editor-state">{text}</span>
+        <span className="connection-check-state">{text}</span>
       </button>
       {open && (
         <Modal title="VS Code setup" close={() => setOpen(false)} className="home-editor-setup">

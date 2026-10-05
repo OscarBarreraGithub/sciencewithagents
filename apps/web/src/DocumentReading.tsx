@@ -1,7 +1,7 @@
-import { useLayoutEffect, useMemo, useRef, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from 'react';
 import DOMPurify from 'dompurify';
 import katex from 'katex';
-import type { DocumentReading as Reading } from '@dock/shared';
+import { readingMathParts, stripLatexCommand, type DocumentReading as Reading } from '@dock/shared';
 import { apiScope, apiUrl } from './api';
 import 'katex/dist/katex.min.css';
 
@@ -35,16 +35,64 @@ export function DocumentReading({
     }
     const numbers = { ...reading.labels };
     let nextNumber = 0;
-    for (const math of document.querySelectorAll<HTMLElement>('.math')) {
-      const display = math.classList.contains('display');
-      let tex = (math.textContent ?? '').replace(/^\\[([]|\\[)\]]$/g, '');
-      const labels = [...tex.matchAll(/\\label\{([^{}]+)\}/g)];
-      tex = tex
-        .replace(/\\label\{[^{}]+\}/g, '')
-        .replace(/\\(?:begin|end)\{equation\*?\}/g, '')
-        .replace(/\{align\*?\}/g, '{aligned}')
-        .replace(/\{gather\*?\}/g, '{gathered}');
-      katex.render(tex, math, {
+    let wraps = 0;
+    const references: { element: HTMLElement; tex: string; display: boolean; number?: string }[] =
+      [];
+    for (const original of document.querySelectorAll<HTMLElement>('.math')) {
+      const display = original.classList.contains('display');
+      const source = (original.textContent ?? '').replace(/^\\[([]|\\[)\]]$/g, '');
+      const parts = display
+        ? readingMathParts(source)
+        : [{ tex: source, labels: [], tag: undefined, numbered: false }];
+      for (const part of parts) {
+        const math = document.createElement('span');
+        math.className = original.className;
+        original.before(math);
+        let number = part.tag;
+        if (part.numbered) number = String(++nextNumber);
+        for (const key of part.labels) {
+          if (numbers[key]) number = numbers[key];
+          else if (number !== undefined) numbers[key] = number;
+          const anchor = document.createElement('span');
+          anchor.id = key;
+          math.before(anchor);
+        }
+        if (number && /^\d+$/.test(number)) nextNumber = Math.max(nextNumber, Number(number));
+        let tex = part.tex
+          .replace(/\\(?:begin|end)\{equation\*?\}/g, '')
+          .replace(/\{align\*?\}/g, '{aligned}')
+          .replace(/\{gather\*?\}/g, '{gathered}');
+        if (display) {
+          const wrap = document.createElement('span');
+          wrap.className = 'reading-math-wrap';
+          math.replaceWith(wrap);
+          wrap.append(math);
+          math.setAttribute('role', 'region');
+          math.setAttribute('aria-label', number ? `Equation ${number}` : 'Equation');
+          const hint = document.createElement('span');
+          hint.className = 'reading-overflow-hint';
+          hint.id = `equation-overflow-${wraps++}`;
+          hint.hidden = true;
+          math.setAttribute('aria-describedby', hint.id);
+          wrap.append(hint);
+        }
+        references.push({ element: math, tex: stripLatexCommand(tex, 'tag'), display, number });
+      }
+      original.remove();
+    }
+    for (const { element, tex, display, number } of references) {
+      const resolved = tex.replace(
+        /\\(eqref|ref)\{([^{}]+)\}/g,
+        (match, type: string, key: string) => {
+          const value = numbers[key]?.replace(/^\$|\$$/g, '');
+          return value ? (type === 'eqref' ? `(${value})` : value) : match;
+        },
+      );
+      const content = document.createElement('span');
+      content.className = 'reading-equation-content';
+      const formula = document.createElement('span');
+      content.append(formula);
+      katex.render(resolved, formula, {
         displayMode: display,
         throwOnError: false,
         trust: false,
@@ -52,32 +100,55 @@ export function DocumentReading({
         maxExpand: 1000,
         maxSize: 20,
       });
-      for (const label of labels) {
-        const key = label[1]!;
-        const anchor = document.createElement('span');
-        anchor.id = key;
-        math.prepend(anchor);
-        numbers[key] ??= String(++nextNumber);
-        const number = document.createElement('span');
-        number.className = 'reading-equation-number';
-        number.textContent = `(${numbers[key]})`;
-        math.append(number);
+      if (display && number !== undefined) {
+        const tag = document.createElement('span');
+        tag.className = 'reading-equation-number';
+        katex.render(`(${number.replace(/^\$|\$$/g, '')})`, tag, {
+          throwOnError: false,
+          trust: false,
+          strict: 'ignore',
+        });
+        content.append(tag);
       }
-      if (display) {
-        math.tabIndex = 0;
-        math.setAttribute('aria-label', 'Equation');
-      }
+      element.append(content);
     }
     for (const link of document.querySelectorAll('a')) {
       const href = link.getAttribute('href') ?? '';
       const number = numbers[href.slice(1)];
-      if (href.startsWith('#') && number && link.hasAttribute('data-reference-type'))
-        link.textContent =
-          link.getAttribute('data-reference-type') === 'eqref' ? `(${number})` : number;
+      if (href.startsWith('#') && number && link.hasAttribute('data-reference-type')) {
+        const value = number.replace(/^\$|\$$/g, '');
+        katex.render(
+          link.getAttribute('data-reference-type') === 'eqref' ? `(${value})` : value,
+          link,
+          { throwOnError: false, trust: false },
+        );
+      }
       if (/^https?:\/\//.test(href)) {
         link.target = '_blank';
         link.rel = 'noreferrer noopener';
       } else if (!href.startsWith('#')) link.removeAttribute('href');
+    }
+    for (const table of document.querySelectorAll('table')) {
+      for (const cell of table.querySelectorAll('td'))
+        if (
+          /^[+−\-]?[\d.,]+(?:\s*[eE][+−\-]?\d+)?(?:\s*[%°])?$/.test(cell.textContent?.trim() ?? '')
+        )
+          cell.classList.add('reading-numeric');
+      const wrap = document.createElement('div');
+      wrap.className = 'reading-math-wrap';
+      const area = document.createElement('div');
+      area.className = 'reading-table-scroll';
+      table.replaceWith(wrap);
+      area.append(table);
+      wrap.append(area);
+      const hint = document.createElement('span');
+      hint.className = 'reading-overflow-hint';
+      hint.hidden = true;
+      hint.id = `equation-overflow-${wraps++}`;
+      area.setAttribute('role', 'region');
+      area.setAttribute('aria-label', 'Table');
+      area.setAttribute('aria-describedby', hint.id);
+      wrap.append(hint);
     }
     return document.body.innerHTML;
   }, [id, reading.html, reading.labels]);
@@ -97,6 +168,51 @@ export function DocumentReading({
       }
     };
   }, [id, html]);
+  useEffect(() => {
+    const root = scroll.current!;
+    const equations = [
+      ...root.querySelectorAll<HTMLElement>('.math.display, .reading-table-scroll'),
+    ];
+    let disposed = false;
+    const update = () => {
+      if (disposed) return;
+      for (const equation of equations) {
+        const hint = equation.parentElement!.querySelector<HTMLElement>('.reading-overflow-hint')!;
+        const content = equation.querySelector<HTMLElement>('.reading-equation-content');
+        const formula = content?.firstElementChild as HTMLElement | null;
+        const number = content?.querySelector<HTMLElement>('.reading-equation-number');
+        if (content && formula && number)
+          content.classList.toggle(
+            'stack-number',
+            formula.scrollWidth +
+              number.scrollWidth +
+              parseFloat(getComputedStyle(equation).fontSize) >
+              equation.clientWidth,
+          );
+        const wide = equation.scrollWidth > equation.clientWidth + 3;
+        const left = equation.scrollLeft > 3;
+        const right = equation.scrollLeft + equation.clientWidth < equation.scrollWidth - 3;
+        hint.hidden = !wide;
+        equation.tabIndex = wide ? 0 : -1;
+        const label = equation.classList.contains('reading-table-scroll') ? 'table' : 'equation';
+        hint.textContent =
+          left && right ? `← More ${label} →` : left ? `← More ${label}` : `More ${label} →`;
+        equation.parentElement!.classList.toggle('has-overflow', wide);
+      }
+    };
+    const resize = new ResizeObserver(update);
+    for (const equation of equations) {
+      resize.observe(equation);
+      equation.addEventListener('scroll', update, { passive: true });
+    }
+    update();
+    void document.fonts.ready.then(update);
+    return () => {
+      disposed = true;
+      resize.disconnect();
+      for (const equation of equations) equation.removeEventListener('scroll', update);
+    };
+  }, [html, size]);
   return (
     <div
       ref={scroll}
@@ -109,7 +225,7 @@ export function DocumentReading({
         touch.current = {
           x: point.clientX,
           y: point.clientY,
-          equation: !!(event.target as Element).closest('.math'),
+          equation: !!(event.target as Element).closest('.math, .reading-table-scroll'),
         };
       }}
       onTouchEnd={(event) => {

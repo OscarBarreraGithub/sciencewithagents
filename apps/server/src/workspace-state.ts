@@ -340,6 +340,7 @@ export class WorkspaceState {
     )
       throw new Conflict(
         'This draft changed before it could be sent. Review the saved version and send again.',
+        'DRAFT_CHANGED',
       );
     const delivered = this.store.db
       .prepare('SELECT * FROM workspace_deliveries WHERE delivery_key=?')

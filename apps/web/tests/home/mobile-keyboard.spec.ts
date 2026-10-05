@@ -131,6 +131,92 @@ test('Home stays fixed during full-height viewport overscroll and has no bottom 
   }
 });
 
+test('focusing the Home to-do keeps cards and editor geometry stable while the keyboard opens', async ({
+  page,
+}, info) => {
+  test.skip(info.project.name === 'desktop', 'Keyboard geometry targets phone layouts.');
+  await keyboardFixture(page);
+  await page.route('**/api/work-items', (route) => route.fulfill({ json: { items: [] } }));
+  await page.goto('/#/home');
+  const editor = page.getByRole('textbox', { name: 'New to-do', exact: true });
+  await expect(editor).toBeEnabled();
+  await editor.scrollIntoViewIfNeeded();
+  await editor.click();
+  const geometry = () =>
+    page.evaluate(() => {
+      const main = document.querySelector<HTMLElement>('.home-content')!;
+      const field = document.querySelector<HTMLElement>('#todo-new')!;
+      const nav = document.querySelector('.overview-destinations')!;
+      return {
+        navHeight: nav.getBoundingClientRect().height,
+        fieldOffset:
+          field.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop,
+        listCap: getComputedStyle(field.closest('.overview-section-body')!).maxHeight,
+      };
+    });
+  const before = await geometry();
+  const height = await page.evaluate(() => innerHeight);
+  for (const [visibleHeight, top] of [
+    [height * 0.65, 0],
+    [height * 0.55, 32],
+    [height, 0],
+  ]) {
+    await viewportEvent(page, visibleHeight!, top!, 'resize');
+    const after = await geometry();
+    expect(Math.abs(after.navHeight - before.navHeight)).toBeLessThanOrEqual(1);
+    expect(Math.abs(after.fieldOffset - before.fieldOffset)).toBeLessThanOrEqual(1);
+    expect(after.listCap).toBe(before.listCap);
+  }
+  await editor.fill('Remember this phone draft.');
+  await page.reload();
+  await expect(editor).toHaveValue('Remember this phone draft.');
+});
+
+test('manager names stay readable beside reachable header tools at larger text sizes', async ({
+  page,
+  baseURL,
+}, info) => {
+  const name = 'Thermal transport and materials research';
+  const response = await page.request.post('/api/projects', {
+    headers: { origin: baseURL! },
+    data: { key: randomUUID(), name, provider: 'codex' },
+  });
+  expect(response.ok()).toBe(true);
+  const { managerId } = await response.json();
+  await page.goto(`/#/chat/${managerId}`);
+  const title = page.locator('.chat-pane-title h1');
+  await expect(title).toContainText(name);
+  for (const scale of [1, 1.5, 2]) {
+    await title.evaluate((el, scale) => {
+      el.style.fontSize = `${18 * scale}px`;
+    }, scale);
+    const geometry = await title.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const text = range.getBoundingClientRect();
+      // Font ink can extend outside its line box without being clipped. Check the
+      // containing header, plus the title's own wrapping/scroll width.
+      const bounds = el.closest('.chat-pane-head')!.getBoundingClientRect();
+      return {
+        fits: text.right <= bounds.right + 1 && text.bottom <= bounds.bottom + 1,
+        wraps: getComputedStyle(el).whiteSpace !== 'nowrap',
+        overflow: el.scrollWidth > el.clientWidth,
+      };
+    });
+    expect(geometry).toEqual({ fits: true, wraps: true, overflow: false });
+    for (const label of ['Notes', 'Subagents', 'Configure']) {
+      await expect(page.getByRole('button', { name: label, exact: true })).toBeInViewport();
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  }
+  await title.evaluate((el) => {
+    el.style.fontSize = '';
+  });
+  await page.screenshot({ path: info.outputPath('manager-name.png') });
+});
+
 type ChatElements = {
   log: string;
   composer: string;

@@ -1,4 +1,6 @@
+import { MessageQueue } from './MessageQueue';
 import { ChatMarkdown } from './ChatMarkdown';
+import { ChatImagePicker } from './ChatImages';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
@@ -16,6 +18,8 @@ import {
 } from 'lucide-react';
 import {
   parseMcpFormValues,
+  withoutChatImages,
+  withChatImageText,
   jobEstimateSchema,
   type Agent,
   type AgentDetail,
@@ -268,173 +272,186 @@ export function Conversation({
     }
   };
   return (
-    <div
-      className="conversation"
-      ref={scroll}
-      onScroll={() => {
-        const element = scroll.current;
-        if (!element) return;
-        // Only the reader moving up leaves the newest message. Scrolls caused by layout,
-        // pinning or scroll anchoring must not unpin a reader who was at the bottom.
-        const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
-        if (nearBottom) pinned.current = true;
-        else if (element.scrollTop < lastTop.current - 1) pinned.current = false;
-        lastTop.current = element.scrollTop;
-      }}
-    >
-      <div className="conversation-inner">
-        <div className="conversation-scroll-hint" aria-hidden={!scrollHint}>
-          {scrollHint}
-        </div>
-        <div className="conversation-date">
-          <span />
-          {new Date(agent.createdAt).toLocaleDateString([], { month: 'long', day: 'numeric' })}
-          <span />
-        </div>
-        {older && (
-          <button
-            className="load-history"
-            onClick={() => {
-              historyRequest.current++;
-              setLoadingHistory(false);
-              setOlder(null);
-            }}
-          >
-            Latest messages
-          </button>
-        )}
-        {(older?.hasMore ?? data?.hasMore) && (
-          <button className="load-history" disabled={loadingHistory} onClick={() => void act(load)}>
-            Load earlier messages
-          </button>
-        )}
-        {entries.length === 0 && (
-          <div className="conversation-intro">
-            <Avatar role={agent.role} />
-            <h2>{intro?.title ?? agent.name}</h2>
-            <p>
-              {intro?.description ??
-                (personal
-                  ? 'Talk through your priorities, ask about saved progress, or pass a request to a project manager you have chosen to share.'
-                  : agent.role === 'manager'
-                    ? 'Describe the project or send the next task. Your manager can delegate work and ask for input here.'
-                    : 'Assignments, questions, tool results and handoffs will stay in this conversation.')}
-            </p>
-            <div className="starter-note">
-              <GitBranch size={16} />{' '}
-              {intro?.note ??
-                (personal
-                  ? 'Your assistant sees only the projects and notes you choose in Assistant privacy.'
-                  : 'Your team prepares changes separately. Your project settings decide how reviewed changes are applied.')}
-            </div>
+    <>
+      <div
+        className="conversation"
+        ref={scroll}
+        onScroll={() => {
+          const element = scroll.current;
+          if (!element) return;
+          // Only the reader moving up leaves the newest message. Scrolls caused by layout,
+          // pinning or scroll anchoring must not unpin a reader who was at the bottom.
+          const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
+          if (nearBottom) pinned.current = true;
+          else if (element.scrollTop < lastTop.current - 1) pinned.current = false;
+          lastTop.current = element.scrollTop;
+        }}
+      >
+        <div className="conversation-inner">
+          <div className="conversation-scroll-hint" aria-hidden={!scrollHint}>
+            {scrollHint}
           </div>
-        )}
-        {timeline(entries).map((row, index, rows) => {
-          if (Array.isArray(row))
-            return (
-              <ToolGroup
-                key={row[0]!.id}
-                entries={row}
-                working={!older && agent.status === 'running' && index === rows.length - 1}
-              />
-            );
-          // The stored supervision event is still a message from the person. Render
-          // both existing and newly sent steering with the normal user bubble.
-          const entry: Entry =
-            row.kind === 'system' && row.title === 'Owner steering'
-              ? { ...row, kind: 'user', title: 'You' }
-              : row;
-          return entry.image ? (
-            <figure className="generated-image" key={entry.id}>
-              <a
-                href={apiUrl(`/agents/${entry.agentId}/images/${entry.image.id}`)}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Open generated image"
-              >
-                <img
-                  src={apiUrl(`/agents/${entry.agentId}/images/${entry.image.id}`)}
-                  alt="Generated image"
-                  width={entry.image.width}
-                  height={entry.image.height}
-                  loading="lazy"
+          <div className="conversation-date">
+            <span />
+            {new Date(agent.createdAt).toLocaleDateString([], { month: 'long', day: 'numeric' })}
+            <span />
+          </div>
+          {older && (
+            <button
+              className="load-history"
+              onClick={() => {
+                historyRequest.current++;
+                setLoadingHistory(false);
+                setOlder(null);
+              }}
+            >
+              Latest messages
+            </button>
+          )}
+          {(older?.hasMore ?? data?.hasMore) && (
+            <button
+              className="load-history"
+              disabled={loadingHistory}
+              onClick={() => void act(load)}
+            >
+              Load earlier messages
+            </button>
+          )}
+          {entries.length === 0 && (
+            <div className="conversation-intro">
+              <Avatar role={agent.role} />
+              <h2>{intro?.title ?? agent.name}</h2>
+              <p>
+                {intro?.description ??
+                  (personal
+                    ? 'Talk through your priorities, ask about saved progress, or pass a request to a project manager you have chosen to share.'
+                    : agent.role === 'manager'
+                      ? 'Describe the project or send the next task. Your manager can delegate work and ask for input here.'
+                      : 'Assignments, questions, tool results and handoffs will stay in this conversation.')}
+              </p>
+              <div className="starter-note">
+                <GitBranch size={16} />{' '}
+                {intro?.note ??
+                  (personal
+                    ? 'Your assistant sees only the projects and notes you choose in Assistant privacy.'
+                    : 'Your team prepares changes separately. Your project settings decide how reviewed changes are applied.')}
+              </div>
+            </div>
+          )}
+          {timeline(entries).map((row, index, rows) => {
+            if (Array.isArray(row))
+              return (
+                <ToolGroup
+                  key={row[0]!.id}
+                  entries={row}
+                  working={!older && agent.status === 'running' && index === rows.length - 1}
                 />
-              </a>
-              <figcaption>
-                <strong>Generated image</strong>
+              );
+            // The stored supervision event is still a message from the person. Render
+            // both existing and newly sent steering with the normal user bubble.
+            const entry: Entry =
+              row.kind === 'system' && row.title === 'Owner steering'
+                ? { ...row, kind: 'user', title: 'You' }
+                : row;
+            return entry.image ? (
+              <figure className="generated-image" key={entry.id}>
                 <a
                   href={apiUrl(`/agents/${entry.agentId}/images/${entry.image.id}`)}
-                  download={`generated-${entry.image.id}.png`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Open generated image"
                 >
-                  Download PNG
+                  <img
+                    src={apiUrl(`/agents/${entry.agentId}/images/${entry.image.id}`)}
+                    alt="Generated image"
+                    width={entry.image.width}
+                    height={entry.image.height}
+                    loading="lazy"
+                  />
                 </a>
-              </figcaption>
-              <details>
-                <summary>Generation prompt</summary>
-                <p>{entry.text}</p>
-              </details>
-            </figure>
-          ) : entry.kind === 'system' ? (
-            <div className="system-entry" key={entry.id}>
-              <Clock3 size={14} />
-              <div>
-                <strong>{entry.title}</strong>
-                <p>{entry.text}</p>
-                {entry.urlRequest && <McpUrlLink request={entry.urlRequest} />}
-              </div>
-            </div>
-          ) : (
-            <article className={`message ${entry.kind}`} key={entry.id}>
-              <div className="message-avatar">
-                {entry.kind === 'user' ? (
-                  <span className="user-avatar">You</span>
-                ) : (
-                  <Avatar role={agent.role} small />
-                )}
-              </div>
-              <div className="message-body">
-                <div className="message-heading">
+                <figcaption>
+                  <strong>Generated image</strong>
+                  <a
+                    href={apiUrl(`/agents/${entry.agentId}/images/${entry.image.id}`)}
+                    download={`generated-${entry.image.id}.png`}
+                  >
+                    Download PNG
+                  </a>
+                </figcaption>
+                <details>
+                  <summary>Generation prompt</summary>
+                  <p>{entry.text}</p>
+                </details>
+              </figure>
+            ) : entry.kind === 'system' ? (
+              <div className="system-entry" key={entry.id}>
+                <Clock3 size={14} />
+                <div>
                   <strong>{entry.title}</strong>
-                  {entry.kind === 'message' && <span className="handoff-label">TEAM MESSAGE</span>}
-                  <time>{time(entry.createdAt)}</time>
+                  <p>{entry.text}</p>
+                  {entry.urlRequest && <McpUrlLink request={entry.urlRequest} />}
                 </div>
-                <div className="markdown">
-                  <ChatMarkdown entry={entry}>{entry.text}</ChatMarkdown>
-                </div>
-                {entry.status === 'streaming' && <span className="stream-caret" />}
               </div>
-            </article>
-          );
-        })}
-        {approvals.map((approval) => (
-          <ApprovalCard key={approval.id} approval={approval} act={act} />
-        ))}
-        {['running', 'queued'].includes(agent.status) && (
-          <div className="thinking">
-            <span />
-            <span />
-            <span />
-            <p>
-              {agent.status === 'queued'
-                ? 'Waiting for an available slot'
-                : `${agent.name} is working`}
-            </p>
-          </div>
-        )}
-        {['interrupted', 'failed'].includes(agent.status) && (
-          <div className="recovery-note">
-            <RefreshCw size={16} />
-            <div>
-              <strong>History is safe.</strong>
+            ) : (
+              <article className={`message ${entry.kind}`} key={entry.id}>
+                <div className="message-avatar">
+                  {entry.kind === 'user' ? (
+                    <span className="user-avatar">You</span>
+                  ) : (
+                    <Avatar role={agent.role} small />
+                  )}
+                </div>
+                <div className="message-body">
+                  <div className="message-heading">
+                    <strong>{entry.title}</strong>
+                    {entry.kind === 'message' && (
+                      <span className="handoff-label">TEAM MESSAGE</span>
+                    )}
+                    <time>{time(entry.createdAt)}</time>
+                  </div>
+                  <div className="markdown">
+                    <ChatMarkdown entry={entry}>{entry.text}</ChatMarkdown>
+                  </div>
+                  {entry.status === 'streaming' && <span className="stream-caret" />}
+                </div>
+              </article>
+            );
+          })}
+          {approvals.map((approval) => (
+            <ApprovalCard key={approval.id} approval={approval} act={act} />
+          ))}
+          {['running', 'queued'].includes(agent.status) && (
+            <div className="thinking">
+              <span />
+              <span />
+              <span />
               <p>
-                Inspect the last result, then send a message or choose Resume from history to
-                continue.
+                {agent.status === 'queued'
+                  ? 'Waiting for an available slot'
+                  : `${agent.name} is working`}
               </p>
             </div>
-          </div>
-        )}
+          )}
+          {['interrupted', 'failed'].includes(agent.status) && (
+            <div className="recovery-note">
+              <RefreshCw size={16} />
+              <div>
+                <strong>History is safe.</strong>
+                <p>
+                  Inspect the last result, then send a message or choose Resume from history to
+                  continue.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+      <MessageQueue
+        messages={(data?.runs ?? []).filter(
+          (run) => run.status === 'queued' && run.kind === 'user',
+        )}
+      />
+    </>
   );
 }
 
@@ -483,7 +500,15 @@ export function Composer({
   localHistory?: { versions: { text: string; at: string }[]; restore: (text: string) => void };
 }) {
   const managedDraft = useSharedDraft(draftOverride ? null : workspace, agent.id);
-  const draft = draftOverride ?? managedDraft;
+  const sourceDraft = draftOverride ?? managedDraft;
+  const draftRevision = useRef(0);
+  const draft: SharedDraft = {
+    ...sourceDraft,
+    setText: (value) => {
+      draftRevision.current++;
+      sourceDraft.setText(value);
+    },
+  };
   const { text, setText } = draft;
   // The notepad is another view of this same draft, never a second draft.
   const [expanded, setExpanded] = useState<false | 'brief' | 'message'>(notepad ?? false);
@@ -501,6 +526,7 @@ export function Composer({
     localStorage.getItem(`${storageKey}:legacy`),
   );
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [literalSlash, setLiteralSlash] = useState(false);
   // A running Codex turn accepts native steering, so a new message updates it by default.
   // Turning it off sends a separate message; a retry always keeps its recorded mode.
@@ -518,6 +544,14 @@ export function Composer({
     modeUnknown?: boolean;
   };
   const retry = useRef<PendingMessage | null>(null);
+  const [pendingText, setPendingText] = useState<string | null>(null);
+  const [rejectedText, setRejectedText] = useState<string | null>(() => {
+    try {
+      return receiptStorage.getItem(`${storageKey}:rejected`);
+    } catch {
+      return null;
+    }
+  });
   const sendingRef = useRef(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -567,6 +601,7 @@ export function Composer({
       };
       if (typeof pending.key !== 'string' || typeof pending.text !== 'string') return;
       retry.current = pending;
+      setPendingText(pending.text);
       setUnknownLegacyMode(Boolean(pending.modeUnknown));
       setSteer(pending.steer);
       if (specialized) return;
@@ -593,6 +628,7 @@ export function Composer({
           if (saved && (JSON.parse(saved) as PendingMessage).key !== pending.key) return;
           receiptStorage.removeItem(`${storageKey}:pending`);
           retry.current = null;
+          setPendingText(null);
           setUnknownLegacyMode(false);
         })
         .catch(() => {
@@ -608,9 +644,11 @@ export function Composer({
   /** Resolves true only after the manager accepted the message. */
   const submit = async (asText = false): Promise<boolean> => {
     const value = draft.currentText().trim();
+    const sentRevision = draftRevision.current;
     if (
-      !value ||
+      (!value && !retry.current) ||
       sendingRef.current ||
+      uploading ||
       (disabled && !(specialized && retry.current?.text === value)) ||
       !draft.ready ||
       draft.conflict ||
@@ -619,7 +657,7 @@ export function Composer({
       return false;
     if (apiScope() !== scope) return false;
     setNotice('');
-    if (!specialized && value.startsWith('/') && !asText) {
+    if (!retry.current && !specialized && value.startsWith('/') && !asText) {
       const match = {
         '/new': 'new',
         '/clear': 'new',
@@ -650,7 +688,7 @@ export function Composer({
     sendingRef.current = true;
     setSending(true);
     try {
-      let pending = retry.current?.text === value ? retry.current : null;
+      let pending = retry.current;
       if (!pending) {
         const token = await draft.flush();
         if ((!token && !draftOverride) || draft.currentText().trim() !== value)
@@ -668,6 +706,7 @@ export function Composer({
         };
       }
       retry.current = pending;
+      setPendingText(pending.text);
       try {
         receiptStorage.setItem(`${storageKey}:pending`, JSON.stringify(pending));
       } catch {
@@ -680,22 +719,46 @@ export function Composer({
         throw new Error(
           'The selected computer changed. Reopen the original computer to send its draft.',
         );
-      await send(value, pending.key, pending.steer, pending.draft, pending.scheduling);
-      if (pending.draft) await draft.clearSent(value, pending.draft);
-      else if (draft.currentText().trim() === value) {
+      await send(pending.text, pending.key, pending.steer, pending.draft, pending.scheduling);
+      if (draftRevision.current === sentRevision && pending.draft)
+        await draft.clearSent(pending.text, pending.draft);
+      else if (
+        draftRevision.current === sentRevision &&
+        draft.currentText().trim() === pending.text
+      ) {
         setText('');
         await draft.flush();
       }
       receiptStorage.removeItem(`${storageKey}:pending`);
       retry.current = null;
+      setPendingText(null);
       setSteer(null);
       textarea.current?.focus({ preventScroll: true });
       return true;
     } catch (e) {
+      if (e instanceof ApiError && e.code === 'DRAFT_CHANGED') {
+        // This typed refusal happens before reservation. A confirmed delivery
+        // returns its existing receipt first, even after the draft has changed.
+        const rejected = retry.current?.text ?? null;
+        setRejectedText(rejected);
+        try {
+          if (rejected) receiptStorage.setItem(`${storageKey}:rejected`, rejected);
+        } catch {
+          /* Current draft is retained separately. */
+        }
+        retry.current = null;
+        setPendingText(null);
+        receiptStorage.removeItem(`${storageKey}:pending`);
+        fail(
+          'That message was not sent because the draft changed. Your current draft is kept; review it and choose Send.',
+        );
+        return false;
+      }
       if (e instanceof ApiError && e.code === 'NO_ACTIVE_TURN') {
         // The host rejected this before reserving or submitting it. Keep the
         // draft, but let an explicit next Send become a normal follow-up.
         retry.current = null;
+        setPendingText(null);
         receiptStorage.removeItem(`${storageKey}:pending`);
         setSteer(false);
         fail(
@@ -713,10 +776,11 @@ export function Composer({
   const canSend =
     (!disabled || (specialized && retry.current?.text === text.trim())) &&
     !sending &&
+    !uploading &&
     draft.ready &&
     !draft.conflict &&
     !unknownLegacyMode &&
-    !!text.trim();
+    (!!text.trim() || pendingText !== null);
   const openNotepad = (mode: 'brief' | 'message') => {
     const area = textarea.current;
     if (area) selection.current = { start: area.selectionStart, end: area.selectionEnd };
@@ -860,9 +924,9 @@ export function Composer({
                   ? 'Describe an idea, ask a question, or move the work forward…'
                   : `Message ${agent.name}…`)
         }
-        value={text}
+        value={withoutChatImages(text)}
         onChange={(event) => {
-          setText(event.target.value);
+          setText(withChatImageText(draft.currentText(), event.target.value));
           setLiteralSlash(false);
           rememberSelection();
         }}
@@ -883,13 +947,19 @@ export function Composer({
       />
       <button
         className="send-button"
-        aria-label="Send message"
+        aria-label={pendingText !== null && !sending ? 'Retry previous message' : 'Send message'}
         onClick={() => void submit()}
         disabled={!canSend}
       >
         {sending ? <RefreshCw className="spin" size={18} /> : <ArrowUp size={20} />}
       </button>
       <DraftHandoff draft={draft} compact />
+      {rejectedText !== null && (
+        <details className="draft-handoff">
+          <summary>Previous unsent message</summary>
+          <pre className="draft-preview">{rejectedText}</pre>
+        </details>
+      )}
       {literalSlash && (
         <div className="draft-handoff">
           <p>
@@ -920,6 +990,7 @@ export function Composer({
             onClick={() => {
               receiptStorage.removeItem(`${storageKey}:pending`);
               retry.current = null;
+              setPendingText(null);
               setSteer(null);
               setUnknownLegacyMode(false);
             }}
@@ -972,6 +1043,15 @@ export function Composer({
           >
             <Maximize2 size={16} /> <span>Notepad</span>
           </button>
+          <ChatImagePicker
+            key={agent.id}
+            text={text}
+            currentText={draft.currentText}
+            setText={setText}
+            maxLength={maxLength}
+            disabled={sending || pendingText !== null || !draft.ready || draft.conflict}
+            onBusy={setUploading}
+          />
           {!specialized && !steer && (
             <select
               className="composer-priority"
@@ -985,9 +1065,6 @@ export function Composer({
               <option value="normal">Normal</option>
               <option value="background">Background</option>
             </select>
-          )}
-          {!specialized && agent.provider === 'claude' && agent.status === 'running' && (
-            <span className="composer-mode">Follow-ups queue for Claude’s next step</span>
           )}
         </div>
         <div>

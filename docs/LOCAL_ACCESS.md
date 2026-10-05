@@ -21,6 +21,14 @@ conversation** from VS Code’s sciencewithagents menu. The extension connects d
 the running local app. There is no separate editor authentication, code or credential.
 Existing provider accounts and phone pairing are unchanged.
 
+Chats has compact **VS Code** and **Browser** checks beside each other. Open either for
+setup details. Browser checks read native Codex connection metadata only when requested;
+they do not send a model prompt or approve browser/site access. Some provider versions
+cannot expose browser inventory outside an active conversation; the app reports that
+limit and supplies the native check instead of claiming a connection. Claude has its own
+extension and `/chrome` setup, described in the same panel. Run setup on the selected
+computer; a phone controls that computer's browser, not the phone's browser.
+
 The editor producer remains native loopback-only and rejects browser-origin connections;
 it is never registered on the public phone listener. This trusts local native programs on
 the computer, rather than identifying an individual extension or OS account. Consumer

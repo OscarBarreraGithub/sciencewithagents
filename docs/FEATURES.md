@@ -10,7 +10,7 @@ This describes connected source behavior, not a blanket release certification.
 | Model preferences    | Shared user defaults, project snapshots, editable task/family mappings, latest available versions and exact pins | Native/imported choices stay native; unavailable models need a visible correction               |
 | Chats                | Managers, shared editor sessions and saved Misc conversations; compact phone chat and grouped tool details       | Internal helpers/resource reports stay out of the ordinary chat list                            |
 | Prompt notepad       | Full-page editing, autosave, local versions, minimize and return to chat                                         | Unsent drafts are browser/device-local; erased storage cannot be guaranteed recoverable         |
-| Active messages      | Codex steering, supported Claude follow-up queue, Stop and durable retry receipts                                | Support depends on the native session; uncertain sends are not blindly replayed                 |
+| Active messages      | Codex steering, supported native follow-up queues, visible queued messages, Stop and durable retry receipts      | Support depends on the native session; uncertain sends are not blindly replayed                 |
 | Delegation           | Managers assign Codex/Claude workers, inspect tools/results and coordinate bounded reviews                       | Native helpers share parent supervision; partial helper counters are labelled                   |
 | Completed work       | Separate questions using saved evidence or an eligible copy of the original native conversation                  | Does not reopen the finished task/review or recover hidden reasoning                            |
 | Manager continuity   | Persistent internal/human work items, checkpoints and concise requests; owner-only Notes                         | Managers continue independent work when one item awaits a person                                |
@@ -85,6 +85,12 @@ The optional companion needs no separate editor login. [Companion](../apps/vscod
 
 ## Documents on a phone
 
+**Attach screenshot** beside the chat composer opens the device's image picker in manager
+and shared native chats. Preview or remove up to four images before sending. Attached drafts
+survive reloads; failed uploads can retry without duplicates. Images are privately stored on
+the selected computer and passed to the existing agent through its native image-reading tools.
+This supports screenshots and browser-readable images, not arbitrary file attachments.
+
 Apps keeps GitHub and Cloudflare sign-up instructions behind **Set up publishing accounts**.
 You can hide this shortcut once set up; that display preference is saved for this browser and
 selected computer. The full instructions remain in **Help and setup**. Hiding the shortcut
@@ -96,11 +102,11 @@ and shared VS Code messages. Wide equations scroll within their message; code re
 Apps includes a LaTeX/PDF reader with computer-side compilation, folder browsing, recent
 files, selectable text, page navigation and zoom. Manager links open over chat and return
 to the same reading position and draft. Failed builds retain the previous PDF; existing
-LaTeX-backed reports also have adjustable, reflowing Reading mode: phone-width text, figures and individually scrollable equations. Saved local report links open inside the chat. PDFs need no compiler. See [LaTeX](LATEX.md) for setup and conversion limits.
+LaTeX-backed reports also have adjustable, reflowing Reading mode: phone-width text, figures and individually scrollable equations with visible overflow cues. An explicit **Format for phone** request creates a separate reading copy using a selectable model, defaulting to the live Sonnet family; originals stay unchanged. Saved local report links open inside the chat. PDFs need no compiler. See [LaTeX](LATEX.md) for setup and conversion limits.
 
 ## Scope not presented as finished
 
-Custom project-app registration, automatic five-hour utilization mode, setup-progress detection and some
+Custom project-app registration, guaranteed automatic reset-window exhaustion, setup-progress detection and some
 update/UI refinements remain incomplete. Personal-assistant and transcription backend
 capabilities are retained for existing/advanced use, but are not advertised Home destinations.
 The legacy workspace is maintenance-only. See [Status](STATUS.md) before planning a rollout.
@@ -133,3 +139,15 @@ automatically imported during setup.
 To remove a manager, open its chat configuration and choose Remove manager. Stop running work
 first. Removal cancels queued messages and unfinished tasks, hides the manager from normal
 lists and prevents further work. Project files, completed results and saved history are retained.
+
+## Availability and pacing
+
+Saved views and drafts remain available when providers cannot start work. Temporary model
+discovery failures keep messages queued for retry; another provider can start independently.
+A reconnecting browser exposes its retained local draft for copying. Sends use durable receipts
+so retry does not silently resend accepted work. This does not make a powered-off computer
+available or cache the whole chat archive on the phone.
+
+QUARK also reports spare capacity before a reset and projected reserve depletion. Its bounded
+coordinator wake-ups advise managers to advance suitable work while keeping provider choices,
+project caps and machine limits. Forecasts are estimates, not a promise to exhaust a window.

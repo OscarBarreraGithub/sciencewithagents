@@ -167,3 +167,24 @@ it('refuses provider mismatches and retains one native Stop receipt', async () =
   expect(await new VscodeMirrors(store, daemon).control(windowId, stop)).toEqual(result.json());
   expect(daemon.control).toHaveBeenCalledExactlyOnceWith(windowId, stop);
 });
+
+it('deduplicates an uncertain queue receipt across lookup and gateway restart', async () => {
+  const { expectedTurnId: _, ...base } = send();
+  const input = { ...base, mode: 'queue' as const };
+  daemon.send.mockResolvedValueOnce({ state: 'uncertain', message: 'Native acknowledgement lost' });
+  const first = await app.inject({
+    method: 'POST',
+    url: `/api/vscode/windows/${windowId}/send`,
+    payload: input,
+  });
+  expect(first.json().state).toBe('uncertain');
+  const duplicate = await app.inject({
+    method: 'POST',
+    url: `/api/vscode/windows/${windowId}/send`,
+    payload: input,
+  });
+  expect(duplicate.json().state).toBe('uncertain');
+  const restarted = new VscodeMirrors(store, daemon);
+  expect((await restarted.send(windowId, input)).state).toBe('uncertain');
+  expect(daemon.send).toHaveBeenCalledExactlyOnceWith(windowId, input);
+});

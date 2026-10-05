@@ -81,7 +81,15 @@ function placeTask(
   ];
 }
 
-function QuarkAllowance({ provider, forecast }: { provider: ProviderCapacity; forecast: string }) {
+function QuarkAllowance({
+  provider,
+  forecast,
+  pacing,
+}: {
+  provider: ProviderCapacity;
+  forecast: string;
+  pacing: QuarkCoordinatorStatus['utilization'];
+}) {
   const [open, setOpen] = useState(false);
   const stale = provider.stale || provider.state !== 'ready';
   const now = Date.now();
@@ -109,6 +117,22 @@ function QuarkAllowance({ provider, forecast }: { provider: ProviderCapacity; fo
         {stale ? 'Last reading' : 'Updated'} {ago(provider.observedAt, now) ?? 'not available'}
       </small>
       <p>{forecast}</p>
+      {pacing
+        .filter((window) => window.state === 'underused' || window.state === 'fast')
+        .map((window) => (
+          <p key={window.windowId}>
+            <strong>
+              {window.state === 'underused'
+                ? 'Spare capacity before reset.'
+                : 'Usage is ahead of pace.'}
+            </strong>{' '}
+            At the recent rate, about {Math.round(window.projectedRemainingPercent!)}% would remain
+            at reset; {window.reservePercent}% is protected.
+            {window.state === 'underused'
+              ? ' Managers can advance suitable work within existing limits.'
+              : ' Managers should slow new starts.'}
+          </p>
+        ))}
       <details onToggle={(event) => setOpen(event.currentTarget.open)}>
         <summary>{stale ? 'Reading needs attention' : 'Account actions'}</summary>
         {stale && <p>{provider.message}</p>}
@@ -448,6 +472,7 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                 <QuarkAllowance
                   key={provider.provider}
                   provider={provider}
+                  pacing={s.utilization.filter((window) => window.provider === provider.provider)}
                   forecast={
                     room === null
                       ? 'Waiting for a fresh reading before starting more work.'

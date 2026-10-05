@@ -105,6 +105,38 @@ async function pair() {
 }
 
 describe('protected phone entry', () => {
+  it('lets a paired phone upload and read a screenshot while refusing unpaired devices', async () => {
+    const { cookie } = await pair();
+    const payload = {
+      key: randomUUID(),
+      png: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII=',
+    };
+    const denied = await remote.inject({
+      method: 'POST',
+      url: '/api/chat-images',
+      headers: remoteHeaders(),
+      payload,
+    });
+    expect(denied.statusCode).toBe(401);
+    const uploaded = await remote.inject({
+      method: 'POST',
+      url: '/api/chat-images',
+      headers: remoteHeaders(cookie),
+      payload,
+    });
+    expect(uploaded.statusCode).toBe(200);
+    const id = uploaded.json().id;
+    const retrieved = await remote.inject({
+      url: '/api/chat-images/' + id,
+      headers: remoteHeaders(cookie),
+    });
+    expect(retrieved.statusCode).toBe(200);
+    expect(retrieved.headers['content-type']).toBe('image/png');
+    expect(retrieved.rawPayload).toEqual(Buffer.from(payload.png, 'base64'));
+    expect(
+      (await remote.inject({ url: '/api/chat-images/' + id, headers: remoteHeaders() })).statusCode,
+    ).toBe(401);
+  });
   it('protects mirror consumers and never registers the extension producer remotely', async () => {
     access.setEnabled(true);
     expect(

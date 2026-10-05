@@ -28,7 +28,14 @@ import {
   type ProviderId,
 } from '@dock/shared';
 
-export class Conflict extends Error {}
+export class Conflict extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
 export class Missing extends Error {}
 export const now = () => new Date().toISOString();
 export type PrivateAgent = Agent & {
@@ -89,6 +96,7 @@ export class Store extends EventEmitter {
       CREATE TABLE IF NOT EXISTS quark_allowances (id TEXT PRIMARY KEY, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS quark_intervals (id INTEGER PRIMARY KEY AUTOINCREMENT, receipt TEXT UNIQUE NOT NULL, body TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS quark_intervals_window ON quark_intervals(json_extract(body, '$.provider'),json_extract(body, '$.windowId'),id);
+      CREATE INDEX IF NOT EXISTS quark_intervals_observed ON quark_intervals(json_extract(body, '$.observedAt'));
       CREATE TRIGGER IF NOT EXISTS quark_intervals_no_update BEFORE UPDATE ON quark_intervals BEGIN SELECT RAISE(ABORT, 'append-only allowance evidence'); END;
       CREATE TRIGGER IF NOT EXISTS quark_intervals_no_delete BEFORE DELETE ON quark_intervals BEGIN SELECT RAISE(ABORT, 'append-only allowance evidence'); END;
       CREATE TABLE IF NOT EXISTS local_jobs (id TEXT PRIMARY KEY, body TEXT NOT NULL);
@@ -98,6 +106,7 @@ export class Store extends EventEmitter {
       CREATE TABLE IF NOT EXISTS images (id TEXT PRIMARY KEY, entry_id TEXT UNIQUE NOT NULL,
         agent_id TEXT NOT NULL REFERENCES agents(id), data BLOB NOT NULL);
       CREATE INDEX IF NOT EXISTS runs_queue ON runs(status);
+      CREATE INDEX IF NOT EXISTS runs_agent ON runs(agent_id);
       CREATE INDEX IF NOT EXISTS entries_agent ON entries(agent_id);
       CREATE INDEX IF NOT EXISTS events_agent ON events(agent_id, id);`);
     // A folder can host independent projects/conversations. Rebuild only this table;
@@ -270,8 +279,22 @@ export class Store extends EventEmitter {
   tasks() {
     return this.bodies<PrivateTask>('tasks');
   }
-  runs() {
-    return this.bodies<PrivateRun>('runs');
+  runs(statuses?: PrivateRun['status'][]) {
+    if (!statuses) return this.bodies<PrivateRun>('runs');
+    if (!statuses.length) return [];
+    return this.db
+      .prepare(
+        `SELECT body FROM runs WHERE status IN (${statuses.map(() => '?').join(',')}) ORDER BY rowid`,
+      )
+      .all(...statuses)
+      .map((row) => JSON.parse(String(row.body)) as PrivateRun);
+  }
+  runsForAgent(agentId: string, limit = 50) {
+    return this.db
+      .prepare('SELECT body FROM runs WHERE agent_id=? ORDER BY rowid DESC LIMIT ?')
+      .all(agentId, limit)
+      .map((row) => JSON.parse(String(row.body)) as PrivateRun)
+      .reverse();
   }
   approvals() {
     return this.bodies<PrivateApproval>('approvals');
@@ -280,9 +303,9 @@ export class Store extends EventEmitter {
     return this.bodies<Decision>('decisions');
   }
   project(id: string) {
-    const value = this.projects().find((p) => p.id === id);
-    if (!value) throw new Missing('Project not found.');
-    return value;
+    const row = this.db.prepare('SELECT body FROM projects WHERE id=?').get(id);
+    if (!row) throw new Missing('Project not found.');
+    return JSON.parse(String(row.body)) as PrivateProject;
   }
   agent(id: string) {
     const row = this.db.prepare('SELECT body FROM agents WHERE id=?').get(id);
@@ -301,9 +324,9 @@ export class Store extends EventEmitter {
     };
   }
   task(id: string) {
-    const value = this.tasks().find((t) => t.id === id);
-    if (!value) throw new Missing('Task not found.');
-    return value;
+    const row = this.db.prepare('SELECT body FROM tasks WHERE id=?').get(id);
+    if (!row) throw new Missing('Task not found.');
+    return JSON.parse(String(row.body)) as PrivateTask;
   }
   run(id: string) {
     const row = this.db.prepare('SELECT body FROM runs WHERE id=?').get(id);

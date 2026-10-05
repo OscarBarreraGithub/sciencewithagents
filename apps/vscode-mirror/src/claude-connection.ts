@@ -163,7 +163,7 @@ export class ClaudeMirrorConnection {
     };
   }
   get summary() {
-    const { entries: _, ...summary } = this.snapshot();
+    const { entries: _, queuedMessages: _queue, queueHasMore: _more, ...summary } = this.snapshot();
     return summary;
   }
   private candidates(id?: string) {
@@ -394,6 +394,19 @@ export class ClaudeMirrorConnection {
     return {
       ...this.state,
       entries: [...entries.values()],
+      queuedMessages:
+        channel?.queuedCommandUuids instanceof Set
+          ? [...channel.queuedCommandUuids].slice(0, 100).map((id) => ({
+              id,
+              text:
+                [...entries.values()]
+                  .filter((entry) => entry.role === 'user' && entry.id.startsWith(`${id}:`))
+                  .map((entry) => entry.text)
+                  .join('\n')
+                  .slice(0, 32000) || 'Queued in Claude Code; message text is unavailable.',
+            }))
+          : undefined,
+      queueHasMore: (channel?.queuedCommandUuids.size ?? 0) > 100,
       status,
       stopToken:
         status !== 'offline' &&

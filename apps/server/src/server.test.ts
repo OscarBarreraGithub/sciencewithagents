@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import type { ServerResponse } from 'node:http';
 import { Store } from './store.js';
 import { Runtime } from './runtime.js';
 import { DemoProvider } from './demo.js';
@@ -1166,7 +1167,7 @@ describe('local application boundary', () => {
       (await app.inject({ ...request, payload: { key, command: 'interrupt' } })).statusCode,
     ).toBe(409);
   });
-  it('replays SSE by Last-Event-ID, streams live invalidations, and releases listeners', async () => {
+  it('replays SSE, keeps active streams across idle HTTP renewal, and releases listeners', async () => {
     await app.listen({ host: '127.0.0.1', port: 4999 });
     const address = app.server.address();
     if (!address || typeof address === 'string') throw new Error('Missing test address');
@@ -1197,6 +1198,20 @@ describe('local application boundary', () => {
     }
     try {
       await until(`id: ${replay.id}\n`);
+      const health = (close = false) =>
+        fetch(`http://127.0.0.1:${address.port}/api/health`, {
+          headers: close ? { connection: 'close' } : undefined,
+          signal: AbortSignal.timeout(2000),
+        });
+      const first = await health();
+      expect(first.status).toBe(200);
+      expect(first.headers.get('keep-alive')).toContain('timeout=5');
+      await first.json();
+      await new Promise((resolve) => setTimeout(resolve, 6500));
+      // Do not leave this fixture's pooled socket for the next server on this port.
+      const renewed = await health(true);
+      expect(renewed.status).toBe(200);
+      await renewed.json();
       const live = store.event('test.live', null, null, {});
       await until(`id: ${live.id}\n`);
       expect(text).not.toContain('not-in-stream');
@@ -1206,7 +1221,68 @@ describe('local application boundary', () => {
       await reader.cancel().catch(() => {});
     }
     await expect.poll(() => store.listenerCount('event')).toBe(baseline);
+  }, 15_000);
+  it('bounds a slow event stream while normal requests stay available and resumes in order', async () => {
+    const cursor = store.head;
+    for (let i = 0; i < 650; i++) store.event('test.replay', null, null, {});
+    let stream: ServerResponse | undefined;
+    let changes = 0;
+    app.server.on('request', (request, response) => {
+      if (!request.url?.startsWith('/api/events')) return;
+      stream = response;
+      const write = response.write.bind(response);
+      vi.spyOn(response, 'write').mockImplementation(
+        (...args: Parameters<typeof response.write>) => {
+          const accepted = write(...args);
+          if (String(args[0]).includes('event: change') && ++changes === 1) return false;
+          return accepted;
+        },
+      );
+    });
+    await app.listen({ host: '127.0.0.1', port: 4999 });
+    const baseline = store.listenerCount('event');
+    const controller = new AbortController();
+    const response = await fetch(`http://127.0.0.1:4999/api/events?after=${cursor}`, {
+      signal: controller.signal,
+    });
+    const reader = response.body!.getReader();
+    try {
+      await expect.poll(() => changes).toBe(1);
+      for (let i = 0; i < 100; i++) store.event('test.live', null, null, {});
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(changes).toBe(1);
+      expect(stream!.listenerCount('drain')).toBe(1);
+      expect(
+        (
+          await fetch('http://127.0.0.1:4999/api/health', {
+            headers: { Connection: 'close' },
+            signal: AbortSignal.timeout(1000),
+          })
+        ).status,
+      ).toBe(200);
+      const finalId = store.head;
+      stream!.emit('drain');
+      let text = '';
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      try {
+        while (!text.includes(`id: ${finalId}\n`)) {
+          const next = await reader.read();
+          if (next.done) throw new Error('Stream ended before catch-up');
+          text += new TextDecoder().decode(next.value);
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+      const ids = [...text.matchAll(/^id: (\d+)/gm)].map((match) => Number(match[1]));
+      expect(ids).toEqual(Array.from({ length: 750 }, (_, i) => cursor + i + 1));
+    } finally {
+      controller.abort();
+      await reader.cancel().catch(() => {});
+    }
+    await expect.poll(() => store.listenerCount('event')).toBe(baseline);
+    expect(stream!.listenerCount('drain')).toBe(0);
   });
+
   it('shuts down with a browser event stream still open and retains its archive', async () => {
     await runtime.tool(manager, randomUUID(), 'dock_checkpoint', { summary: 'Before shutdown' });
     const entries = store.entries(manager);

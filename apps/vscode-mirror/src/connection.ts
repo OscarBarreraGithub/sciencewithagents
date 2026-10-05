@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { codexTranscript as transcript, isBackgroundCodexThread } from '@dock/shared';
+import { codexTranscript as transcript, codexQueue, isBackgroundCodexThread } from '@dock/shared';
 export { codexTranscript as transcript } from '@dock/shared';
 import type { MirrorState, MirrorSend, MirrorResult, MirrorControl } from '@dock/shared';
 
@@ -8,7 +8,14 @@ export const object = (value: unknown): ObjectValue =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as ObjectValue) : {};
 const array = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
-class NativeRequestRejected extends Error {}
+class NativeRequestRejected extends Error {
+  constructor(
+    message: string,
+    readonly code?: number,
+  ) {
+    super(message);
+  }
+}
 export interface Provider {
   onInitialized?: () => void;
   onResult?: (response: ObjectValue) => void;
@@ -99,6 +106,9 @@ export class MirrorConnection {
           request.reject(
             new NativeRequestRejected(
               str(object(response.error).message) || 'Codex rejected the request.',
+              typeof object(response.error).code === 'number'
+                ? (object(response.error).code as number)
+                : undefined,
             ),
           );
         else request.resolve(response.result);
@@ -185,7 +195,13 @@ export class MirrorConnection {
     connection.sendProviderRequest = this.wrappedSend;
   }
   get summary() {
-    const { entries: _, ...summary } = this.state;
+    const {
+      entries: _,
+      queuedMessages: _queue,
+      queueHasMore: _more,
+      queueReadError: _queueError,
+      ...summary
+    } = this.state;
     return summary;
   }
   private snapshot(): MirrorState {
@@ -270,6 +286,9 @@ export class MirrorConnection {
       ...this.state,
       threadId,
       entries: [],
+      queuedMessages: undefined,
+      queueReadError: undefined,
+      canQueue: false,
       status: 'offline',
       title: threadId ? 'Loading conversation…' : 'Sharing stopped',
       message: threadId ? '' : 'Choose a conversation in VS Code to share it.',
@@ -302,6 +321,23 @@ export class MirrorConnection {
           throw new Error(
             'Codex did not return the complete saved transcript. Use VS Code; no partial history is presented as complete.',
           );
+        let queue: Pick<MirrorState, 'queuedMessages' | 'queueHasMore'> = {};
+        let canQueue = false;
+        let queueReadError: MirrorState['queueReadError'];
+        try {
+          queue = codexQueue(await this.request('thread/queue/list', { threadId, limit: 100 }));
+          canQueue = true;
+        } catch (error) {
+          queueReadError =
+            error instanceof NativeRequestRejected &&
+            (error.code === -32601 ||
+              /^(method not found|unknown method|thread\/queue\/list is not supported)/i.test(
+                error.message,
+              ))
+              ? 'unsupported'
+              : 'unavailable';
+        }
+        if (this.threadId !== threadId) return this.state;
         const status = object(thread.status);
         // A read response may describe the instant before a desktop send. Never
         // overwrite newer native activity with that stale idle snapshot.
@@ -320,6 +356,11 @@ export class MirrorConnection {
           ...this.state,
           title: (str(thread.name) || str(thread.preview) || threadId).slice(0, 500),
           entries: transcript(thread),
+          queuedMessages: undefined,
+          queueHasMore: undefined,
+          ...queue,
+          canQueue,
+          queueReadError,
           status:
             attention || this.uncertain
               ? 'attention'
@@ -358,15 +399,45 @@ export class MirrorConnection {
     }
   }
   async send(input: MirrorSend): Promise<MirrorResult> {
-    if (input.mode === 'queue')
-      return {
-        state: 'not_sent',
-        message:
-          'This Codex connection supports steering, not queued follow-ups. Nothing was sent.',
-      };
     if ((input.provider && input.provider !== 'codex') || input.threadId !== this.threadId)
       return { state: 'not_sent', message: 'The shared conversation changed. Nothing was sent.' };
     const current = await this.read(true);
+    if (input.mode === 'queue') {
+      if (!current.canQueue || !['idle', 'busy'].includes(current.status))
+        return {
+          state: 'not_sent',
+          message: 'Native queue is unavailable. Keep your draft and refresh.',
+        };
+      try {
+        const result = object(
+          await this.request('thread/queue/add', {
+            threadId: input.threadId,
+            clientUserMessageId: input.key,
+            input: [{ type: 'text', text: input.text, text_elements: [] }],
+          }),
+        );
+        if (
+          object(result.queuedSubmission).clientUserMessageId !== input.key ||
+          !str(object(result.queuedSubmission).id)
+        )
+          throw new Error('Native queue acknowledgement did not identify this message.');
+        this.dirty = true;
+        return { state: 'sent', message: 'Accepted into the native Codex queue.' };
+      } catch (error) {
+        this.dirty = true;
+        if (error instanceof NativeRequestRejected)
+          return {
+            state: 'not_sent',
+            message: 'Codex rejected the queued message. Keep your draft.',
+          };
+        this.uncertain = true;
+        return {
+          state: 'uncertain',
+          message:
+            'Queue delivery was not confirmed. Inspect Codex; this message will not be resent automatically.',
+        };
+      }
+    }
     if (input.expectedTurnId) {
       if (
         input.threadId !== this.threadId ||

@@ -131,54 +131,60 @@ it.each(['older companion', 'Claude'] as const)(
   },
 );
 
-it('forwards an explicitly advertised Claude native queue request once and retains its provider acknowledgement', async () => {
-  const commands: MirrorCommand[] = [];
-  await connect(
-    (command) => {
-      commands.push(command);
-      reply(command.id, {
-        state: 'sent',
-        message: 'Queued in Claude Code. It will run when native work allows.',
-      });
-    },
-    { provider: 'claude', canSteer: undefined, steerToken: undefined, canQueue: true },
-  );
-  const request = {
-    key: randomUUID(),
-    provider: 'claude' as const,
-    threadId: 'thread',
-    text: 'Next check the chart.',
-    mode: 'queue' as const,
-  };
-  const result = await mirrors.send(windowId, request);
-  expect(result.state).toBe('sent');
-  expect(commands[0]).toMatchObject({ type: 'send', input: request });
-  expect(await new VscodeMirrors(store).send(randomUUID(), request)).toEqual(result);
-  expect(commands).toHaveLength(1);
-  await expect(mirrors.send(windowId, { ...request, mode: undefined })).rejects.toThrow(
-    'different message',
-  );
-  await expect(
-    mirrors.send(windowId, { ...request, key: randomUUID(), expectedTurnId: 'turn' }),
-  ).rejects.toThrow('either native steering or a queued follow-up');
-});
+it.each(['codex', 'claude'] as const)(
+  'forwards an explicitly advertised %s native queue once and retains its acknowledgement',
+  async (provider) => {
+    const commands: MirrorCommand[] = [];
+    await connect(
+      (command) => {
+        commands.push(command);
+        reply(command.id, {
+          state: 'sent',
+          message: 'Queued in Claude Code. It will run when native work allows.',
+        });
+      },
+      { provider, canSteer: undefined, steerToken: undefined, canQueue: true },
+    );
+    const request = {
+      key: randomUUID(),
+      provider,
+      threadId: 'thread',
+      text: 'Next check the chart.',
+      mode: 'queue' as const,
+    };
+    const result = await mirrors.send(windowId, request);
+    expect(result.state).toBe('sent');
+    expect(commands[0]).toMatchObject({ type: 'send', input: request });
+    expect(await new VscodeMirrors(store).send(randomUUID(), request)).toEqual(result);
+    expect(commands).toHaveLength(1);
+    await expect(mirrors.send(windowId, { ...request, mode: undefined })).rejects.toThrow(
+      'different message',
+    );
+    await expect(
+      mirrors.send(windowId, { ...request, key: randomUUID(), expectedTurnId: 'turn' }),
+    ).rejects.toThrow('either native steering or a queued follow-up');
+  },
+);
 
-it('does not forward a native queue request to an older Claude companion', async () => {
-  let commands = 0;
-  await connect(
-    () => {
-      commands++;
-    },
-    { provider: 'claude', canSteer: undefined, steerToken: undefined },
-  );
-  const request = {
-    key: randomUUID(),
-    provider: 'claude' as const,
-    threadId: 'thread',
-    text: 'Next step',
-    mode: 'queue' as const,
-  };
-  expect((await mirrors.send(windowId, request)).state).toBe('not_sent');
-  expect(commands).toBe(0);
-  expect(mirrors.receipt(request.key).state).toBe('not_sent');
-});
+it.each(['codex', 'claude'] as const)(
+  'does not forward a queue request to an older %s companion',
+  async (provider) => {
+    let commands = 0;
+    await connect(
+      () => {
+        commands++;
+      },
+      { provider, canSteer: undefined, steerToken: undefined },
+    );
+    const request = {
+      key: randomUUID(),
+      provider,
+      threadId: 'thread',
+      text: 'Next step',
+      mode: 'queue' as const,
+    };
+    expect((await mirrors.send(windowId, request)).state).toBe('not_sent');
+    expect(commands).toBe(0);
+    expect(mirrors.receipt(request.key).state).toBe('not_sent');
+  },
+);

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -39,8 +39,37 @@ beforeEach(() => {
   usage(10);
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   store.close();
   rmSync(root, { recursive: true, force: true });
+});
+it('keeps repeated queue reads and events bounded as completed history grows', () => {
+  const old = job('History fixture');
+  expect(pulsar.reserve(old.run)).toBe(true);
+  store.updateRun(old.run.id, { status: 'completed' });
+  pulsar.settle(old.run.id);
+  const template = JSON.parse(
+    String(store.db.prepare('SELECT body FROM pulsar_leases WHERE run_id=?').get(old.run.id)!.body),
+  );
+  const ids: string[] = [];
+  for (let i = 0; i < 1000; i++) {
+    const run = store.enqueue(old.worker.id, randomUUID(), `Historic ${i}`);
+    store.updateRun(run.id, { status: 'completed' });
+    store.db
+      .prepare('INSERT INTO pulsar_leases(run_id,body) VALUES(?,?)')
+      .run(run.id, JSON.stringify({ ...template, runId: run.id, tokenBasis: 'measured' }));
+    ids.push(run.id);
+  }
+  const estimate = vi.spyOn(pulsar, 'estimate');
+  expect(pulsar.wantsForeground(new Set())).toBe(false);
+  expect(estimate).not.toHaveBeenCalled();
+  const settle = vi.spyOn(pulsar, 'settle');
+  pulsar.reconcile(old.worker.id);
+  expect(settle).toHaveBeenCalledTimes(1); // the original estimated lease, not 1000 settled ones
+  const status = pulsar.status(old.project.id);
+  expect(status.jobs).toEqual([]);
+  expect(status.history.map((run) => run.runId)).toEqual(ids.slice(-30).reverse());
+  expect(estimate).toHaveBeenCalledTimes(30);
 });
 function usage(percent: number, reset = clock + 300 * 60_000) {
   machine.observedAt = new Date(clock).toISOString();

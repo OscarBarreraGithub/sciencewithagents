@@ -23,6 +23,7 @@ import { ProjectTools } from './ProjectTools';
 import { SourceBackup } from './SourceBackup';
 import { TaskProgress } from './TaskProgress';
 import { useWorkspaceState } from '../useWorkspaceState';
+import { RetainedDraft } from '../RetainedDraft';
 import {
   useMirrorChats,
   mirrorDaemon,
@@ -36,6 +37,7 @@ import { ProjectConfiguration } from './ProjectConfiguration';
 import { NewConversation } from './NewConversation';
 import { AssistedSearch } from './AssistedSearch';
 import { EditorStatus } from './EditorStatus';
+import { BrowserStatus } from './BrowserStatus';
 import { surfaceOf } from './chat-contracts';
 import { ConfigPanel, NotesPanel, PanelFrame, SubagentsPanel, type ChatPanel } from './ChatPanels';
 import type { HomeData } from './useHomeData';
@@ -164,6 +166,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
             'Your saved work will appear here.'
           )}
         </FlowEmpty>
+        {page === 'chat' && data.snapshot.error && <RetainedDraft agentId={target} />}
       </section>
     );
   const refresh = () => {
@@ -482,6 +485,7 @@ export function ChatPage({
     window.matchMedia('(pointer: coarse)').matches ? 'Phone browser' : 'Computer browser',
   );
   const [conversation, setConversation] = useState<AgentDetail | null>(null);
+  const [readError, setReadError] = useState('');
   const [error, setError] = useState('');
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -494,9 +498,17 @@ export function ChatPage({
       if (alive.current) {
         setConversation(value);
         setConnected(true);
+        setReadError('');
       }
-    } catch {
-      if (alive.current) setConnected(false);
+    } catch (reason) {
+      if (alive.current) {
+        setConnected(false);
+        setReadError(
+          reason instanceof Error
+            ? reason.message
+            : 'Could not load this conversation. Retrying automatically.',
+        );
+      }
     }
   }, [id]);
   useEffect(() => {
@@ -723,8 +735,10 @@ export function ChatPage({
           )}
       {showNotice && (
         <div className="flow-chat-notice" role="status">
-          {(error || workspace.error) && <p role="alert">{error || workspace.error}</p>}
-          {!connected
+          {(error || workspace.error || readError) && (
+            <p role="alert">{error || workspace.error || readError}</p>
+          )}
+          {!connected && !readError
             ? 'Connecting to this computer. Your saved messages and draft are retained.'
             : agent.archivedAt
               ? 'This manager was removed. Its files and conversation history are saved; it cannot start more work.'
@@ -1127,6 +1141,7 @@ function MainChat({
         </div>
         <div className="chat-editor-setup">
           <EditorStatus data={data} />
+          <BrowserStatus />
         </div>
         <label className="flow-search chat-search">
           <Search size={17} />

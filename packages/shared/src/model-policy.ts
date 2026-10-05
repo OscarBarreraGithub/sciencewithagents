@@ -64,6 +64,13 @@ const tiers = z
 export const modelPolicySchema = z
   .object({
     revision: z.number().int().nonnegative(),
+    documentFormatter: choice.extend({ provider: providerIdSchema }).default({
+      provider: 'claude',
+      family: 'sonnet',
+      model: null,
+      effort: null,
+      requiresModelAllowance: false,
+    }),
     preset: z.enum(['codex-heavy', 'claude-heavy', 'pick']),
     // Older saved policies used both providers. Absence must preserve that behavior.
     enabledProviders: z
@@ -105,6 +112,13 @@ export type ModelPolicy = z.infer<typeof modelPolicySchema>;
 export type ModelTier = z.infer<typeof modelTierSchema>;
 export type TaskClass = z.infer<typeof taskClassSchema>;
 export const defaultModelPolicy: ModelPolicy = {
+  documentFormatter: {
+    provider: 'claude',
+    family: 'sonnet',
+    model: null,
+    effort: null,
+    requiresModelAllowance: false,
+  },
   revision: 0,
   preset: 'codex-heavy',
   enabledProviders: ['codex', 'claude'],

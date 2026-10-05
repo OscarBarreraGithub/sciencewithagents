@@ -59,6 +59,7 @@ async function fixture(page: Page) {
   let fail = false;
   await page.route('**/api/documents**', (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/format')) return route.fulfill({ json: null });
     if (url.pathname.endsWith('/reading'))
       return route.fulfill({ json: { available: false, html: '', warnings: [] } });
     if (url.pathname.endsWith('/pdf'))
@@ -310,6 +311,11 @@ test('source reading wraps at large text sizes, isolates equations, keeps its pl
       .first()
       .evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
   ).toBe(true);
+  await expect(reader.getByText('More equation →', { exact: true })).toBeVisible();
+  await reader.locator('.math.display').evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  await expect(reader.getByText('← More equation', { exact: true })).toBeVisible();
   await page.screenshot({
     path: `../../data/reader-resource-20261004/reflow-${info.project.name}.png`,
   });
@@ -322,4 +328,74 @@ test('source reading wraps at large text sizes, isolates equations, keeps its pl
   await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBeGreaterThan(1400);
   await reader.getByRole('button', { name: 'Back to where I was' }).click();
   await expect(reader).toHaveCount(0);
+});
+
+test('phone formatting is an explicit selectable request and leaves original reading available', async ({
+  page,
+}, info) => {
+  const data = await fixture(page);
+  let requested: Record<string, unknown> | null = null;
+  const formattedId = randomUUID(),
+    agentId = randomUUID();
+  const status = {
+    id: formattedId,
+    documentId: data.doc.id,
+    agentId,
+    model: 'claude-sonnet-5-5',
+    state: 'ready',
+    message: 'AI-formatted copy; original retained.',
+  };
+  await page.route('**/api/documents/*/reading', (route) =>
+    route.fulfill({
+      json: {
+        available: true,
+        html: '<h1>Original report</h1><p>Original prose.</p>',
+        warnings: [],
+        labels: {},
+      },
+    }),
+  );
+  await page.route('**/api/documents/*/formatted/*', (route) =>
+    route.fulfill({
+      json: {
+        available: true,
+        html: '<h1>Readable copy</h1><p>Original prose.</p>',
+        warnings: [],
+        labels: {},
+      },
+    }),
+  );
+  await page.route('**/api/documents/*/format', (route) => {
+    if (route.request().method() === 'POST') requested = route.request().postDataJSON();
+    return route.fulfill({ json: requested ? status : null });
+  });
+  await page.route('**/api/models?provider=claude', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'claude-sonnet-5-5',
+          label: 'Sonnet 5.5',
+          efforts: ['medium', 'high'],
+          isDefault: true,
+        },
+        { id: 'claude-opus-5-5', label: 'Opus 5.5', efforts: ['high'], isDefault: false },
+      ],
+    }),
+  );
+  await page.goto(`/#/latex/${data.doc.id}`);
+  await expect(page.getByRole('heading', { name: 'Original report' })).toBeVisible();
+  expect(requested).toBeNull();
+  await page.getByText('Format for phone', { exact: true }).click();
+  const controls = page.locator('.document-format');
+  await expect(controls.getByLabel('Model', { exact: true })).toHaveValue('claude-sonnet-5-5');
+  await controls.getByLabel('Model', { exact: true }).selectOption('claude-opus-5-5');
+  await expect(controls.getByLabel('Thinking')).toHaveValue('high');
+  await controls.getByRole('button', { name: 'Create reading copy' }).click();
+  expect(requested).toMatchObject({ model: 'claude-opus-5-5', provider: 'claude', effort: 'high' });
+  await controls.getByRole('button', { name: 'Read formatted copy' }).click();
+  await expect(page.getByRole('heading', { name: 'Readable copy' })).toBeVisible();
+  await controls.getByRole('button', { name: 'Read original' }).click();
+  await expect(page.getByRole('heading', { name: 'Original report' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('phone-formatting.png') });
 });

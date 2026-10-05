@@ -41,3 +41,6 @@ Own and close temporary servers/browsers after checks. Archive sessions created 
 fixtures through supported provider APIs. Leave the optional login service off unless requested.
 Preserve the user's running app and unrelated processes; never bulk-kill Node, Chrome or editors.
 Make small Git checkpoints, preserve unrelated changes, and keep public docs concise and current.
+
+For phone-readable LaTeX reports, follow docs/TEX_AUTHORING.md. Preserve scientific content;
+format separate copies and keep any unavoidable equation scrolling explicit.

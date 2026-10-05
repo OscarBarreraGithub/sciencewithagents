@@ -11,6 +11,7 @@ import { api, apiScope, apiUrl } from './api';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import { DocumentReading } from './DocumentReading';
+import { DocumentFormatControls } from './DocumentFormatControls';
 
 type Position = { page: number; scale: string; top: number; left: number; width: number };
 function PdfPages({
@@ -228,9 +229,15 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
     }
   });
   const [readingVersion, setReadingVersion] = useState(0);
+  const [formatId, setFormatId] = useState<string | null>(null);
   useEffect(() => {
     const abort = new AbortController();
-    void api(`/documents/${id}/reading`, undefined, abort.signal)
+    void api(
+      formatId ? `/documents/${id}/formatted/${formatId}` : `/documents/${id}/reading`,
+      undefined,
+      abort.signal,
+      150000,
+    )
       .then(documentReadingSchema.parse)
       .then((value) => {
         if (abort.signal.aborted) return;
@@ -244,7 +251,7 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
         setMode('pdf');
       });
     return () => abort.abort();
-  }, [id, readingVersion]);
+  }, [id, readingVersion, formatId]);
   function resizeText(delta: number) {
     const next = Math.max(18, Math.min(30, size + delta));
     setSize(next);
@@ -410,6 +417,16 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
             </details>
           )}
         </div>
+      )}
+      {reading?.available && (
+        <DocumentFormatControls
+          id={id}
+          selected={formatId}
+          select={(value) => {
+            setFormatId(value);
+            setMode('reading');
+          }}
+        />
       )}
       {mode === 'pdf' && (
         <div className="pdf-toolbar" aria-label="PDF controls">

@@ -25,7 +25,8 @@ LaTeX math renders automatically across chat views and shared editor messages; f
 compilation remains in the reader. LaTeX-backed reports offer reflowing Reading mode, with
 adjustable text and individually scrollable equations alongside Original PDF. Direct resource
 questions default to a stronger grad model and native investigation; automatic checks remain
-bounded routine reports.
+bounded routine reports. The reader offers an explicit, selectable-model formatting pass
+(default Sonnet) into a separate reading copy; originals remain intact.
 Source installation and isolated Codex-only/Claude-only first replies have been exercised
 on Apple Silicon macOS. Linux CI does not certify native Linux desktop integration.
 Intel Mac and Windows remain unqualified; see [machine support](CONTRIBUTOR_SETUP.md#check-the-machine-first).
@@ -39,13 +40,25 @@ Routine work no longer stops at legacy raw-token estimates. Actual provider allo
 reserves, resource checks and saved pauses remain enforced. **Help → Report a bug** saves a
 private report and dispatches it to one maintenance manager through normal delegation/review.
 
+Provider outages no longer block saved views: model discovery retries queued messages,
+provider preparation runs independently, and bounded queue/SSE work yields to HTTP requests.
+Browser drafts survive failed first reads and ambiguous sends; a cold reconnect can display
+the local draft for copying. This does not replace access to the running host for saved history.
+
 ## Outstanding product work
+
+- **Request coverage:** saved prompts, work items and handoffs retain evidence, but managers
+  still need to triage each request. There is no automatic proof that every small ask became
+  a task or was completed. RLM-assisted archive audits are being evaluated, not shipped.
+- **Cluster integration:** FASRC SSH/Slurm connection reuse, shared cluster accounting and
+  submission guards are under investigation. Existing SSH scripts are not a QUARK adapter.
 
 - **Hourly allowance budgets:** per-provider `% usage / hour` is a measured estimate. Enforced
   budgets are allocations within provider windows, not rolling hourly rate limits.
-- **Automatic five-hour utilization:** QUARK has shared reserves, caps, pacing and concurrency
-  limits. It does not yet automatically target a reset window or shift suitable new work
-  toward Claude to use spare capacity. Respect actual account/model windows and explicit choices.
+- **Five-hour utilization:** QUARK reports account-wide burn and projected remaining allowance
+  at reset, and wakes the coordinator for sustained spare capacity while useful work exists.
+  Managers receive the signal and choose eligible work within provider preferences and caps.
+  It does not guarantee exhausting a window or force-switch existing conversations.
 - **Apps:** LaTeX/PDF reading is connected. Custom project-app registration and project-site
   publication are not connected.
 - **Setup progress:** GitHub/Cloudflare copy prompts work, but do not yet detect completion

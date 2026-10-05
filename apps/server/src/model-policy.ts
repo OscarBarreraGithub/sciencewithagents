@@ -38,6 +38,7 @@ export class ModelPolicy {
     { models: Model[]; observedAt: string | null; error: string | null }
   >();
   private pending = new Map<ProviderId, Promise<Model[]>>();
+  private retryAfter = new Map<ProviderId, number>();
   constructor(
     private store: Store,
     private discover: (provider: ProviderId) => Promise<Model[]>,
@@ -74,6 +75,8 @@ export class ModelPolicy {
     const pending = this.pending.get(provider);
     if (pending) return pending;
     const cached = this.cache.get(provider);
+    if (!refresh && cached?.error && this.clock() < (this.retryAfter.get(provider) ?? 0))
+      throw new Conflict(cached.error, 'MODEL_DISCOVERY_WAIT');
     if (
       !refresh &&
       cached &&
@@ -85,6 +88,7 @@ export class ModelPolicy {
     const request = (async () => {
       try {
         const models = await this.discover(provider);
+        this.retryAfter.delete(provider);
         this.cache.set(provider, {
           models,
           observedAt: new Date(this.clock()).toISOString(),
@@ -92,13 +96,14 @@ export class ModelPolicy {
         });
         return models;
       } catch {
+        this.retryAfter.set(provider, this.clock() + 60_000);
         const error = `${provider === 'codex' ? 'Codex' : 'Claude'} model discovery failed. Refresh available models to retry. This does not mean you are signed out.`;
         this.cache.set(provider, {
           models: cached?.models ?? [],
           observedAt: cached?.observedAt ?? null,
           error,
         });
-        throw new Conflict(error);
+        throw new Conflict(error, 'MODEL_DISCOVERY_WAIT');
       } finally {
         this.pending.delete(provider);
       }

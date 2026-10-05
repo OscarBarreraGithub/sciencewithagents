@@ -174,7 +174,11 @@ startup = (async () => {
       : undefined,
   );
   const phone = new PhoneAccess(store, phoneConfig, undefined, phoneIssue);
-  const mirrors = new VscodeMirrors(store, demo ? undefined : new CodexDaemonChats(binary));
+  const mirrors = new VscodeMirrors(
+    store,
+    demo ? undefined : new CodexDaemonChats(binary),
+    (text) => runtime!.chatImages.prompt(text),
+  );
   tunnel = new PhoneTunnel(phone, root);
   terminals = new Terminals(runtime);
   backups = new SourceBackups(store, root, undefined, demo ? [] : undefined);

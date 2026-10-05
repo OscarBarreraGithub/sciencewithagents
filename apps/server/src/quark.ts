@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   sameAllowanceReset,
+  windowPacingSchema,
   projectRatesSchema,
   defaultModelPolicy,
   modelPolicySchema,
@@ -1059,14 +1060,90 @@ export class Quark {
         };
       });
   }
-  projectRates() {
+  private recentIntervals() {
     const cutoff = stamp(this.clock() - 3600_000);
-    const intervals = this.store.db
+    return this.store.db
       .prepare(
         "SELECT body FROM quark_intervals WHERE json_extract(body,'$.observedAt')>=? ORDER BY rowid",
       )
       .all(cutoff)
       .map((row) => intervalSchema.parse(JSON.parse(String(row.body))));
+  }
+  /** Account-wide observed burn, not a project allocation or permission to spend. */
+  utilization() {
+    const intervals = this.recentIntervals();
+    const reserve = this.pulsar.policy().reservePercent;
+    return (['codex', 'claude'] as const).flatMap((provider) => {
+      const capacity = readCapacity(this.store, provider, this.clock());
+      return capacity.windows
+        .filter((window) => window.scope === 'general')
+        .map((window) => {
+          const matching = intervals.filter(
+            (row) =>
+              row.provider === provider &&
+              row.windowId === window.id &&
+              sameAllowanceReset(row.resetsAt, window.resetsAt),
+          );
+          const baseline = matching.findLastIndex((row) => row.baseline);
+          const samples = baseline >= 0 ? matching.slice(baseline) : matching;
+          const hours =
+            samples.length > 1
+              ? (Date.parse(samples.at(-1)!.observedAt) - Date.parse(samples[0]!.observedAt)) /
+                3600_000
+              : 0;
+          const remaining = Math.max(0, 100 - window.usedPercent);
+          const until = window.resetsAt
+            ? (Date.parse(window.resetsAt) - this.clock()) / 3600_000
+            : null;
+          const fresh =
+            capacity.state === 'ready' && !capacity.stale && until !== null && until > 0;
+          const rate =
+            fresh && hours >= 5 / 60
+              ? samples.slice(1).reduce((sum, row) => sum + row.delta, 0) / hours
+              : null;
+          const target = fresh ? Math.max(0, remaining - reserve) / until! : null;
+          const projected =
+            rate !== null ? Math.max(0, Math.min(100, remaining - rate * until!)) : null;
+          const shortWindow = window.windowMinutes !== null && window.windowMinutes <= 360;
+          const state = !fresh
+            ? 'unknown'
+            : remaining <= reserve
+              ? 'protected'
+              : rate === null
+                ? 'unknown'
+                : projected! < reserve
+                  ? 'fast'
+                  : shortWindow && projected! > reserve + 10
+                    ? 'underused'
+                    : 'on-track';
+          return windowPacingSchema.parse({
+            provider,
+            windowId: window.id,
+            label: window.label,
+            remainingPercent: remaining,
+            reservePercent: reserve,
+            resetsAt: window.resetsAt,
+            minutesToReset: until === null ? null : Math.max(0, Math.round(until * 60)),
+            observedPercentPerHour: rate,
+            targetPercentPerHour: target,
+            projectedRemainingPercent: projected,
+            state,
+            message:
+              state === 'underused'
+                ? 'Spare reset-window capacity: advance suitable authorized work if project provider choices, all model windows, caps and computer resources allow. Do not create filler work.'
+                : state === 'fast'
+                  ? 'The recent rate projects below the protected reserve. Reduce new starts or pause at a safe boundary; existing guards still apply.'
+                  : state === 'protected'
+                    ? 'The protected reserve is reached. Wait for verified fresh capacity; do not lower it automatically.'
+                    : state === 'unknown'
+                      ? 'A fresh reset time and at least five minutes of comparable readings are needed before estimating window use.'
+                      : 'Compare useful remaining work with this account-wide rate; estimates do not grant capacity.',
+          });
+        });
+    });
+  }
+  projectRates() {
+    const intervals = this.recentIntervals();
     const rates = [];
     for (const provider of ['codex', 'claude'] as const) {
       const capacity = readCapacity(this.store, provider, this.clock());

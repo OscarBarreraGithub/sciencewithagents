@@ -194,3 +194,17 @@ Raw token counts remain useful for attribution and estimates, but never block ad
 A displayed percentage-per-hour is a measured rate, not an enforced rolling hourly budget.
 If ordinary work waits unexpectedly, **Help → Report a bug** preserves its queue reason and
 assigns a bounded investigation without raising the owner’s allowance limits.
+
+## Spare reset-window capacity
+
+QUARK compares at least five minutes of fresh readings from the same account window with
+time to reset and the saved reserve. The board and manager context show observed and target
+rates plus projected allowance remaining. A short window projected to leave more than ten
+percentage points above the reserve is marked underused. Reset or stale readings invalidate
+that projection; weekly/model-specific limits remain independent.
+
+With useful work present, the coordinator receives coalesced pacing changes through its
+existing bounded wake schedule. It can advise managers to advance suitable Claude tasks.
+Managers preserve project provider mixes, exact model choices, caps, available computer
+resources and owner pauses. No filler tasks, lowered reserves or forced provider switches
+are authorized by this signal. Forecasts include external account activity and are estimates.

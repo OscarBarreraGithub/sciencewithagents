@@ -6,6 +6,8 @@ import {
   projectNotesRequestSchema,
   projectNotesSchema,
   workItemQuerySchema,
+  workItemPageQuerySchema,
+  workItemPageSchema,
   workItemRequestSchema,
   workItemSchema,
   workItemsSchema,
@@ -49,6 +51,44 @@ export class WorkItems {
           .all(query.projectId)
       : this.store.db.prepare('SELECT body FROM work_items ORDER BY rowid DESC').all();
     return workItemsSchema.parse({ items: rows.map((row) => JSON.parse(String(row.body))) });
+  }
+
+  page(projectId: string, raw: unknown = {}) {
+    this.store.project(projectId);
+    const query = workItemPageQuerySchema.parse(raw);
+    const cursor = query.cursor
+      ? this.store.db
+          .prepare('SELECT rowid FROM work_items WHERE project_id=? AND id=?')
+          .get(projectId, query.cursor)
+      : undefined;
+    if (query.cursor && !cursor) throw new Missing('Work-item cursor not found in this project.');
+    const boundary = cursor ? Number(cursor.rowid) : Number.MAX_SAFE_INTEGER;
+    const where = "project_id=? AND (? OR json_extract(body,'$.status')!='done')";
+    const total = Number(
+      this.store.db
+        .prepare(`SELECT count(*) AS count FROM work_items WHERE ${where}`)
+        .get(projectId, Number(query.includeDone))!.count,
+    );
+    const rows = this.store.db
+      .prepare(
+        `SELECT rowid, body FROM work_items WHERE ${where} AND rowid<? ORDER BY rowid DESC LIMIT ?`,
+      )
+      .all(projectId, Number(query.includeDone), boundary, query.limit);
+    const last = rows.at(-1);
+    const remaining = last
+      ? Number(
+          this.store.db
+            .prepare(`SELECT count(*) AS count FROM work_items WHERE ${where} AND rowid<?`)
+            .get(projectId, Number(query.includeDone), Number(last.rowid))!.count,
+        )
+      : 0;
+    const items = rows.map((row) => workItemSchema.parse(JSON.parse(String(row.body))));
+    return workItemPageSchema.parse({
+      items,
+      total,
+      remaining,
+      nextCursor: remaining ? items.at(-1)!.id : null,
+    });
   }
 
   save(raw: unknown): WorkItem {

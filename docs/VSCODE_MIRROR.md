@@ -37,8 +37,22 @@ Offline summaries are bounded; an offline reload cannot reconstruct the editor's
 SQLite records send/stop intent before forwarding. Lost replies keep the original receipt;
 Check delivery/status is read-only. Never replay an uncertain action after reconnect or crash.
 Codex guidance and both Stop paths bind the observed active turn; a stale target is refused.
-Claude follow-up uses its native queue. Native questions/permissions stay in the original editor.
+Codex exposes **Queue next** when a native queue read succeeds; older providers retain
+steering and keep unsupported queue sends unsent. Claude follow-up uses its native queue.
+A compact, scrollable list shows the provider's current queued messages, including messages
+sent from the computer. Queue acceptance is not execution; uncertain receipts retain their
+original UUID and are never automatically replayed. Queue reads show up to 100 messages and
+mark further native pages. Native questions/permissions stay in the original editor.
 Automatic VS Code crash restoration is not promised: reopen the editor/chat and re-share.
+
+## Screenshots
+
+Phone composers offer **Attach screenshot** with previews, removal and retry. Authenticated
+uploads use generated file IDs and stay under private `data/chat-images/` on the selected host.
+Saved drafts and send receipts retain the image references. Before forwarding to the existing
+native conversation, the server adds local image paths for its native image-reading tool;
+the app renders previews without exposing that transport note. This requires the native
+agent to read files on the same computer; remote-cluster editor attachments are not qualified.
 
 ## Helper visibility
 

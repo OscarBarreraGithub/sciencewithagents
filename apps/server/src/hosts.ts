@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { localAuthorization } from '@dock/shared/dist/local-authorization.js';
 import {
   hostConnectionsSchema,
+  chatImageBodyLimit,
   hostInfoSchema,
   hostsStatusSchema,
   mirrorPageQuerySchema,
@@ -426,10 +427,10 @@ export class Hosts {
 
 const uuid = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const getPaths = new RegExp(
-  `^/(?:health|setup(?:/(?:sign-in|claude-sign-in))?|documents(?:/browse|/${uuid}(?:/pdf|/reading|/assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif))?)?|snapshot|attention|capacity|resources|pulsar|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|work-items|bug-reports|conversations(?:/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid})?|vscode/deliveries/${uuid}|agents/${uuid}(?:/mcp|/export|/recovery|/usage|/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
+  `^/(?:chat-images/${uuid}|health|browser/setup|setup(?:/(?:sign-in|claude-sign-in))?|documents(?:/browse|/${uuid}(?:/pdf|/reading|/assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif))?)?|snapshot|attention|capacity|resources|pulsar|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|work-items|bug-reports|conversations(?:/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid})?|vscode/deliveries/${uuid}|agents/${uuid}(?:/mcp|/export|/recovery|/usage|/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
 );
 const postPaths = new RegExp(
-  `^/(?:documents/(?:from-message|${uuid}/(?:open|build))|projects(?:/(?:connect-folder|track-folder))?|work-items|bug-reports|conversations(?:/search)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control)|agents/${uuid}/(?:interviews|messages|commands|settings|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
+  `^/(?:chat-images|browser/(?:check|open-setup)|documents/(?:from-message|${uuid}/(?:open|build))|projects(?:/(?:connect-folder|track-folder))?|work-items|bug-reports|conversations(?:/search)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control)|agents/${uuid}/(?:interviews|messages|commands|settings|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
 );
 const terminalPath = new RegExp(`^/agents/${uuid}/terminal$`);
 
@@ -552,6 +553,7 @@ export function registerHostRoutes(
   app.route<{ Params: { hostId: string; '*': string } }>({
     method: ['GET', 'POST'],
     url: '/api/hosts/:hostId/proxy/*',
+    bodyLimit: chatImageBodyLimit,
     handler: async (request, reply) => {
       const prefix = `/api/hosts/${request.params.hostId}/proxy`;
       const raw = request.raw.url ?? request.url;

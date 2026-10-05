@@ -53,6 +53,7 @@ export class VscodeMirrors {
   constructor(
     private readonly store: Store,
     private readonly daemon?: DaemonChats,
+    private readonly prepareText: (text: string) => string = (text) => text,
   ) {
     store.db.exec(
       'CREATE TABLE IF NOT EXISTS mirror_deliveries (key TEXT PRIMARY KEY, input_hash TEXT NOT NULL, result TEXT NOT NULL)',
@@ -213,7 +214,14 @@ export class VscodeMirrors {
       ),
     );
     if (value.windowId !== windowId) throw new Conflict('The shared window identity changed.');
-    const { entries: _, page: __, ...summary } = value;
+    const {
+      entries: _,
+      page: __,
+      queuedMessages: _queue,
+      queueHasMore: _more,
+      queueReadError: _queueError,
+      ...summary
+    } = value;
     const peer = this.peers.get(windowId);
     if (peer && (value.provider ?? 'codex') !== (peer.window.provider ?? 'codex'))
       throw new Conflict('The shared provider identity changed. Share the conversation again.');
@@ -246,6 +254,11 @@ export class VscodeMirrors {
         state: 'not_sent',
         message: 'This conversation is no longer shared. Nothing was sent.',
       };
+    const delivery = { ...input, text: this.prepareText(input.text) };
+    if (delivery.text.length > 32000)
+      throw new Conflict(
+        'Shorten the message slightly to leave room for its screenshots. Nothing was sent.',
+      );
     // Persist intent before touching the provider. A crash, disconnect or retry never
     // sends the same input twice, including across a gateway restart.
     this.store.transaction(() => {
@@ -270,7 +283,8 @@ export class VscodeMirrors {
       };
     } else if (
       input.mode === 'queue' &&
-      (window.canQueue !== true || window.provider !== 'claude')
+      window.source !== 'codex-daemon' &&
+      window.canQueue !== true
     ) {
       result = {
         state: 'not_sent',
@@ -280,7 +294,7 @@ export class VscodeMirrors {
     } else {
       try {
         result = mirrorResultSchema.parse(
-          await this.request(windowId, { id: randomUUID(), type: 'send', input }),
+          await this.request(windowId, { id: randomUUID(), type: 'send', input: delivery }),
         );
       } catch {
         result = uncertain;

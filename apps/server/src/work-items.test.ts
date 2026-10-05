@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { projectNotesSchema, workItemSchema, workItemsSchema } from '@dock/shared';
+import { inspectSchema, projectNotesSchema, workItemSchema, workItemsSchema } from '@dock/shared';
 import { Conflict, Missing, Store } from './store.js';
 import { repoRoot } from './paths.js';
 import { registerWorkItemRoutes, WorkItems } from './work-items.js';
@@ -93,6 +93,59 @@ it('rejects stale writes and retry keys used for a different request without los
   expect(() => items.save({ ...input, title: 'Changed retry' })).toThrow('different input');
   expect(items.save(input)).toEqual(updated);
   expect(items.get(first.id)).toEqual(updated);
+});
+
+it('pages unresolved work without dropping older asks when new items arrive or a cursor closes', () => {
+  const oldest = ask();
+  const middle = items.saveForManager(managerId, { key: randomUUID(), title: 'Middle ask' });
+  const newest = items.saveForManager(managerId, { key: randomUUID(), title: 'Newest ask' });
+  const first = items.page(projectId, { limit: 2 });
+  expect(first).toMatchObject({
+    items: [newest, middle],
+    total: 3,
+    remaining: 1,
+    nextCursor: middle.id,
+  });
+  items.saveForManager(managerId, { key: randomUUID(), title: 'Arrived during paging' });
+  items.saveForManager(managerId, {
+    key: randomUUID(),
+    id: middle.id,
+    expectedRevision: middle.revision,
+    status: 'done',
+  });
+  restart();
+  expect(items.page(projectId, { cursor: first.nextCursor, limit: 2 })).toMatchObject({
+    items: [oldest],
+    total: 3,
+    remaining: 0,
+    nextCursor: null,
+  });
+  expect(items.page(projectId, { includeDone: true }).items.map((item) => item.id)).toContain(
+    middle.id,
+  );
+});
+
+it('limits work-item inspection to its host-selected project and validates the target', () => {
+  const own = ask();
+  const foreign = items.saveForManager(otherManagerId, {
+    key: randomUUID(),
+    title: 'Other project private ask',
+  });
+  expect(items.page(projectId).items).toEqual([own]);
+  expect(() => items.page(projectId, { cursor: foreign.id })).toThrow('not found in this project');
+  expect(() => items.page(projectId, { cursor: randomUUID() })).toThrow(
+    'not found in this project',
+  );
+  for (const raw of [
+    { workItems: { projectId: otherProjectId } },
+    { workItems: { limit: 61 } },
+    { workItems: {}, agentId: managerId },
+  ])
+    expect(inspectSchema.safeParse(raw).success).toBe(false);
+  expect(inspectSchema.parse({ workItems: {} }).workItems).toEqual({
+    limit: 30,
+    includeDone: false,
+  });
 });
 
 it('derives manager scope and refuses cross-project, cross-manager and worker mutations', () => {

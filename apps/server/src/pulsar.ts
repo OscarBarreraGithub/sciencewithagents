@@ -191,7 +191,7 @@ export class Pulsar {
     );
   }
   private foregroundWork(except?: string, executing: ReadonlySet<string> = new Set()) {
-    return this.store.runs().some((run) => {
+    return this.store.runs(['queued', 'running']).some((run) => {
       if (run.id === except || this.estimate(run).priority === 'background') return false;
       if (run.status === 'running') return true;
       if (
@@ -220,6 +220,11 @@ export class Pulsar {
     const agent = this.store.agent(run.agentId);
     const taskId = this.taskId(run);
     const reject = (reason: string) => ({ eligible: false, reason });
+    const modelWait = this.store.getSetting(`model-policy:wait:${run.id}`) as number | undefined;
+    if (run.status === 'queued' && modelWait && modelWait > this.clock())
+      return reject(
+        'Model discovery is temporarily unavailable. Your message is saved; QUARK will retry automatically.',
+      );
     const allowance = this.allowanceDecision(run);
     if (allowance)
       return typeof allowance === 'string' ? reject(allowance) : { eligible: false, ...allowance };
@@ -501,8 +506,15 @@ export class Pulsar {
       tokenBasis: measured === null ? 'estimated' : 'measured',
     });
   }
-  reconcile() {
-    for (const lease of this.leases()) this.settle(lease.runId);
+  reconcile(agentId?: string | null) {
+    const rows = this.store.db
+      .prepare(
+        `SELECT l.run_id FROM pulsar_leases l JOIN runs r ON r.id=l.run_id
+      WHERE (json_extract(l.body,'$.finishedAt') IS NULL OR COALESCE(json_extract(l.body,'$.tokenBasis'),'reserved')!='measured')
+      ${agentId ? 'AND r.agent_id=?' : ''}`,
+      )
+      .all(...(agentId ? [agentId] : []));
+    for (const row of rows) this.settle(String(row.run_id));
   }
   control(raw: unknown) {
     const input = jobControlSchema.parse(raw);
@@ -542,10 +554,24 @@ export class Pulsar {
     });
   }
   status(projectId?: string) {
-    const jobs = this.store
-      .runs()
-      .filter((r) => ['queued', 'running'].includes(r.status) || !!this.lease(r.id))
-      .filter((r) => !projectId || this.store.agent(r.agentId).projectId === projectId)
+    const scope = projectId ? 'AND a.project_id=?' : '';
+    const args = projectId ? [projectId] : [];
+    const active = this.store.db
+      .prepare(
+        `SELECT r.body FROM runs r JOIN agents a ON a.id=r.agent_id
+      WHERE r.status IN ('queued','running') ${scope} ORDER BY r.rowid`,
+      )
+      .all(...args);
+    const history = this.store.db
+      .prepare(
+        `SELECT r.body FROM runs r JOIN agents a ON a.id=r.agent_id
+      JOIN pulsar_leases l ON l.run_id=r.id WHERE r.status NOT IN ('queued','running') ${scope}
+      ORDER BY r.rowid DESC LIMIT 30`,
+      )
+      .all(...args)
+      .reverse();
+    const jobs = [...active, ...history]
+      .map((row) => JSON.parse(String(row.body)) as PrivateRun)
       .map((run) => {
         const agent = this.store.agent(run.agentId),
           estimate = this.estimate(run),

@@ -4,6 +4,68 @@ Use [Status](STATUS.md) for the release decision and [CI](https://github.com/Osc
 for the source actually checked. Historical passing runs do not certify a newer revision.
 Private logs, screenshots, disposable databases and native-session receipts stay under `data/`.
 
+## Phone to-do and manager headings — 2026-10-04
+
+Regression checks reproduce Home cards shrinking when the keyboard opens and manager names
+being clipped beside the toolbar. Home now keeps content sizing independent of keyboard
+height; phone headings wrap above their tools. Desktop, 412×915, 360×800, 915×412 and iPhone
+WebKit checks cover name visibility up to double text size, retained to-do drafts and existing
+chat keyboard/reading-position behavior. Keyboard geometry is emulated; native iOS focus
+panning still needs a physical-phone check.
+
+## Screenshot attachments — 2026-10-04
+
+Focused checks cover paired-phone authorization, uploads larger than the ordinary request
+limit, idempotent retry, private file permissions, missing/symlink rejection and same-thread
+native forwarding. Desktop, 412×915, 360×800, 915×412 and iPhone WebKit emulation exercise the
+picker, previews, draft reloads and screenshot-only sends. Shared-chat composer/queue regressions
+also pass. Native delivery tests verify readable image paths, not provider vision accuracy;
+physical iPhone photo-picker behavior still needs device acceptance.
+The installed host also passed an authenticated upload, same-receipt retry and byte-for-byte
+image download after an idle restart; previous scheduler settings were restored.
+
+## Queue and context checks — 2026-10-04
+
+Focused checks cover native queue acknowledgements and unreadable/unsupported queue states,
+editable composers during delayed sends, original receipt retries and retention of newer drafts.
+Desktop, 412×915, 360×800 and 915×412 browser emulation checked actual queue scrolling and
+stable composer position. Browser-setup dialogs were checked for failure/retry and doubled
+UI scale. Native browser inventory can still require an active provider conversation; fixture
+results do not certify a real browser connection or physical phone.
+
+Work-item checks cover retrieval beyond sixty open asks and project isolation. Scheduler
+regressions verify that streaming text does not schedule a pass per delta, bursts coalesce,
+and pending wakeups yield to network/timer processing. Focused tests and the workspace build
+passed. A scheduling-only live repair restored HTTP responses and the Home screen without
+restarting the server or interrupting active runs. A later owned-launcher restart loaded the new backend routes and tool schemas after active
+turns had finished. The prior queue setting was restored; no user project was interrupted.
+
+## Availability and phone formatting — 2026-10-04
+
+Actual Opus 5.5 workers performed bounded availability reviews and eight synthetic LaTeX
+formatting experiments. The latter used Pandoc/KaTeX conversion and TeX-based estimates,
+not browser measurements. A separate actual Reading DOM pass covered their original and
+formatted examples at 360, 412, 915 and 1440 pixels, with 20, 26 and 30 pixel text; equations
+stayed within local scroll regions and common numbering/manual tags matched the fixtures.
+Some expressions still require scrolling. No universal TeX equivalence or physical-phone
+certification is claimed.
+
+A real Sonnet 5.5 formatting request completed through QUARK. Its original and formatted
+Reading routes both returned usable content; the original source remained unchanged.
+The resulting copy was checked in the actual reader at 360 and 412 pixels with enlarged text.
+
+Focused regressions cover scheduler recovery, provider discovery isolation and retry,
+bounded history reads, SSE backpressure, startup with both providers unavailable, actual
+draft revision conflicts, source/hash/reference preservation and selectable formatting.
+Browser checks cover desktop, 412×915, 360×800 and 915×412. Provider-outage and formatter
+control checks use isolated servers; private reports, screenshots and fixtures remain under data/.
+
+Post-install polling exposed an idle HTTP connection stall, also reproducible on this Mac
+with a minimal Node 26.7 server independent of the app. A five-second idle keep-alive lifetime
+avoided it in the reproducer. The HTTP regression checks connection renewal while an active
+event stream keeps delivering updates. This changes only idle connections; see
+[Fastify's setting](https://fastify.dev/docs/latest/Reference/Server/#keepalivetimeout).
+
 ## Current focused checks — 2026-10-03
 
 Chat-math checks cover both delimiter styles, inline/display equations, aligned expressions,

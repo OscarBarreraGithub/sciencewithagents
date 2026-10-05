@@ -1,4 +1,7 @@
 import { Documents } from './documents.js';
+import { ChatImages } from './chat-images.js';
+import { DocumentFormatting, documentFormattingCharter } from './document-formatting.js';
+import { latexAuthoringCharter } from './latex-authoring.js';
 import { documentRegisterSchema, resourceInspectionSchema } from '@dock/shared';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -95,6 +98,7 @@ import { ResourceWatch, resourceCharter, interactiveResourceCharter } from './re
 import { ModelPolicy } from './model-policy.js';
 import { Setup } from './setup.js';
 import { CodexSignIn } from './codex-sign-in.js';
+import { BrowserSetup } from './browser-setup.js';
 import { ResourceProbe, inspectResourceProcesses, type ResourceRoot } from './resource-probe.js';
 import {
   closedAssignment,
@@ -121,6 +125,7 @@ export class Runtime {
   readonly modelPolicy: ModelPolicy;
   readonly setup: Setup;
   readonly codexSignIn: CodexSignIn;
+  readonly browserSetup: BrowserSetup;
   readonly resources: ResourceWatch;
   readonly conversationSearch: ConversationSearch;
   conversationSearchMirrorWindows: () => unknown[] = () => [];
@@ -161,8 +166,13 @@ export class Runtime {
   private restoreSlots = 0;
   private restoreWaiters: (() => void)[] = [];
   private timer: NodeJS.Timeout | null = null;
+  private drainScheduled: NodeJS.Immediate | null = null;
   private draining = false;
   private drainRequested = false;
+  private preparations = new Map<string, Promise<void>>();
+  private preparedRuns = new Set<string>();
+  private nextDrainAt = 0;
+  schedulingError: string | null = null;
   private stopped = false;
   private managerNotices = new Map<
     string,
@@ -187,10 +197,15 @@ export class Runtime {
             : null;
       if (reason) recordRecovery(this.store, event.agentId, reason);
     }
-    if (event.type.startsWith('run.') || event.type === 'usage.observed') this.pulsar.reconcile();
-    queueMicrotask(() => this.kick());
+    if (event.type.startsWith('run.') || event.type === 'usage.observed')
+      this.pulsar.reconcile(event.agentId);
+    // Streaming text changes the display, not queue eligibility. Re-running the
+    // scheduler for every delta can starve HTTP while several agents respond.
+    if (event.type !== 'entry.updated') this.kick();
   };
   readonly documents: Documents;
+  readonly chatImages: ChatImages;
+  readonly documentFormatting: DocumentFormatting;
   models: Model[] = [];
   health = { ready: false, version: '', message: 'Checking Codex…' };
   constructor(
@@ -200,7 +215,9 @@ export class Runtime {
     readonly factory?: ProviderFactory,
     claudeDependencies?: ManagedClaudeDependencies,
   ) {
+    this.browserSetup = new BrowserSetup(() => this.codexDiscovery());
     this.documents = new Documents(store, dataDir);
+    this.chatImages = new ChatImages(store, dataDir);
     this.workItems = new WorkItems(store);
     this.capacity = new CapacityMonitor(store, dataDir);
     this.pulsar = new Pulsar(store, () => this.capacity.status().machine);
@@ -259,6 +276,16 @@ export class Runtime {
         this.factory ? store.agents().find((agent) => agent.provider === provider) : undefined,
         provider,
       ),
+    );
+    this.documentFormatting = new DocumentFormatting(
+      store,
+      this.documents,
+      this.modelPolicy,
+      dataDir,
+      (id) =>
+        schedulerSettings(store).paused
+          ? 'The work queue is paused.'
+          : this.pulsar.decision(store.run(id)).reason,
     );
     this.coordinator = new QuarkCoordinator(
       store,
@@ -369,9 +396,10 @@ export class Runtime {
     });
   }
   private charter(agent: PrivateAgent) {
-    return `${this.roleCharter(agent)}\n\n${chatFormattingCharter}`;
+    return `${this.roleCharter(agent)}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}`;
   }
   private roleCharter(agent: PrivateAgent) {
+    if (this.documentFormatting.isAgent(agent.id)) return documentFormattingCharter;
     if (this.conversationSearch.isAgent(agent.id)) return conversationSearchCharter;
     if (agent.surface) return conversationCharter;
     if (this.coordinator.isAgent(agent.id)) return quarkCoordinatorCharter;
@@ -445,8 +473,9 @@ export class Runtime {
     this.localJobs.recover();
     this.pulsar.reconcile();
     this.frontdesk.reconcile();
+    const agentsWithRuns = new Set(this.store.runs().map((run) => run.agentId));
     for (const agent of this.store.agents())
-      if (agent.threadId || this.store.runs().some((run) => run.agentId === agent.id))
+      if (agent.threadId || agentsWithRuns.has(agent.id))
         recordRecovery(this.store, agent.id, 'host_restart');
     this.store.on('event', this.onStoreEvent);
     this.timer = setInterval(() => this.kick(), 1000);
@@ -541,10 +570,64 @@ export class Runtime {
     }
   }
   kick() {
-    if (this.stopped) return;
-    this.claudeTranscripts.poll();
-    if (this.draining) this.drainRequested = true;
-    else void this.drain();
+    if (this.stopped || Date.now() < this.nextDrainAt) return;
+    if (this.draining) {
+      this.drainRequested = true;
+      return;
+    }
+    if (this.drainScheduled) return;
+    // Coalesce bursts and yield to sockets/timers between passes. A microtask
+    // here can perpetually outrun I/O when the drain itself records events.
+    this.drainScheduled = setImmediate(() => {
+      this.drainScheduled = null;
+      if (this.stopped) return;
+      this.claudeTranscripts.poll();
+      void this.drain();
+    });
+  }
+  private prepareQueuedRun(run: PrivateRun) {
+    if (this.preparations.has(run.id)) return;
+    const waiting = this.store.getSetting(`model-policy:wait:${run.id}`) as number | undefined;
+    if (waiting && waiting > Date.now()) return;
+    const preparation = (async () => {
+      try {
+        const agent = this.store.agent(run.agentId);
+        const prepared = await this.modelPolicy.prepare(agent, run.id);
+        if (this.stopped || this.store.run(run.id).status !== 'queued') return;
+        if (
+          agent.provider === 'claude' &&
+          (prepared.model !== agent.model || prepared.effort !== agent.effort)
+        )
+          await this.claude.forget(agent.id);
+        if (waiting) this.store.setSetting(`model-policy:wait:${run.id}`, null);
+        this.preparedRuns.add(run.id);
+      } catch (error) {
+        if (!this.stopped && this.store.run(run.id).status === 'queued') {
+          if (error instanceof Conflict && error.code === 'MODEL_DISCOVERY_WAIT') {
+            this.store.setSetting(`model-policy:wait:${run.id}`, Date.now() + 60_000);
+            this.store.event(
+              'run.model_wait',
+              this.store.agent(run.agentId).projectId,
+              run.agentId,
+              { runId: run.id },
+            );
+          } else await this.failRun(run, error);
+        }
+      }
+    })()
+      .catch((error) => this.schedulingFailure(error))
+      .finally(() => {
+        this.preparations.delete(run.id);
+        if (!this.stopped) this.kick();
+      });
+    this.preparations.set(run.id, preparation);
+  }
+  private schedulingFailure(error: unknown) {
+    this.nextDrainAt = Date.now() + 5000;
+    if (!this.schedulingError)
+      console.error(`QUARK scheduling check failed: ${this.errorText(error)}`);
+    this.schedulingError =
+      'QUARK could not check the queue. New starts wait while it retries automatically. Saved chats and drafts remain available.';
   }
   private async drain() {
     this.draining = true;
@@ -556,7 +639,10 @@ export class Runtime {
       this.providerMaintenance.tick();
       await this.conversationSearch.maintain();
       const scheduling = schedulerSettings(this.store);
-      if (scheduling.paused) return;
+      if (scheduling.paused) {
+        this.schedulingError = null;
+        return;
+      }
       this.quark.recoverTransient(
         new Set([
           ...this.externalControl,
@@ -568,7 +654,10 @@ export class Runtime {
         ]),
       );
       this.coordinator.tick();
-      const waiting = this.pulsar.ordered(this.store.runs().filter((r) => r.status === 'queued'));
+      const queued = this.store.runs(['queued']);
+      const queuedIds = new Set(queued.map((run) => run.id));
+      for (const id of this.preparedRuns) if (!queuedIds.has(id)) this.preparedRuns.delete(id);
+      const waiting = this.pulsar.ordered(queued);
       const priority = { interactive: 3, high: 2, normal: 1, background: 0 };
       const local = this.localJobs.candidates();
       if (
@@ -639,11 +728,7 @@ export class Runtime {
         const agent = this.store.agent(run.agentId);
         if (agent.nativeRootId) continue; // Native turns are owned by the parent provider.
         // Priority never reorders input within one conversation.
-        if (
-          this.store.runs().find((r) => r.agentId === run.agentId && r.status === 'queued')?.id !==
-          run.id
-        )
-          continue;
+        if (queued.find((r) => r.agentId === run.agentId)?.id !== run.id) continue;
         if (['interrupted', 'failed', 'waiting'].includes(agent.status)) continue;
         const autoTurnLimit = this.pulsar.policy().enabled
           ? this.pulsar.policy().maxAutomaticTurns
@@ -673,15 +758,10 @@ export class Runtime {
           )
             continue;
         }
-        try {
-          const prepared = await this.modelPolicy.prepare(agent, run.id);
-          if (
-            agent.provider === 'claude' &&
-            (prepared.model !== agent.model || prepared.effort !== agent.effort)
-          )
-            await this.claude.forget(agent.id);
-        } catch (error) {
-          await this.failRun(run, error);
+        if (!this.preparedRuns.has(run.id)) {
+          // Discovery can wait on a disconnected CLI. Do it once in the
+          // background so other providers and queue controls keep progressing.
+          this.prepareQueuedRun(run);
           continue;
         }
         if (this.stopped || schedulerSettings(this.store).paused) break;
@@ -693,16 +773,22 @@ export class Runtime {
         )
           continue;
         if (!this.pulsar.reserve(run, this.executing)) continue;
+        this.preparedRuns.delete(run.id);
         this.quark.issueManagerLease(run);
         this.quark.begin(run);
         this.executing.add(agent.id);
         void this.startRun(run).catch((error) => this.failRun(run, error));
       }
+      this.schedulingError = null;
+    } catch (error) {
+      // A failed background pass must not terminate the HTTP host or spin on
+      // its own events. The existing heartbeat retries; no queued input is replayed.
+      this.schedulingFailure(error);
     } finally {
       this.draining = false;
       // Input or a released hold may arrive while a provider operation is awaiting.
       // Coalesce those wakeups instead of losing them until the next heartbeat.
-      if (this.drainRequested && !this.stopped) queueMicrotask(() => this.kick());
+      if (this.drainRequested && !this.stopped) this.kick();
     }
   }
   private async enforceAllowances() {
@@ -718,7 +804,7 @@ export class Runtime {
         this.store.setSetting(marker, false);
       }
     }
-    for (const run of this.store.runs().filter((r) => r.status === 'running')) {
+    for (const run of this.store.runs(['running'])) {
       const a = this.store.agent(run.agentId);
       if (a.nativeRootId) continue;
       const row = this.quark.runs(true).find((r) => r.runId === run.id);
@@ -1432,7 +1518,7 @@ export class Runtime {
       });
       await session.submit({
         deliveryId: run.id,
-        text: `${run.text}\n\n<agent-dock-evidence>\n${this.context(current)}\n</agent-dock-evidence>`,
+        text: `${this.chatImages.prompt(run.text)}\n\n<agent-dock-evidence>\n${this.context(current)}\n</agent-dock-evidence>`,
       });
       return;
     }
@@ -1448,7 +1534,8 @@ export class Runtime {
     const current = this.store.agent(agent.id);
     this.checkManagerStart(run);
     const state = this.context(current);
-    const input = run.kind === 'user' ? run.text : `Recorded input:\n${run.text}`;
+    const message = this.chatImages.prompt(run.text);
+    const input = run.kind === 'user' ? message : `Recorded input:\n${message}`;
     const response = turnResponse.parse(
       await client.request('turn/start', {
         threadId,
@@ -1927,6 +2014,7 @@ export class Runtime {
       }));
     return {
       pacingEnabled: scheduling.policy.enabled,
+      utilization: this.quark.utilization(),
       projectPolicy: this.coordinator.projectPolicy(agent.projectId),
       managerLease:
         agent.role === 'manager' ? this.quark.managerLeaseStatus(this.activeRun(agent.id)) : null,
@@ -2098,10 +2186,7 @@ export class Runtime {
       timingExamples: this.pulsar.examples().slice(0, 3),
     };
     const workflow = projectWorkflow(this.store, project.id);
-    const openItems = this.workItems
-      .list({ projectId: project.id })
-      .items.filter((item) => item.status !== 'done')
-      .slice(0, 60);
+    const workItemsPage = this.workItems.page(project.id, { limit: 60 });
     const notes = this.workItems.notes(project.id);
     const preview = (text: string | null, limit: number) =>
       text === null || fullWorkDetails ? text : text.slice(0, limit);
@@ -2109,6 +2194,7 @@ export class Runtime {
       project: { name: project.name, description: project.description },
       sourceBackup: sourceBackupStatus(this.store, project.id),
       workerTools: projectTools(this.store, project.id),
+      browserSetup: this.browserSetup.status(),
       workflow,
       workerModelDefaults: this.store.getSetting(`project-workflow:${project.id}`)
         ? {
@@ -2117,13 +2203,18 @@ export class Runtime {
             bulk: workerDefault(workflow, 'bulk'),
           }
         : null,
-      workItems: openItems.map((item) => ({
+      workItems: workItemsPage.items.map((item) => ({
         ...item,
         detail: preview(item.detail, 480),
         humanReply: preview(item.humanReply, 480),
         truncated:
           !fullWorkDetails && (item.detail.length > 480 || (item.humanReply?.length ?? 0) > 480),
       })),
+      workItemsPage: {
+        total: workItemsPage.total,
+        omitted: workItemsPage.remaining,
+        nextCursor: workItemsPage.nextCursor,
+      },
       projectNotes: {
         ...notes,
         text: preview(notes.text, 1200),
@@ -2185,7 +2276,7 @@ export class Runtime {
       })),
       checkpoint: agent.checkpoint,
       retrieval:
-        'Work-item details, human replies and owner Notes may be previews: truncated marks shortened text. Before acting on a shortened item or Notes, call dock_inspect {} for full work details. Use taskId for acceptance/scheduling, agentId for a checkpoint and recent evidence, models/provider for exact model IDs, or history/read for saved conversations. Your own native conversation retains earlier turns.',
+        'Work-item details, human replies and owner Notes may be previews: truncated marks shortened text. Before acting on a shortened item or Notes, call dock_inspect {} for full work details. If workItemsPage.omitted is nonzero, continue with dock_inspect {workItems:{cursor:workItemsPage.nextCursor}}; repeat with each nextCursor until null. dock_inspect {workItems:{includeDone:true}} also retrieves completed items. Use taskId for acceptance/scheduling, agentId for a checkpoint and recent evidence, models/provider for exact model IDs, or history/read for saved conversations. Your own native conversation retains earlier turns.',
     })}`;
   }
   hydrate(agentId: string, turns: unknown[]) {
@@ -3951,6 +4042,7 @@ export class Runtime {
         if (value.history) return historyPage(this.store, agent.projectId, value.history);
         if (value.read) return historyRead(this.store, agent.projectId, value.read);
         if (value.catalog) return projectCatalog(this.store, agent.projectId, value.catalog);
+        if (value.workItems) return this.workItems.page(agent.projectId, value.workItems);
         if (value.agentId) {
           const target = this.store.agent(value.agentId);
           if (target.projectId !== agent.projectId)
@@ -4583,6 +4675,10 @@ export class Runtime {
   }
   async close() {
     this.stopped = true;
+    if (this.drainScheduled) clearImmediate(this.drainScheduled);
+    this.drainScheduled = null;
+
+    const browserClosing = this.browserSetup.close();
     await this.claudeTranscripts.close();
     const setupClosing = this.setup.close();
     const signInClosing = this.codexSignIn.close();
@@ -4602,8 +4698,11 @@ export class Runtime {
     await Promise.allSettled([...closed].map((c) => c.close()));
     await claudeClosing;
     await discoveryClosing;
+    await Promise.allSettled(this.preparations.values());
+    this.preparedRuns.clear();
     await setupClosing;
     await signInClosing;
+    await browserClosing;
     await Promise.allSettled([...this.starting.values(), ...this.restoring.values()]);
     await Promise.allSettled([...this.locks.values()]);
     await Promise.allSettled([...this.failures.values()]);

@@ -96,6 +96,21 @@ function fixture() {
 const lines = (...values: unknown[]) =>
   values.map((value) => JSON.stringify(value)).join('\n') + '\n';
 const advance = () => vi.setSystemTime(Date.now() + 11_000);
+it('contains an unexpected collector failure and retries without losing the host', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const f = fixture();
+  writeFileSync(f.path, lines(f.message('after-retry', 10)));
+  const query = vi.spyOn(store.db, 'prepare').mockImplementationOnce(() => {
+    throw new Error('Temporary query failure');
+  });
+  await expect(reader.flush()).resolves.toBeUndefined();
+  expect(log).toHaveBeenCalledTimes(1);
+  query.mockRestore();
+  advance();
+  await reader.flush();
+  expect(store.entries(f.child.id).some((entry) => entry.text === 'Reply after-retry')).toBe(true);
+  log.mockRestore();
+});
 it('retains helper evidence and deduplicated partial counters without charging the root twice', async () => {
   const f = fixture();
   const first = f.message('api-1', 10);

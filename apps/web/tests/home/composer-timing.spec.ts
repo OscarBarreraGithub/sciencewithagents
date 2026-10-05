@@ -27,6 +27,15 @@ test('running composer preserves steering, queuing and notepad choices without c
     status: 'completed',
     createdAt: new Date().toISOString(),
   }));
+  detail.runs = Array.from({ length: 12 }, (_, i) => ({
+    id: randomUUID(),
+    agentId: project.managerId,
+    sourceId: null,
+    text: `Queued follow-up ${i + 1}: ${'long-word'.repeat(40)}`,
+    kind: 'user',
+    status: 'queued',
+    createdAt: new Date().toISOString(),
+  }));
   const snapshot = await (await page.request.get('/api/snapshot')).json();
   snapshot.agents.find((agent: { id: string }) => agent.id === project.managerId).status =
     'running';
@@ -34,14 +43,24 @@ test('running composer preserves steering, queuing and notepad choices without c
   await page.route(`**/api/agents/${project.managerId}`, (route) =>
     route.fulfill({ json: detail }),
   );
-  const sent: { text: string; steer: boolean; scheduling?: { priority: string } }[] = [];
+  const sent: { key: string; text: string; steer: boolean; scheduling?: { priority: string } }[] =
+    [];
   let rejectFinished = false;
-  await page.route(`**/api/agents/${project.managerId}/messages`, (route) => {
+  let rejectUnknown = false;
+  let delayNext = false;
+  let finish!: () => void;
+  await page.route(`**/api/agents/${project.managerId}/messages`, async (route) => {
     sent.push(route.request().postDataJSON());
+    if (delayNext)
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
     return route.fulfill(
-      rejectFinished
-        ? { status: 409, json: { code: 'NO_ACTIVE_TURN', error: 'The reply finished.' } }
-        : { json: { status: 'submitted' } },
+      rejectUnknown
+        ? { status: 503, json: { error: 'Delivery acknowledgement unavailable.' } }
+        : rejectFinished
+          ? { status: 409, json: { code: 'NO_ACTIVE_TURN', error: 'The reply finished.' } }
+          : { json: { status: 'submitted' } },
     );
   });
   await page.goto(`/#/chat/${project.managerId}`);
@@ -53,6 +72,17 @@ test('running composer preserves steering, queuing and notepad choices without c
   await expect(page.getByText('Owner steering', { exact: true })).toHaveCount(0);
   await expect(page.locator('.system-entry')).toHaveCount(1);
   await expect(page.locator('.system-entry')).toContainText('Workspace restored');
+  const queue = page.getByRole('list', { name: 'Queued messages' });
+  await expect(queue).toBeVisible();
+  await expect(queue.getByRole('listitem')).toHaveCount(12);
+  const queueBox = (await queue.boundingBox())!;
+  expect(queueBox.height).toBeLessThanOrEqual(141);
+  expect(queueBox.x + queueBox.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+  expect(await queue.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await queue.focus();
+  await page.keyboard.press('End');
+  await expect.poll(() => queue.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(queue.getByText(/Queued follow-up 12:/)).toBeInViewport();
   const composer = page.locator('.composer');
   const input = composer.getByRole('textbox');
   const timing = composer.getByRole('combobox', { name: 'Send timing' });
@@ -130,4 +160,39 @@ test('running composer preserves steering, queuing and notepad choices without c
     text: 'Keep this when the running reply ends.',
     steer: false,
   });
+  // Writing the next draft must remain possible while the transport is waiting.
+  delayNext = true;
+  await input.fill('A slow accepted message.');
+  await composer.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect.poll(() => typeof finish).toBe('function');
+  await expect(input).toBeEnabled();
+  await input.fill('The next unsent managed draft.');
+  finish();
+  await expect(composer.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  await expect(input).toHaveValue('The next unsent managed draft.');
+  expect(sent.at(-1)?.text).toBe('A slow accepted message.');
+  const sendsBeforeReplacement = sent.length;
+  await input.fill('An identical replacement draft.');
+  await composer.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect.poll(() => sent.length).toBe(sendsBeforeReplacement + 1);
+  await input.fill('Changed during delivery.');
+  await input.fill('An identical replacement draft.');
+  finish();
+  await expect(composer.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  await expect(input).toHaveValue('An identical replacement draft.');
+
+  delayNext = false;
+  rejectUnknown = true;
+  await input.fill('Original message with a lost acknowledgement.');
+  await composer.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(
+    composer.getByRole('button', { name: 'Retry previous message', exact: true }),
+  ).toBeEnabled();
+  await input.fill('A newer draft kept while retrying.');
+  rejectUnknown = false;
+  await composer.getByRole('button', { name: 'Retry previous message', exact: true }).click();
+  await expect(composer.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+  await expect(input).toHaveValue('A newer draft kept while retrying.');
+  expect(sent.at(-1)?.key).toBe(sent.at(-2)?.key);
+  expect(sent.at(-1)?.text).toBe('Original message with a lost acknowledgement.');
 });

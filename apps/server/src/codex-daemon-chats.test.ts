@@ -65,6 +65,9 @@ function fixture() {
   const state = {
     threads: new Map([[id, thread]]),
     loaded: [id],
+    queue: undefined as unknown[] | undefined,
+    queueMore: false,
+    queueReadFailure: undefined as string | undefined,
     historyError: undefined as string | undefined,
     mutation: undefined as ((frame: Frame, socket: Socket) => void) | undefined,
   };
@@ -89,6 +92,15 @@ function fixture() {
             thread: { ...metadata, ...(frame.params.includeTurns ? { turns } : {}) },
           });
         }
+        if (frame.method === 'thread/queue/list' && state.queueReadFailure)
+          return client.reject(frame, state.queueReadFailure);
+        if (frame.method === 'thread/queue/list')
+          return state.queue
+            ? client.reply(frame, {
+                data: state.queue,
+                nextCursor: state.queueMore ? 'next' : null,
+              })
+            : client.reject(frame, 'Method not found');
         if (state.mutation) return state.mutation(frame, client);
         if (frame.method === 'turn/start')
           return client.reply(frame, { turn: { id: 'accepted-turn' } });
@@ -515,4 +527,70 @@ it.each([
   await f.chats.discover();
   expect(f.chats.windows()).toEqual([]);
   expect(f.mutations()).toEqual([]);
+});
+
+it('discovers queue support, reads external messages and submits with the original native UUID', async () => {
+  const f = fixture();
+  f.state.queue = [
+    {
+      id: 'desktop-message',
+      clientUserMessageId: 'desktop',
+      input: [{ type: 'text', text: 'Editor follow-up' }],
+    },
+  ];
+  f.state.queueMore = true;
+  await f.chats.discover();
+  const window = f.chats.windows()[0];
+  expect(await f.chats.read(window.windowId)).toMatchObject({
+    canQueue: true,
+    queuedMessages: [{ id: 'desktop-message', text: 'Editor follow-up' }],
+    queueHasMore: true,
+  });
+  f.busy();
+  const message = { ...f.input(), mode: 'queue' as const };
+  f.state.mutation = (frame, socket) =>
+    socket.reply(frame, {
+      queuedSubmission: { id: 'accepted', clientUserMessageId: frame.params.clientUserMessageId },
+    });
+  expect((await f.chats.send(window.windowId, message)).state).toBe('sent');
+  expect(f.frames().filter((frame) => frame.method === 'thread/queue/add')[0].params).toMatchObject(
+    { clientUserMessageId: message.key, threadId: message.threadId },
+  );
+  expect(f.mutations()).toEqual([]);
+});
+it('rejects unsupported native queue without launching a turn', async () => {
+  const f = fixture();
+  await f.chats.discover();
+  const window = f.chats.windows()[0];
+  expect((await f.chats.read(window.windowId)).canQueue).toBe(false);
+  expect((await f.chats.send(window.windowId, { ...f.input(), mode: 'queue' })).state).toBe(
+    'not_sent',
+  );
+  expect(f.mutations()).toEqual([]);
+});
+
+it('reports a transient unreadable queue without hiding readable chat or claiming an empty queue', async () => {
+  const f = fixture();
+  f.state.queue = [];
+  await f.chats.discover();
+  const window = f.chats.windows()[0];
+  expect((await f.chats.read(window.windowId)).queueReadError).toBeUndefined();
+  f.state.queueReadFailure = 'Temporarily unavailable';
+  f.busy();
+  const unavailable = await f.chats.read(window.windowId);
+  expect(unavailable).toMatchObject({
+    status: 'busy',
+    canSteer: true,
+    canQueue: false,
+    queueReadError: 'unavailable',
+  });
+  expect(unavailable.queuedMessages).toBeUndefined();
+  f.state.queueReadFailure = 'Method not found';
+  expect((await f.chats.read(window.windowId)).queueReadError).toBe('unsupported');
+  f.state.queueReadFailure = undefined;
+  expect(await f.chats.read(window.windowId)).toMatchObject({
+    canQueue: true,
+    queuedMessages: [],
+    queueReadError: undefined,
+  });
 });

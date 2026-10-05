@@ -137,6 +137,46 @@ afterEach(async () => {
 });
 
 describe('main startup safety', () => {
+  it('opens saved projects and chats with both providers unavailable and work paused', async () => {
+    const value = fixture(),
+      port = await unusedPort();
+    const settings = new Store(join(value.root, 'dock.sqlite'));
+    settings.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+    settings.close();
+    rmSync(value.binary);
+    const owned = launch(value, port);
+    await expect
+      .poll(
+        async () => {
+          const response = await fetch(`http://127.0.0.1:${port}/api/health`, {
+            signal: AbortSignal.timeout(500),
+          }).catch(() => null);
+          return response?.status;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(200);
+    for (const path of [
+      '/api/snapshot',
+      `/api/agents/${value.manager}`,
+      '/api/pulsar',
+      '/api/work-items',
+    ]) {
+      const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+        headers: { Authorization: (await ownerAuthorization(value.root, port, 'GET', path))! },
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(response.status, path).toBe(200);
+      const data = await response.json();
+      if (path === '/api/snapshot') expect(data.provider.ready).toBe(false);
+      if (path.startsWith('/api/agents/')) expect(data.entries).toEqual(value.original.entries);
+    }
+    expect(owned.child!.exitCode).toBeNull();
+    owned.child!.stdin!.end();
+    expect((await deadline(owned.finished!)).code, owned.diagnostics()).toBe(0);
+    await preserved(value, port);
+  });
+
   it('an invalid local port cannot dispatch queued work and releases its lock', async () => {
     const value = fixture(),
       port = await unusedPort();

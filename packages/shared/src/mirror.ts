@@ -7,7 +7,7 @@ export const mirrorSendSchema = z
     provider: z.enum(['codex', 'claude']).optional(),
     // Present only for native steering of this observed turn; never fall back to start.
     expectedTurnId: z.string().min(1).max(128).optional(),
-    // Claude's native input queue; does not steer or interrupt the current reply.
+    // Native input queue; does not steer or interrupt the current reply.
     mode: z.literal('queue').optional(),
     text: z.string().trim().min(1).max(32_000),
   })
@@ -72,6 +72,12 @@ export const mirrorStateSchema = z.object({
   // Capability omission means an older companion, or a provider without steering.
   canSteer: z.boolean().optional(),
   canQueue: z.boolean().optional(),
+  queuedMessages: z
+    .array(z.object({ id: z.string().min(1).max(128), text: z.string().max(32000) }).strict())
+    .max(100)
+    .optional(),
+  queueHasMore: z.boolean().optional(),
+  queueReadError: z.enum(['unsupported', 'unavailable']).optional(),
   steerToken: z.string().min(1).max(128).optional(),
   paged: z.boolean().optional(),
   groupedActivity: z.boolean().optional(),
@@ -84,7 +90,13 @@ export const mirrorStateSchema = z.object({
     })
     .optional(),
 });
-export const mirrorWindowSchema = mirrorStateSchema.omit({ entries: true, page: true });
+export const mirrorWindowSchema = mirrorStateSchema.omit({
+  entries: true,
+  page: true,
+  queuedMessages: true,
+  queueHasMore: true,
+  queueReadError: true,
+});
 export const mirrorResultSchema = z.object({
   state: z.enum(['sent', 'not_sent', 'uncertain']),
   message: z.string().max(1000),
@@ -114,3 +126,34 @@ export type MirrorSend = z.infer<typeof mirrorSendSchema>;
 export type MirrorControl = z.infer<typeof mirrorControlSchema>;
 export type MirrorResult = z.infer<typeof mirrorResultSchema>;
 export type MirrorCommand = z.infer<typeof mirrorCommandSchema>;
+
+// Validate a native queue read before advertising queue capability. Preserve order.
+export function codexQueue(value: unknown): Pick<MirrorState, 'queuedMessages' | 'queueHasMore'> {
+  const response = z
+    .object({
+      data: z
+        .array(
+          z.object({
+            id: z.string().min(1).max(128),
+            input: z.array(
+              z.object({ type: z.string(), text: z.string().optional() }).passthrough(),
+            ),
+          }),
+        )
+        .max(100),
+      nextCursor: z.string().nullable(),
+    })
+    .parse(value);
+  return {
+    queuedMessages: response.data.map((item) => ({
+      id: item.id,
+      text:
+        item.input
+          .filter((input) => input.type === 'text')
+          .map((input) => input.text ?? '')
+          .join('\n')
+          .slice(0, 32000) || '[Native attachment]',
+    })),
+    queueHasMore: !!response.nextCursor,
+  };
+}

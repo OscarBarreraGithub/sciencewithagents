@@ -70,20 +70,10 @@ function command(executable: string, args: string[], cwd: string, input?: string
  * Sandbox mode prevents the converter itself from reading arbitrary files or fetching URLs.
  * No source filters, scripts, shell escapes or document-provided compiler configuration run.
  */
-export async function buildReading(
-  source: string,
-  root: string,
-  assets: string,
-): Promise<DocumentReading> {
+/** Bounded, read-only include expansion shared with the optional formatting worker. */
+export async function expandReadingSource(source: string, root: string): Promise<string> {
   root = await realpath(root);
   source = await realpath(source);
-  const pandoc = readerExecutable('pandoc');
-  if (!pandoc)
-    throw new Error(
-      'Reading mode needs Pandoc on this computer. Ask your setup agent to install pandoc. Original PDF still works.',
-    );
-  const warnings = new Set<string>();
-  const labels: Record<string, string> = {};
   let total = 0,
     files = 0;
   async function local(path: string) {
@@ -121,7 +111,33 @@ export async function buildReading(
     }
     return output + text.slice(at);
   }
-  let text = groupMacroExpansions(await expand(source)).replace(/\\hfill\b/g, ' ');
+  return expand(source);
+}
+export async function buildReading(
+  source: string,
+  root: string,
+  assets: string,
+  formattedText?: string,
+): Promise<DocumentReading> {
+  root = await realpath(root);
+  source = await realpath(source);
+  const pandoc = readerExecutable('pandoc');
+  if (!pandoc)
+    throw new Error(
+      'Reading mode needs Pandoc on this computer. Ask your setup agent to install pandoc. Original PDF still works.',
+    );
+  const warnings = new Set<string>();
+  const labels: Record<string, string> = {};
+  async function local(path: string) {
+    const canonical = await realpath(path);
+    const info = await stat(canonical);
+    if (!within(root, canonical) || !info.isFile() || info.size > limit)
+      throw new Error('A document input is outside its folder or larger than 8 MB.');
+    return canonical;
+  }
+  let text = groupMacroExpansions(
+    formattedText ?? (await expandReadingSource(source, root)),
+  ).replace(/\\hfill\b/g, ' ');
   // Read labels as data, never execute an auxiliary TeX file.
   try {
     const aux = await readFile(await local(source.replace(/\.tex$/i, '.aux')), 'utf8');

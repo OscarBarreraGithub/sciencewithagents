@@ -78,3 +78,119 @@ test('shared-chat drafts wrap and resize without a horizontal or premature scrol
   await input.fill('');
   await expect.poll(async () => (await geometry()).height).toBeLessThanOrEqual(emptyHeight + 1);
 });
+
+test('native queue is scrollable and sends the selected follow-up without steering', async ({
+  page,
+}) => {
+  const state: MirrorState = {
+    windowId: randomUUID(),
+    threadId: randomUUID(),
+    provider: 'codex',
+    label: 'Native queue',
+    title: 'Queued conversation',
+    status: 'busy',
+    message: '',
+    canSteer: true,
+    steerToken: 'current-turn',
+    canQueue: true,
+    entries: [],
+    queuedMessages: Array.from({ length: 12 }, (_, i) => ({
+      id: `external-${i}`,
+      text: `External queued message ${i + 1}`,
+    })),
+    queueHasMore: true,
+  };
+  const { entries: _, queuedMessages: _queue, queueHasMore: _more, ...window } = state;
+  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [window] }));
+  await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
+    route.fulfill({ json: mirrorPage(state) }),
+  );
+  const sent: Record<string, unknown>[] = [];
+  let finish!: () => void;
+  await page.route(`**/api/vscode/windows/${state.windowId}/send`, async (route) => {
+    sent.push(route.request().postDataJSON());
+    await new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    return route.fulfill({
+      json: { state: 'uncertain', message: 'Native delivery not confirmed.' },
+    });
+  });
+  const checked: string[] = [];
+  await page.route('**/api/vscode/deliveries/*', (route) => {
+    checked.push(route.request().url());
+    return route.fulfill({ json: { state: 'sent', message: 'Accepted into the native queue.' } });
+  });
+  await page.goto(`/#/chats/vscode/${encodeURIComponent(`codex:${state.threadId}`)}`);
+  const queue = page.getByRole('list', { name: 'Queued messages' });
+  await expect(queue).toBeVisible();
+  await expect(queue.getByRole('listitem')).toHaveCount(12);
+  expect(await queue.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await queue.focus();
+  await page.keyboard.press('End');
+  await expect.poll(() => queue.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(queue.getByText('External queued message 12', { exact: true })).toBeInViewport();
+  const field = page.getByRole('textbox', { name: 'Message Codex' });
+  const beforeStatusChange = (await field.boundingBox())!.y;
+  state.status = 'idle';
+  await expect(page.getByRole('combobox', { name: 'Send timing' })).toBeDisabled();
+  expect(Math.abs((await field.boundingBox())!.y - beforeStatusChange)).toBeLessThanOrEqual(1);
+  await expect(
+    page.getByText('Your message updates the current task.', { exact: false }),
+  ).toHaveCount(0);
+  state.status = 'busy';
+  await expect(page.getByRole('combobox', { name: 'Send timing' })).toBeEnabled();
+  await page.getByRole('combobox', { name: 'Send timing' }).selectOption('queue');
+  await page.getByRole('textbox', { name: 'Message Codex' }).fill('Run this afterward.');
+  await page.getByRole('button', { name: 'Queue follow-up', exact: true }).click();
+  await expect.poll(() => sent.length).toBe(1);
+  const writing = page.getByRole('textbox', { name: 'Message Codex' });
+  await expect(writing).toBeEnabled();
+  await writing.fill('My next unsent draft.');
+  finish();
+  await expect(page.getByRole('button', { name: 'Check delivery', exact: true })).toBeEnabled();
+  expect(sent[0]).toMatchObject({ mode: 'queue', text: 'Run this afterward.' });
+  expect(sent[0].expectedTurnId).toBeUndefined();
+  await expect(writing).toHaveValue('My next unsent draft.');
+  await page.reload();
+  await expect(writing).toHaveValue('My next unsent draft.');
+  await page.getByRole('button', { name: 'Check delivery', exact: true }).click();
+  await expect(writing).toHaveValue('My next unsent draft.');
+  expect(checked).toHaveLength(1);
+  expect(checked[0]).toContain(String(sent[0].key));
+  expect(sent).toHaveLength(1);
+  await expect(page.getByRole('list', { name: 'Queued messages' })).toBeVisible();
+});
+
+test('unreadable queue is explicit while the chat and draft remain usable', async ({ page }) => {
+  const state: MirrorState = {
+    windowId: randomUUID(),
+    threadId: randomUUID(),
+    provider: 'codex',
+    label: 'Queue recovery',
+    title: 'Readable conversation',
+    status: 'busy',
+    message: '',
+    canSteer: true,
+    steerToken: 'current-turn',
+    canQueue: false,
+    queueReadError: 'unavailable',
+    entries: [{ id: 'reply', role: 'assistant', text: 'Saved reply remains readable.' }],
+  };
+  const { entries: _, queueReadError: _error, ...window } = state;
+  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [window] }));
+  await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
+    route.fulfill({ json: mirrorPage(state) }),
+  );
+  await page.goto(`/#/chats/vscode/${encodeURIComponent(`codex:${state.threadId}`)}`);
+  await expect(page.getByText('Queue unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByText(/The queue may still contain messages/)).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Queued messages' })).toHaveCount(0);
+  await expect(page.getByText('Saved reply remains readable.', { exact: true })).toBeVisible();
+  const field = page.getByRole('textbox', { name: 'Message Codex' });
+  await expect(field).toBeEnabled();
+  await field.fill('Retain this draft while reconnecting.');
+  await page.reload();
+  await expect(field).toHaveValue('Retain this draft while reconnecting.');
+  await expect(page.getByText('Queue unavailable', { exact: true })).toBeVisible();
+});

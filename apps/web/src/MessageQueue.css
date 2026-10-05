@@ -1,0 +1,39 @@
+.message-queue {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: var(--text-small, 13px);
+  background: var(--surface, transparent);
+}
+.message-queue summary {
+  cursor: pointer;
+  padding: 8px 12px;
+}
+.message-queue ol {
+  height: auto;
+  max-height: min(140px, 18dvh);
+  min-height: 0;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 0 12px 8px 34px;
+}
+.message-queue li {
+  padding: 5px 0;
+}
+.message-queue li + li {
+  border-top: 1px solid var(--line);
+}
+.message-queue p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.message-queue-more {
+  padding: 0 12px 8px;
+}

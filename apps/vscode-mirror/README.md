@@ -27,8 +27,10 @@ with VS Code and the app running. No separate public port or provider account is
 - History loads in bounded pages; tool activity expands on demand. Older/newer controls
   preserve the original text without loading the whole transcript onto a phone.
 - Send goes to the selected native conversation. Phone sends do not edit the desktop draft.
-- **Send guidance** targets the exact active Codex turn. **Queue follow-up** uses Claude's
+- **Send guidance** targets the exact active Codex turn. **Queue next** uses a supported provider's
   acknowledged native queue; acceptance does not mean the follow-up has run yet.
+  Scroll **Queued messages** above the input to view pending follow-ups. Codex offers
+  queueing only when its installed native protocol supports it; steering stays available.
 - **Stop reply** targets the observed reply. It cannot undo completed work or cancel every
   future native action. Lost acknowledgements offer a receipt check, never an automatic replay.
 - Models, permissions, native questions, slash menus, attachments and unsupported rich tools

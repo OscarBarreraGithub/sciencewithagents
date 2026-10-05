@@ -12,6 +12,8 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   allowance scrolls away instead of consuming space throughout the page.
 - Keep For your attention and General to-do compact when empty, growing with content up to
   a bounded height. Their lists then scroll independently. To-do entry is multiline.
+  Opening the phone keyboard must not shrink the cards above it or change those list caps;
+  keep their content sizes stable while the outer viewport makes room for typing.
 - Human items have a short explanation, project context and a direct route to answer.
   The running-project table shows the actual request; both its link and arrow open that item.
   Human questions open their answer form in Notes, with the request above the other notes.
@@ -35,6 +37,8 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 - Use compact WhatsApp-like phone conversations: message bubbles, a short header, grouped
   expandable tool activity and an expanding composer with a maximum height. Keyboard opening,
   Latest messages and attachment controls must not cover input or cause large scroll jumps.
+  Manager names wrap across the phone header; tools use a separate row instead of squeezing
+  the name into a clipped single line, including with larger text.
   When zoomed text and a keyboard leave too little height, the composer tools fold into one
   sideways-scrolling row, then the message area gives way, so Back, input and Send stay visible.
 - During a running Codex reply, the composer offers “Steer now” or “Queue next”; priority
@@ -131,6 +135,9 @@ Apps uses rounded icons and titles. LaTeX opens a simple file/recent-document li
 a full-screen PDF reader. Fit width, pinch/button zoom and page navigation must remain usable
 on phones. Document links open over mounted chats; closing or swiping out preserves the exact
 reading position and draft. Custom project-app registration is still pending.
+For LaTeX sources, Reading reflows prose at a comfortable adjustable size. Format equations
+to fit before resorting to individual horizontal scroll regions with visible overflow cues.
+Optional AI formatting creates a separate copy with a selectable model, never replaces the original.
 
 Use readable body text, large controls, consistent spacing and wrapping. Verify 360×800,
 412×915, 915×412 and desktop, enlarged text/zoom, long labels and content growth. Default,

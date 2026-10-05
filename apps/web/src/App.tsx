@@ -779,6 +779,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
         </header>
         <CapacityPanel />
         <div className={`main-scroll ${mirrorOpen ? 'mirror-content' : ''}`}>
+          {state?.schedulingError && <p role="status">{state.schedulingError}</p>}
           {connectionError && (
             <div className="error-banner" role="alert">
               <span>{connectionError}</span>

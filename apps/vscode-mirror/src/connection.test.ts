@@ -101,7 +101,9 @@ describe('native connection mirror', () => {
       await mirror.select('thread');
       const state = await mirror.read();
       expect(state.entries.map((e) => e.text)).toEqual(['Desktop message', 'Old reply']);
-      expect(calls.every((c) => c.method === 'thread/read')).toBe(true);
+      expect(calls.every((c) => ['thread/read', 'thread/queue/list'].includes(c.method))).toBe(
+        true,
+      );
     } finally {
       mirror.dispose();
     }

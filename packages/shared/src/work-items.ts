@@ -63,6 +63,23 @@ export const managerWorkItemRequestSchema = workItemRequestSchema.omit({
 export const workItemQuerySchema = z.object({ projectId: workItemId.optional() }).strict();
 export const workItemsSchema = z.object({ items: z.array(workItemSchema) }).strict();
 
+/** Agent reads are scoped by the host. A cursor is an existing item in that project. */
+export const workItemPageQuerySchema = z
+  .object({
+    cursor: workItemId.optional(),
+    limit: z.number().int().min(1).max(60).default(30),
+    includeDone: z.boolean().default(false),
+  })
+  .strict();
+export const workItemPageSchema = z
+  .object({
+    items: z.array(workItemSchema),
+    total: z.number().int().nonnegative(),
+    remaining: z.number().int().nonnegative(),
+    nextCursor: workItemId.nullable(),
+  })
+  .strict();
+
 export const projectNotesSchema = z
   .object({
     projectId: workItemId,

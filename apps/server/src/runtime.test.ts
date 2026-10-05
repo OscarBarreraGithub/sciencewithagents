@@ -1723,6 +1723,43 @@ it('reserves Notes for the owner, including calls from old provider sessions', a
   });
   expect(edited).toMatchObject({ revision: 2, updatedByManagerId: null });
 });
+
+it('exposes omitted unresolved asks through project-scoped work-item inspection after sixty items', async () => {
+  const old = runtime.workItems.saveForManager(manager, {
+    key: randomUUID(),
+    title: 'The earlier small ask',
+    detail: 'Preserve this original requirement.',
+  });
+  for (let n = 0; n < 64; n++)
+    runtime.workItems.saveForManager(manager, {
+      key: randomUUID(),
+      title: `Later ask ${n}`,
+    });
+  const other = store.register(join(root, 'another-project'), 'Another project', '');
+  const foreign = runtime.workItems.saveForManager(other.managerId, {
+    key: randomUUID(),
+    title: 'Not this manager’s project',
+  });
+  const brief = JSON.parse(runtime.context(store.agent(manager)).split('\n').slice(1).join('\n'));
+  expect(brief.workItems).toHaveLength(60);
+  expect(brief.workItemsPage).toMatchObject({ total: 65, omitted: 5 });
+  expect(brief.retrieval).toContain('workItemsPage.nextCursor');
+  const page = await runtime.tool(manager, randomUUID(), 'dock_inspect', {
+    workItems: { cursor: brief.workItemsPage.nextCursor },
+  });
+  expect(page).toMatchObject({
+    items: expect.arrayContaining([old]),
+    total: 65,
+    remaining: 0,
+    nextCursor: null,
+  });
+  expect(JSON.stringify(page)).not.toContain(foreign.id);
+  await expect(
+    runtime.tool(manager, randomUUID(), 'dock_inspect', {
+      workItems: { cursor: foreign.id },
+    }),
+  ).rejects.toThrow('not found in this project');
+});
 it('lets the manager apply exact reviewed work by default and enforces the human-review project option', async () => {
   const t = await task();
   const worker = (await managerTool(runtime, manager, randomUUID(), 'dock_delegate', {

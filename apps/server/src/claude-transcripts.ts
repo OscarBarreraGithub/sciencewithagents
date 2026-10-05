@@ -39,6 +39,7 @@ export class ClaudeTranscripts {
   private pending: Promise<void> | null = null;
   private stopped = false;
   private nextPollAt = 0;
+  private failed = false;
   private readonly projects: string;
   constructor(
     readonly store: Store,
@@ -89,9 +90,21 @@ export class ClaudeTranscripts {
   poll() {
     if (this.stopped || this.pending || Date.now() < this.nextPollAt) return;
     this.nextPollAt = Date.now() + 1000;
-    this.pending = this.readSources().finally(() => {
-      this.pending = null;
-    });
+    this.pending = this.readSources()
+      .then(() => {
+        this.failed = false;
+      })
+      .catch(() => {
+        if (!this.failed)
+          console.error(
+            'Native helper transcript collection failed; saved history is retained and collection will retry.',
+          );
+        this.failed = true;
+        this.nextPollAt = Date.now() + 10_000;
+      })
+      .finally(() => {
+        this.pending = null;
+      });
   }
   async flush() {
     this.poll();

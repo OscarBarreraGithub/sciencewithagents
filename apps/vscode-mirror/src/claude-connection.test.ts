@@ -126,6 +126,11 @@ describe('Claude Code native mirror', () => {
       });
       expect(f.accepted).toHaveLength(1);
       expect((await f.mirror.read()).status).toBe('busy');
+      expect((await f.mirror.read()).queuedMessages).toEqual([
+        { id: message.key, text: message.text },
+      ]);
+      f.channel.queuedCommandUuids.delete(message.key);
+      expect((await f.mirror.read()).queuedMessages).toEqual([]);
     } finally {
       f.mirror.dispose();
     }

@@ -7,6 +7,7 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import {
   codexTranscript,
+  codexQueue,
   isBackgroundCodexThread,
   mirrorControlSchema,
   mirrorPage,
@@ -43,7 +44,14 @@ const object = (value: unknown): Record<string, unknown> =>
     : {};
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
-class NativeRejected extends Error {}
+class NativeRejected extends Error {
+  constructor(
+    message: string,
+    readonly code?: number,
+  ) {
+    super(message);
+  }
+}
 
 async function runningSocket(binary: string): Promise<string | null> {
   // This command observes an existing daemon. Never invoke daemon start/restart.
@@ -154,6 +162,9 @@ export class CodexDaemonChats {
             request.reject(
               new NativeRejected(
                 text(object(frame.error).message).slice(0, 700) || 'Codex rejected the request.',
+                typeof object(frame.error).code === 'number'
+                  ? (object(frame.error).code as number)
+                  : undefined,
               ),
             );
           else request.resolve(frame.result);
@@ -334,8 +345,32 @@ export class CodexDaemonChats {
     page = mirrorPageQuerySchema.parse(page);
     try {
       const thread = await this.selected(windowId);
+      let queue: Pick<MirrorState, 'queuedMessages' | 'queueHasMore'> = {};
+      let canQueue = false;
+      let queueReadError: MirrorState['queueReadError'];
+      try {
+        queue = codexQueue(
+          await this.request('thread/queue/list', { threadId: thread.id, limit: 100 }),
+        );
+        canQueue = true;
+      } catch (error) {
+        queueReadError =
+          error instanceof NativeRejected &&
+          (error.code === -32601 ||
+            /^(method not found|unknown method|thread\/queue\/list is not supported)/i.test(
+              error.message,
+            ))
+            ? 'unsupported'
+            : 'unavailable';
+      }
       return mirrorPage(
-        { ...this.summary(thread), entries: codexTranscript(thread, 'Codex on this computer') },
+        {
+          ...this.summary(thread),
+          ...queue,
+          canQueue,
+          queueReadError,
+          entries: codexTranscript(thread, 'Codex on this computer'),
+        },
         page,
       );
     } catch (error) {
@@ -361,11 +396,6 @@ export class CodexDaemonChats {
         state: 'not_sent',
         message: 'This conversation is unavailable or another request is pending.',
       };
-    if ('mode' in input && input.mode === 'queue')
-      return {
-        state: 'not_sent',
-        message: 'Codex supports guidance to its active reply, not queued follow-ups.',
-      };
     this.mutations.add(windowId);
     let submitted = false;
     try {
@@ -388,28 +418,40 @@ export class CodexDaemonChats {
         params = { threadId: thread.id, turnId: input.token };
       } else {
         const steering = !!input.expectedTurnId;
+        const queueing = input.mode === 'queue';
+        if (queueing)
+          codexQueue(await this.request('thread/queue/list', { threadId: thread.id, limit: 100 }));
         if (
           steering
             ? current.status !== 'busy' || current.steerToken !== input.expectedTurnId
-            : current.status !== 'idle'
+            : queueing
+              ? !['idle', 'busy'].includes(current.status)
+              : current.status !== 'idle'
         )
           return {
             state: 'not_sent',
             message:
               'The native conversation changed or needs attention. Keep your draft and refresh.',
           };
-        method = steering ? 'turn/steer' : 'turn/start';
+        method = queueing ? 'thread/queue/add' : steering ? 'turn/steer' : 'turn/start';
         // No model, permissions, cwd, or configuration overrides: inherit the loaded native thread.
         params = {
           threadId: thread.id,
           input: [{ type: 'text', text: input.text, text_elements: [] }],
           ...(steering ? { expectedTurnId: input.expectedTurnId } : {}),
+          ...(queueing ? { clientUserMessageId: input.key } : {}),
         };
       }
       submitted = true;
       const result = object(await this.request(method, params));
       if (method === 'turn/steer' && result.turnId !== (input as MirrorSend).expectedTurnId)
         throw new Error('Codex did not identify the expected turn in its acknowledgement.');
+      if (
+        method === 'thread/queue/add' &&
+        (object(result.queuedSubmission).clientUserMessageId !== input.key ||
+          !nativeId.safeParse(object(result.queuedSubmission).id).success)
+      )
+        throw new Error('Codex did not identify the queued message.');
       if (method === 'turn/start' && !nativeId.safeParse(object(result.turn).id).success)
         throw new Error('Codex did not identify the accepted turn.');
       this.lastDiscovery = -Infinity;
@@ -418,7 +460,9 @@ export class CodexDaemonChats {
         message:
           method === 'turn/interrupt'
             ? 'Stop requested for this reply. Completed actions are not undone.'
-            : 'Accepted by the existing Codex conversation. Native clients share this conversation.',
+            : method === 'thread/queue/add'
+              ? 'Accepted into the native Codex queue.'
+              : 'Accepted by the existing Codex conversation. Native clients share this conversation.',
       };
     } catch (error) {
       if (error instanceof NativeRejected || !submitted)

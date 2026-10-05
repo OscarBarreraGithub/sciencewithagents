@@ -311,7 +311,7 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
     if (next.hostId !== hostId)
       throw new Error('The connected computer changed. Reopen it before editing.');
     if (own.current && next.own.revision < own.current.own.revision) return;
-    if (initial) {
+    if (initial || !own.current) {
       const raw = localStorage.getItem(storageKey);
       const saved = raw ? (JSON.parse(raw) as { text?: string; baseRevision?: number }) : null;
       const savedPending = localStorage.getItem(`${storageKey}:save`);

@@ -33,34 +33,64 @@ export async function api<T = unknown>(
   path: string,
   body?: unknown,
   signal?: AbortSignal,
+  timeoutMs = 30_000,
 ): Promise<T> {
-  const response = await fetch(apiUrl(path), {
-    signal,
-    ...(body === undefined
-      ? {}
-      : {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        }),
-  });
-  // A tunnel outage or unavailable provider is not an expired phone session.
-  if (response.status === 401 && path !== '/phone/status')
-    window.dispatchEvent(new Event('dock:authentication-required'));
-  if (!response.headers.get('content-type')?.includes('application/json'))
-    throw new ApiError(
-      'The computer connection was interrupted. Your work is retained; try again when it reconnects.',
-      response.status,
-    );
-  const value = (await response.json()) as { error?: string; code?: string; reconnectUrl?: string };
-  if (!response.ok)
-    throw new ApiError(
-      value.error || `Request failed (${response.status}).`,
-      response.status,
-      value.code,
-      value.reconnectUrl,
-    );
-  return value as T;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) controller.abort();
+  const timeout = window.setTimeout(abort, timeoutMs);
+  try {
+    const response = await fetch(apiUrl(path), {
+      signal: controller.signal,
+      ...(body === undefined
+        ? {}
+        : {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }),
+    });
+    // A tunnel outage or unavailable provider is not an expired phone session.
+    if (response.status === 401 && path !== '/phone/status')
+      window.dispatchEvent(new Event('dock:authentication-required'));
+    if (!response.headers.get('content-type')?.includes('application/json'))
+      throw new ApiError(
+        'The computer connection was interrupted. Your work is retained; try again when it reconnects.',
+        response.status,
+      );
+    const value = (await response.json()) as {
+      error?: string;
+      code?: string;
+      reconnectUrl?: string;
+    };
+    if (!response.ok)
+      throw new ApiError(
+        value.error || `Request failed (${response.status}).`,
+        response.status,
+        value.code,
+        value.reconnectUrl,
+      );
+    return value as T;
+  } catch (error) {
+    if (signal?.aborted || error instanceof ApiError) throw error;
+    if (controller.signal.aborted)
+      throw new ApiError(
+        'This computer took too long to respond. Your draft is retained. Reconnect and retry the same message to check its delivery.',
+        0,
+        'REQUEST_TIMEOUT',
+      );
+    if (error instanceof TypeError)
+      throw new ApiError(
+        'Cannot reach this computer. Your draft is retained; reconnect before retrying.',
+        0,
+        'OFFLINE',
+      );
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+    signal?.removeEventListener('abort', abort);
+  }
 }
 export const snapshot = async () => snapshotSchema.parse(await api('/snapshot'));
 export const detail = async (id: string, before?: string) =>

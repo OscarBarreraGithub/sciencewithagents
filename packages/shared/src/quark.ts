@@ -3,6 +3,20 @@ import { tokenCountsSchema } from './usage.js';
 
 const id = z.string().uuid();
 const percent = z.number().finite().min(0).max(100);
+export const windowPacingSchema = z.object({
+  provider: z.enum(['codex', 'claude']),
+  windowId: z.string(),
+  label: z.string(),
+  remainingPercent: percent,
+  reservePercent: percent,
+  resetsAt: z.string().nullable(),
+  minutesToReset: z.number().nonnegative().nullable(),
+  observedPercentPerHour: z.number().nonnegative().nullable(),
+  targetPercentPerHour: z.number().nonnegative().nullable(),
+  projectedRemainingPercent: percent.nullable(),
+  state: z.enum(['unknown', 'protected', 'underused', 'on-track', 'fast']),
+  message: z.string(),
+});
 export const managerLeaseSchema = z
   .object({
     id,

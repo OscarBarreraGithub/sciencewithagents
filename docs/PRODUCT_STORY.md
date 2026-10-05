@@ -31,9 +31,11 @@ The README is the current public landing; a separate website and Guide/FAQ are d
   and resource records do not masquerade as personal chats. No separate editor login is needed.
 - **Computer health with context.** See memory pressure, trends and app/project groups, then ask
   a selectable assistant about a slowdown. Automatic checks are bounded and optional.
-- **Read the result.** Equations render directly in chat. Open LaTeX reports and PDFs on your phone, zoom into equations, and
-  return to the same point in the manager chat. Recent documents and computer-folder browsing
-  also work directly from Apps. Compilation happens on the selected computer.
+- **Read the result.** Equations render directly in chat. LaTeX reports reflow for the phone,
+  with adjustable text and a selectable formatting assistant (Sonnet by default). It creates
+  a separate reading copy; unavoidable wide equations show a scrolling cue. Keep the original
+  PDF and return to the same point in the manager chat. Recent files and folder browsing work
+  from Apps; compilation happens on the selected computer.
 - **Phone access.** Pair once with computer confirmation, then use the same workspace. No repeat
   app lock. The computer must remain online; browser storage/device retention has limits.
 - **Small reviews.** Review a high-level plan, then atomic pieces. After two correction rounds,
@@ -43,8 +45,9 @@ The README is the current public landing; a separate website and Guide/FAQ are d
   changes with local modifications and preserves private records; source Git alone is not a
   backup of conversations or browser drafts.
 
-Do not promote automatic five-hour utilization, custom project-app registration, public deployment from a
-project, or universal device support as delivered. Current gaps are tracked once in Status.
+QUARK's reset-window forecasts alert managers to spare Claude capacity for suitable authorized
+work; they do not guarantee full utilization. Do not promote custom project-app registration,
+public deployment from a project, or universal device support as delivered. Current gaps are tracked once in Status.
 Provider limitations, partial native-helper counts, stale readings and unavailable models
 must remain visible rather than being disguised as success.
 

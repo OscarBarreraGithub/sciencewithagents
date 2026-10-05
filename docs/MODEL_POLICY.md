@@ -60,6 +60,10 @@ provider choice; calculations and delegated orchestration retain the grad-or-hig
 A Light Terra research choice is therefore not used for calculations. Explicit native choices
 and imported conversations remain separate from defaults.
 
+The LaTeX reader's **Format for phone** uses the central `documentFormatter` choice, initially
+the latest available Sonnet. Its provider, exact model and thinking level can be changed for
+each explicit formatting request. This is layout work; the assistant must preserve the science.
+
 Old provider presets/task routing remain readable for saved installations and legacy projects.
 The ordinary settings page resolves those to named choices instead of showing **Follow preset**.
 Opening/saving an unrelated setting preserves existing routing. Choosing a manager at setup

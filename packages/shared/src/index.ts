@@ -2,6 +2,7 @@ export * from './work-items.js';
 export * from './project-workflow.js';
 export * from './conversations.js';
 import { conversationSurfaceSchema } from './conversations.js';
+import { workItemPageQuerySchema } from './work-items.js';
 import { z } from 'zod';
 export * from './browser-drafts.js';
 export * from './local-access.js';
@@ -359,6 +360,7 @@ export const snapshotSchema = z.object({
   decisions: z.array(decisionSchema),
   eventId: z.number(),
   provider: z.object({ ready: z.boolean(), version: z.string(), message: z.string() }),
+  schedulingError: z.string().nullable().optional(),
 });
 export const detailSchema = z.object({
   agent: agentSchema,
@@ -475,6 +477,7 @@ export const inspectSchema = z
     history: historyQuerySchema.optional(),
     read: historyReadSchema.optional(),
     catalog: catalogQuerySchema.optional(),
+    workItems: workItemPageQuerySchema.optional(),
     models: z.literal(true).optional(),
     provider: providerIdSchema.optional(),
     changes: z.literal(true).optional(),
@@ -496,6 +499,7 @@ export const inspectSchema = z
         value.history,
         value.read,
         value.catalog,
+        value.workItems,
         value.models,
         value.capacity,
         value.resources,
@@ -586,3 +590,6 @@ export const agentTaskResultSchema = z
   .strict();
 
 export * from './bug-reports.js';
+export * from './browser-setup.js';
+export * from './latex-reading.js';
+export * from './chat-images.js';

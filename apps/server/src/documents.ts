@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { constants, existsSync, accessSync } from 'node:fs';
 import {
@@ -28,7 +28,7 @@ import {
 } from '@dock/shared';
 import { FolderBrowser } from './folder-browser.js';
 import { Conflict, Missing, Store, now } from './store.js';
-import { buildReading } from './document-reading.js';
+import { buildReading, expandReadingSource } from './document-reading.js';
 
 const maxBytes = 50 * 1024 ** 2;
 const inside = (root: string, path: string) =>
@@ -226,10 +226,28 @@ export class Documents {
       'The linked document is unavailable or outside this conversation’s project and workspace. Find it through Apps → LaTeX instead.',
     );
   }
-  reading(id: string): Promise<DocumentReading> {
+  async formattingSource(id: string) {
+    const doc = this.read(id);
+    const source = await realpath(
+      doc.kind === 'pdf' ? doc.path.replace(/\.pdf$/i, '.tex') : doc.path,
+    );
+    if (!inside(doc.root, source))
+      throw new Conflict('LaTeX source must be inside the registered folder.');
+    const text = await expandReadingSource(source, doc.root);
+    if (Buffer.byteLength(text) > 500_000)
+      throw new Conflict(
+        'This source is too large for one formatting pass. Format a chapter separately.',
+      );
+    return { text, hash: createHash('sha256').update(text).digest('hex') };
+  }
+  reading(id: string, formattedText?: string): Promise<DocumentReading> {
     const doc = this.read(id);
     if (this.stopped) throw new Conflict('The reader is restarting. Try again in a moment.');
-    const existing = this.readings.get(id);
+    const cacheKey =
+      formattedText === undefined
+        ? id
+        : id + createHash('sha256').update(formattedText).digest('hex');
+    const existing = this.readings.get(cacheKey);
     if (existing) return existing;
     const work = this.readingQueue.then(async () => {
       let source = doc.path;
@@ -237,11 +255,11 @@ export class Documents {
       const canonical = await realpath(source).catch(() => null);
       if (!canonical || !inside(doc.root, canonical))
         return { available: false, html: '', warnings: [], labels: {} };
-      return buildReading(canonical, doc.root, join(this.directory, `${id}-assets`));
+      return buildReading(canonical, doc.root, join(this.directory, `${id}-assets`), formattedText);
     });
     this.readingQueue = work.catch(() => {});
-    this.readings.set(id, work);
-    void work.finally(() => this.readings.delete(id)).catch(() => {});
+    this.readings.set(cacheKey, work);
+    void work.finally(() => this.readings.delete(cacheKey)).catch(() => {});
     return work;
   }
   async readingAsset(id: string, asset: string) {

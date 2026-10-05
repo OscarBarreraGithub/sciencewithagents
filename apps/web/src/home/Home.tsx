@@ -499,6 +499,11 @@ export function Home() {
           </button>
         </div>
         <main className="home-content" id="home-content" ref={main}>
+          {data.snapshot.data?.schedulingError && (
+            <p className="home-error" role="status">
+              {data.snapshot.data.schedulingError}
+            </p>
+          )}
           {page === 'home' && <PullToRefresh main={main} />}
           {mobile && page === 'home' && (
             <div className="home-mobile-status" aria-label="Computer and allowances">

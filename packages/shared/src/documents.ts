@@ -61,3 +61,23 @@ export const documentRegisterSchema = z
     path: z.string().min(1).max(4096),
   })
   .strict();
+
+export const documentFormatRequestSchema = z
+  .object({
+    key: z.string().uuid(),
+    provider: z.enum(['codex', 'claude']).optional(),
+    model: z.string().min(1).max(100).optional(),
+    effort: z.string().min(1).max(40).optional(),
+  })
+  .strict();
+export const documentFormatStatusSchema = z
+  .object({
+    id: z.string().uuid(),
+    documentId: z.string().uuid(),
+    agentId: z.string().uuid(),
+    model: z.string(),
+    state: z.enum(['queued', 'running', 'ready', 'failed', 'interrupted', 'stale']),
+    message: z.string(),
+  })
+  .strict();
+export type DocumentFormatStatus = z.infer<typeof documentFormatStatusSchema>;

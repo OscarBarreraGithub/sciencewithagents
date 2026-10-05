@@ -1,0 +1,92 @@
+.chat-image-picker {
+  display: contents;
+}
+.chat-image-button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font: inherit;
+  background: var(--paper, white);
+  border: 1px solid var(--line, #dedbd3);
+  border-radius: 9px;
+}
+.chat-image-previews {
+  display: flex;
+  order: 10;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 108px;
+  padding: 4px;
+  max-width: 100%;
+  overflow-y: auto;
+}
+.chat-image-previews > div {
+  position: relative;
+  width: 76px;
+  height: 86px;
+  flex: 0 0 76px;
+}
+.chat-image-previews a {
+  display: block;
+  height: 86px;
+}
+.chat-image-previews img {
+  display: block;
+  width: 76px;
+  height: 86px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+}
+.chat-image-previews button {
+  position: absolute;
+  right: 0;
+  top: 0;
+  padding: 4px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.chat-image-error {
+  flex-basis: 100%;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.chat-image-error button {
+  margin-left: 8px;
+}
+.chat-uploaded-image {
+  display: inline-block;
+  max-width: min(100%, 420px);
+}
+.chat-uploaded-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 340px;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+}
+.mirror-compose-tools {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.composer > .chat-image-picker {
+  grid-column: 1 / -1;
+}
+.composer-toolbar {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.composer-toolbar > div {
+  flex-wrap: wrap;
+  min-width: 0;
+}

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { providerIdSchema, effortSchema } from './providers.js';
 import { pulsarStatusSchema } from './pulsar.js';
-import { quarkStatusSchema } from './quark.js';
+import { quarkStatusSchema, windowPacingSchema } from './quark.js';
 import { localJobSchema } from './local-jobs.js';
 import { providerCapacitySchema } from './capacity.js';
 
@@ -101,6 +101,7 @@ export const quarkCoordinatorStatusSchema = z.object({
   queue: pulsarStatusSchema,
   accounting: quarkStatusSchema,
   capacity: z.array(providerCapacitySchema),
+  utilization: z.array(windowPacingSchema).default([]),
   localJobs: z.array(localJobSchema).default([]),
   decisions: z.array(
     z.object({

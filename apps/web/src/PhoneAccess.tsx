@@ -17,6 +17,7 @@ import { pairingLink, readPairingCode } from './pairing-link';
 import { HomeScreenGuide, PhoneDeviceSetup } from './PhoneDeviceSetup';
 import { PhoneConnectionSetup } from './PhoneConnectionSetup';
 import './phone-settings.css';
+import { RetainedDraft } from './RetainedDraft';
 
 const PhoneMode = createContext<'local' | 'remote'>('local');
 export const usePhoneMode = () => useContext(PhoneMode);
@@ -166,6 +167,7 @@ export function PhoneGate({
             {error}
           </p>
         )}
+        {!status && error && <RetainedDraft />}
         {status && (
           <form
             onSubmit={(event) => {

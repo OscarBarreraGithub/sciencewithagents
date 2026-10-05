@@ -637,3 +637,26 @@
   font-size: var(--text-small);
   cursor: pointer;
 }
+
+/* Provider activity changes must not resize the writing area. Full receipts expand on demand. */
+.mirror-delivery-status {
+  margin: 4px 6px 0;
+  min-width: 0;
+  font-size: var(--text-caption);
+}
+.mirror-delivery-status > summary {
+  display: block;
+  height: 1.5em;
+  line-height: 1.5;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.mirror-delivery-status > summary::-webkit-details-marker {
+  display: none;
+}
+.mirror-delivery-status > p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}

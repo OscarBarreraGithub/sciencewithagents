@@ -66,6 +66,23 @@ const save = (edit: (p: Policy) => void) => {
   edit(p);
   return policy.save({ key: randomUUID(), expectedRevision: p.revision, policy: p });
 };
+it('backs off a broken catalog without blocking the other provider or an explicit refresh', async () => {
+  const discover = vi.fn(async (provider: 'codex' | 'claude') => {
+    if (provider === 'codex') throw new Error('CLI unavailable');
+    return catalogs.claude;
+  });
+  const broken = new ModelPolicy(store, discover, () => now);
+  await expect(broken.catalog('codex')).rejects.toThrow('model discovery failed');
+  await expect(broken.catalog('codex')).rejects.toThrow('model discovery failed');
+  expect(discover).toHaveBeenCalledTimes(1);
+  expect(await broken.catalog('claude')).toEqual(catalogs.claude);
+  await expect(broken.catalog('codex', true)).rejects.toThrow('model discovery failed');
+  expect(discover).toHaveBeenCalledTimes(3);
+  now += 60_001;
+  await expect(broken.catalog('codex')).rejects.toThrow('model discovery failed');
+  expect(discover).toHaveBeenCalledTimes(4);
+  await broken.close();
+});
 it('copies general preferences into projects, preserves older choices after reset and restart, and resolves live versions', async () => {
   await policy.refresh();
   save((p) => {
@@ -565,7 +582,10 @@ it('queues exactly one resource escalation, persists its receipt and prevents ca
     unavailable: [],
   });
   store.setSetting('resources:latest', sample);
-  const first = (await runtime.resources.ask({ key: randomUUID() })).checks[0]!;
+  store.setSetting('resources:settings', { automatic: true, checkpointHours: 6 });
+  // Escalation belongs to automatic undergrad checks. Direct owner questions
+  // already start with a grad model and must not pretend they are undergrads.
+  const first = (await runtime.resources.ask({ key: randomUUID() }, 'checkpoint')).checks[0]!;
   store.updateRun(first.runId, { status: 'running' });
   store.updateAgent(first.agentId, { status: 'running' });
   const key = randomUUID(),
@@ -582,7 +602,7 @@ it('queues exactly one resource escalation, persists its receipt and prevents ca
     provider: 'claude',
   });
   expect(store.agent(result.agentId)).toMatchObject({
-    resourceAssistant: { mode: 'snapshot', reason: 'asked' },
+    resourceAssistant: { mode: 'snapshot', reason: 'checkpoint' },
     permission: 'read-only',
     toolPolicy: 'restricted',
   });
