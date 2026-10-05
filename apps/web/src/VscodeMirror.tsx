@@ -1,6 +1,6 @@
 import { MessageQueue } from './MessageQueue';
 import { ChatMarkdown } from './ChatMarkdown';
-import { ChatImagePicker } from './ChatImages';
+import { ChatAttachmentPicker, useChatAttachmentUpload } from './ChatImages';
 import {
   createContext,
   memo,
@@ -9,6 +9,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 import {
   ArrowDown,
@@ -20,8 +21,8 @@ import {
 } from 'lucide-react';
 import {
   mirrorStateSchema,
-  withoutChatImages,
-  withChatImageText,
+  withoutChatAttachments,
+  withChatAttachmentText,
   mirrorResultSchema,
   mirrorSendSchema,
   mirrorPage,
@@ -396,7 +397,13 @@ export function MirrorHome({
   );
 }
 
-export function VscodeMirror({ chat }: { chat: MirrorChat }) {
+export function VscodeMirror({
+  chat,
+  headerAction,
+}: {
+  chat: MirrorChat;
+  headerAction?: ReactNode;
+}) {
   const input = useRef<HTMLTextAreaElement>(null);
   const identity = mirrorKey(chat);
   const provider = mirrorProvider(chat);
@@ -461,6 +468,12 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
     } catch {
       setReceipt('Draft storage is unavailable. Keep this page open.');
     }
+  });
+  const attachmentUpload = useChatAttachmentUpload({
+    currentText: browserNotepad.draft.currentText,
+    setText: browserNotepad.draft.setText,
+    maxLength: 32000,
+    onBusy: setUploading,
   });
   useEffect(() => {
     if (!notepadOpen && refocus.current) {
@@ -694,6 +707,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
             {daemon ? chat.label : `${provider} in ${chat.label}`}
           </p>
         </div>
+        {headerAction}
         <details className="mirror-controls">
           <summary aria-label="Chat information">
             <Monitor size={18} />
@@ -883,7 +897,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           <textarea
             ref={input}
             aria-label={`Message ${provider}`}
-            value={withoutChatImages(text)}
+            value={withoutChatAttachments(text)}
             rows={1}
             maxLength={32000}
             placeholder={
@@ -897,7 +911,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
             }
             onChange={(e) => {
               browserNotepad.draft.setText(
-                withChatImageText(browserNotepad.draft.currentText(), e.target.value),
+                withChatAttachmentText(browserNotepad.draft.currentText(), e.target.value),
               );
             }}
             onKeyDown={(e) => {
@@ -930,15 +944,14 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
           </button>
         </div>
         <div className="mirror-compose-tools">
-          <ChatImagePicker
+          <ChatAttachmentPicker
             key={identity}
             text={text}
             currentText={browserNotepad.draft.currentText}
             setText={browserNotepad.draft.setText}
-            maxLength={32000}
             disabled={busy || !!pending}
             uploadDisabled={chat.canAttachImages === false || state?.canAttachImages === false}
-            onBusy={setUploading}
+            uploader={attachmentUpload}
           />
           <button
             type="button"
@@ -957,7 +970,7 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
         </div>
         {(chat.canAttachImages === false || state?.canAttachImages === false) && (
           <p className="mirror-note">
-            Remote screenshots are unavailable. Remove saved images to send text; attach in VS Code.
+            Remote attachments are unavailable. Remove saved files to send text; attach in VS Code.
           </p>
         )}
         <details className="mirror-delivery-status" title={receipt || undefined}>
@@ -986,6 +999,16 @@ export function VscodeMirror({ chat }: { chat: MirrorChat }) {
             onSend={() => {
               void send();
             }}
+            attachments={
+              <ChatAttachmentPicker
+                text={text}
+                currentText={browserNotepad.draft.currentText}
+                setText={browserNotepad.draft.setText}
+                disabled={busy || !!pending}
+                uploadDisabled={chat.canAttachImages === false || state?.canAttachImages === false}
+                uploader={attachmentUpload}
+              />
+            }
             controls={
               <p className="mirror-note">
                 {pending

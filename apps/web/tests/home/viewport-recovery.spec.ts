@@ -77,6 +77,45 @@ test.describe('phone keyboard', () => {
     test.skip(info.project.name === 'desktop', 'Keyboard geometry targets phone layouts.');
   });
 
+  test('ticket editing keeps its action bar above the keyboard and recovers without reopening', async ({
+    page,
+    baseURL,
+  }) => {
+    await viewportFixture(page);
+    const title = `Keyboard ticket ${randomUUID().slice(0, 8)}`;
+    const response = await page.request.post('/api/work-items', {
+      headers: { origin: new URL(baseURL!).origin },
+      data: { key: randomUUID(), title },
+    });
+    expect(response.ok()).toBe(true);
+    await page.goto('/#/home');
+    const board = page.locator('.owner-work-board');
+    await board.getByRole('checkbox', { name: `Select “${title}”`, exact: true }).check();
+    await board.getByRole('button', { name: 'Package 1 to-do', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'QUARK background ticket', exact: true });
+    const editor = dialog.getByRole('textbox', { name: 'Additional brief', exact: true });
+    const full = await page.evaluate(() => innerHeight);
+    const keyboard = Math.round(full * (full < 500 ? 0.72 : 0.55));
+    await editor.fill('Preserve the draft while the keyboard opens and closes.');
+    await setViewport(page, { height: keyboard, offsetTop: 35, scale: 1 }, 'resize');
+    await expectCovers(page, '.owner-ticket-dialog', keyboard - 24, 47);
+    const action = await dialog
+      .getByRole('button', { name: 'Queue with QUARK', exact: true })
+      .boundingBox();
+    expect(action!.y).toBeGreaterThanOrEqual(35);
+    expect(action!.y + action!.height).toBeLessThanOrEqual(35 + keyboard);
+    await editor.blur();
+    await setViewport(page, { height: full / 1.1, offsetTop: 0, scale: 1.1 }, 'resize');
+    await expectCovers(page, '.owner-ticket-dialog', Math.min(900, full - 24), 12);
+    await expect(editor).toHaveValue('Preserve the draft while the keyboard opens and closes.');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expectCovers(page, '.home-shell', full);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  });
+
   test('a keyboard dismissed while pinch-zoomed returns the full screen, also after going back', async ({
     page,
     baseURL,

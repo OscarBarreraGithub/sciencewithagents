@@ -83,6 +83,14 @@ authentication checks or spawning a model process. It does not unset them, chang
 account, use paid API billing as a fallback or provide an sciencewithagents sign-in broker.
 The native executable is selected by host setup (`DOCK_CLAUDE_BIN`), never a browser path.
 
+When an owned native conversation or model discovery emits a recognized stderr marker, the
+existing local event log records its fixed authentication-failure classification, observation
+time and process/session identity. Each classification is recorded once per invocation. Raw
+stderr, URLs, emails and credential values are discarded. Generic usage or network errors do
+not establish sign-out. Other native applications and failures that emit no recognized marker
+remain outside this diagnostic. It does not refresh credentials, recover login or change
+authentication.
+
 This distinction matters: in noninteractive CLI mode an environment API key can override
 an existing subscription. `--bare`/`CLAUDE_CODE_SIMPLE` also excludes the usual OAuth/keychain
 sign-in, so this adapter does not use bare mode.

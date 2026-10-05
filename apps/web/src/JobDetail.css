@@ -1,0 +1,61 @@
+.job-detail {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.job-detail-heading h2 {
+  margin: 8px 0 12px;
+  font-size: 1.35rem;
+}
+.job-detail-status {
+  display: inline-block;
+  color: var(--home-accent, var(--accent));
+}
+.job-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.job-detail-actions > * {
+  white-space: normal;
+  max-width: 100%;
+}
+.job-detail-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 12px 20px;
+  margin: 0;
+}
+.job-detail-facts dt {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+.job-detail-facts dd {
+  margin: 4px 0 0;
+}
+.job-detail-section {
+  min-width: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--home-line, var(--line));
+}
+.job-detail-section > h3 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+.job-detail-section summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.job-detail-outcome + .job-detail-outcome {
+  margin-top: 16px;
+}
+.job-detail .chat-markdown {
+  min-width: 0;
+  max-width: 100%;
+}
+.job-detail .chat-markdown pre,
+.job-detail .chat-markdown table {
+  max-width: 100%;
+  overflow-x: auto;
+}

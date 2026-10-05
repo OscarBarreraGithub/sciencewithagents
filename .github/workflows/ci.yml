@@ -7,7 +7,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -20,13 +20,33 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm verify
-      - run: pnpm --filter @dock/web exec playwright install --with-deps chromium webkit
-      - run: pnpm test:e2e --reporter=line
+  browsers:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        viewport: [desktop, phone, small-phone, landscape, iphone-webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @dock/web exec playwright install --with-deps ${{ matrix.viewport == 'iphone-webkit' && 'webkit' || 'chromium' }}
+      # Each viewport owns a new demo database; provider tests run only in check.
+      - run: pnpm test:e2e --project=${{ matrix.viewport }} --reporter=line
       - name: Retain browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-failures
+          name: browser-failures-${{ matrix.viewport }}
           path: data/browser-results/home/
           if-no-files-found: ignore
           retention-days: 7

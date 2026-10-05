@@ -52,6 +52,7 @@ import {
 } from './ProjectQuark';
 import './ProjectConfiguration.css';
 import { FolderBrowser } from '../FolderBrowser';
+import { SpawnBrief, type ProjectBriefSeed } from './SpawnBrief';
 
 const providerNames: Record<ProviderId, string> = { codex: 'Codex', claude: 'Claude' };
 const mixLabels = {
@@ -577,8 +578,10 @@ type Spawn = {
   prioritySaved?: boolean;
   capRequests?: Partial<Record<ProviderId, CapRequest>>;
   capsSaved?: Partial<Record<ProviderId, true>>;
+  setupReady?: boolean;
 };
-const spawnKey = () => `dock:${apiScope()}:project-spawn`;
+const spawnKey = (seedId?: string) =>
+  `dock:${apiScope()}:project-spawn${seedId ? `:idea:${seedId}` : ''}`;
 const suggestedName = 'New project';
 function freshSpawn(): Spawn {
   return {
@@ -595,9 +598,11 @@ function freshSpawn(): Spawn {
     quark: blankQuarkPlan(),
   };
 }
-function readSpawn(): Spawn {
+function readSpawn(seed?: ProjectBriefSeed): Spawn {
   try {
-    const raw = JSON.parse(localStorage.getItem(spawnKey()) ?? 'null') as Partial<Spawn> | null;
+    const raw = JSON.parse(
+      localStorage.getItem(spawnKey(seed?.id)) ?? 'null',
+    ) as Partial<Spawn> | null;
     if (
       raw &&
       uuidSchema.safeParse(raw.createKey).success &&
@@ -621,22 +626,44 @@ function readSpawn(): Spawn {
   } catch {
     /* A readable new setup still works when storage holds an older shape. */
   }
-  return freshSpawn();
+  return {
+    ...freshSpawn(),
+    ...(seed?.suggestedName ? { name: seed.suggestedName.slice(0, 100) } : {}),
+  };
 }
 
 /** New project page: name, folder, manager, workers; Spawn creates without a model turn. */
 export function ProjectConfiguration({
   onCreated,
   heading,
+  seed,
 }: {
   onCreated: (managerId: string, fresh: boolean) => void;
   heading: ReactNode;
+  seed?: ProjectBriefSeed;
 }) {
   const { catalogs, policy, policyError, reload } = useCatalogs();
   const coordinator = useCoordinator();
-  const [spawn, setSpawn] = useState(readSpawn);
+  const setupStorageKey = useRef(spawnKey(seed?.id)).current;
+  const [spawn, setSpawn] = useState(() => readSpawn(seed));
   const latestSpawn = useRef(spawn);
   const [busy, setBusy] = useState(false);
+  const [briefOpen, updateBriefOpen] = useState(() => {
+    try {
+      return sessionStorage.getItem(`${setupStorageKey}:brief-open`) === spawn.createKey;
+    } catch {
+      return false;
+    }
+  });
+  const setBriefOpen = (open: boolean) => {
+    updateBriefOpen(open);
+    try {
+      if (open) sessionStorage.setItem(`${setupStorageKey}:brief-open`, spawn.createKey);
+      else sessionStorage.removeItem(`${setupStorageKey}:brief-open`);
+    } catch {
+      // Local notepad recovery still retains the text.
+    }
+  };
   const [error, setError] = useState('');
   const [errorAtFolder, setErrorAtFolder] = useState(false);
   const [choosingFolder, setChoosingFolder] = useState(false);
@@ -645,6 +672,7 @@ export function ProjectConfiguration({
   const [canChooseFolder, setCanChooseFolder] = useState<boolean | null>(null);
   const nameInput = useRef<HTMLInputElement>(null);
   const running = useRef(false);
+  const resumedPreparation = useRef(false);
   const locked = !!spawn.project || !!spawn.tracking || !!spawn.connectionPending;
   const enabled = policy?.enabledProviders ?? (['codex', 'claude'] as ProviderId[]);
   const provider =
@@ -670,7 +698,7 @@ export function ProjectConfiguration({
     latestSpawn.current = next;
     setSpawn(next);
     try {
-      localStorage.setItem(spawnKey(), JSON.stringify(next));
+      localStorage.setItem(setupStorageKey, JSON.stringify(next));
     } catch {
       /* The exact request stays in this view when storage is unavailable. */
     }
@@ -724,8 +752,7 @@ export function ProjectConfiguration({
     let next = current;
     const project = next.project!;
     if (project.existing) {
-      localStorage.removeItem(spawnKey());
-      onCreated(project.managerId, false);
+      persist({ ...next, setupReady: true });
       return;
     }
     if (!next.managerSaved && next.managerModel) {
@@ -803,8 +830,7 @@ export function ProjectConfiguration({
       }
       next = persist({ ...next, capsSaved: { ...next.capsSaved, [cap.provider]: true } });
     }
-    localStorage.removeItem(spawnKey());
-    onCreated(project.managerId, true);
+    persist({ ...next, setupReady: true });
   };
   /** A definite refusal clears that request so its choice can be changed or turned off. */
   const rejected = (reason: unknown, label: string, clear: () => void) => {
@@ -959,6 +985,9 @@ export function ProjectConfiguration({
   const submit = () => {
     if (busy || capsInvalid || needsManagerChoice || (!policy && !locked)) return;
     if (spawn.folder === 'connect' && !spawn.project && !spawn.tracking && !canChooseFolder) return;
+    resumedPreparation.current = true;
+    setBriefOpen(true);
+    if (spawn.setupReady) return;
     if (spawn.tracking) void run(trackSelected);
     else if (spawn.folder === 'fresh' || spawn.project) void create();
     else void connect();
@@ -970,9 +999,31 @@ export function ProjectConfiguration({
       (provider) => !spawn.capsSaved?.[provider as ProviderId],
     );
   const capsInvalid = chosenCaps(spawn.quark).some((cap) => cap.limitPercent === null);
+  useEffect(() => {
+    if (briefOpen && !spawn.setupReady && !resumedPreparation.current && (policy || locked)) {
+      submit();
+    }
+  }, [briefOpen, policy, locked, canChooseFolder, capsInvalid, needsManagerChoice]);
   return (
     <section className="flow-page project-config">
       {heading}
+      <SpawnBrief
+        key={spawn.createKey}
+        identity={spawn.createKey}
+        name={spawn.name}
+        initialText={seed?.brief}
+        open={briefOpen}
+        preparing={busy}
+        preparationError={error}
+        managerId={spawn.setupReady ? spawn.project?.managerId : undefined}
+        retryPreparation={submit}
+        minimize={() => setBriefOpen(false)}
+        sent={(managerId) => {
+          localStorage.removeItem(setupStorageKey);
+          setBriefOpen(false);
+          onCreated(managerId, false);
+        }}
+      />
       {browsing && (
         <FolderBrowser close={() => setBrowsing(false)} select={(id) => void choose(id)} />
       )}
@@ -1225,7 +1276,7 @@ export function ProjectConfiguration({
               )}
             </p>
           )}
-          {error && !errorAtFolder && (
+          {error && !errorAtFolder && !briefOpen && (
             <p className="config-error" role="alert">
               {error}
             </p>
@@ -1261,15 +1312,17 @@ export function ProjectConfiguration({
               ? choosingFolder
                 ? 'Choose a folder first'
                 : 'Setting up…'
-              : spawn.project
-                ? 'Finish setup'
-                : spawn.trackingPending || spawn.connectionPending
-                  ? 'Retry Spawn'
-                  : 'Spawn'}
+              : spawn.setupReady
+                ? 'Continue writing'
+                : spawn.project
+                  ? 'Finish setup'
+                  : spawn.trackingPending || spawn.connectionPending
+                    ? 'Retry Spawn'
+                    : 'Spawn'}
           </button>
           <p className="config-help">
-            Spawn creates the project and its manager, saves these settings, then opens a page to
-            describe the work. No model work starts until you choose Send.
+            Spawn opens your notepad immediately and prepares the project while you write. No model
+            work starts until you choose Send.
           </p>
           {(spawn.project || spawn.tracking || spawn.connectionPending) && !busy && (
             <button
@@ -1281,7 +1334,7 @@ export function ProjectConfiguration({
                     'Start a different setup? Anything already created stays in your projects.',
                   )
                 ) {
-                  localStorage.removeItem(spawnKey());
+                  localStorage.removeItem(setupStorageKey);
                   setSpawn(freshSpawn());
                   setError('');
                 }

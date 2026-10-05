@@ -46,7 +46,19 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 - During a running Codex reply, the composer offers “Steer now” or “Queue next”; priority
   applies only to queued messages. The notepad uses the same choice. Claude follow-ups queue.
   Sent steering appears as an ordinary user message, not a system notice.
+  Expand queue opens a full-height list. App-owned entries offer Edit: opening an individual
+  item holds it before writing. Native editor queues expand under their provider ownership.
+  Minimize keeps it held; Save and queue or Discard edits and queue original explicitly releases it.
+  Saved edits survive refresh, and another browser must explicitly take over the held version.
+  Codex offers explicit Steer now; uncertain steering stays held for inspection without replay.
+  Lost acknowledgements retain the exact action receipt across reload for explicit inspection.
+  Native editor queues remain visible under their provider ownership. Changed queued wording
+  returns linked owner-request triage to pending review and retains searchable original text.
   Failed or uncertain sends keep the draft and delivery receipt; do not show a blanket wait restriction.
+- Conversation Archive hides a chat only in this app. Archived lists and Restore retain drafts,
+  history, files and running work; shared editor/provider conversations remain native.
+  Manager removal remains a separate action that cancels its queued work. Home chat counts
+  follow the visible list; active jobs and attention remain visible independently.
 - Project shortcuts open its folder, configuration, Notes and Subagents. A worker row shows
   assignment, activity, timing and token evidence. Completed workers offer a separate
   Ask about this work discussion without reopening the task/review.
@@ -84,14 +96,16 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 - Priority and optional allowance caps can be refined later through the manager or QUARK.
   Label the optional cap “Set token budget”; its amount is still a percentage of AI allowance.
   Explain that “10%” means a share of the full allowance, not 10% of the remaining balance.
-- Spawn saves the project and opens the initial brief; it does not send work. Preserve setup
-  choices through errors. The first Send opens normal chat.
+- Spawn opens the initial notepad immediately and prepares the project while the owner writes.
+  An early Send waits visibly for setup, keeping one durable send receipt. Preserve setup and
+  text through errors/reloads. The first successful Send opens normal chat.
 
 ## Prompt notepad
 
 The initial project description and optional long chat messages use the same full-page
 notepad. Typing autosaves local versions, with visible saving/error state and restoration.
-Minimize returns to chat without sending. The page scrolls the text rather than leaving a
+Minimize returns to the previous screen without sending (project setup for the initial brief,
+chat for later messages). The page scrolls the text rather than leaving a
 small textarea above unused space. Versions and Send remain reachable.
 
 Drafts are separated by computer/conversation/browser. Do not silently overwrite one device's

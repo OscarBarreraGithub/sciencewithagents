@@ -146,26 +146,34 @@ test('primary rate and reserve sliders persist zero, retry lost replies, queue i
     [],
   );
   const policy = (await (await page.request.get('/api/pulsar')).json()).policy;
-  expect(
-    (
-      await page.request.post('/api/pulsar/policy', {
-        headers: { Origin: baseURL! },
-        data: {
-          key: crypto.randomUUID(),
-          policy: {
-            ...policy,
-            enabled: false,
-            providerReserves: {
-              codex: { reservePercent: 20, releaseEnabled: false, releaseBeforeResetMinutes: 720 },
-              claude: { reservePercent: 20, releaseEnabled: false, releaseBeforeResetMinutes: 45 },
-            },
-          },
-        },
-      })
-    ).ok(),
-  ).toBe(true);
   let finishDelay: (() => void) | undefined;
   try {
+    expect(
+      (
+        await page.request.post('/api/pulsar/policy', {
+          headers: { Origin: baseURL! },
+          data: {
+            key: crypto.randomUUID(),
+            policy: {
+              ...policy,
+              enabled: false,
+              providerReserves: {
+                codex: {
+                  reservePercent: 20,
+                  releaseEnabled: false,
+                  releaseBeforeResetMinutes: 720,
+                },
+                claude: {
+                  reservePercent: 20,
+                  releaseEnabled: false,
+                  releaseBeforeResetMinutes: 45,
+                },
+              },
+            },
+          },
+        })
+      ).ok(),
+    ).toBe(true);
     const extra = Array.from({ length: 8 }, (_, n) => ({
       id: crypto.randomUUID(),
       name: `Additional project ${n + 1}`,
@@ -338,5 +346,15 @@ test('primary rate and reserve sliders persist zero, retry lost replies, queue i
   } finally {
     finishDelay?.();
     await page.unrouteAll({ behavior: 'ignoreErrors' });
+    // Restore the fixture's saved pacing choice so later demo journeys can run.
+    const currentPolicy = (await (await page.request.get('/api/pulsar')).json()).policy;
+    const restored = await page.request.post('/api/pulsar/policy', {
+      headers: { Origin: baseURL! },
+      data: {
+        key: crypto.randomUUID(),
+        policy: { ...policy, revision: currentPolicy.revision },
+      },
+    });
+    expect(restored.ok(), await restored.text()).toBe(true);
   }
 });

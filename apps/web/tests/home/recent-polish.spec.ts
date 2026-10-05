@@ -42,7 +42,7 @@ test('VS Code setup stays at the top of Chats and opens instructions without lea
 }) => {
   const editor = sharedChat();
   const terminal = { ...sharedChat(), source: 'codex-daemon', title: 'Separate native session' };
-  await page.route('**/api/vscode/windows', (route) =>
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
     route.fulfill({ json: [editor, terminal].map((chat) => mirrorWindowSchema.parse(chat)) }),
   );
   await page.goto('/#/home');
@@ -78,7 +78,7 @@ test('A connected shared chat reads its first history even when opened in a back
   await page.addInitScript(() =>
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }),
   );
-  await page.route('**/api/vscode/windows', (route) =>
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
     route.fulfill({ json: [mirrorWindowSchema.parse(editor)] }),
   );
   await page.route(`**/api/vscode/windows/${editor.windowId}`, (route) =>
@@ -156,20 +156,21 @@ test('Home keeps every to-do keystroke and multiline title/detail through reload
   const editor = page.getByRole('textbox', { name: 'New to-do', exact: true });
   await expect(editor).toHaveJSProperty('tagName', 'TEXTAREA');
   await editor.fill('');
-  await page.evaluate(() => {
+  const editorId = await editor.getAttribute('id');
+  await page.evaluate((editorId) => {
     const inputs: { value: string; saved: string | null }[] = [];
     (window as unknown as { todoInputs: typeof inputs }).todoInputs = inputs;
     // React's root handler has run before this document-level listener. Checking
     // here distinguishes per-input storage from a later debounce or blur save.
     document.addEventListener('input', (event) => {
       const field = event.target;
-      if (field instanceof HTMLTextAreaElement && field.id === 'todo-new')
+      if (field instanceof HTMLTextAreaElement && field.id === editorId)
         inputs.push({
           value: field.value,
           saved: sessionStorage.getItem('dock:local:home-todo:draft'),
         });
     });
-  });
+  }, editorId);
   const title = `Polish ${info.project.name} ${randomUUID().slice(0, 8)}`;
   const detail = 'First detail line.\nSecond detail line.';
   for (const [index, line] of [title, '', ...detail.split('\n')].entries()) {
@@ -386,7 +387,7 @@ test('Shared chat discovery refreshes cached metadata and marks disconnected cha
   }, mirrorWindowSchema.parse(cached));
   let live: MirrorState[] = [];
   let reads = 0;
-  await page.route('**/api/vscode/windows', (route) => {
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) => {
     reads++;
     return route.fulfill({ json: live.map((chat) => mirrorWindowSchema.parse(chat)) });
   });
@@ -455,7 +456,7 @@ test('Shared chats retain multiline drafts on reload and expose their current lo
   page,
 }, info) => {
   const chat = sharedChat('claude');
-  await page.route('**/api/vscode/windows', (route) =>
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
     route.fulfill({ json: [mirrorWindowSchema.parse(chat)] }),
   );
   await page.route(`**/api/vscode/windows/${chat.windowId}`, (route) =>

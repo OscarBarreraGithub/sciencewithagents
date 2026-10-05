@@ -27,7 +27,16 @@ The README is the current public landing; a separate website and Guide/FAQ are d
 - **Prompts worth keeping.** The full-page notepad autosaves local draft versions and minimizes
   back into chat. Sent app conversations remain searchable when older messages leave the screen.
   A bulk worker can recap requests, with source references for the manager to verify.
-- **Clean conversations.** Shared VS Code chats retain their native identity; background helper
+- **Ideas that become work.** Keep ideas and to-dos together, recover accidental completions,
+  and turn an idea into a new project. Package mature to-dos into one background QUARK ticket
+  with simple priority and compute sliders, without spending a manager turn on dispatch.
+- **Write while setup finishes.** Spawn opens the first notepad immediately. Setup runs while
+  you type, and an early Send waits with the draft intact. Files and screenshots can travel
+  with the request.
+- **Editable queues.** Expand queued messages, hold one in the notepad, then save and queue
+  it explicitly. Editing never silently releases it, and original wording remains searchable.
+- **Clean conversations.** Archive and restore chats without stopping their work or deleting
+  history. Shared VS Code chats retain their native identity; background helper
   and resource records do not masquerade as personal chats. No separate editor login is needed.
 - **Computer health with context.** See memory pressure, trends and app/project groups, then ask
   a selectable assistant about a slowdown. Automatic checks are bounded and optional.
@@ -48,8 +57,9 @@ The README is the current public landing; a separate website and Guide/FAQ are d
   of conversations or browser drafts.
 
 QUARK's reset-window forecasts alert managers to spare Claude capacity for suitable authorized
-work; they do not guarantee full utilization. Do not promote custom project-app registration,
-public deployment from a project, or universal device support as delivered. Current gaps are tracked once in Status.
+work; they do not guarantee full utilization. Project-app registration records local ports and
+optional published links; it does not publish a project. Do not promote automatic public
+deployment or universal device support as delivered. Current gaps are tracked once in Status.
 Provider limitations, partial native-helper counts, stale readings and unavailable models
 must remain visible rather than being disguised as success.
 

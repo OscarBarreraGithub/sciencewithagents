@@ -223,7 +223,7 @@ for (const size of [
               exact: true,
             });
             await descriptionField.fill(description);
-            await expect(brief.locator('.notepad-status')).toHaveText('Saved');
+            await expect(brief.locator('.notepad-status')).toHaveText('Saved in this browser');
             await page.reload();
             await expect(
               page.getByRole('dialog', { name: 'Describe your project', exact: true }),
@@ -233,7 +233,10 @@ for (const size of [
                 .getByRole('dialog', { name: 'Describe your project', exact: true })
                 .getByRole('textbox', { name: 'Project description', exact: true }),
             ).toHaveValue(description);
-            const managerId = new URL(page.url()).hash.split('/')[2];
+            const snapshot = await (await page.request.get('/api/snapshot')).json();
+            const managerId = snapshot.projects.find(
+              (p: { name: string }) => p.name === name,
+            ).managerId;
             const created = await (await page.request.get(`/api/agents/${managerId}`)).json();
             expect(created.runs).toEqual([]);
             expect(sent).toEqual([]);
@@ -253,7 +256,14 @@ for (const size of [
                 },
               }),
             );
+            // Folder layout is a separate fixture. Real navigation deliberately retains an
+            // unsent project's setup; remove only this test receipt after verifying its draft.
+            await page.evaluate(() => {
+              localStorage.removeItem('dock:local:project-spawn');
+              sessionStorage.removeItem('dock:local:project-spawn:brief-open');
+            });
             await page.goto('http://127.0.0.1:4339/#/new');
+            await page.reload();
             await expect(
               page.getByRole('heading', { name: 'Start or connect a project', exact: true }),
             ).toBeVisible();

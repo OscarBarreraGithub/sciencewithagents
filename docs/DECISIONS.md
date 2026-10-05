@@ -136,3 +136,44 @@ the short README is the landing page. Dedicated website design, news and a perso
 Home destination are deferred. Keep only the redirect/link fallback and existing direct graph
 routes in the deployment; the old design remains in Git history. Never publish private prompts,
 drawings, deployment receipts or device history.
+
+## Future dark interface: research only
+
+Researched 2026-10-05. **Recommendation, not an implemented redesign:** keep React, Vite,
+the existing host/API boundaries and screen proportions. Build one small, shared component
+layer with **React Aria Components** and ordinary CSS variables for the future dark-only
+palette, type, spacing and focus states. Replace interaction primitives incrementally rather
+than rewrite QUARK, chats, pairing, drafts or the backend. This choice is an engineering
+judgment based on the existing code and the libraries' documented capabilities.
+
+| Free option           | Fit for this app                                                                                                                                                                                                                                              | Recommendation                                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| React Aria Components | Unstyled controls with touch, keyboard, focus and selection behavior; suitable for model pickers, dialogs, tabs and sliders. [Documentation](https://react-aria.adobe.com/), [Apache-2.0 license](https://github.com/adobe/react-spectrum/blob/main/LICENSE). | Preferred behavior layer; retain our own compact styling.                                                           |
+| Radix Primitives      | Accessible, unstyled controls that can be adopted gradually. [Documentation](https://www.radix-ui.com/primitives/docs/overview/introduction), [MIT license](https://github.com/radix-ui/primitives/blob/main/LICENSE).                                        | Credible alternative if the first mobile prototype works better; choose one primary library.                        |
+| shadcn/ui             | Editable component source and ready-made visual conventions. [Documentation](https://ui.shadcn.com/docs), [MIT license](https://github.com/shadcn-ui/ui/blob/main/LICENSE.md).                                                                                | Useful visual reference, but copied components still need maintenance and do not solve viewport bugs by themselves. |
+
+A desktop wrapper is a separate packaging decision. Tauri uses system WebViews, including
+WKWebView on macOS; it still renders the web interface and needs platform checks. Keep the
+browser/PWA route first. Consider a wrapper later only for a concrete native requirement,
+not as a keyboard or layout repair. [Tauri process model](https://v2.tauri.app/concept/process-model/),
+[WebView versions](https://v2.tauri.app/reference/webview-versions/).
+
+The main reliability work is consistent ownership of scrolling, viewport height and focus.
+The on-screen keyboard and pinch zoom can change the visual viewport independently of page
+layout. A new UI library cannot remove that distinction. Keep one chat scroller, an anchored
+composer, one full-height notepad scroller, safe-area spacing and stable status-line space.
+Preserve readable input text and user zoom; avoid competing body-scroll locks and autofocus
+on navigation. [VisualViewport](https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport).
+
+Before adopting the proposed library, prototype only a chat/notepad, a model picker and a
+queued-message editor with the existing API and saved-draft logic. Require keyboard dismissal,
+Back, selection, file upload, reload and scroll restoration to work at all four supported
+layouts and large text/zoom. Compare bundle/render costs with the present build. Reuse the
+resulting components across manager, QUARK and resource conversations only after that slice
+passes. The dark palette and aesthetic changes require the next design task.
+
+Playwright already checks typing, focus, viewport changes and touch layouts in Chromium and
+WebKit. It emulates browser/device properties; it is not a physical iPhone keyboard. Keep
+real iPhone Safari and Home Screen checks for keyboard open/close, swipe navigation and
+orientation changes. [Playwright emulation](https://playwright.dev/docs/emulation),
+[device acceptance](PHONE_ACCEPTANCE.md).

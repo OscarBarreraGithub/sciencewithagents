@@ -20,7 +20,9 @@ test('shared-chat drafts wrap and resize without a horizontal or premature scrol
     entries: [{ id: 'reply', role: 'assistant', text: 'Working on your project.' }],
   };
   const { entries: _, ...window } = state;
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [window] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: [window] }),
+  );
   await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
     route.fulfill({ json: mirrorPage(state) }),
   );
@@ -101,7 +103,9 @@ test('native queue is scrollable and sends the selected follow-up without steeri
     queueHasMore: true,
   };
   const { entries: _, queuedMessages: _queue, queueHasMore: _more, ...window } = state;
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [window] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: [window] }),
+  );
   await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
     route.fulfill({ json: mirrorPage(state) }),
   );
@@ -178,7 +182,9 @@ test('unreadable queue is explicit while the chat and draft remain usable', asyn
     entries: [{ id: 'reply', role: 'assistant', text: 'Saved reply remains readable.' }],
   };
   const { entries: _, queueReadError: _error, ...window } = state;
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [window] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: [window] }),
+  );
   await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
     route.fulfill({ json: mirrorPage(state) }),
   );
@@ -225,7 +231,7 @@ test('shared-chat status follows the newest reading through failed, slow and los
   let slowListLanded = false;
   let recoveredAt = 0;
   const held: import('@playwright/test').Route[] = [];
-  await page.route('**/api/vscode/windows', async (route) => {
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, async (route) => {
     if (phase === 'gone') return route.fulfill({ json: [] });
     if (phase === 'busy') return route.fulfill({ json: [summary(busy)] });
     if (phase === 'failed') return route.fulfill({ json: [failed] });

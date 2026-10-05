@@ -37,3 +37,60 @@
 .message-queue-more {
   padding: 0 12px 8px;
 }
+.message-queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+}
+.message-queue-actions .subtle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+}
+.message-queue-expand {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 12px 6px;
+}
+dialog.message-queue-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 16px));
+  position: fixed;
+  top: calc(var(--modal-top, 0px) + 8px);
+  height: calc(var(--modal-height, 100dvh) - 16px);
+  max-height: calc(var(--modal-height, 100dvh) - 16px);
+  overflow: hidden;
+}
+.message-queue-dialog ol {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-inline-start: 26px;
+}
+.message-queue-dialog li {
+  padding-block: 12px;
+  overflow-wrap: anywhere;
+}
+.message-queue-dialog li + li {
+  border-top: 1px solid var(--line);
+}
+.message-queue-dialog li p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.queue-action-recovery {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.queue-action-recovery p {
+  margin: 0;
+}

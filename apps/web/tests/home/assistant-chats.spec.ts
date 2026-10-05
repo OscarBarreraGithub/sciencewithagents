@@ -169,7 +169,9 @@ for (const source of ['editor', 'codex-daemon'] as const) {
       entries: [{ id: 'saved', role: 'assistant', text: 'Your ongoing work remains available.' }],
     };
     const { entries: _, ...window } = state;
-    await context.route('**/api/vscode/windows', (route) => route.fulfill({ json: [window] }));
+    await context.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
+      route.fulfill({ json: [window] }),
+    );
     await context.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
       route.fulfill({ json: mirrorPage(state) }),
     );

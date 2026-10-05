@@ -16,6 +16,8 @@ import {
   quotaHoldSchema,
   tokenUsageSnapshotSchema,
   managerLeaseSchema,
+  chatQuarkPolicySchema,
+  chatQuarkPolicySaveSchema,
   type Allowance,
   type QuarkRun,
   type QuotaHold,
@@ -27,6 +29,7 @@ import { Store, Conflict, type PrivateRun } from './store.js';
 import { readCapacity, capacityMaxAge } from './capacity.js';
 import type { Pulsar } from './pulsar.js';
 import { currentRateSamples, rateHistory } from './quark-rates.js';
+import { managedChat, chatBypassRun, chatBypassAllowed } from './quark-chat.js';
 
 const unknown: TokenCounts = {
   totalTokens: null,
@@ -86,6 +89,7 @@ const windowTotalSchema = z.object({
 
 /** One host-owned ledger. Provider counters are evidence; allowance shares are estimates. */
 export class Quark {
+  executing: () => ReadonlySet<string> = () => new Set();
   // A process-local signer fences old leases on restart. This key never enters a
   // model prompt, API response, repository or provider credential store.
   private readonly leaseSigner = randomBytes(32);
@@ -109,6 +113,53 @@ export class Quark {
   }
   settings() {
     return quarkSettingsSchema.parse(this.store.getSetting('quark:settings') ?? {});
+  }
+  chatPolicy(agentId: string) {
+    this.store.agent(agentId);
+    return chatQuarkPolicySchema.parse(
+      this.store.getSetting(`quark:chat-policy:${agentId}`) ?? { agentId },
+    );
+  }
+  saveChatPolicy(agentId: string, raw: unknown) {
+    const input = chatQuarkPolicySaveSchema.parse(raw);
+    return this.store.operation(`chat-quark-policy:${input.key}`, { agentId, ...input }, () => {
+      if (!managedChat(this.store.agent(agentId)))
+        throw new Conflict(
+          'This preference is available only for app-managed manager conversations, not workers or native sessions.',
+        );
+      const current = this.chatPolicy(agentId);
+      if (current.revision !== input.expectedRevision)
+        throw new Conflict('The conversation preference changed. Refresh it before saving.');
+      const policy = chatQuarkPolicySchema.parse({
+        agentId,
+        enabled: input.enabled,
+        revision: current.revision + 1,
+      });
+      this.store.setSetting(`quark:chat-policy:${agentId}`, policy);
+      this.store.event('quark.chat_policy', this.store.agent(agentId).projectId, agentId, policy);
+      for (const run of this.store.runs(['queued'])) {
+        // New literal messages carry an explicit boolean marker. Older owner
+        // messages used the typed UUID send receipt; synthetic inputs use namespaced keys.
+        const ownerMessage =
+          typeof this.store.getSetting(`quark:chat-bypass-run:${run.id}`) === 'boolean' ||
+          z.string().uuid().safeParse(run.key).success;
+        if (run.agentId === agentId && run.kind === 'user' && run.sourceId === null && ownerMessage)
+          this.captureOwnerChat(run);
+      }
+      return policy;
+    });
+  }
+  /** Atomic owner message/preference capture, never a message retry or native steering. */
+  captureOwnerChat(run: PrivateRun) {
+    const enabled =
+      managedChat(this.store.agent(run.agentId)) && this.chatPolicy(run.agentId).enabled;
+    const previous = this.store.getSetting(`quark:chat-bypass-run:${run.id}`) === true;
+    this.store.setSetting(`quark:chat-bypass-run:${run.id}`, enabled);
+    if (enabled !== previous)
+      this.store.event('quark.chat_bypass', this.store.agent(run.agentId).projectId, run.agentId, {
+        runId: run.id,
+        enabled,
+      });
   }
   private signLease(lease: z.infer<typeof managerLeaseSchema>) {
     return createHmac('sha256', this.leaseSigner).update(JSON.stringify(lease)).digest('hex');
@@ -141,6 +192,9 @@ export class Quark {
       throw new Conflict('QUARK must admit this manager turn before issuing its lease.');
     const reason = this.reason(run, true);
     if (reason) throw new Conflict(reason);
+    const conversationOnly =
+      chatBypassRun(this.store, run) &&
+      !this.pulsar.decision(run, this.executing(), false, true).eligible;
     const lease = managerLeaseSchema.parse({
       id: randomUUID(),
       runId: run.id,
@@ -150,6 +204,7 @@ export class Quark {
       model: agent.model,
       issuedAt: stamp(this.clock()),
       expiresAt: stamp(this.clock() + 60_000),
+      ...(conversationOnly ? { scope: 'conversation' as const } : {}),
     });
     this.store.setSetting(`quark:manager-lease:${run.id}`, {
       lease,
@@ -183,13 +238,55 @@ export class Quark {
     if (!run) throw new Conflict('QUARK requires an admitted manager turn before orchestration.');
     const reason = this.managerLeaseReason(run);
     if (reason) throw new Conflict(reason);
-    return this.readManagerLease(run)!;
+    const lease = this.readManagerLease(run)!;
+    if (chatBypassRun(this.store, run)) {
+      const ordinary = this.pulsar.decision(run, this.executing(), false, true);
+      if (!ordinary.eligible)
+        throw new Conflict(
+          `Direct chat bypass does not authorize protected work: ${ordinary.reason}`,
+        );
+      if (lease.scope === 'conversation') {
+        const upgraded = { ...lease, scope: 'orchestration' as const };
+        this.store.setSetting(`quark:manager-lease:${run.id}`, {
+          lease: upgraded,
+          signature: this.signLease(upgraded),
+        });
+        this.store.event(
+          'quark.manager_lease_upgraded',
+          lease.projectId,
+          lease.managerId,
+          upgraded,
+        );
+        return upgraded;
+      }
+    } else if (lease.scope === 'conversation') {
+      throw new Conflict(
+        'This signed lease authorizes conversation only. Protected work requires ordinary QUARK admission.',
+      );
+    }
+    return lease;
   }
   managerLeaseStatus(run: PrivateRun | undefined) {
-    if (!run) return { state: 'inactive', reason: 'No active manager turn.' };
+    if (!run)
+      return {
+        state: 'inactive',
+        reason: 'No active manager turn.',
+        lease: null,
+        notice: undefined,
+      };
     const lease = this.readManagerLease(run);
     const reason = this.managerLeaseReason(run);
-    return { state: reason ? 'blocked' : 'active', lease, reason };
+    return {
+      state: reason ? 'blocked' : 'active',
+      lease,
+      reason,
+      ...(lease?.scope === 'conversation'
+        ? {
+            notice:
+              'Direct conversation only. Answer the owner and retain source-linked asks with dock_work_item. Delegate or start protected work only when ordinary QUARK headroom permits it.',
+          }
+        : {}),
+    };
   }
   saveSettings(raw: unknown) {
     const input = quarkSettingsUpdateSchema.parse(raw);
@@ -915,12 +1012,17 @@ export class Quark {
     admitting = false,
     ignoreHold = false,
     ignoreBudgetPause = ignoreHold,
+    allowChatBypass = true,
   ): { cause: QuotaHold['cause']; reason: string; budgetTargetId?: string } | null {
     const a = this.store.agent(run.agentId),
       rootId = a.nativeRootId ?? a.id;
+    const bypass = allowChatBypass && chatBypassAllowed(this.store, run);
     if (!ignoreHold) {
       const hold = this.holds().find((h) => h.agentId === rootId);
-      if (hold) {
+      if (
+        hold &&
+        (!bypass || !['budget', 'hourly', 'headroom', 'monitoring', 'reset'].includes(hold.cause))
+      ) {
         const budget =
           hold.cause === 'budget'
             ? this.budgets().find(
@@ -947,6 +1049,7 @@ export class Quark {
         cause: 'project',
         reason: 'Paused by QUARK: this project is paused by a saved scheduling decision.',
       };
+    if (bypass) return null;
     const allowRecent = !admitting && this.store.run(run.id).status === 'running';
     const budgets = this.budgets()
       .filter((b) =>

@@ -5,11 +5,15 @@ import { browserSetupActionSchema } from '@dock/shared';
 import { repoRoot } from './paths.js';
 import { registerDocumentRoutes } from './documents.js';
 import { registerChatImageRoutes } from './chat-images.js';
+import { registerQueuedMessageRoutes } from './queued-messages.js';
 import { registerDocumentFormattingRoutes } from './document-formatting.js';
 import { registerWorkItemRoutes } from './work-items.js';
 import { registerProjectAppRoutes } from './project-apps.js';
 import { registerPublishingAccountRoutes, type PublishingAccounts } from './publishing-accounts.js';
-import { registerConversationRoutes } from './conversations.js';
+import {
+  registerConversationRoutes,
+  registerConversationVisibilityRoutes,
+} from './conversations.js';
 import { QuarkFocus, registerQuarkFocusRoutes } from './quark-focus.js';
 import { registerConversationSearchRoutes } from './conversation-search.js';
 import { Archive, registerArchiveRoutes } from './archive.js';
@@ -553,6 +557,7 @@ export async function createServer(
   registerAppUpdateRoutes(app, maintenance, () => runtime.kick(), options.demo);
   registerDocumentRoutes(app, runtime.documents);
   registerChatImageRoutes(app, runtime.chatImages);
+  registerQueuedMessageRoutes(app, store, runtime, workspace, terminals);
   registerDocumentFormattingRoutes(app, runtime.documentFormatting);
   app.get('/api/browser/setup', async () => runtime.browserSetup.status());
   app.post('/api/browser/check', async (request) => {
@@ -597,6 +602,7 @@ export async function createServer(
     options.mirrors ??
     new VscodeMirrors(store, undefined, (text) => runtime.chatImages.prompt(text));
   if (!options.remote) runtime.conversationSearchMirrorWindows = () => mirrors.windows();
+  registerConversationVisibilityRoutes(app, store, () => mirrors.windows());
   registerMirrorRoutes(app, mirrors, !!options.remote);
   registerArchiveRoutes(app, new Archive(store, mirrors));
   registerConversationSearchRoutes(app, runtime.conversationSearch, () => runtime.kick());
@@ -845,6 +851,10 @@ export async function createServer(
   });
   app.post('/api/resources/stop', async (request) => runtime.resources.stop(request.body));
   app.get('/api/pulsar', async () => runtime.pulsar.status());
+  app.get('/api/pulsar/jobs/:id', async (request) => {
+    const { id } = z.object({ id: z.string().uuid() }).strict().parse(request.params);
+    return runtime.pulsar.jobDetail(id);
+  });
   app.get('/api/providers/:provider/maintenance', async (request) => {
     const provider = providerIdSchema.parse((request.params as { provider: string }).provider);
     return runtime.providerMaintenance.status(provider);
@@ -1148,7 +1158,7 @@ export async function createServer(
       .passthrough()
       .safeParse(store.getSetting(`external:${key}`));
     let submitted: { text: string; steer: boolean } | null = run
-      ? { text: run.text, steer: false }
+      ? { text: run.acceptedText ?? run.text, steer: false }
       : null;
     if (!submitted && external.success && external.data.state === 'complete') {
       try {
@@ -1238,11 +1248,24 @@ export async function createServer(
       if (['failed', 'interrupted', 'waiting'].includes(agent.status) && !agent.turnId)
         store.updateAgent(target, { status: 'idle', autoTurns: 0 });
       const run = store.enqueue(target, key, value.text);
+      if (!runtime.externalControl.has(target)) runtime.quark.captureOwnerChat(store.run(run.id));
       if (value.scheduling) store.setSetting(`pulsar:estimate:${run.id}`, value.scheduling);
       return run;
     });
     runtime.kick();
     return reply.code(202).send(result);
+  });
+  app.get('/api/agents/:id/chat-quark', async (request) =>
+    runtime.quark.chatPolicy(agentId(request.params)),
+  );
+  app.post('/api/agents/:id/chat-quark', async (request) => {
+    const target = agentId(request.params);
+    runtime.requireDirectControl(target);
+    if (terminals.active(target) || runtime.externalControl.has(target))
+      throw new Conflict('Return from native control before changing the app chat preference.');
+    const result = runtime.quark.saveChatPolicy(target, request.body);
+    runtime.kick();
+    return result;
   });
   app.post('/api/agents/:id/commands', async (request) => {
     const target = agentId(request.params);

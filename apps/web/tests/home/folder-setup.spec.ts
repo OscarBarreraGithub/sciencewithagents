@@ -92,7 +92,7 @@ test('pick an existing folder first, keep model choices editable, and Spawn once
   await page.reload();
   await expect(projectName).toHaveValue(name);
   await expect(projectName).toBeDisabled();
-  await page.getByRole('button', { name: 'Retry Spawn', exact: true }).click();
+  await expect.poll(() => connections.length).toBe(2);
   await expect(
     page.getByRole('dialog', { name: 'Describe your project', exact: true }),
   ).toBeVisible();

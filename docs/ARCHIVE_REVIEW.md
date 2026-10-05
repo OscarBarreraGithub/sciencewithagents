@@ -1,5 +1,21 @@
 # Saved requests and archive review
 
+## Archive a conversation
+
+Archiving a chat changes its visibility in ordinary discovery and chat lists. Restore shows
+it again. App history, files, running jobs, queued messages and permission requests are retained;
+archiving never calls the native provider's archive action. This is separate from removing
+a project manager. Saved-text search still includes archived app chats and available shared
+native transcripts. Shared archives use provider/thread identity rather than an editor window,
+and keep a bounded title/caption so they can be listed and restored while the editor is offline.
+Full native history still requires its original source to be available.
+
+`GET /api/conversations/visibility` pages saved visibility metadata (up to 100 rows, with an
+optional archived filter and the returned cursor). `POST` accepts a typed app/shared target,
+expected revision, archive boolean and durable retry key; concurrent changes require refresh.
+Normal conversation/shared discovery hides archives unless `includeArchived=true` is requested.
+These owner routes preserve the selected computer and existing local/paired access boundary.
+
 Managers retain owner requests as original saved-message IDs, separate from conversation
 previews. Work items can link several source messages, and several items can share one
 message. A bare link leaves the message pending review. After reading the whole message and
@@ -42,3 +58,8 @@ editor reads require the same native identity. No route accepts paths, shell or 
 Existing project history/read APIs and saved IDs remain unchanged. Manager tools stay scoped
 to their own project, and owner-request source links stay with the receiving manager. The
 owner archive routes use the app's existing local/paired and selected-computer boundaries.
+
+Managers receive pending owner requests at turn start and coalesced tool boundaries. Steering
+and compaction preserve the work list. Before reporting completion, they must reconcile both
+the pending prompt pages and the full open work list, including older triaged requests. This is
+a durable review workflow, not a guarantee that a model interprets every sentence correctly.

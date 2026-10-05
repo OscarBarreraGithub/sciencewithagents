@@ -26,6 +26,7 @@ import {
   type Run,
   type Task,
   type ProviderId,
+  type QueuedMessageAction,
 } from '@dock/shared';
 
 export class Conflict extends Error {
@@ -51,7 +52,17 @@ export type PrivateTask = Omit<Task, 'hasReviewedChanges'> & {
   reviewedCommit: string | null;
   reviewAgentId: string | null;
 };
-export type PrivateRun = Run & { key: string; turnId: string | null };
+export type PrivateRun = Run & { key: string; turnId: string | null; acceptedText?: string };
+const queuedRun = (run: PrivateRun): PrivateRun => ({
+  ...run,
+  // Native/imported and generated coordination entries retain their own ownership.
+  queueEditable:
+    run.kind === 'user' &&
+    run.sourceId === null &&
+    /^[0-9a-f-]{36}$/i.test(run.key) &&
+    run.text.length <= 24_000,
+  queueRevision: run.queueRevision ?? 0,
+});
 export type PrivateApproval = Approval & {
   requestId: string | number;
   params: Record<string, unknown>;
@@ -282,14 +293,14 @@ export class Store extends EventEmitter {
     return this.bodies<PrivateTask>('tasks');
   }
   runs(statuses?: PrivateRun['status'][]) {
-    if (!statuses) return this.bodies<PrivateRun>('runs');
+    if (!statuses) return this.bodies<PrivateRun>('runs').map(queuedRun);
     if (!statuses.length) return [];
     return this.db
       .prepare(
         `SELECT body FROM runs WHERE status IN (${statuses.map(() => '?').join(',')}) ORDER BY rowid`,
       )
       .all(...statuses)
-      .map((row) => JSON.parse(String(row.body)) as PrivateRun);
+      .map((row) => queuedRun(JSON.parse(String(row.body)) as PrivateRun));
   }
   latestOwnerInputAt(agentId: string, excludeRunId?: string): string | null {
     const row = this.db
@@ -305,10 +316,12 @@ export class Store extends EventEmitter {
   }
   runsForAgent(agentId: string, limit = 50) {
     return this.db
-      .prepare('SELECT body FROM runs WHERE agent_id=? ORDER BY rowid DESC LIMIT ?')
-      .all(agentId, limit)
-      .map((row) => JSON.parse(String(row.body)) as PrivateRun)
-      .reverse();
+      .prepare(
+        `SELECT body FROM runs WHERE agent_id=? AND (status='queued' OR id IN
+        (SELECT id FROM runs WHERE agent_id=? ORDER BY rowid DESC LIMIT ?)) ORDER BY rowid`,
+      )
+      .all(agentId, agentId, limit)
+      .map((row) => queuedRun(JSON.parse(String(row.body)) as PrivateRun));
   }
   approvals() {
     return this.bodies<PrivateApproval>('approvals');
@@ -345,7 +358,7 @@ export class Store extends EventEmitter {
   run(id: string) {
     const row = this.db.prepare('SELECT body FROM runs WHERE id=?').get(id);
     if (!row) throw new Missing('Run not found.');
-    return JSON.parse(String(row.body)) as PrivateRun;
+    return queuedRun(JSON.parse(String(row.body)) as PrivateRun);
   }
   approval(id: string) {
     const value = this.approvals().find((a) => a.id === id);
@@ -574,6 +587,7 @@ export class Store extends EventEmitter {
     input: Pick<Task, 'title' | 'goal' | 'acceptance' | 'parentId'> & {
       managerId?: string;
       scheduling?: Task['scheduling'];
+      ownerTicket?: Task['ownerTicket'];
     },
   ) {
     const managerId = input.managerId ?? this.project(projectId).managerId;
@@ -627,12 +641,12 @@ export class Store extends EventEmitter {
       const value = JSON.parse(String(old.body)) as PrivateRun;
       if (
         value.agentId !== agentId ||
-        value.text !== text ||
+        (value.acceptedText ?? value.text) !== text ||
         value.kind !== kind ||
         value.sourceId !== sourceId
       )
         throw new Conflict('This retry key belongs to a different message.');
-      return runSchema.parse(value);
+      return runSchema.parse(queuedRun(value));
     }
     const a = this.agent(agentId);
     this.requireActiveAgent(agentId);
@@ -664,7 +678,112 @@ export class Store extends EventEmitter {
       this.updateAgent(agentId, { status: 'queued', ...(kind === 'user' ? { autoTurns: 0 } : {}) });
     else if (kind === 'user') this.updateAgent(agentId, { autoTurns: 0 });
     this.event('run.queued', a.projectId, agentId, runSchema.parse(run));
-    return runSchema.parse(run);
+    return runSchema.parse(queuedRun(run));
+  }
+  /** Called inside the dispatch transaction. A stale candidate can never bypass a hold. */
+  claimQueuedRun(id: string) {
+    const run = this.run(id);
+    if (run.status !== 'queued' || run.queueEdit) return null;
+    return this.updateRun(id, { status: 'running' });
+  }
+  /** Retain searchable original evidence once, before an acknowledged queue edit replaces it. */
+  retainQueuedOriginal(run: PrivateRun) {
+    const exists = this.db
+      .prepare(
+        `SELECT id FROM entries WHERE agent_id=?
+      AND json_extract(body,'$.runId')=? AND json_extract(body,'$.title')='Original queued message' LIMIT 1`,
+      )
+      .get(run.agentId, run.id);
+    if (!exists)
+      this.entry({
+        id: randomUUID(),
+        agentId: run.agentId,
+        runId: run.id,
+        kind: 'system',
+        title: 'Original queued message',
+        text: run.acceptedText ?? run.text,
+        status: 'complete',
+        createdAt: run.createdAt,
+      });
+  }
+  /** Call only inside operation/transaction: revision and client ownership are one atomic check. */
+  queuedMessage(agentId: string, runId: string, input: QueuedMessageAction) {
+    const run = this.run(runId);
+    if (run.agentId !== agentId || !run.queueEditable)
+      throw new Conflict('Only app-owned queued owner messages can be edited.');
+    if (run.status !== 'queued')
+      throw new Conflict('This message has already started or left the queue. It was not changed.');
+    if (input.revision !== run.queueRevision)
+      throw new Conflict(
+        'This queued message changed on another tab or device. Reopen it before editing.',
+        'QUEUE_CHANGED',
+      );
+    if (['edit', 'takeover'].includes(input.action)) {
+      if (input.action !== 'takeover' && run.queueEdit && run.queueEdit.clientId !== input.clientId)
+        throw new Conflict(
+          'This message is held by another browser. Its saved draft is retained.',
+          'QUEUE_HELD',
+        );
+      if (run.queueEdit?.state === 'steering' && input.action !== 'takeover')
+        throw new Conflict(
+          'The steering outcome is uncertain. Inspect the running reply; this item remains held.',
+        );
+    } else if (!run.queueEdit || run.queueEdit.clientId !== input.clientId) {
+      throw new Conflict('Hold this message for editing before changing or sending it.');
+    } else if (run.queueEdit.state !== 'editing' && input.action !== 'remove') {
+      throw new Conflict(
+        'The steering outcome is uncertain. This item remains held and will not be resent.',
+      );
+    }
+    const draft = input.text ?? run.queueEdit?.text ?? run.text;
+    if (['queue', 'steer'].includes(input.action) && !draft.trim())
+      throw new Conflict('Write a message before queuing or steering it.');
+    const release = ['queue', 'discard', 'remove'].includes(input.action);
+    const next = this.updateRun(runId, {
+      acceptedText: run.acceptedText ?? run.text,
+      queueRevision: (run.queueRevision ?? 0) + 1,
+      ...(input.action === 'queue' ? { text: draft } : {}),
+      ...(input.action === 'remove' ? { status: 'cancelled' as const } : {}),
+      queueEdit: release
+        ? null
+        : {
+            clientId: input.clientId,
+            text: draft,
+            state:
+              input.action === 'steer' || run.queueEdit?.state === 'steering'
+                ? 'steering'
+                : 'editing',
+            ...(input.action === 'steer'
+              ? { operationKey: input.key }
+              : run.queueEdit?.operationKey
+                ? { operationKey: run.queueEdit.operationKey }
+                : {}),
+          },
+    });
+    if (['queue', 'remove'].includes(input.action)) {
+      const entry = this.entries(agentId).find((entry) => entry.id === runId);
+      if (entry && entry.text !== draft) this.retainQueuedOriginal(run);
+      if (entry)
+        this.entry({
+          ...entry,
+          text: draft,
+          ...(input.action === 'remove'
+            ? { title: 'You · removed from queue', status: 'complete' }
+            : {}),
+        });
+    }
+    this.event(
+      input.action === 'remove' ? 'queue.removed' : release ? 'queue.requeued' : 'queue.held',
+      this.agent(agentId).projectId,
+      agentId,
+      {
+        runId,
+        revision: next.queueRevision,
+        action: input.action,
+        clientId: input.clientId,
+      },
+    );
+    return runSchema.parse(next);
   }
   updateRun(id: string, changes: Partial<PrivateRun>) {
     const value = { ...this.run(id), ...changes, id };

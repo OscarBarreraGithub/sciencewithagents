@@ -42,13 +42,15 @@ export function schedulerStatus(store: Store, externalControl: ReadonlySet<strin
       const explanation =
         run.status === 'running'
           ? 'Already started; queue settings do not interrupt it.'
-          : settings.paused
-            ? 'New queued work is paused.'
-            : external
-              ? 'A native terminal controls this agent or task. Return it to chat to release queued work.'
-              : ['interrupted', 'failed', 'waiting'].includes(agent.status)
-                ? 'Inspect this agent’s pending request or stopped work before continuing.'
-                : 'Waiting for an available slot and this agent’s earlier work. Task workspace ownership still applies.';
+          : run.queueEdit
+            ? 'Held for editing. Return this message to the queue explicitly when ready.'
+            : settings.paused
+              ? 'New queued work is paused.'
+              : external
+                ? 'A native terminal controls this agent or task. Return it to chat to release queued work.'
+                : ['interrupted', 'failed', 'waiting'].includes(agent.status)
+                  ? 'Inspect this agent’s pending request or stopped work before continuing.'
+                  : 'Waiting for an available slot and this agent’s earlier work. Task workspace ownership still applies.';
       return [
         {
           id: run.id,

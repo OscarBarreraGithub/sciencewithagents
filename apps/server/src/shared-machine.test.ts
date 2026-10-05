@@ -229,7 +229,7 @@ it.skipIf(process.platform !== 'darwin')(
     const notes = measured.unavailable.join(' ');
     for (const text of ['Disk I/O', 'Network traffic', 'GPU use', 'thermal warning'])
       expect(notes).not.toContain(text);
-    expect(notes).toContain('Temperatures are not measured');
+    expect(notes).toContain('Temperatures are not provided');
     // An added disk or a counter reset is not a burst of activity.
     Object.assign(probe, { storage: storage(17_000, 33_000, 2), network: network(0, 0) });
     time += 15_000;

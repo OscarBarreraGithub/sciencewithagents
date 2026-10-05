@@ -4,6 +4,7 @@ import { quarkStatusSchema, type Agent, type Project, type Snapshot } from '@doc
 import { api, ApiError } from '../api';
 import { ExecutionInfo } from '../ExecutionInfo';
 import { SessionSettings } from '../SessionSettings';
+import { ChatQuarkPreference } from './ChatQuarkPreference';
 import {
   parseNotes,
   parseProjectRates,
@@ -91,6 +92,7 @@ const kindNames: Record<WorkItem['kind'], string> = {
   human: 'to-do for you',
   internal: 'internal to-do',
   general: 'to-do',
+  idea: 'idea',
 };
 
 export function NotesPanel({
@@ -698,6 +700,12 @@ export function ConfigPanel({
       </section>
       <section>
         <h3>Scheduling</h3>
+        {agent.role === 'manager' &&
+          !agent.taskId &&
+          !agent.nativeRootId &&
+          !agent.interview &&
+          agent.surface !== 'terminal' &&
+          !agent.archivedAt && <ChatQuarkPreference key={agent.id} agentId={agent.id} />}
         {jobs.length ? (
           <ul className="chat-item-list">
             {jobs.map((job) => (
@@ -717,8 +725,8 @@ export function ConfigPanel({
         )}
         {managerView && project && <ProjectFocus project={project} state={state} />}
         <p className="chat-side-note">
-          QUARK schedules this work normally; each message also has its own priority in the
-          composer. You can pause or reprioritize individual jobs in QUARK.
+          Each message also has its own priority in the composer. You can pause or reprioritize
+          individual jobs in QUARK.
         </p>
         <a className="chat-small-button" href="#/work">
           Open QUARK <ArrowUpRight size={15} />

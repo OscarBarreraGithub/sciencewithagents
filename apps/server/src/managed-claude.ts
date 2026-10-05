@@ -106,7 +106,16 @@ export class ManagedClaude {
   private async readModels(): Promise<Model[]> {
     const cwd = join(this.dataDir, 'claude-discovery');
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
-    const discovered = await (this.dependencies.inspect ?? inspectClaudeRuntime)(this.binary, cwd);
+    const discovered = await (this.dependencies.inspect ?? inspectClaudeRuntime)(
+      this.binary,
+      cwd,
+      (diagnostic) =>
+        this.store.event('provider.auth_diagnostic', null, null, {
+          provider: 'claude',
+          source: 'model-discovery',
+          ...diagnostic,
+        }),
+    );
     if (this.stopped) throw new Conflict('sciencewithagents is stopping.');
     // Effort is optional native metadata, not a prerequisite for model access.
     // Unreported/unsupported levels leave the provider's own behavior untouched.
@@ -271,6 +280,12 @@ export class ManagedClaude {
               ? 'implementer'
               : 'read-only',
       model: model.id,
+      authDiagnostic: (diagnostic) =>
+        this.store.event('provider.auth_diagnostic', agent.projectId, agent.id, {
+          provider: 'claude',
+          source: 'managed-session',
+          ...diagnostic,
+        }),
       effort: agent.effort,
       charter: this.callbacks.charter(agent),
       beforeStart: forkFrom

@@ -1,0 +1,21 @@
+.spawn-brief-wait {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(25 30 45 / 25%);
+}
+
+.spawn-brief-wait > div {
+  width: min(100%, 26rem);
+  padding: 1.5rem;
+  border-radius: 1rem;
+  background: var(--home-card, #fffdf6);
+  box-shadow: 0 12px 40px rgb(25 30 45 / 15%);
+}
+
+.spawn-brief-wait h2 {
+  margin: 0.75rem 0;
+}

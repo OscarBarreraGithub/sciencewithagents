@@ -11,7 +11,8 @@ import {
   mirrorResultSchema,
   mirrorPageQuerySchema,
   mirrorPage,
-  chatImageIds,
+  chatAttachmentCount,
+  conversationListQuerySchema,
   type MirrorPageQuery,
   type MirrorState,
   type MirrorSend,
@@ -19,6 +20,7 @@ import {
   type MirrorResult,
 } from '@dock/shared';
 import { Store, Conflict, Missing } from './store.js';
+import { conversationHidden } from './conversations.js';
 import type { CodexDaemonChats } from './codex-daemon-chats.js';
 
 type DaemonChats = Pick<
@@ -81,7 +83,7 @@ export class VscodeMirrors {
   async discover() {
     await this.daemon?.discover();
   }
-  async list() {
+  async list(includeArchived = false) {
     // The companion's hello is only an initial snapshot. Refresh through the
     // existing bounded read so a closed chat view cannot leave the list stale.
     // Share work across phone/desktop polling; an unresponsive editor must not
@@ -100,7 +102,18 @@ export class VscodeMirrors {
     ]).then(() => {});
     try {
       await this.listing;
-      return this.windows();
+      const windows = this.windows();
+      return includeArchived
+        ? windows
+        : windows.filter(
+            (window) =>
+              !window.threadId ||
+              !conversationHidden(this.store, {
+                kind: 'shared',
+                provider: window.provider ?? 'codex',
+                threadId: window.threadId,
+              }),
+          );
     } finally {
       this.listing = undefined;
     }
@@ -318,16 +331,16 @@ export class VscodeMirrors {
         state: 'not_sent',
         message: 'This conversation is no longer shared. Nothing was sent.',
       };
-    if (window.canAttachImages === false && chatImageIds(input.text).length)
+    if (window.canAttachImages === false && chatAttachmentCount(input.text))
       return {
         state: 'not_sent',
         message:
-          'Screenshots cannot be sent to this remote editor. Remove them from this draft and attach files in the native remote editor instead. Nothing was sent.',
+          'Files cannot be sent to this remote editor. Remove attachments from this draft and attach them in the native remote editor instead. Nothing was sent.',
       };
     const delivery = { ...input, text: this.prepareText(input.text) };
     if (delivery.text.length > 32000)
       throw new Conflict(
-        'Shorten the message slightly to leave room for its screenshots. Nothing was sent.',
+        'Shorten the message slightly to leave room for its attachments. Nothing was sent.',
       );
     // Persist intent before touching the provider. A crash, disconnect or retry never
     // sends the same input twice, including across a gateway restart.
@@ -463,7 +476,10 @@ export function registerMirrorRoutes(
 ) {
   const windowId = (params: unknown) => z.object({ id: z.uuid() }).parse(params).id;
   const discover = { preHandler: async () => mirrors.discover() };
-  app.get('/api/vscode/windows', async () => mirrors.list());
+  app.get('/api/vscode/windows', async (request) => {
+    const query = conversationListQuerySchema.parse(request.query);
+    return mirrors.list(query.includeArchived === 'true');
+  });
   app.get('/api/vscode/deliveries/:id', async (request) =>
     mirrors.receipt(windowId(request.params)),
   );

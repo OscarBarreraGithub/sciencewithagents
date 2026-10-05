@@ -8,6 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import { effortSchema, providerDefaultEffort } from '@dock/shared';
+import {
+  claudeAuthDiagnosticReader,
+  type ClaudeAuthDiagnostic,
+  type ClaudeSessionAuthDiagnostic,
+} from './claude-auth-diagnostics.js';
 
 // First-party protocol evidence, not Codex RPC emulation:
 // https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py
@@ -333,6 +338,8 @@ export type ClaudeSessionOptions = {
   hook?: (event: ClaudeHook, deliveryId: string, receipt?: string) => Record<string, unknown>;
   /** Host-chosen working folders a writing role also uses, such as a manager's project folder. */
   writableDirectories?: string[];
+  /** Fixed native auth-failure observations only; never raw stderr or a retry. */
+  authDiagnostic?: (diagnostic: ClaudeSessionAuthDiagnostic) => void;
 };
 export type ClaudeChannel = {
   readonly ownedProcessId?: number | null;
@@ -343,7 +350,12 @@ export type ClaudeChannel = {
 };
 export type ClaudeSessionDependencies = {
   identity?: (binary: string) => Promise<ClaudeIdentity>;
-  spawn?: (binary: string, args: string[], cwd: string) => ClaudeChannel;
+  spawn?: (
+    binary: string,
+    args: string[],
+    cwd: string,
+    authDiagnostic?: (diagnostic: ClaudeAuthDiagnostic) => void,
+  ) => ClaudeChannel;
   timeoutMs?: number;
 };
 export class ClaudeSubmissionCancelled extends Error {
@@ -362,7 +374,11 @@ const modelSchema = z.object({
 export type ClaudeModel = z.infer<typeof modelSchema>;
 
 /** Disposable no-turn initialization only; never use an owner's saved context to discover models. */
-export async function inspectClaudeRuntime(binary: string, cwd: string) {
+export async function inspectClaudeRuntime(
+  binary: string,
+  cwd: string,
+  authDiagnostic?: (diagnostic: ClaudeSessionAuthDiagnostic) => void,
+) {
   const identity = await readClaudeIdentity(binary);
   const session = new ClaudeSession({
     binary,
@@ -376,6 +392,7 @@ export async function inspectClaudeRuntime(binary: string, cwd: string) {
     effort: providerDefaultEffort,
     charter: 'Capability discovery only. No user turn will be submitted.',
     tools: [],
+    authDiagnostic,
   });
   try {
     return { identity, models: await session.inspectFreshModels() };
@@ -527,7 +544,12 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
   ];
 }
 
-export function spawnClaudeChannel(binary: string, args: string[], cwd: string): ClaudeChannel {
+export function spawnClaudeChannel(
+  binary: string,
+  args: string[],
+  cwd: string,
+  authDiagnostic?: (diagnostic: ClaudeAuthDiagnostic) => void,
+): ClaudeChannel {
   assertClaudeSubscriptionEnvironment();
   const host = fileURLToPath(
     new URL(
@@ -541,7 +563,10 @@ export function spawnClaudeChannel(binary: string, args: string[], cwd: string):
     windowsHide: true,
     env: { ...process.env, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '60' },
   });
-  child.stderr.on('data', () => {});
+  child.stderr.on(
+    'data',
+    claudeAuthDiagnosticReader((event) => authDiagnostic?.(event)),
+  );
   // Prevent an unhandled EPIPE from bypassing the unavailable event/receipt recovery.
   child.stdin.on('error', () => {});
   const exited = new Promise<number | null>((resolve) => {
@@ -667,6 +692,12 @@ export class ClaudeSession extends EventEmitter {
       this.options.binary,
       args,
       this.options.cwd,
+      (diagnostic) =>
+        this.options.authDiagnostic?.({
+          ...diagnostic,
+          sessionId: this.options.sessionId,
+          supervisorProcessId: this.ownedProcessId,
+        }),
     );
     this.channel = channel;
     channel.output.on('data', (chunk: Buffer) => {

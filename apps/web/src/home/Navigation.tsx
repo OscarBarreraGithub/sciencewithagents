@@ -3,20 +3,37 @@ import { ArrowLeft } from 'lucide-react';
 import { apiScope } from '../api';
 
 const key = () => `dock:${apiScope()}:navigation`;
+export const canonicalRoute = (value: string) =>
+  (value.replace(/^#\//, '').replace(/\/$/, '') || 'home')
+    .replace(/^usage(?=\/|$)/, 'work')
+    .replace(/^advanced$/, 'settings');
+const visitRoute = (trail: string[], route: string) => {
+  const next = canonicalRoute(route);
+  const previous = trail.indexOf(next);
+  if (next === 'home') return ['home'];
+  if (previous >= 0) return trail.slice(0, previous + 1);
+  // Closing a notepad replaces its sub-view; Back must not reopen it.
+  if (trail.at(-1)?.startsWith(`${next}/`)) return [...trail.slice(0, -1), next];
+  return [...trail, next].slice(-12);
+};
 function restore(current: string): string[] {
   try {
     const saved: unknown = JSON.parse(sessionStorage.getItem(key()) ?? 'null');
-    if (
-      Array.isArray(saved) &&
-      saved.length <= 12 &&
-      saved.every((r) => typeof r === 'string') &&
-      saved.at(-1) === current
-    )
-      return saved;
+    if (Array.isArray(saved) && saved.length <= 12 && saved.every((r) => typeof r === 'string')) {
+      const normalized = saved.reduce<string[]>((trail, item) => visitRoute(trail, item), []);
+      if (normalized.at(-1) === canonicalRoute(current)) return normalized;
+    }
   } catch {
     /* A direct link still has a way home. */
   }
-  return current === 'home' ? ['home'] : ['home', current];
+  return visitRoute(['home'], current);
+}
+function save(trail: string[]) {
+  try {
+    sessionStorage.setItem(key(), JSON.stringify(trail));
+  } catch {
+    /* In-memory navigation remains available. */
+  }
 }
 
 export const Navigation = createContext(() => {
@@ -27,36 +44,19 @@ export const Navigation = createContext(() => {
 export function useNavigation(current: string, main: RefObject<HTMLElement | null>) {
   const trail = useRef(restore(current));
   useEffect(() => {
-    const save = () => {
-      try {
-        sessionStorage.setItem(key(), JSON.stringify(trail.current));
-      } catch {
-        /* In-memory navigation remains available. */
-      }
-    };
-    const record = (hash: string) => {
-      const next = hash.startsWith('#/') ? hash.slice(2) || 'home' : 'home';
-      const previous = trail.current.indexOf(next);
-      trail.current =
-        next === 'home'
-          ? ['home']
-          : previous >= 0
-            ? trail.current.slice(0, previous + 1)
-            : // Leaving a sub-view (a minimized notepad) for its page replaces it, so Back
-              // does not reopen what the person just closed.
-              trail.current.at(-1)?.startsWith(`${next}/`)
-              ? [...trail.current.slice(0, -1), next]
-              : [...trail.current, next].slice(-12);
-    };
     const visit = (event: Event) => {
-      // A screen may leave a sub-view with replaceState, which fires no hashchange.
-      const old = event instanceof HashChangeEvent ? event.oldURL.split('#')[1] : undefined;
-      if (old?.startsWith('/')) record(`#${old}`);
-      record(location.hash);
-      // Save at the navigation event, before rendering; a fast reload must retain the return route.
-      save();
+      if (event instanceof HashChangeEvent) {
+        const old = canonicalRoute(new URL(event.oldURL).hash);
+        // replaceState does not emit an event. Reconcile only a closed sub-view;
+        // blindly recording oldURL reintroduces pages removed by Back.
+        if (trail.current.at(-1)?.startsWith(`${old}/`))
+          trail.current = visitRoute(trail.current, old);
+        // Each event has its own destination, even if several arrive after a slow render.
+        trail.current = visitRoute(trail.current, new URL(event.newURL).hash);
+      } else trail.current = visitRoute(trail.current, location.hash);
+      save(trail.current);
     };
-    save();
+    save(trail.current);
     window.addEventListener('hashchange', visit);
     window.addEventListener('pagehide', visit);
     return () => {
@@ -65,7 +65,10 @@ export function useNavigation(current: string, main: RefObject<HTMLElement | nul
     };
   }, []);
   const back = () => {
-    location.hash = `#/${trail.current.at(-2) ?? 'home'}`;
+    // Consume synchronously so two quick taps cannot use the same stale step.
+    trail.current = trail.current.length > 1 ? trail.current.slice(0, -1) : ['home'];
+    save(trail.current);
+    location.hash = `#/${trail.current.at(-1) ?? 'home'}`;
   };
   const goBack = useRef(back);
   goBack.current = back;

@@ -1,3 +1,4 @@
+import { modelPolicySchema } from '@dock/shared';
 import { managerTool } from './manager-lease.fixture.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1215,5 +1216,85 @@ describe('Claude uses the shared runtime without Codex protocol substitution', (
     await runtime.close();
     expect(instances).toHaveLength(count);
     expect(codexFactory).not.toHaveBeenCalled();
+  });
+  it('suspends conversation-only bypass for an observed native helper and stops the owned family', async () => {
+    // All fixture tiers pin the same generic default. It has no independent model meter.
+    const models = modelPolicySchema.parse(store.getSetting('model-policy'));
+    models.models.claude.postdoc.requiresModelAllowance = false;
+    store.setSetting('model-policy', models);
+    runtime.pulsar.savePolicy({
+      key: randomUUID(),
+      policy: { ...runtime.pulsar.policy(), enabled: true },
+    });
+    const report = () =>
+      store.setSetting(
+        'capacity:v1:claude',
+        parseCapacity(
+          'claude',
+          [
+            {
+              provider: 'claude',
+              source: 'oauth',
+              usage: {
+                updatedAt: new Date().toISOString(),
+                primary: {
+                  usedPercent: 95,
+                  windowMinutes: 300,
+                  resetsAt: new Date(Date.now() + 86400_000).toISOString(),
+                },
+              },
+            },
+          ],
+          Date.now(),
+        ),
+      );
+    report();
+    const queued = store.enqueue(manager, randomUUID(), 'Answer the owner while workers wait');
+    runtime.quark.saveChatPolicy(manager, {
+      key: randomUUID(),
+      enabled: true,
+      expectedRevision: 0,
+    });
+    runtime.kick();
+    await vi.waitFor(() => expect(instances.at(-1)?.submit).toHaveBeenCalledOnce());
+    const session = instances.at(-1)!,
+      run = store.run(queued.id),
+      hook = session.options.hook!;
+    expect(runtime.quark.managerLeaseStatus(run)).toMatchObject({
+      state: 'active',
+      lease: { scope: 'conversation' },
+    });
+    const rootRead = {
+      session_id: session.options.sessionId,
+      hook_event_name: 'PreToolUse' as const,
+      tool_use_id: 'owner-read',
+      tool_name: 'Read',
+      tool_input: { file_path: 'fixture.txt' },
+    };
+    // An admitted root hook leaves the genuine native permission decision unchanged.
+    expect(hook(rootRead, run.id)).toEqual({});
+    const helper = {
+      session_id: session.options.sessionId,
+      agent_id: 'bypass-helper',
+      agent_type: 'fixture:researcher',
+    };
+    report(); // Replace any collector report that arrived during the fake session attach.
+    hook({ ...helper, hook_event_name: 'SubagentStart' }, run.id, 'bypass-helper-start');
+    const child = runtime.nativeChildren
+      .family(manager)
+      .find((agent) => agent.nativeRootId === manager)!;
+    expect(child.status).toBe('running');
+    expect(runtime.quark.block(store.run(run.id))?.cause).toBe('headroom');
+    expect(hook({ ...rootRead, ...helper, tool_use_id: 'helper-read' }, run.id)).toMatchObject({
+      hookSpecificOutput: { permissionDecision: 'deny' },
+    });
+    await vi.waitFor(() => expect(session.interrupt).toHaveBeenCalled());
+    expect(runtime.quark.holds()).toContainEqual(
+      expect.objectContaining({ runId: run.id, cause: 'headroom' }),
+    );
+    hook({ ...helper, hook_event_name: 'SubagentStop' }, run.id, 'bypass-helper-stop');
+    finish(session, run.id, 'interrupted');
+    await vi.waitFor(() => expect(store.run(run.id).status).toBe('interrupted'));
+    expect(store.agent(child.id).status).toBe('idle');
   });
 });

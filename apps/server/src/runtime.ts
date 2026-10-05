@@ -273,11 +273,18 @@ export class Runtime {
     this.cluster.afterCollect = () => this.clusterNotebooks.reconcile();
     this.pulsar = new Pulsar(store, () => this.capacity.status().machine);
     this.quark = new Quark(store, this.pulsar);
-    this.pulsar.allowanceDecision = (run) => {
+    this.quark.executing = () => this.executing;
+    this.pulsar.allowanceDecision = (run, protectedChat = false) => {
       const agent = this.store.agent(run.agentId);
       if (run.status === 'queued' && this.providerMaintenance?.blocks(agent.provider))
         return 'Waiting for the requested provider update.';
-      const block = this.quark.block(run, run.status === 'queued');
+      const block = this.quark.block(
+        run,
+        protectedChat || run.status === 'queued',
+        false,
+        false,
+        !protectedChat,
+      );
       if (!block || block.cause !== 'budget' || run.status !== 'queued')
         return block ? { reason: block.reason } : null;
       return {
@@ -679,9 +686,16 @@ export class Runtime {
     if (waiting && waiting > Date.now()) return;
     const preparation = (async () => {
       try {
-        const agent = this.store.agent(run.agentId);
+        let agent = this.store.agent(run.agentId);
         const prepared = await this.modelPolicy.prepare(agent, run.id);
         if (this.stopped || this.store.run(run.id).status !== 'queued') return;
+        if (this.store.getSetting(`owner-ticket:run:${run.id}`) && agent.taskId) {
+          const cwd = await this.withLock(agent.taskId, () =>
+            ensureWorktree(this.store, this.store.task(agent.taskId!), this.dataDir),
+          );
+          if (this.stopped || this.store.run(run.id).status !== 'queued') return;
+          agent = this.store.updateAgent(agent.id, { cwd });
+        }
         if (
           agent.provider === 'claude' &&
           (prepared.model !== agent.model || prepared.effort !== agent.effort)
@@ -742,7 +756,7 @@ export class Runtime {
         ]),
       );
       this.coordinator.tick();
-      const queued = this.store.runs(['queued']);
+      const queued = this.store.runs(['queued']).filter((run) => !run.queueEdit);
       const queuedIds = new Set(queued.map((run) => run.id));
       for (const id of this.preparedRuns) if (!queuedIds.has(id)) this.preparedRuns.delete(id);
       const waiting = this.pulsar.ordered(queued);
@@ -855,6 +869,7 @@ export class Runtime {
         if (this.stopped || schedulerSettings(this.store).paused) break;
         if (
           this.store.run(run.id).status !== 'queued' ||
+          this.store.run(run.id).queueEdit ||
           this.externalControl.has(agent.id) ||
           this.restoring.has(agent.id) ||
           ['interrupted', 'failed', 'waiting'].includes(this.store.agent(agent.id).status)
@@ -1575,7 +1590,10 @@ export class Runtime {
     if (this.store.agent(run.agentId).role !== 'manager') return;
     this.quark.sync();
     try {
-      this.quark.requireManagerLease(run);
+      // Starting a signed conversation is distinct from authorizing protected work.
+      // Coordination tools independently require ordinary admission below.
+      const reason = this.quark.managerLeaseReason(run);
+      if (reason) throw new Conflict(reason);
     } catch (error) {
       this.quark.hold(run, this.errorText(error));
       this.interruptedStarts.add(run.id);
@@ -1611,13 +1629,22 @@ export class Runtime {
         return;
       }
     }
-    this.store.transaction(() => {
-      this.store.updateRun(run.id, { status: 'running' });
+    const claimed = this.store.transaction(() => {
+      const current = this.store.claimQueuedRun(run.id);
+      if (!current) return null;
       this.store.updateAgent(agent.id, {
         status: 'running',
         autoTurns: run.kind === 'user' ? 0 : agent.autoTurns + 1,
       });
+      return current;
     });
+    if (!claimed) {
+      this.executing.delete(agent.id);
+      this.interruptedStarts.delete(run.id);
+      this.kick();
+      return;
+    }
+    run = claimed;
     if (agent.provider === 'claude') {
       const session = await this.claude.prepare(agent);
       if (this.stopped) return;
@@ -1737,24 +1764,6 @@ export class Runtime {
       });
       return {};
     }
-    if (event.hook_event_name === 'PreToolUse') {
-      this.quark.sync();
-      const block = this.quark.block(run);
-      const lease = !block && agent.role === 'manager' ? this.quark.managerLeaseReason(run) : null;
-      if (block || lease) {
-        const reason = block?.reason ?? lease!;
-        this.quark.hold(
-          run,
-          reason.replace(/^Paused by QUARK: /, ''),
-          false,
-          block?.cause ?? 'lease',
-        );
-        // The existing heartbeat interrupts the owned process independently.
-        // A denied tool alone does not claim that a running model has stopped.
-        return deny(reason);
-      }
-    }
-
     const child = event.agent_id
       ? this.nativeChildren.claude(agentId, event.session_id, event.agent_id, event.agent_type)
       : null;
@@ -1790,6 +1799,24 @@ export class Runtime {
       }
     }
     const evidenceAgent = child?.id ?? agentId;
+    if (['PreToolUse', 'SubagentStart'].includes(event.hook_event_name)) {
+      // Register observed helpers first: chat-only authority never extends to
+      // an active native family. The existing heartbeat stops the owned group.
+      this.quark.sync();
+      const block = this.quark.block(run);
+      const lease = !block && agent.role === 'manager' ? this.quark.managerLeaseReason(run) : null;
+      if (block || lease) {
+        const reason = block?.reason ?? lease!;
+        this.quark.hold(
+          run,
+          reason.replace(/^Paused by QUARK: /, ''),
+          false,
+          block?.cause ?? 'lease',
+        );
+        // Hook observation is not a pre-dispatch grant or proof that work stopped.
+        if (event.hook_event_name === 'PreToolUse') return deny(reason);
+      }
+    }
     if (child) this.claudeTranscripts.register(child.id, event);
     const evidenceRun = child
       ? (this.activeRun(child.id)?.id ?? previousChildRun?.id ?? null)
@@ -2196,7 +2223,12 @@ export class Runtime {
         holds: current.omitted.holds + Math.max(0, current.holds.length - 6),
       },
       managerLease: current.managerLease
-        ? { state: current.managerLease.state, reason: current.managerLease.reason }
+        ? {
+            state: current.managerLease.state,
+            reason: current.managerLease.reason,
+            scope: current.managerLease.lease?.scope ?? 'orchestration',
+            notice: current.managerLease.notice,
+          }
         : null,
       budgets: current.budgets.slice(0, 6).map((budget) => ({
         ...budget,
@@ -2235,7 +2267,7 @@ export class Runtime {
       blockedBudgets: status.budgets
         .filter((budget) => budget.reason)
         .map(({ id, reason }) => ({ id, reason })),
-      lease: status.managerLease?.state,
+      lease: status.managerLease ? [status.managerLease.state, status.managerLease.scope] : null,
       ownerRequests: status.ownerRequests.items.map((item) => [item.entryId, item.delivery]),
     });
     const previous = this.managerNotices.get(agentId),
@@ -3796,7 +3828,13 @@ export class Runtime {
     const requireLease = () => {
       if (
         agent.role !== 'manager' ||
-        ['dock_inspect', 'dock_local_job', 'dock_checkpoint', 'dock_pause_worker'].includes(name)
+        [
+          'dock_inspect',
+          'dock_local_job',
+          'dock_checkpoint',
+          'dock_pause_worker',
+          'dock_work_item',
+        ].includes(name)
       )
         return null;
       if (this.activeRun(agentId)?.id !== active?.id)

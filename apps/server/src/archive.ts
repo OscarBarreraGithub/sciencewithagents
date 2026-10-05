@@ -49,7 +49,7 @@ export class Archive {
   ) {}
   async editors() {
     return archiveEditorsSchema.parse({
-      windows: await this.mirrors.list(),
+      windows: await this.mirrors.list(true),
       notice:
         'Available shared VS Code and loaded Codex server threads on this computer. Offline or unshared histories are not an exhaustive native catalog; reconnect/share them to review their transcript.',
     });

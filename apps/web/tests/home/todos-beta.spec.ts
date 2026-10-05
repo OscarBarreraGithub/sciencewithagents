@@ -178,49 +178,84 @@ test('long multiline to-dos wrap, keep kinds separate, and support API edits don
   await expect(row).toHaveCount(1);
 });
 
-test('retry after a lost assignment response opens the confirmed assignment without another write', async ({
+test('a lost direct ticket reply survives reload and confirms one worker without a manager turn', async ({
   page,
   baseURL,
 }, info) => {
-  const title = `Assign once ${info.project.name} ${randomUUID()}`;
-  const response = await page.request.post('/api/work-items', {
+  const title = `Direct ticket ${info.project.name} ${randomUUID()}`;
+  const scheduler = await (await page.request.get('/api/scheduler')).json();
+  const pause = await page.request.post('/api/scheduler/settings', {
     headers: { origin: baseURL! },
-    data: { key: randomUUID(), title },
+    data: { key: randomUUID(), settings: { ...scheduler.settings, paused: true } },
   });
-  expect(response.ok()).toBe(true);
-  const item = workItemSchema.parse(await response.json());
-  const state = snapshotSchema.parse(await (await page.request.get('/api/snapshot')).json());
-  const project = state.projects.find((project) => !project.internal)!;
-  const submissions: Record<string, unknown>[] = [];
-  await page.route('**/api/work-items', async (route) => {
-    if (route.request().method() !== 'POST') return route.continue();
-    submissions.push(route.request().postDataJSON());
-    const saved = await route.fetch();
-    expect(saved.ok()).toBe(true);
-    if (submissions.length === 1)
-      return route.fulfill({ status: 502, json: { error: 'Assignment response lost' } });
-    return route.fulfill({ response: saved });
-  });
-  await page.goto('/#/home');
-  const row = page.locator('.todo-list > li').filter({ hasText: title });
-  await row.getByRole('button', { name: 'Send to project', exact: true }).click();
-  await row.getByRole('combobox', { name: 'Send to', exact: true }).selectOption(project.id);
-  await row.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(row.locator('.todo-error')).toContainText('Assignment response lost');
-  await expect(row).toContainText('Sent to');
-  await row.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`#/chat/${project.managerId}$`));
-  expect(submissions).toHaveLength(1);
-  const items = workItemsSchema.parse(await (await page.request.get('/api/work-items')).json());
-  const assigned = items.items.find((i) => i.id === item.id)!;
-  expect(assigned.revision).toBe(2);
-  expect(assigned.assignmentRunId).toBeTruthy();
-  const manager = await (await page.request.get(`/api/agents/${project.managerId}`)).json();
-  expect(
-    manager.entries.filter((entry: { text: string }) =>
-      entry.text.includes(`To-do ID: ${item.id}`),
-    ),
-  ).toHaveLength(1);
+  expect(pause.ok()).toBe(true);
+  let taskId: string | undefined;
+  try {
+    const projectResponse = await page.request.post('/api/projects', {
+      headers: { origin: baseURL! },
+      data: { key: randomUUID(), name: title, provider: 'codex' },
+    });
+    expect(projectResponse.ok(), await projectResponse.text()).toBe(true);
+    const project = await projectResponse.json();
+    const response = await page.request.post('/api/work-items', {
+      headers: { origin: baseURL! },
+      data: { key: randomUUID(), title },
+    });
+    const item = workItemSchema.parse(await response.json());
+    const submissions: Record<string, unknown>[] = [];
+    await page.route('**/api/work-items/tickets', async (route) => {
+      submissions.push(route.request().postDataJSON());
+      const saved = await route.fetch();
+      expect(saved.ok()).toBe(true);
+      taskId = (await saved.json()).task.id;
+      if (submissions.length === 1)
+        return route.fulfill({ status: 502, json: { error: 'Ticket response lost' } });
+      return route.fulfill({ response: saved });
+    });
+    await page.goto('/#/home');
+    const row = page.locator('.todo-list > li').filter({ hasText: title });
+    await row.getByRole('button', { name: 'Send to project', exact: true }).click();
+    const form = page.getByRole('form', { name: 'Package a QUARK ticket' });
+    await form.getByRole('combobox', { name: 'Send to', exact: true }).selectOption(project.id);
+    await form.getByRole('slider', { name: 'Priority', exact: true }).press('End');
+    await form.getByRole('slider', { name: 'Estimated compute', exact: true }).press('Home');
+    await form.getByRole('slider', { name: 'Estimated compute', exact: true }).press('ArrowRight');
+    await form.getByRole('button', { name: 'Queue with QUARK', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('Ticket response lost');
+    await expect(row).toContainText('QUARK ticket');
+    await page.reload();
+    await page.getByRole('button', { name: 'Retry ticket save' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Queued' })).toContainText(title);
+    expect(submissions).toHaveLength(2);
+    expect(submissions[1]).toEqual(submissions[0]);
+    const items = workItemsSchema.parse(await (await page.request.get('/api/work-items')).json());
+    const assigned = items.items.find((source) => source.id === item.id)!;
+    expect(assigned).toMatchObject({ revision: 2, taskId, assignmentRunId: null });
+    expect(assigned.ownerTicketId).toBeTruthy();
+    const state = snapshotSchema.parse(await (await page.request.get('/api/snapshot')).json());
+    expect(state.tasks.filter((task) => task.id === taskId)).toHaveLength(1);
+    expect(state.agents.filter((agent) => agent.taskId === taskId)).toHaveLength(1);
+    const queue = await (await page.request.get('/api/scheduler')).json();
+    expect(
+      queue.items.filter((run: { agentId: string }) => run.agentId === project.managerId),
+    ).toEqual([]);
+    await expect(row).toContainText('priority 5/5 · compute 2/5');
+    await expect(row).toContainText('task working');
+  } finally {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    if (taskId) {
+      const cancelled = await page.request.post(`/api/tasks/${taskId}/cancel`, {
+        headers: { origin: baseURL! },
+        data: { key: randomUUID(), reason: 'Owned browser fixture completed.' },
+      });
+      expect(cancelled.ok(), await cancelled.text()).toBe(true);
+    }
+    const restored = await page.request.post('/api/scheduler/settings', {
+      headers: { origin: baseURL! },
+      data: { key: randomUUID(), settings: scheduler.settings },
+    });
+    expect(restored.ok()).toBe(true);
+  }
 });
 
 test('a pending change conflicts with another tab and retry preserves the other edit', async ({

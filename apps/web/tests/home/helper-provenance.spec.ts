@@ -44,7 +44,7 @@ test('explicit helpers stay excluded while same-title personal, imported and sha
     status: 'idle',
     message: '',
   }));
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: shared }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) => route.fulfill({ json: shared }));
   await page.goto('/#/chats');
   await page.getByRole('textbox', { name: 'Find a conversation' }).fill(name);
   await expect(page.locator('.flow-person')).toHaveCount(4);
@@ -77,7 +77,9 @@ test('shared read failures remain visible and recover without submitting the ret
   let fail = false;
   let sends = 0;
   const { entries: _, ...window } = state;
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [window] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: [window] }),
+  );
   await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
     route.fulfill(
       fail ? { status: 503, json: { error: 'Bridge unavailable' } } : { json: mirrorPage(state) },

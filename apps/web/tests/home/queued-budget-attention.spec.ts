@@ -149,5 +149,18 @@ test('a project budget refusal jumps to its project cap card', async ({ page }) 
     .getByRole('link', { name: /Budget needs attention/ });
   await expect(link).toHaveAttribute('href', `#/work/${project.id}`);
   await link.click();
-  await expect(page.locator(`#quark-project-${project.id}`).getByRole('slider')).toBeVisible();
+  const windowLabel =
+    coordinator.capacity
+      .find((provider: { provider: string }) => provider.provider === 'codex')
+      ?.windows.find((window: { id: string }) => window.id === 'primary')?.label ??
+    coordinator.accounting.windows.find(
+      (window: { provider: string; windowId: string }) =>
+        window.provider === 'codex' && window.windowId === 'primary',
+    )?.label ??
+    'Saved allowance';
+  await expect(
+    page
+      .locator(`#quark-project-${project.id}`)
+      .getByRole('slider', { name: `Codex · ${windowLabel} spending limit`, exact: true }),
+  ).toBeVisible();
 });

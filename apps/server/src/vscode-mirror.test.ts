@@ -13,6 +13,7 @@ import { repoRoot } from './paths.js';
 import { proxyPath } from './hosts.js';
 import {
   chatImageReference,
+  chatFileReference,
   mirrorPage,
   type MirrorPageQuery,
   type MirrorState,
@@ -105,34 +106,40 @@ async function connect(
   await expect.poll(() => mirrors.windows().length).toBe(1);
 }
 describe('VS Code mirror gateway', () => {
-  it('refuses remote screenshots before resolving local image files and still sends text', async () => {
-    const sent: unknown[] = [];
-    await connect(
-      (command) => {
-        if (command.type === 'send') sent.push(command.input);
-        return { state: 'sent', message: 'Native send acknowledged.' };
-      },
-      undefined,
-      false,
-      true,
-      { canAttachImages: false },
-    );
-    const input = {
-      key: randomUUID(),
-      threadId: 'thread',
-      text: `Look\n\n${chatImageReference(randomUUID())}`,
-    };
-    expect(await mirrors.send(windowId, input)).toMatchObject({
-      state: 'not_sent',
-      message: expect.stringContaining('remote editor'),
-    });
-    expect(sent).toEqual([]);
-    expect(preparedText).toEqual([]);
-    expect(
-      await mirrors.send(windowId, { ...input, key: randomUUID(), text: 'Text only' }),
-    ).toMatchObject({ state: 'sent' });
-    expect(sent).toHaveLength(1);
-  });
+  it.each([
+    { kind: 'screenshots', reference: chatImageReference },
+    { kind: 'general files', reference: chatFileReference },
+  ])(
+    'refuses remote $kind before resolving local files and still sends text',
+    async ({ reference }) => {
+      const sent: unknown[] = [];
+      await connect(
+        (command) => {
+          if (command.type === 'send') sent.push(command.input);
+          return { state: 'sent', message: 'Native send acknowledged.' };
+        },
+        undefined,
+        false,
+        true,
+        { canAttachImages: false },
+      );
+      const input = {
+        key: randomUUID(),
+        threadId: 'thread',
+        text: `Look\n\n${reference(randomUUID())}`,
+      };
+      expect(await mirrors.send(windowId, input)).toMatchObject({
+        state: 'not_sent',
+        message: expect.stringContaining('remote editor'),
+      });
+      expect(sent).toEqual([]);
+      expect(preparedText).toEqual([]);
+      expect(
+        await mirrors.send(windowId, { ...input, key: randomUUID(), text: 'Text only' }),
+      ).toMatchObject({ state: 'sent' });
+      expect(sent).toHaveLength(1);
+    },
+  );
   it('refreshes stale list status without opening the chat and shares reads across devices', async () => {
     const commands: unknown[] = [];
     let working = true;

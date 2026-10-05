@@ -3,7 +3,12 @@ export * from './archive.js';
 export * from './project-workflow.js';
 export * from './conversations.js';
 import { conversationSurfaceSchema } from './conversations.js';
-import { workItemPageQuerySchema, ownerRequestQuerySchema } from './work-items.js';
+import {
+  workItemPageQuerySchema,
+  ownerRequestQuerySchema,
+  ownerTicketMetadataSchema,
+  workItemSchema,
+} from './work-items.js';
 import { z } from 'zod';
 export * from './browser-drafts.js';
 export * from './local-access.js';
@@ -29,6 +34,7 @@ export * from './capacity.js';
 export * from './resources.js';
 export * from './cluster.js';
 export * from './pulsar.js';
+export * from './job-detail.js';
 export * from './local-jobs.js';
 export * from './mcp-forms.js';
 export * from './mcp-urls.js';
@@ -41,6 +47,7 @@ export * from './history.js';
 export * from './workspace-state.js';
 export * from './hosts.js';
 export * from './frontdesk.js';
+export * from './conversation-visibility.js';
 
 export const id = z.string().uuid();
 export const providerThreadId = z
@@ -259,6 +266,7 @@ export const taskSchema = z.object({
   goal: z.string(),
   acceptance: z.string(),
   scheduling: jobEstimateSchema.default(() => jobEstimateSchema.parse({})),
+  ownerTicket: ownerTicketMetadataSchema.optional(),
   status: taskStatusSchema,
   closure: z.object({ reason: z.string(), closedAt: z.string().datetime() }).optional(),
   revisions: z.number(),
@@ -269,6 +277,14 @@ export const taskSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+export const ownerTicketResultSchema = z
+  .object({
+    task: taskSchema,
+    workerId: id,
+    runId: id,
+    items: z.array(workItemSchema),
+  })
+  .strict();
 export const generatedImageSchema = z
   .object({
     id,
@@ -306,7 +322,34 @@ export const runSchema = z.object({
   kind: z.enum(['user', 'delegation', 'message', 'report', 'resume']),
   status: z.enum(['queued', 'running', 'completed', 'failed', 'interrupted', 'cancelled']),
   createdAt: z.string(),
+  queueEditable: z.boolean().optional(),
+  queueRevision: z.number().int().nonnegative().optional(),
+  queueEdit: z
+    .object({
+      clientId: id,
+      text: z.string().max(24_000),
+      state: z.enum(['editing', 'steering']),
+      operationKey: id.optional(),
+    })
+    .nullable()
+    .optional(),
 });
+export const queuedMessageActionSchema = z
+  .object({
+    key: id,
+    clientId: id,
+    revision: z.number().int().nonnegative(),
+    action: z.enum(['edit', 'takeover', 'save', 'queue', 'discard', 'steer', 'remove']),
+    text: z.string().max(24_000).optional(),
+  })
+  .strict();
+export type QueuedMessageAction = z.infer<typeof queuedMessageActionSchema>;
+export const queuedMessageReceiptSchema = z
+  .object({
+    status: z.enum(['applied', 'uncertain', 'not_found']),
+    run: runSchema,
+  })
+  .strict();
 export const approvalSchema = z.object({
   id,
   agentId: id,
@@ -608,5 +651,6 @@ export * from './app-updates.js';
 export * from './browser-setup.js';
 export * from './latex-reading.js';
 export * from './chat-images.js';
+export * from './chat-files.js';
 export * from './project-apps.js';
 export * from './publishing-accounts.js';

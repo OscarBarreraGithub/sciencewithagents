@@ -12,6 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { Store } from './store.js';
 import { Runtime } from './runtime.js';
 import { DemoProvider } from './demo.js';
+import { WorkspaceState } from './workspace-state.js';
 import { Terminals } from './terminal.js';
 import { createServer } from './server.js';
 import { PhoneAccess, phoneConfigSchema } from './phone-access.js';
@@ -105,6 +106,82 @@ async function pair() {
 }
 
 describe('protected phone entry', () => {
+  it('lets a paired phone attach and download a general file while refusing unpaired devices', async () => {
+    const { cookie } = await pair();
+    const payload = {
+      key: randomUUID(),
+      name: 'paper.tex',
+      data: Buffer.from('\\section{Phone fixture}\n').toString('base64'),
+    };
+    expect(
+      (
+        await remote.inject({
+          method: 'POST',
+          url: '/api/chat-files',
+          headers: remoteHeaders(),
+          payload,
+        })
+      ).statusCode,
+    ).toBe(401);
+    const uploaded = await remote.inject({
+      method: 'POST',
+      url: '/api/chat-files',
+      headers: remoteHeaders(cookie),
+      payload,
+    });
+    expect(uploaded.statusCode).toBe(200);
+    const id = uploaded.json().id;
+    const downloaded = await remote.inject({
+      url: '/api/chat-files/' + id,
+      headers: remoteHeaders(cookie),
+    });
+    expect(downloaded.statusCode).toBe(200);
+    expect(downloaded.rawPayload).toEqual(Buffer.from(payload.data, 'base64'));
+    expect(
+      (await remote.inject({ url: '/api/chat-files/' + id, headers: remoteHeaders() })).statusCode,
+    ).toBe(401);
+  });
+  it('archives and restores visibility from a paired phone without changing active work', async () => {
+    const { cookie } = await pair();
+    const run = store.enqueue(manager, randomUUID(), 'Existing saved work');
+    store.updateRun(run.id, { status: 'running' });
+    const payload = {
+      key: randomUUID(),
+      target: { kind: 'agent', agentId: manager },
+      archived: true,
+      expectedRevision: 0,
+    };
+    const denied = await remote.inject({
+      method: 'POST',
+      url: '/api/conversations/visibility',
+      headers: remoteHeaders(),
+      payload,
+    });
+    expect(denied.statusCode).toBe(401);
+    const archived = await remote.inject({
+      method: 'POST',
+      url: '/api/conversations/visibility',
+      headers: remoteHeaders(cookie),
+      payload,
+    });
+    expect(archived.statusCode).toBe(200);
+    expect(archived.json()).toMatchObject({ archived: true, revision: 1 });
+    expect(store.run(run.id).status).toBe('running');
+    const read = await remote.inject({
+      url: '/api/conversations/visibility?archived=true&limit=100',
+      headers: remoteHeaders(cookie),
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().records[0].target.agentId).toBe(manager);
+    const restored = await remote.inject({
+      method: 'POST',
+      url: '/api/conversations/visibility',
+      headers: remoteHeaders(cookie),
+      payload: { ...payload, key: randomUUID(), expectedRevision: 1, archived: false },
+    });
+    expect(restored.json()).toMatchObject({ archived: false, revision: 2 });
+    expect(store.run(run.id).status).toBe('running');
+  });
   it('lets a paired phone upload and read a screenshot while refusing unpaired devices', async () => {
     const { cookie } = await pair();
     const payload = {
@@ -561,4 +638,34 @@ it('connects a chosen host folder from a paired phone and retries without duplic
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
+});
+
+it('holds queued messages from a paired phone while denying unpaired and revoked devices', async () => {
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  const run = store.enqueue(manager, randomUUID(), 'Owner queued phone question');
+  const client = new WorkspaceState(store).register({ key: randomUUID(), label: 'Phone fixture' })
+    .client.id;
+  const payload = { key: randomUUID(), clientId: client, revision: 0, action: 'edit' };
+  const url = `/api/agents/${manager}/queued/${run.id}`;
+  const { cookie } = await pair();
+  expect(
+    (await remote.inject({ method: 'POST', url, headers: remoteHeaders(), payload })).statusCode,
+  ).toBe(401);
+  expect(
+    (await remote.inject({ method: 'POST', url, headers: remoteHeaders(cookie), payload }))
+      .statusCode,
+  ).toBe(200);
+  expect(store.run(run.id).queueEdit?.state).toBe('editing');
+  access.revoke(access.status(false).devices[0].id);
+  expect(
+    (
+      await remote.inject({
+        method: 'POST',
+        url,
+        headers: remoteHeaders(cookie),
+        payload: { ...payload, key: randomUUID(), revision: 1, action: 'queue' },
+      })
+    ).statusCode,
+  ).toBe(401);
+  expect(store.run(run.id).queueEdit?.state).toBe('editing');
 });

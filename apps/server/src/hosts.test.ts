@@ -42,6 +42,7 @@ type Fixture = {
 let fixtures: Fixture[], gateway: FastifyInstance, hosts: Hosts, root: string;
 let watchers: Map<string, Set<() => void>>;
 const agentId = randomUUID();
+const queuedId = randomUUID();
 beforeEach(async () => {
   root = mkdtempSync(join(tmpdir(), 'dock-hosts-'));
   fixtures = [];
@@ -82,12 +83,35 @@ beforeEach(async () => {
       reply.header('CF-Access-Jwt-Assertion', 'secret');
       return { label, messages: fixture.writes };
     });
+    app.get('/api/pulsar/jobs/:id', (request) => {
+      fixture.headers.push(request.headers);
+      return { label, runId: (request.params as { id: string }).id };
+    });
     app.get(`/api/documents/${agentId}/pdf`, (_request, reply) =>
       reply
         .type('application/pdf')
         .header('Set-Cookie', 'private=secret')
         .send(Buffer.from('%PDF-1.4\n' + label)),
     );
+    app.post('/api/chat-files', (request) => {
+      fixture.headers.push(request.headers);
+      fixture.writes.push({ upload: request.body });
+      return { id: agentId, name: 'notes.tex', size: 12, mimeType: 'text/plain' };
+    });
+    app.get(`/api/chat-files/${agentId}/info`, () => ({
+      id: agentId,
+      name: 'notes.tex',
+      size: 12,
+      mimeType: 'text/plain',
+    }));
+    app.get(`/api/chat-files/${agentId}`, (request, reply) => {
+      fixture.headers.push(request.headers);
+      return reply
+        .type('application/octet-stream')
+        .header('Content-Disposition', 'attachment; filename="notes.tex"')
+        .header('Set-Cookie', 'private=secret')
+        .send(Buffer.from('File on ' + label));
+    });
     app.get('/api/project-options', () => ({ canChooseFolder: true, folderBrowser: true }));
     app.get('/api/project-folders', () => ({
       current: { id: agentId, name: label, canSelect: true },
@@ -98,6 +122,30 @@ beforeEach(async () => {
     app.post('/api/projects/connect-folder', (request) => {
       fixture.writes.push(request.body);
       return { project: null };
+    });
+    let visibility: Record<string, unknown> | null = null;
+    app.get('/api/conversations/visibility', (request) => {
+      fixture.headers.push(request.headers);
+      return { records: visibility ? [visibility] : [], nextCursor: null };
+    });
+    app.post('/api/conversations/visibility', (request) => {
+      fixture.writes.push(request.body);
+      fixture.headers.push(request.headers);
+      const body = request.body as { target: unknown; expectedRevision: number; archived: boolean };
+      const updatedAt = new Date().toISOString();
+      visibility = {
+        id: randomUUID(),
+        target: body.target,
+        revision: body.expectedRevision + 1,
+        archived: body.archived,
+        archivedAt: body.archived ? updatedAt : null,
+        updatedAt,
+        provider: 'codex',
+        source: 'app',
+        title: 'Fixture chat',
+        caption: label,
+      };
+      return visibility;
     });
     app.get('/api/models', (_request, reply) => {
       if (fixture.modelMode === 'drop') {
@@ -115,6 +163,11 @@ beforeEach(async () => {
       fixture.headers.push(request.headers);
       fixture.writes.push(request.body);
       return { saved: true };
+    });
+    app.post(`/api/agents/${agentId}/queued/${queuedId}`, (request) => {
+      fixture.headers.push(request.headers);
+      fixture.writes.push(request.body);
+      return { held: true };
     });
     app.get('/api/events', (request, reply) => {
       fixture.headers.push(request.headers);
@@ -438,7 +491,24 @@ describe('isolated computer connections', () => {
       expect(proxyPath('GET', invalid)).toBeNull();
     expect(proxyPath('DELETE', `/agents/${agentId}`)).toBeNull();
     expect(proxyPath('POST', '/phone/enabled')).toBeNull();
+    expect(proxyPath('POST', '/work-items/tickets')).toBe('/api/work-items/tickets');
+    expect(proxyPath('GET', '/work-items/tickets')).toBeNull();
+    expect(proxyPath('POST', '/work-items/tickets/delete')).toBeNull();
+    expect(proxyPath('GET', `/agents/${agentId}/chat-quark`)).toBe(
+      `/api/agents/${agentId}/chat-quark`,
+    );
+    expect(proxyPath('POST', `/agents/${agentId}/chat-quark`)).toBe(
+      `/api/agents/${agentId}/chat-quark`,
+    );
+    expect(proxyPath('POST', `/agents/${agentId}/chat-quark/worker`)).toBeNull();
     expect(proxyPath('GET', '/resources')).toBe('/api/resources');
+    expect(proxyPath('GET', `/pulsar/jobs/${queuedId}`)).toBe(`/api/pulsar/jobs/${queuedId}`);
+    for (const invalid of [
+      '/pulsar/jobs/unknown',
+      `/pulsar/jobs/${queuedId}?path=/tmp`,
+      `/pulsar/jobs/${queuedId}/history`,
+    ])
+      expect(proxyPath('GET', invalid)).toBeNull();
     for (const path of [
       '/project-rates',
       '/conversations',
@@ -517,6 +587,71 @@ describe('isolated computer connections', () => {
     expect(fixtures.flatMap((fixture) => fixture.headers)).toEqual([]);
   });
 
+  it('reads a saved job only from the selected pinned computer', async () => {
+    const saved = await gateway.inject(
+      `/api/hosts/${fixtures[1].config.id}/proxy/pulsar/jobs/${queuedId}`,
+    );
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toEqual({ label: 'School computer', runId: queuedId });
+    expect(fixtures[0].headers).toEqual([]);
+    expect(fixtures[2].headers).toEqual([]);
+    expect(fixtures.flatMap((fixture) => fixture.writes)).toEqual([]);
+  });
+  it('keeps conversation visibility on the selected host and accepts only its exact typed queries', async () => {
+    const path = '/conversations/visibility';
+    const host = fixtures[1].config.id;
+    const body = {
+      key: randomUUID(),
+      target: { kind: 'agent', agentId },
+      archived: true,
+      expectedRevision: 0,
+    };
+    const result = await gateway.inject({
+      method: 'POST',
+      url: `/api/hosts/${host}/proxy${path}`,
+      payload: body,
+      headers: {
+        'content-type': 'application/json',
+        cookie: 'entry-phone-cookie=never-forward',
+        authorization: 'entry-credential=never-forward',
+      },
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({
+      target: body.target,
+      archived: true,
+      caption: 'School computer',
+    });
+    expect(fixtures[0].writes).toEqual([]);
+    expect(fixtures[2].writes).toEqual([]);
+    expect(fixtures[1].writes).toEqual([body]);
+    const page = await gateway.inject(`/api/hosts/${host}/proxy${path}?limit=100&archived=true`);
+    expect(page.statusCode).toBe(200);
+    expect(page.json().records[0].target).toEqual(body.target);
+    expect(
+      fixtures[1].headers.every(
+        (headers) => !headers.cookie && headers.authorization !== 'entry-credential=never-forward',
+      ),
+    ).toBe(true);
+    for (const valid of [
+      path,
+      `${path}?cursor=${agentId}&limit=1&archived=false`,
+      '/conversations?includeArchived=true',
+      '/vscode/windows?includeArchived=true',
+    ])
+      expect(proxyPath('GET', valid)).toBe(`/api${valid}`);
+    for (const invalid of [
+      `${path}/unknown`,
+      `${path}?limit=101`,
+      `${path}?cursor=unknown`,
+      `${path}?limit=1&limit=2`,
+      `${path}?path=/tmp`,
+      '/vscode/windows?includeArchived=1',
+      '/conversations?includeArchived=true&method=archive',
+    ])
+      expect(proxyPath('GET', invalid)).toBeNull();
+    expect(proxyPath('POST', `${path}?archived=true`)).toBeNull();
+  });
   it('streams a registered PDF from the selected computer without forwarding private headers', async () => {
     const response = await gateway.inject(path(1, `/documents/${agentId}/pdf`));
     expect(response.statusCode).toBe(200);
@@ -524,6 +659,36 @@ describe('isolated computer connections', () => {
     expect(response.body).toBe('%PDF-1.4\nSchool computer');
     expect(response.headers['set-cookie']).toBeUndefined();
     expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('uploads and downloads general attachments only on the selected computer', async () => {
+    const payload = {
+      key: randomUUID(),
+      name: 'notes.tex',
+      data: Buffer.from('Private fixture').toString('base64'),
+    };
+    const uploaded = await gateway.inject({
+      method: 'POST',
+      url: path(1, '/chat-files'),
+      headers: privateHeaders,
+      payload,
+    });
+    expect(uploaded.statusCode).toBe(200);
+    expect(uploaded.json().name).toBe('notes.tex');
+    expect(fixtures[1].writes).toEqual([{ upload: payload }]);
+    expect(fixtures[0].writes).toEqual([]);
+    expect(fixtures[2].writes).toEqual([]);
+    const response = await gateway.inject({
+      url: path(1, '/chat-files/' + agentId),
+      headers: privateHeaders,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/octet-stream');
+    expect(response.headers['content-disposition']).toContain('notes.tex');
+    expect(response.rawPayload.toString()).toBe('File on School computer');
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    checkHeaders(1);
   });
 
   it('forwards folder browsing and selection to the selected computer only', async () => {
@@ -739,4 +904,20 @@ describe('isolated computer connections', () => {
     checkHeaders(0);
     checkHeaders(1);
   });
+});
+
+it('routes queued messages to only the selected pinned host without forwarding phone credentials', async () => {
+  const input = { key: randomUUID(), clientId: randomUUID(), revision: 0, action: 'edit' };
+  const response = await gateway.inject({
+    method: 'POST',
+    url: path(1, `/agents/${agentId}/queued/${queuedId}`),
+    headers: privateHeaders,
+    payload: input,
+  });
+  expect(response.statusCode).toBe(200);
+  expect(response.json()).toEqual({ held: true });
+  expect(fixtures[1].writes).toEqual([input]);
+  expect(fixtures[0].writes).toEqual([]);
+  expect(fixtures[2].writes).toEqual([]);
+  checkHeaders(1);
 });

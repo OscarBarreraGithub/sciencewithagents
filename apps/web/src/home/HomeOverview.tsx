@@ -1,30 +1,30 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Aperture,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   ArrowUpRight,
-  Check,
   ChevronRight,
   Layers3,
   LayoutGrid,
   MessageCircle,
-  Plus,
   WifiOff,
 } from 'lucide-react';
 import {
   attention,
+  conversationVisibilityIdentity,
   projectRatesSchema,
-  workItemSchema,
   workItemsSchema,
   type Snapshot,
   type WorkItem,
 } from '@dock/shared';
-import { api, apiScope } from '../api';
 import claudeMark from '../assets/claude.svg';
-import { mirrorDaemon } from '../useMirrorChats';
+import { mirrorDaemon, useMirrorChats } from '../useMirrorChats';
+import { chatAgentKind } from './conversation-list';
+import { useConversationVisibility } from './useConversationVisibility';
 import { useReading, type HomeData } from './useHomeData';
+import { OwnerWorkBoard, type ProjectIdeaSeed } from './OwnerWorkBoard';
 import './home-overview.css';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -99,13 +99,56 @@ function parseProjectRates(value: unknown): ProjectRate[] {
 
 function Destinations({ data }: { data: HomeData }) {
   const state = data.snapshot.data;
-  const projects = new Set(ownerProjects(data).map((p) => p.id));
-  const managers =
-    state?.agents.filter((a) => !a.archivedAt && a.role === 'manager' && projects.has(a.projectId))
-      .length ?? 0;
-  const live = data.mirrors.data?.filter((w) => w.threadId && w.status !== 'offline');
-  const editor = live?.filter((w) => !mirrorDaemon(w)).length;
-  const sessions = live?.filter(mirrorDaemon).length ?? 0;
+  const visibility = useConversationVisibility();
+  const mirrors = useMirrorChats(true);
+  const records = new Map(
+    (visibility.data ?? []).map((record) => [
+      conversationVisibilityIdentity(record.target),
+      record,
+    ]),
+  );
+  const context = {
+    personalId: data.frontdesk.data?.agentId,
+    personalProjectId: data.frontdesk.data?.projectId,
+    resourceProjectId: data.resources.data?.projectId,
+  };
+  const visibleAgents =
+    state?.agents.filter(
+      (agent) =>
+        chatAgentKind(agent, state, context) &&
+        !records.get(conversationVisibilityIdentity({ kind: 'agent', agentId: agent.id }))
+          ?.archived,
+    ) ?? [];
+  const managers = visibleAgents.filter(
+    (agent) => chatAgentKind(agent, state!, context) === 'manager',
+  ).length;
+  const misc = visibleAgents.length - managers;
+  const shared = new Map(
+    mirrors.chats
+      .filter((chat) => chat.threadId)
+      .map((chat) => [
+        conversationVisibilityIdentity({
+          kind: 'shared',
+          provider: chat.provider ?? 'codex',
+          threadId: chat.threadId!,
+        }),
+        { daemon: mirrorDaemon(chat) },
+      ]),
+  );
+  for (const record of visibility.data ?? []) {
+    if (
+      record.target.kind === 'shared' &&
+      !shared.has(conversationVisibilityIdentity(record.target))
+    )
+      shared.set(conversationVisibilityIdentity(record.target), {
+        daemon: record.source === 'codex-daemon',
+      });
+  }
+  const visibleShared = [...shared]
+    .filter(([identity]) => !records.get(identity)?.archived)
+    .map(([, chat]) => chat);
+  const editor = mirrors.loaded ? visibleShared.filter((chat) => !chat.daemon).length : undefined;
+  const sessions = visibleShared.filter((chat) => chat.daemon).length;
   const jobs = [...(data.work.data?.jobs ?? []), ...(data.local.data?.jobs ?? [])];
   const running = jobs.filter((j) => j.status === 'running').length;
   const queued = jobs.filter((j) => j.status === 'queued').length;
@@ -118,11 +161,13 @@ function Destinations({ data }: { data: HomeData }) {
       tone: 'chats',
       detail: data.snapshot.error
         ? 'Computer connection interrupted'
-        : !state
-          ? 'Reading your conversations…'
-          : `${plural(managers, 'project manager')}${
-              editor === undefined ? '' : ` · ${plural(editor, 'VS Code chat')}`
-            }${sessions ? ` · ${plural(sessions, 'Codex session')}` : ''}`,
+        : visibility.error && !visibility.data
+          ? 'Conversation visibility unavailable'
+          : !state || !visibility.data
+            ? 'Reading your conversations…'
+            : `${plural(managers, 'project manager')}${misc ? ` · ${plural(misc, 'saved conversation')}` : ''}${
+                editor === undefined ? '' : ` · ${plural(editor, 'VS Code chat')}`
+              }${sessions ? ` · ${plural(sessions, 'Codex session')}` : ''}`,
     },
     {
       href: '#/apps',
@@ -712,274 +757,17 @@ function AttentionPanel({
   );
 }
 
-const statusNames: Record<WorkItem['status'], string> = {
-  open: 'Not started',
-  in_progress: 'In progress',
-  waiting: 'Waiting',
-  done: 'Done',
-};
-function TodoPanel({
-  data,
-  reading,
-}: {
-  data: HomeData;
-  reading: ReturnType<typeof useWorkItems>;
-}) {
-  const projects = ownerProjects(data);
-  const names = new Map(projects.map((p) => [p.id, p.name]));
-  const general = reading.data?.items.filter((i) => i.kind === 'general') ?? [];
-  const open = general.filter((i) => i.status !== 'done');
-  const draftKey = `dock:${apiScope()}:home-todo:draft`;
-  const [text, setText] = useState(() => {
-    try {
-      return sessionStorage.getItem(draftKey) ?? '';
-    } catch {
-      return '';
-    }
-  });
-  const notepad = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const field = notepad.current;
-    const resize = () => {
-      if (!field) return;
-      field.style.height = 'auto';
-      field.style.height = `${field.scrollHeight}px`;
-    };
-    resize();
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
-  }, [text]);
-  const updateText = (value: string) => {
-    setText(value);
-    try {
-      if (value) sessionStorage.setItem(draftKey, value);
-      else sessionStorage.removeItem(draftKey);
-    } catch {
-      // Keep typing available when this browser cannot retain a local draft.
-    }
-  };
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<{ id: string; message: string } | null>(null);
-  const [choosing, setChoosing] = useState<string | null>(null);
-  const [target, setTarget] = useState('');
-  // Keep one idempotency key per unconfirmed request, so retrying after a lost
-  // response returns the saved result instead of adding or assigning twice.
-  const save = async (name: string, body: Record<string, unknown>) => {
-    const storage = `dock:${apiScope()}:home-todo:${name}`;
-    const request = JSON.stringify(body);
-    const pending = JSON.parse(sessionStorage.getItem(storage) ?? 'null') as {
-      key: string;
-      request: string;
-    } | null;
-    const key = pending?.request === request ? pending.key : crypto.randomUUID();
-    const receipt = JSON.stringify({ key, request });
-    sessionStorage.setItem(storage, receipt);
-    const item = workItemSchema.parse(await api('/work-items', { key, ...body }));
-    if (sessionStorage.getItem(storage) === receipt) sessionStorage.removeItem(storage);
-    return item;
-  };
-  const run = async (id: string, action: () => Promise<void>) => {
-    if (busy) return;
-    setBusy(id);
-    setError(null);
-    try {
-      await action();
-    } catch (reason) {
-      setError({
-        id,
-        message: reason instanceof Error ? reason.message : 'Could not save. Try again.',
-      });
-    } finally {
-      setBusy(null);
-      reading.retry();
-    }
-  };
-  const add = (event: FormEvent) => {
-    event.preventDefault();
-    const note = text.trim();
-    if (!note) return;
-    const title = note.split(/\r?\n/, 1)[0].slice(0, 240);
-    const detail = note.slice(title.length).trim();
-    void run('add', async () => {
-      await save('add', { kind: 'general', title, detail });
-      // A response can arrive after Home has remounted and a newer draft was
-      // started. Only clear the draft that this request actually saved.
-      setText((current) => (current === text ? '' : current));
-      try {
-        if (sessionStorage.getItem(draftKey) === text) sessionStorage.removeItem(draftKey);
-      } catch {
-        // Draft storage may be unavailable; keep the current editor usable.
-      }
-    });
-  };
-  const send = (event: FormEvent, item: WorkItem) => {
-    event.preventDefault();
-    const project = projects.find((p) => p.id === target);
-    if (!project) return;
-    void run(item.id, async () => {
-      // A refresh may already have confirmed a send whose response was lost.
-      // Opening that assignment must not create a second edit/receipt.
-      if (item.assignmentRunId && item.managerId === project.managerId) {
-        sessionStorage.removeItem(`dock:${apiScope()}:home-todo:send:${item.id}`);
-        setChoosing(null);
-        location.hash = chat(item.managerId);
-        return;
-      }
-      const saved = await save(`send:${item.id}`, {
-        id: item.id,
-        expectedRevision: item.revision,
-        managerId: project.managerId,
-      });
-      setChoosing(null);
-      location.hash = chat(saved.managerId ?? project.managerId);
-    });
-  };
-  const unavailable = reading.error && !reading.data;
-  return (
-    <section className="overview-todo" aria-labelledby="todo-heading">
-      <div className="overview-panel-head">
-        <h2 id="todo-heading">To-do · General</h2>
-        <span className="overview-count">{reading.data ? open.length : '—'}</span>
-      </div>
-      <div
-        className="overview-section-body"
-        role="region"
-        aria-label="General to-dos and editor"
-        tabIndex={0}
-      >
-        <form className="todo-add" onSubmit={add}>
-          <label className="home-sr-only" htmlFor="todo-new">
-            New to-do
-          </label>
-          <textarea
-            ref={notepad}
-            id="todo-new"
-            value={text}
-            rows={2}
-            maxLength={8000}
-            autoComplete="off"
-            placeholder="Write a to-do…"
-            disabled={unavailable || busy === 'add'}
-            onChange={(event) => updateText(event.target.value)}
-          />
-          {text.trim() && (
-            <button type="submit" disabled={!!busy || unavailable}>
-              <Plus size={17} />
-              {busy === 'add' ? 'Adding…' : 'Add'}
-            </button>
-          )}
-        </form>
-        {error?.id === 'add' && (
-          <p className="todo-error" role="alert">
-            {error.message} Your text is kept; try again.
-          </p>
-        )}
-        {unavailable ? (
-          <p className="overview-empty">
-            Could not load your to-dos.{' '}
-            <button type="button" className="todo-inline-button" onClick={reading.retry}>
-              Try again
-            </button>
-          </p>
-        ) : !reading.data ? (
-          <p className="overview-empty">Reading your to-dos…</p>
-        ) : open.length ? (
-          <ul className="todo-list">
-            {open.map((item) => (
-              <li key={item.id}>
-                <div className="todo-row">
-                  {item.managerId ? (
-                    <span className="todo-sent" aria-hidden="true">
-                      <ArrowUpRight size={16} />
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="todo-done"
-                      disabled={!!busy}
-                      aria-label={`Mark “${item.title}” done`}
-                      onClick={() =>
-                        void run(item.id, async () => {
-                          await save(`done:${item.id}`, {
-                            id: item.id,
-                            expectedRevision: item.revision,
-                            status: 'done',
-                          });
-                        })
-                      }
-                    >
-                      <Check size={16} />
-                    </button>
-                  )}
-                  <span className="todo-text">
-                    <strong>{item.title}</strong>
-                    {item.detail && <span className="todo-detail">{item.detail}</span>}
-                    <small>
-                      {item.managerId
-                        ? `Sent to ${(item.projectId && names.get(item.projectId)) || 'a project'} · ${statusNames[item.status]}`
-                        : 'General'}
-                    </small>
-                  </span>
-                  {item.managerId ? (
-                    <a className="todo-action" href={chat(item.managerId)}>
-                      Open chat
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      className="todo-action"
-                      aria-expanded={choosing === item.id}
-                      disabled={!projects.length}
-                      onClick={() => {
-                        setChoosing(choosing === item.id ? null : item.id);
-                        setTarget('');
-                      }}
-                    >
-                      Send to project
-                    </button>
-                  )}
-                </div>
-                {choosing === item.id && (
-                  <form className="todo-send" onSubmit={(event) => send(event, item)}>
-                    <label htmlFor={`todo-target-${item.id}`}>Send to</label>
-                    <select
-                      id={`todo-target-${item.id}`}
-                      value={target}
-                      required
-                      onChange={(event) => setTarget(event.target.value)}
-                    >
-                      <option value="">Choose a project</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button type="submit" disabled={!target || !!busy}>
-                      {busy === item.id ? 'Sending…' : 'Send'}
-                    </button>
-                    <button type="button" onClick={() => setChoosing(null)}>
-                      Cancel
-                    </button>
-                    <small>Its manager gets this to-do once. QUARK still schedules the work.</small>
-                  </form>
-                )}
-                {error?.id === item.id && (
-                  <p className="todo-error" role="alert">
-                    {error.message} The to-do is kept; try again.
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    </section>
-  );
-}
 const useWorkItems = () => useReading('/work-items', workItemsSchema.parse);
 
-export function HomeOverview({ data, now }: { data: HomeData; now: number }) {
+export function HomeOverview({
+  data,
+  now,
+  onSeedProject,
+}: {
+  data: HomeData;
+  now: number;
+  onSeedProject?: (seed: ProjectIdeaSeed) => void;
+}) {
   const state = data.snapshot.data;
   const workItems = useWorkItems();
   const needs = needsFor(state, workItems.data?.items ?? [], data);
@@ -1016,7 +804,12 @@ export function HomeOverview({ data, now }: { data: HomeData; now: number }) {
         <Destinations data={data} />
         <aside className="overview-panel overview-side" aria-label="Requests and to-dos">
           <AttentionPanel needs={needs} known={known} error={attentionError} />
-          <TodoPanel data={data} reading={workItems} />
+          <OwnerWorkBoard
+            projects={ownerProjects(data)}
+            tasks={state?.tasks ?? []}
+            reading={workItems}
+            onSeedProject={onSeedProject}
+          />
         </aside>
         <RunningPanel data={data} needs={needsByProject} known={known} />
         <ResourcePanel data={data} now={now} />

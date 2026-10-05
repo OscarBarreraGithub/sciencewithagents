@@ -44,7 +44,8 @@ import { AppsGallery, SetupGuide } from './AppsGallery';
 import { AppUpdate } from './AppUpdate';
 import { HomeOrb } from './HomeOrb';
 import { PullToRefresh } from './PullToRefresh';
-import { BackLink, Navigation, useNavigation } from './Navigation';
+import { BackLink, Navigation, useNavigation, canonicalRoute } from './Navigation';
+import { seedProjectBrief } from './SpawnBrief';
 
 // Document titles only. Every route below keeps its existing screen.
 const titles: Record<string, string> = {
@@ -79,9 +80,7 @@ const titles: Record<string, string> = {
 const href = (page: string) => `#/${page}`;
 const route = () =>
   window.location.hash.startsWith('#/')
-    ? (window.location.hash.slice(2) || 'home')
-        .replace(/^usage(?=\/|$)/, 'work')
-        .replace(/^advanced\/?$/, 'settings')
+    ? canonicalRoute(window.location.hash)
     : new URLSearchParams(window.location.search).has('mirror')
       ? 'vscode'
       : 'home';
@@ -499,7 +498,13 @@ export function Home() {
           {page === 'welcome' ? (
             <Welcome data={data} />
           ) : page === 'home' ? (
-            <HomeOverview data={data} now={now} />
+            <HomeOverview
+              data={data}
+              now={now}
+              onSeedProject={(seed) => {
+                location.hash = seedProjectBrief(seed);
+              }}
+            />
           ) : page === 'apps' ? (
             <AppsGallery key={apiScope()} route={currentRoute} computer={selectedHost(data)} />
           ) : page === 'latex' ? (

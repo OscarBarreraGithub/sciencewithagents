@@ -18,6 +18,8 @@ import {
   hostsStatusSchema,
   mirrorPageQuerySchema,
   ownerRequestHttpQuerySchema,
+  conversationVisibilityQuerySchema,
+  conversationListQuerySchema,
   type HostConnection,
   type HostSummary,
 } from '@dock/shared';
@@ -162,7 +164,7 @@ function headers(host: HostConnection, extra: { lastEventId?: string } = {}) {
     host: `127.0.0.1:${host.remotePort}`,
     origin: `http://127.0.0.1:${host.remotePort}`,
     'x-dock-target-host': host.expectedHostId,
-    accept: 'application/json, text/event-stream, image/png',
+    accept: 'application/json, application/octet-stream, text/event-stream, image/png',
     'content-type': 'application/json',
     ...(extra.lastEventId ? { 'last-event-id': extra.lastEventId } : {}),
   };
@@ -432,10 +434,10 @@ export class Hosts {
 
 const uuid = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const getPaths = new RegExp(
-  `^/(?:apps|publishing-accounts|chat-images/${uuid}|health|browser/setup|setup(?:/(?:sign-in|claude-sign-in))?|documents(?:/browse|/${uuid}(?:/pdf|/reading|/assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif))?)?|snapshot|attention|capacity|resources|cluster(?:/sign-in|/notebooks)?|pulsar|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|archive/editors|work-items|bug-reports|app-updates|conversations(?:/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid})?|vscode/deliveries/${uuid}|agents/${uuid}(?:/mcp|/export|/recovery|/owner-requests|/usage|/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
+  `^/(?:apps|publishing-accounts|chat-images/${uuid}|chat-files/${uuid}(?:/info|/preview)?|health|browser/setup|setup(?:/(?:sign-in|claude-sign-in))?|documents(?:/browse|/${uuid}(?:/pdf|/reading|/assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif))?)?|snapshot|attention|capacity|resources|cluster(?:/sign-in|/notebooks)?|pulsar(?:/jobs/${uuid})?|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|archive/editors|work-items|bug-reports|app-updates|conversations(?:/visibility|/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid})?|vscode/deliveries/${uuid}|agents/${uuid}(?:/chat-quark|/mcp|/export|/recovery|/owner-requests|/usage|/receipts/${uuid}|/queued/${uuid}/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
 );
 const postPaths = new RegExp(
-  `^/(?:apps/${uuid}/remove|publishing-accounts/check|chat-images|browser/(?:check|open-setup)|documents/(?:from-message|${uuid}/(?:open|build))|projects(?:/(?:connect-folder|track-folder))?|archive/(?:search|read)|work-items|bug-reports|app-updates/(?:check|start)|conversations(?:/search)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|cluster/(?:settings|refresh|sign-in(?:/(?:respond|cancel))?|notebooks/close)|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control)|agents/${uuid}/(?:interviews|messages|commands|settings|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
+  `^/(?:apps/${uuid}/remove|publishing-accounts/check|chat-images|chat-files|browser/(?:check|open-setup)|documents/(?:from-message|${uuid}/(?:open|build))|projects(?:/(?:connect-folder|track-folder))?|archive/(?:search|read)|work-items(?:/tickets)?|bug-reports|app-updates/(?:check|start)|conversations(?:/search|/visibility)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|cluster/(?:settings|refresh|sign-in(?:/(?:respond|cancel))?|notebooks/close)|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control)|agents/${uuid}/(?:interviews|messages|queued/${uuid}|commands|settings|chat-quark|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
 );
 const terminalPath = new RegExp(`^/agents/${uuid}/terminal$`);
 
@@ -476,12 +478,24 @@ export function proxyPath(method: string, path: string, socket = false) {
     const params = new URLSearchParams(query);
     const mirrorRead = new RegExp(`^/vscode/windows/${uuid}$`).test(pathname);
     const ownerRequests = new RegExp(`^/agents/${uuid}/owner-requests$`).test(pathname);
+    const visibility = pathname === '/conversations/visibility';
+    const conversationList = pathname === '/conversations' || pathname === '/vscode/windows';
+    if (
+      visibility &&
+      !conversationVisibilityQuerySchema.safeParse(Object.fromEntries(params)).success
+    )
+      return null;
+    if (
+      conversationList &&
+      !conversationListQuerySchema.safeParse(Object.fromEntries(params)).success
+    )
+      return null;
     if (ownerRequests && !ownerRequestHttpQuerySchema.safeParse(Object.fromEntries(params)).success)
       return null;
     if (mirrorRead && !mirrorPageQuerySchema.safeParse(Object.fromEntries(params)).success)
       return null;
     for (const [name, value] of params) {
-      if (mirrorRead || ownerRequests) {
+      if (mirrorRead || ownerRequests || visibility || conversationList) {
         if (params.getAll(name).length !== 1 || /[\x00-\x1f]/.test(value)) return null;
         continue;
       }
@@ -603,7 +617,7 @@ export function registerHostRoutes(
           return reply.code(502).send(failure(new HostUnavailable()));
         }
         if (
-          !/^(application\/(?:json|pdf)|image\/png|text\/event-stream)(?:;|$)/i.test(
+          !/^(application\/(?:json|pdf|octet-stream)|image\/png|text\/event-stream)(?:;|$)/i.test(
             response.headers['content-type'] ?? '',
           )
         ) {

@@ -33,6 +33,23 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 describe('local application boundary', () => {
+  it('reads one saved job directly and validates its identity without starting a provider turn', async () => {
+    const kick = vi.spyOn(runtime, 'kick');
+    const run = store.enqueue(manager, randomUUID(), 'Saved bounded request');
+    store.updateRun(run.id, { status: 'completed' });
+    const result = await app.inject({ url: `/api/pulsar/jobs/${run.id}`, headers });
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({
+      job: { runId: run.id, status: 'completed', agentId: manager },
+      request: { text: 'Saved bounded request', truncated: false },
+    });
+    expect((await app.inject({ url: '/api/pulsar/jobs/unknown', headers })).statusCode).toBe(400);
+    expect(
+      (await app.inject({ url: `/api/pulsar/jobs/${randomUUID()}`, headers })).statusCode,
+    ).toBe(404);
+    expect(store.run(run.id).status).toBe('completed');
+    expect(kick).not.toHaveBeenCalled();
+  });
   it('preserves an explicitly internal development workspace without hiding a same-named owner project or deleting history', async () => {
     const development = store.project(store.agent(manager).projectId);
     store.db

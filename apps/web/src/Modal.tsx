@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { fitToVisibleViewport } from './useVisibleViewport';
 
 export function Modal({
   title,
@@ -20,8 +21,10 @@ export function Modal({
     if (embedded) return;
     const opener = document.activeElement;
     dialog.current?.showModal();
+    const stop = dialog.current && fitToVisibleViewport(dialog.current, 'modal');
     // React removes the dialog rather than closing it, so restore the keyboard position here.
     return () => {
+      stop?.();
       const lost = !document.activeElement || document.activeElement === document.body;
       if (lost && opener instanceof HTMLElement && opener.isConnected)
         opener.focus({ preventScroll: true });

@@ -384,7 +384,9 @@ test('shared phone chat handles keyboard viewport offsets without covering its c
     })),
   };
   const { entries: _, ...window } = state;
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [window] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: [window] }),
+  );
   await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
     route.fulfill({ json: mirrorPage(state) }),
   );

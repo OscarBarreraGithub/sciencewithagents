@@ -21,13 +21,20 @@ export const mirrorStatus = (chat: MirrorChat) =>
   })[chat.status];
 
 /** Remember navigation metadata only, never transcripts or credentials. */
-export function useMirrorChats() {
-  const storageKey = `dock:mirror-chats:${apiScope()}`;
+export function useMirrorChats(includeArchived = false) {
+  const baseKey = `dock:mirror-chats:${apiScope()}`;
+  const storageKey = `${baseKey}${includeArchived ? ':all' : ''}`;
   const [chats, setChats] = useState<MirrorChat[]>(() => {
     try {
       return mirrorWindowSchema
         .array()
-        .parse(JSON.parse(sessionStorage.getItem(storageKey) ?? '[]'))
+        .parse(
+          JSON.parse(
+            sessionStorage.getItem(storageKey) ??
+              (includeArchived ? sessionStorage.getItem(baseKey) : null) ??
+              '[]',
+          ),
+        )
         .slice(0, 50)
         .map((chat) => ({ ...chat, status: 'offline', online: false }));
     } catch {
@@ -42,7 +49,9 @@ export function useMirrorChats() {
     const poll = async () => {
       const listedAt = Date.now();
       try {
-        const list = mirrorWindowSchema.array().parse(await api('/vscode/windows'));
+        const list = mirrorWindowSchema
+          .array()
+          .parse(await api(`/vscode/windows${includeArchived ? '?includeArchived=true' : ''}`));
         if (ended) return;
         setChats((old) => {
           const next = new Map(
@@ -82,6 +91,6 @@ export function useMirrorChats() {
       ended = true;
       clearTimeout(timer);
     };
-  }, [storageKey]);
+  }, [storageKey, includeArchived]);
   return { chats, loaded, error };
 }

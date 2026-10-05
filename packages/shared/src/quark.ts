@@ -35,6 +35,22 @@ export const managerLeaseSchema = z
     model: z.string().nullable(),
     issuedAt: z.string().datetime(),
     expiresAt: z.string().datetime(),
+    // Absence preserves existing signed lease bytes and ordinary orchestration authority.
+    scope: z.enum(['orchestration', 'conversation']).optional(),
+  })
+  .strict();
+export const chatQuarkPolicySchema = z
+  .object({
+    agentId: id,
+    enabled: z.boolean().default(false),
+    revision: z.number().int().nonnegative().default(0),
+  })
+  .strict();
+export const chatQuarkPolicySaveSchema = z
+  .object({
+    key: id,
+    enabled: z.boolean(),
+    expectedRevision: z.number().int().nonnegative(),
   })
   .strict();
 export const pauseWorkerSchema = z

@@ -129,6 +129,118 @@ function job(
   );
   return { run: store.run(queued.id), worker, task, project };
 }
+it('reads a saved job without a lease and bounds previews while retaining exact-run evidence', () => {
+  const old = job('Saved job fixture');
+  store.updateRun(old.run.id, { status: 'completed', text: 'Request ' + 'x'.repeat(9000) });
+  for (let i = 0; i < 4; i++)
+    store.entry({
+      id: randomUUID(),
+      agentId: old.worker.id,
+      runId: old.run.id,
+      kind: 'assistant',
+      title: `Result ${i}`,
+      text: i === 3 ? 'y'.repeat(9000) : `Progress ${i}`,
+      status: 'complete',
+      createdAt: new Date(clock + i).toISOString(),
+    });
+  store.entry({
+    id: randomUUID(),
+    agentId: old.worker.id,
+    runId: old.run.id,
+    kind: 'tool',
+    title: 'Private tool payload',
+    text: 'Tool blob is not job outcome',
+    status: 'complete',
+    createdAt: new Date(clock).toISOString(),
+  });
+  store.entry({
+    id: randomUUID(),
+    agentId: old.worker.id,
+    runId: null,
+    kind: 'system',
+    title: 'Unattributed later failure',
+    text: 'Unrelated failure',
+    status: 'failed',
+    createdAt: new Date(clock).toISOString(),
+  });
+  const count = () => Number(store.db.prepare('SELECT count(*) AS n FROM events').get()!.n);
+  const before = count();
+  expect(pulsar.status().history.some((row) => row.runId === old.run.id)).toBe(false);
+  const detail = pulsar.jobDetail(old.run.id);
+  expect(detail.projectId).toBe(old.project.id);
+  expect(detail.job.agentId).toBe(old.worker.id);
+  expect(detail.task).toMatchObject({
+    title: old.task.title,
+    acceptance: { text: 'Observed result' },
+  });
+  expect(detail.request).toMatchObject({ truncated: true });
+  expect(detail.request.text).toHaveLength(8192);
+  expect(detail.outcome).toHaveLength(3);
+  expect(detail.outcome[2].text).toMatchObject({ truncated: true });
+  expect(detail.moreOutcome).toBe(true);
+  expect(JSON.stringify(detail)).not.toMatch(/Tool blob|Unrelated failure|Private tool payload/);
+  expect(detail.finishedAt).not.toBeNull();
+  expect(
+    store.entries(old.worker.id).find((entry) => entry.title === 'Result 3')!.text,
+  ).toHaveLength(9000);
+  expect(count()).toBe(before);
+});
+
+it('reads an admitted saved job outside recent history with its original model and finish record', () => {
+  const old = job('Saved job older history');
+  store.updateAgent(old.worker.id, { model: 'original-model' });
+  expect(pulsar.reserve(store.run(old.run.id), new Set())).toBe(true);
+  store.updateRun(old.run.id, { status: 'completed' });
+  pulsar.settle(old.run.id);
+  const template = JSON.parse(
+    String(store.db.prepare('SELECT body FROM pulsar_leases WHERE run_id=?').get(old.run.id)!.body),
+  );
+  for (let i = 0; i < 31; i++) {
+    const recent = store.enqueue(old.worker.id, randomUUID(), `Later ${i}`);
+    store.updateRun(recent.id, { status: 'completed' });
+    store.db
+      .prepare('INSERT INTO pulsar_leases(run_id,body) VALUES(?,?)')
+      .run(recent.id, JSON.stringify({ ...template, runId: recent.id }));
+  }
+  store.updateAgent(old.worker.id, { model: 'later-model' });
+  expect(pulsar.status().history.some((row) => row.runId === old.run.id)).toBe(false);
+  const detail = pulsar.jobDetail(old.run.id);
+  expect(detail.worker).toMatchObject({ model: 'original-model', modelBasis: 'admission' });
+  expect(detail.startedAt).toBe(template.startedAt);
+  expect(detail.finishedAt).toBe(template.finishedAt);
+});
+
+it('shows saved job queue-edit and approval waits without inferring paused execution', () => {
+  const item = job('Saved job waits');
+  store.updateRun(item.run.id, {
+    queueEdit: { clientId: randomUUID(), text: 'Edited request', state: 'editing' },
+  });
+  let detail = pulsar.jobDetail(item.run.id);
+  expect(detail.queueHold).toBe('editing');
+  expect(detail.job.held).toBe(false);
+  expect(detail.job.reason).toContain('Held for editing');
+  store.updateRun(item.run.id, { queueEdit: undefined, status: 'running' });
+  const approval = store.addApproval(item.worker.id, {
+    kind: 'input',
+    title: 'Which sample should I use?',
+    details: '',
+    questions: [],
+    requestId: 'fixture-request',
+    params: {},
+  });
+  detail = pulsar.jobDetail(item.run.id);
+  expect(detail.approval).toEqual({ id: approval.id, title: approval.title });
+  expect(detail.job.reason).toBe('Waiting for your answer in the conversation.');
+  expect(detail.job.eligible).toBe(false);
+  store.updateRun(item.run.id, { status: 'interrupted' });
+  expect(pulsar.jobDetail(item.run.id).approval).toBeNull();
+  const next = store.enqueue(item.worker.id, randomUUID(), 'Later owner turn');
+  store.updateRun(next.id, { status: 'running' });
+  store.db
+    .prepare('UPDATE approvals SET body=? WHERE id=?')
+    .run(JSON.stringify({ ...approval, createdAt: '2025-01-01T00:00:00.000Z' }), approval.id);
+  expect(pulsar.jobDetail(next.id).approval).toBeNull();
+});
 it('opt-in Claude five-hour utilization advances eligible work while preserving preferences, pauses and all caps', () => {
   const background = job('Useful Claude background', 'background', 1);
   store.updateAgent(background.worker.id, { model: 'claude-opus-5.5', effort: 'high' });

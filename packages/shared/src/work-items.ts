@@ -12,7 +12,7 @@ const title = z
   });
 const detail = z.string().trim().max(8_000);
 const humanReply = z.string().trim().min(1).max(8_000);
-export const workItemKindSchema = z.enum(['human', 'internal', 'general']);
+export const workItemKindSchema = z.enum(['human', 'internal', 'general', 'idea']);
 export const workItemStatusSchema = z.enum(['open', 'in_progress', 'waiting', 'done']);
 /** Saved app entry identity, not a quoted title or a filesystem path. */
 export const ownerMessageReferenceSchema = z
@@ -45,6 +45,7 @@ export const workItemSchema = z
     repliedAt: z.string().datetime().nullable(),
     replyRunId: workItemId.nullable(),
     assignmentRunId: workItemId.nullable(),
+    ownerTicketId: workItemId.nullable().default(null),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
     resolvedAt: z.string().datetime().nullable(),
@@ -73,11 +74,46 @@ export const workItemRequestSchema = z
   .strict();
 
 /** Scope comes from the authenticated manager, never from tool-supplied IDs. */
-export const managerWorkItemRequestSchema = workItemRequestSchema.omit({
-  projectId: true,
-  managerId: true,
-  humanReply: true,
-});
+export const managerWorkItemRequestSchema = workItemRequestSchema
+  .omit({
+    projectId: true,
+    managerId: true,
+    humanReply: true,
+  })
+  .extend({ kind: workItemKindSchema.exclude(['idea']).optional() });
+
+const ticketLevel = z.number().int().min(1).max(5);
+export const ownerTicketMetadataSchema = z
+  .object({
+    id: workItemId,
+    priority: ticketLevel,
+    estimatedCompute: ticketLevel,
+    sourceItems: z
+      .array(z.object({ id: workItemId, revision: revision.min(1), title }).strict())
+      .min(1)
+      .max(20),
+  })
+  .strict();
+/** Owner-approved work goes directly to the existing worker queue, without a manager ask. */
+export const ownerTicketRequestSchema = z
+  .object({
+    key: workItemId,
+    projectId: workItemId,
+    items: z
+      .array(z.object({ id: workItemId, expectedRevision: revision.min(1) }).strict())
+      .min(1)
+      .max(20)
+      .refine(
+        (items) => new Set(items.map((item) => item.id)).size === items.length,
+        'Select each to-do once.',
+      ),
+    title: z.string().trim().min(1).max(160),
+    brief: z.string().trim().max(8000).default(''),
+    acceptance: z.string().trim().min(1).max(2000),
+    priority: ticketLevel.default(3),
+    estimatedCompute: ticketLevel.default(3),
+  })
+  .strict();
 
 export const workItemQuerySchema = z.object({ projectId: workItemId.optional() }).strict();
 export const workItemsSchema = z.object({ items: z.array(workItemSchema) }).strict();

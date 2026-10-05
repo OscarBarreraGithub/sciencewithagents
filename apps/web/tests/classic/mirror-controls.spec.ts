@@ -17,7 +17,7 @@ test('stop reply preserves drafts and uses only read-only receipt checks after u
   };
   const controls: Record<string, string>[] = [];
   let checks = 0;
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [state] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) => route.fulfill({ json: [state] }));
   await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
     route.fulfill({ json: state }),
   );
@@ -73,7 +73,7 @@ test('old companions keep plain chat without a nonfunctional stop button', async
     message: '',
     entries: [],
   };
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [state] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) => route.fulfill({ json: [state] }));
   await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
     route.fulfill({ json: state }),
   );

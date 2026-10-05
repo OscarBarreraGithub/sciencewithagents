@@ -71,12 +71,23 @@ test('Spawn a fresh manager in a reused folder, send an idea and remove it witho
     await page.getByRole('button', { name: 'Spawn', exact: true }).click();
     const brief = page.getByRole('dialog', { name: 'Describe your project', exact: true });
     await expect(brief).toBeVisible();
-    const id = new URL(page.url()).hash.split('/')[2]!;
+    await expect
+      .poll(async () =>
+        (await (await page.request.get('/api/snapshot')).json()).projects.some(
+          (p: { name: string }) => p.name === name,
+        ),
+      )
+      .toBe(true);
+    const createdSnapshot = await (await page.request.get('/api/snapshot')).json();
+    const id = createdSnapshot.projects.find((p: { name: string }) => p.name === name).managerId;
     managers.push(id);
     expect(id).not.toBe(old.managerId);
     const detail = await (await page.request.get(`/api/agents/${id}`)).json();
     expect(detail.agent.projectId).not.toBe(old.id);
-    expect(detail.agent).toMatchObject({ name: `${name} manager`, model: 'demo' });
+    await expect
+      .poll(async () => (await (await page.request.get(`/api/agents/${id}`)).json()).agent.model)
+      .toBe('demo');
+    expect(detail.agent.name).toBe(`${name} manager`);
     expect(detail.entries).toEqual([]);
     expect(detail.runs).toEqual([]);
     await brief

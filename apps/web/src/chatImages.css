@@ -17,22 +17,22 @@
   order: 10;
   flex-wrap: wrap;
   gap: 8px;
-  max-height: 108px;
+  max-height: 136px;
   padding: 4px;
   max-width: 100%;
   overflow-y: auto;
 }
-.chat-image-previews > div {
+.chat-image-previews > .chat-legacy-image {
   position: relative;
   width: 76px;
   height: 86px;
   flex: 0 0 76px;
 }
-.chat-image-previews a {
+.chat-legacy-image a {
   display: block;
   height: 86px;
 }
-.chat-image-previews img {
+.chat-legacy-image img {
   display: block;
   width: 76px;
   height: 86px;
@@ -41,7 +41,7 @@
   border-radius: 9px;
   background: var(--paper);
 }
-.chat-image-previews button {
+.chat-legacy-image button {
   position: absolute;
   right: 0;
   top: 0;
@@ -51,6 +51,64 @@
   border-radius: 50%;
   display: grid;
   place-items: center;
+}
+.chat-file-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 320px);
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+.chat-file-card > svg {
+  flex: 0 0 auto;
+}
+.chat-file-card img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  display: block;
+}
+.chat-file-details {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+.chat-file-details small,
+.chat-upload-limit {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.chat-file-card button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 4px;
+}
+.chat-upload-limit {
+  align-self: center;
+}
+.notepad-attachments {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.notepad-attachments .chat-image-previews {
+  flex-basis: 100%;
+  max-height: 100px;
+}
+dialog.notepad[open]:has(> .notepad-attachments) {
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 .chat-image-error {
   flex-basis: 100%;

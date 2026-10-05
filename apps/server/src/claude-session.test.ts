@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ClaudeSessionAuthDiagnostic } from './claude-auth-diagnostics.js';
 import {
   ClaudeSession,
   ClaudeSubmissionCancelled,
@@ -1347,4 +1348,37 @@ it('real owned stdio supervisor runs a no-model fake CLI and closes all its pipe
   await session.close();
   await expect(channel!.exited).resolves.toBe(0);
   expect(session.ownedProcessId).toBeNull();
+}, 10_000);
+
+it('owned supervisor records fixed auth diagnostics with process/session identity and no raw stderr', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'dock-claude-auth-fixture-'));
+  directories.push(directory);
+  const diagnostics: ClaudeSessionAuthDiagnostic[] = [];
+  const config = options({
+    cwd: directory,
+    authDiagnostic: (event) => diagnostics.push(event),
+  });
+  const source = `process.stderr.write('fixture-secret fixture@example.invalid https://example.invalid/?token=private\\nUsage HTTP 401 network timeout\\ntengu_oauth_refresh_token_marked_dead_invalid_grant\\ntengu_oauth_refresh_token_marked_dead_invalid_grant\\nOAuth token refresh failed\\n');let buffer='';process.stdin.on('data',chunk=>{buffer+=chunk;let n;while((n=buffer.indexOf('\\n'))!==-1){const x=JSON.parse(buffer.slice(0,n));buffer=buffer.slice(n+1);if(x.type==='control_request')process.stdout.write(JSON.stringify({type:'control_response',response:{subtype:'success',request_id:x.request_id,response:{}}})+'\\n');}});`;
+  const session = new ClaudeSession(config, {
+    identity: async () => identity,
+    spawn: (_binary, _args, _cwd, onDiagnostic) =>
+      spawnClaudeChannel(process.execPath, ['-e', source], directory, onDiagnostic),
+    timeoutMs: 5000,
+  });
+  sessions.push(session);
+  await session.inspectFreshModels(); // Only a local Node fixture, no provider turn.
+  await vi.waitFor(() => expect(diagnostics).toHaveLength(2));
+  expect(diagnostics.map((event) => event.classification)).toEqual([
+    'refresh-invalid-grant',
+    'refresh-failed',
+  ]);
+  for (const event of diagnostics) {
+    expect(event.sessionId).toBe(config.sessionId);
+    expect(event.supervisorProcessId).toBe(session.ownedProcessId);
+    expect(event.nativeProcessId).toBeGreaterThan(0);
+    expect(event.nativeProcessId).not.toBe(event.supervisorProcessId);
+    expect(Date.parse(event.observedAt)).not.toBeNaN();
+  }
+  expect(JSON.stringify(diagnostics)).not.toMatch(/fixture-secret|@|https:|private/);
+  await session.close();
 }, 10_000);

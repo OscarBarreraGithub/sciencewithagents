@@ -1,14 +1,24 @@
 import { lstatSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
   agentSchema,
   conversationCreateSchema,
+  conversationListQuerySchema,
+  conversationVisibilitySchema,
+  conversationVisibilityIdentity,
+  conversationVisibilityTargetSchema,
+  conversationVisibilityUpdateSchema,
+  conversationVisibilityQuerySchema,
+  conversationVisibilityPageSchema,
   effortSchema,
   type Assignment,
   type Agent,
+  type ConversationVisibilityTarget,
+  type MirrorState,
 } from '@dock/shared';
 import type { FastifyInstance } from 'fastify';
-import { Conflict, type Store } from './store.js';
+import { Conflict, Missing, type Store } from './store.js';
 import type { ModelPolicy } from './model-policy.js';
 
 type Intent = {
@@ -127,17 +137,124 @@ export function registerConversationRoutes(
   dataDir: string,
   lock: <T>(key: string, fn: () => Promise<T>) => Promise<T>,
 ) {
-  app.get('/api/conversations', async () => ({
-    conversations: store
-      .agents()
-      .filter((agent) => agent.surface === 'misc' || agent.surface === 'terminal')
-      .map((agent) => agentSchema.parse(agent)),
-  }));
+  app.get('/api/conversations', async (request) => {
+    const query = conversationListQuerySchema.parse(request.query);
+    return {
+      conversations: store
+        .agents()
+        .filter((agent) => agent.surface === 'misc' || agent.surface === 'terminal')
+        .filter(
+          (agent) =>
+            query.includeArchived === 'true' ||
+            !conversationHidden(store, { kind: 'agent', agentId: agent.id }),
+        )
+        .map((agent) => agentSchema.parse(agent)),
+    };
+  });
   app.post('/api/conversations', async (request, reply) => {
     const input = conversationCreateSchema.parse(request.body);
     const result = await lock(`conversation:${input.key}`, () =>
       createConversation(store, models, dataDir, input),
     );
     return reply.code(201).send(result);
+  });
+}
+
+const visibilityPrefix = 'conversation:visibility:';
+const visibilityKey = (target: ConversationVisibilityTarget) =>
+  visibilityPrefix +
+  createHash('sha256').update(conversationVisibilityIdentity(target)).digest('hex');
+
+export function conversationVisibility(store: Store, raw: ConversationVisibilityTarget) {
+  const target = conversationVisibilityTargetSchema.parse(raw);
+  const saved = store.getSetting(visibilityKey(target));
+  return saved ? conversationVisibilitySchema.parse(saved) : null;
+}
+export function conversationHidden(store: Store, target: ConversationVisibilityTarget) {
+  return conversationVisibility(store, target)?.archived ?? false;
+}
+
+/** Visibility only: never changes agent/native lifecycle, files, history, or work. */
+export function registerConversationVisibilityRoutes(
+  app: FastifyInstance,
+  store: Store,
+  windows: () => Omit<MirrorState, 'entries'>[],
+) {
+  app.get('/api/conversations/visibility', async (request) => {
+    const input = conversationVisibilityQuerySchema.parse(request.query);
+    let after = 0;
+    if (input.cursor) {
+      const row = store.db
+        .prepare("SELECT rowid FROM settings WHERE key LIKE ? AND json_extract(value,'$.id')=?")
+        .get(`${visibilityPrefix}%`, input.cursor);
+      if (!row)
+        throw new Missing(
+          'This conversation visibility page could not be found. Refresh the list.',
+        );
+      after = Number(row.rowid);
+    }
+    const filter = input.archived === undefined ? '' : "AND json_extract(value,'$.archived')=?";
+    const args = input.archived === undefined ? [] : [input.archived === 'true' ? 1 : 0];
+    const rows = store.db
+      .prepare(
+        `SELECT value FROM settings WHERE key LIKE ? AND rowid>? ${filter} ORDER BY rowid LIMIT ?`,
+      )
+      .all(`${visibilityPrefix}%`, after, ...args, input.limit + 1);
+    const records = rows
+      .slice(0, input.limit)
+      .map((row) => conversationVisibilitySchema.parse(JSON.parse(String(row.value))));
+    return conversationVisibilityPageSchema.parse({
+      records,
+      nextCursor: rows.length > input.limit ? records.at(-1)!.id : null,
+    });
+  });
+  app.post('/api/conversations/visibility', async (request) => {
+    const input = conversationVisibilityUpdateSchema.parse(request.body);
+    return store.operation(`conversation.visibility:${input.key}`, input, () => {
+      const saved = conversationVisibility(store, input.target);
+      if ((saved?.revision ?? 0) !== input.expectedRevision)
+        throw new Conflict(
+          'This conversation visibility changed on another device. Refresh before saving.',
+          'VISIBILITY_CHANGED',
+        );
+      const agent = input.target.kind === 'agent' ? store.agent(input.target.agentId) : null;
+      const target = input.target;
+      const window =
+        target.kind === 'shared'
+          ? windows().find(
+              (item) =>
+                (item.provider ?? 'codex') === target.provider && item.threadId === target.threadId,
+            )
+          : null;
+      if (!agent && !window && !saved)
+        throw new Missing('Share this native conversation before changing its visibility.');
+      const updatedAt = new Date().toISOString();
+      const record = conversationVisibilitySchema.parse({
+        id: saved?.id ?? randomUUID(),
+        target,
+        revision: (saved?.revision ?? 0) + 1,
+        archived: input.archived,
+        archivedAt: input.archived ? (saved?.archivedAt ?? updatedAt) : null,
+        updatedAt,
+        provider: agent?.provider ?? window?.provider ?? saved?.provider ?? 'codex',
+        source: agent ? 'app' : window ? (window.source ?? 'vscode') : saved!.source,
+        title: (
+          agent?.name ??
+          (window ? window.title || window.label || 'Shared native conversation' : saved!.title)
+        ).slice(0, 500),
+        caption: (agent
+          ? store.project(agent.projectId).name
+          : (window?.label ?? saved!.caption)
+        ).slice(0, 200),
+      });
+      store.setSetting(visibilityKey(target), record);
+      store.event('conversation.visibility', agent?.projectId ?? null, agent?.id ?? null, {
+        id: record.id,
+        target,
+        revision: record.revision,
+        archived: record.archived,
+      });
+      return record;
+    });
   });
 }

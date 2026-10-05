@@ -102,71 +102,72 @@ test('spawn an independently configured manager, retain notepad versions and sen
   await page.getByRole('button', { name: 'Spawn', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('response was lost');
   await page.reload();
-  await page.getByRole('button', { name: /Finish setup/ }).click();
   const brief = page.getByRole('dialog', { name: 'Describe your project', exact: true });
   await expect(brief).toBeVisible();
-  await expect(page).toHaveTitle(`${name} manager · sciencewithagents`);
-  const managerId = new URL(page.url()).hash.split('/')[2];
+  await expect.poll(() => priorities.length).toBe(2);
+  expect(priorities[0]).toEqual(priorities[1]);
+  const snapshot = await (await page.request.get('/api/snapshot')).json();
+  const project = snapshot.projects.find((p: { name: string }) => p.name === name);
+  const managerId = project.managerId;
   const created = await (await page.request.get(`/api/agents/${managerId}`)).json();
   expect(created.agent).toMatchObject({ provider: 'codex', model: 'demo', effort: 'medium' });
   const workflowUrl = `/api/projects/${created.agent.projectId}/workflow`;
   const workflow = await (await page.request.get(workflowUrl)).json();
   expect(workflow).toMatchObject({ providerMix: 'claude-heavy', spending: 'light' });
-  expect(priorities).toHaveLength(2);
-  expect(priorities[0]).toEqual(priorities[1]);
   expect(
     await (await page.request.get(`/api/projects/${created.agent.projectId}/quark`)).json(),
   ).toMatchObject({ priority: 'background', revision: 1 });
   expect(created.runs).toHaveLength(0);
   expect(submissions).toHaveLength(0);
-  await brief.getByRole('textbox', { name: 'Project description', exact: true }).fill(original);
-  await expect(brief.locator('.notepad-status')).toHaveText('Saved');
+  const editor = brief.getByRole('textbox', { name: 'Project description', exact: true });
+  await editor.fill(original);
+  await expect(brief.locator('.notepad-status')).toHaveText('Saved in this browser');
+  // Local versions are written after typing settles, and survive reloading the setup.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (value) =>
+          Object.entries(localStorage).some(
+            ([key, raw]) =>
+              key.includes(':notepad-recovery:') &&
+              JSON.parse(raw).versions.some((version: { text: string }) => version.text === value),
+          ),
+        original,
+      ),
+    )
+    .toBe(true);
   await page.reload();
-  await expect(
-    brief.getByRole('textbox', { name: 'Project description', exact: true }),
-  ).toHaveValue(original);
+  await expect(editor).toHaveValue(original);
   await brief.getByRole('button', { name: 'Minimize', exact: true }).click();
   await expect(brief).toHaveCount(0);
-  await expect(page).toHaveURL(/#\/chat\/[^/]+$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(`${name} manager`);
-  const composer = page.getByRole('textbox', { name: `Message ${name} manager`, exact: true });
-  await expect(composer).toHaveValue(original);
-  await page.reload();
-  await expect(composer).toHaveValue(original);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Open notepad', exact: true }).click();
-  const notepad = page.getByRole('dialog', { name: 'Write at length', exact: true });
-  const editor = notepad.getByRole('textbox', {
-    name: `Long message to ${name} manager`,
-    exact: true,
-  });
+  await page.getByRole('button', { name: 'Continue writing', exact: true }).click();
   await expect(editor).toHaveValue(original);
   await editor.fill(newer);
-  await expect(notepad.locator('.notepad-status')).toHaveText('Saved');
-  await notepad.getByRole('button', { name: 'Versions', exact: true }).click();
-  const versions = notepad.getByRole('complementary', { name: 'Saved versions', exact: true });
+  await expect(brief.locator('.notepad-status')).toHaveText('Saved in this browser');
+  await brief.getByRole('button', { name: 'Versions', exact: true }).click();
+  const versions = brief.getByRole('complementary', { name: 'Saved versions', exact: true });
   await versions.locator('.notepad-versions button').filter({ hasText: original }).first().click();
-  await versions.getByRole('button', { name: 'Restore this version', exact: true }).click();
   await expect(editor).toHaveValue(original);
-  await expect(versions.getByRole('status')).toContainText('as a new version');
   await expect(
     versions.locator('.notepad-versions button').filter({ hasText: newer }).first(),
   ).toBeVisible();
   expect(submissions).toHaveLength(0);
-  await versions.getByRole('button', { name: 'Close', exact: true }).click();
+  await brief.getByRole('button', { name: 'Versions', exact: true }).click();
   await page.screenshot({
     path: `../../data/screenshots/workspace/${info.project.name}-notepad.png`,
   });
-  await notepad.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(notepad.getByRole('alert')).toContainText('response was lost');
+  await brief.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(brief.getByRole('alert')).toContainText('response was lost');
   await expect(editor).toHaveValue(original);
-  await notepad.getByRole('button', { name: 'Send', exact: true }).click();
+  await brief.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => submissions.length).toBe(2);
   expect(submissions[0].key).toBe(submissions[1].key);
   expect(submissions.map((submission) => submission.text)).toEqual([original, original]);
-  await expect(notepad).toHaveCount(0);
+  await expect(brief).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/chat\/[^/]+$/);
   await expect(page.locator('.message.user').filter({ hasText: original })).toHaveCount(1);
   await expect(page.locator('.message.assistant')).toContainText('demo mode');
+  const composer = page.getByRole('textbox', { name: `Message ${name} manager`, exact: true });
   await expect(composer).toHaveValue('');
   expect(
     await page.evaluate(() => ({
@@ -533,11 +534,15 @@ test('ordinary-folder tracking stays explicit and its uncertain confirmation sur
   });
   await start.click();
   await expect(page.getByRole('alert')).toBeVisible();
-  await page.reload();
-  await expect(region).toContainText('My research notes');
   await expect(region.getByRole('button', { name: 'Choose another folder' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Retry Spawn', exact: true }).click();
+  await page.reload();
+  // The immediate notepad resumes its saved setup receipt automatically after reload.
   await expect(page.getByRole('alert')).toContainText('temporarily unavailable');
+  await page
+    .getByRole('dialog', { name: 'Describe your project', exact: true })
+    .getByRole('button', { name: 'Minimize', exact: true })
+    .click();
+  await expect(region).toContainText('My research notes');
   expect(confirmations).toEqual([
     { key, confirmedTracking: true },
     { key, confirmedTracking: true },

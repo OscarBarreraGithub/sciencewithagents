@@ -5,12 +5,12 @@ This describes connected source behavior, not a blanket release certification.
 
 | Area                 | Available behavior                                                                                               | Boundary                                                                                            |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Home                 | Remaining allowances, computer snapshot, running projects, general to-dos and human action items                 | Readings show freshness; missing data is not zero usage                                             |
+| Home                 | Remaining allowances, computer snapshot, running projects, Ideas, To-dos, Completed/Undo and human action items  | Readings show freshness; missing data is not zero usage                                             |
 | Projects             | Choose a new/existing folder first, configure manager/workers and budget, then Spawn at the bottom               | Folder selection creates no manager; Spawn saves setup and the first brief is sent explicitly       |
 | Model preferences    | Shared user defaults, project snapshots, editable task/family mappings, latest available versions and exact pins | Native/imported choices stay native; unavailable models need a visible correction                   |
 | Chats                | Managers, shared editor sessions and saved Misc conversations; compact phone chat and grouped tool details       | Internal helpers/resource reports stay out of the ordinary chat list                                |
 | Prompt notepad       | Full-page editing, autosave, local versions, minimize and return to chat                                         | Unsent drafts are browser/device-local; erased storage cannot be guaranteed recoverable             |
-| Active messages      | Codex steering, supported native follow-up queues, visible queued messages, Stop and durable retry receipts      | Support depends on the native session; uncertain sends are not blindly replayed                     |
+| Active messages      | Codex steering, native follow-up queues, held editing for app-owned queued messages, Stop and durable retries    | Native editor queues keep their supported controls; uncertain sends are not blindly replayed        |
 | Delegation           | Managers assign Codex/Claude workers, inspect tools/results and coordinate bounded reviews                       | Native helpers share parent supervision; partial helper counters are labelled                       |
 | Completed work       | Separate questions using saved evidence or an eligible copy of the original native conversation                  | Does not reopen the finished task/review or recover hidden reasoning                                |
 | Manager continuity   | Persistent internal/human work items, checkpoints and concise requests; owner-only Notes                         | Managers continue independent work when one item awaits a person                                    |
@@ -58,6 +58,17 @@ account activity, including work outside the app; unknown intervals remain gaps.
 Unknown usage holds new protected work; transient read failures and quota exhaustion
 have distinct recovery paths.
 
+Home and project boards keep Ideas separate from actionable To-dos. Select one or several
+to-dos and package one background ticket with priority and estimated compute sliders (1–5).
+QUARK queues a worker without an initial manager turn; existing project review/application
+policy still applies. Background ordering considers priority, relative compute and queue age;
+foreground work comes first. Source items remain linked. Completed items have an Undo action.
+An idea can seed a new project's first notepad without deleting or completing the idea.
+
+Job details read the saved request, waiting reason, responsible worker, task and attributed
+outcomes even after the job leaves the recent queue. Links lead to its conversation, task,
+project and hourly controls. Long evidence is previewed with access to the retained text.
+
 The coordinator stores its instructions outside project worktrees, uses a selectable central
 model and wakes for messages or bounded events rather than consuming tokens while idle.
 QUARK and the resource assistant receive compact current evidence and retrieve saved detail
@@ -79,6 +90,14 @@ compares the change with expected work instead of treating high usage alone as a
 Untracked processes remain distinguishable from app-owned work. See [resource monitoring](RESOURCE_WATCH.md).
 
 ## Native capabilities and saved evidence
+
+**Expand queue** opens queued messages in a full-height list. App-managed messages can be
+held and edited in the notepad; minimizing, reloads or another message completing never
+release the edit hold. **Save and queue** releases it explicitly. Supported Codex sessions
+also offer an explicit **Steer now** action. Lost acknowledgements stay available for
+inspection rather than being silently resent. Native editor queues remain under their
+editor's supported controls. Original queued wording stays searchable after an edit;
+material changes reopen earlier source-message triage.
 
 New managed agents inherit native tools, skills, hooks and configured integrations. Supported
 native unattended policies give writing roles full native access (files, browsers, SSH) with
@@ -111,11 +130,13 @@ The optional companion needs no separate editor login. [Companion](../apps/vscod
 
 ## Documents on a phone
 
-**Attach screenshot** beside the chat composer opens the device's image picker in manager
-and shared native chats. Preview or remove up to four images before sending. Attached drafts
-survive reloads; failed uploads can retry without duplicates. Images are privately stored on
-the selected computer and passed to the existing agent through its native image-reading tools.
-This supports screenshots and browser-readable images, not arbitrary file attachments.
+**Attach files** opens the device's file picker in chat and the first-project notepad. Attach
+up to four files, 8 MB each; remove attachments before sending and retry interrupted uploads
+without duplicating them. Images retain previews and native vision support. Documents and
+other files are stored privately on the selected computer and handed to a capable native
+agent by reference. Attached drafts survive reloads. Attaching a file does not execute it or
+guarantee the selected assistant can interpret every format; coordination-only QUARK reads
+bounded text previews and can refer other files to an appropriate manager.
 
 Apps keeps GitHub and Cloudflare sign-up instructions behind **Set up publishing accounts**.
 Native GitHub and Cloudflare sign-in checks collapse completed steps; missing tools or
@@ -166,7 +187,13 @@ Give the project a separate display name during setup; the selected folder stays
 with its original name. Spawn creates a fresh project and manager even if that folder already
 has a manager. Settings and conversations are separate; files in the chosen folder are shared.
 Open an earlier manager from Chats to continue its conversation. No local transcript is
-automatically imported during setup.
+automatically imported during setup. Spawn opens the notepad immediately while setup runs in
+the background. Sending early waits for setup; failures and reloads retain the draft and retry
+the same message receipt rather than sending twice.
+
+**Archive chat** hides an app conversation or shared editor thread from the ordinary list.
+Open **Archived** to restore it, including a shared thread that is currently offline. This
+keeps drafts, history, active jobs and native provider state intact.
 
 To remove a manager, open its chat configuration and choose Remove manager. Stop running work
 first. Removal cancels queued messages and unfinished tasks, hides the manager from normal
@@ -179,6 +206,11 @@ discovery failures keep messages queued for retry; another provider can start in
 A reconnecting browser exposes its retained local draft for copying. Sends use durable receipts
 so retry does not silently resend accepted work. This does not make a powered-off computer
 available or cache the whole chat archive on the phone.
+
+A manager's Configure panel offers **Ignore QUARK for my replies**. It applies to existing
+queued and future direct owner messages; running replies retain their current choice. Manual
+pauses, edit holds, native permissions and provider limits still apply. Workers and observed
+native helper families remain under ordinary QUARK supervision.
 
 QUARK also reports spare capacity before a reset and projected reserve depletion. Its bounded
 coordinator wake-ups advise managers to advance suitable work while keeping provider choices,

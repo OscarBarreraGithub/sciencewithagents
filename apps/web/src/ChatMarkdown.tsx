@@ -6,7 +6,8 @@ import { DocumentLink } from './Documents';
 import { prepareChatMath } from './chatMath';
 import 'katex/dist/katex.min.css';
 import './chatMath.css';
-import { savedDocumentLinks, chatImageId } from '@dock/shared';
+import { savedDocumentLinks, chatImageId, chatFileId } from '@dock/shared';
+import { ChatFileCard } from './ChatImages';
 import { apiUrl } from './api';
 import './chatImages.css';
 
@@ -30,7 +31,10 @@ export const ChatMarkdown = memo(
     const prepared = useMemo(
       () =>
         prepareChatMath(
-          children.replace(/\n\n<!-- sciencewithagents screenshot attachments:[\s\S]*?\n-->/g, ''),
+          children.replace(
+            /\n\n<!-- sciencewithagents (?:screenshot|file) attachments:[\s\S]*?\n-->/g,
+            '',
+          ),
         ),
       [children],
     );
@@ -40,7 +44,9 @@ export const ChatMarkdown = memo(
       <div className="chat-markdown">
         <ReactMarkdown
           urlTransform={(url) =>
-            chatImageId(url) || (entry && links.includes(url)) ? url : defaultUrlTransform(url)
+            chatImageId(url) || chatFileId(url) || (entry && links.includes(url))
+              ? url
+              : defaultUrlTransform(url)
           }
           remarkPlugins={[remarkGfm, prepared.remarkChatMath]}
           rehypePlugins={[
@@ -57,20 +63,24 @@ export const ChatMarkdown = memo(
             ],
           ]}
           components={{
-            a: report
-              ? ({ children }) => <span>{children}</span>
-              : ({ href, children }) => (
-                  <DocumentLink
-                    href={href}
-                    saved={
-                      entry && href && links.indexOf(href) >= 0
-                        ? { agentId: entry.agentId, entryId: entry.id, index: links.indexOf(href) }
-                        : undefined
-                    }
-                  >
-                    {children}
-                  </DocumentLink>
-                ),
+            a: ({ href, children }) => {
+              const fileId = href ? chatFileId(href) : null;
+              if (fileId) return <ChatFileCard key={fileId} id={fileId} />;
+              return report ? (
+                <span>{children}</span>
+              ) : (
+                <DocumentLink
+                  href={href}
+                  saved={
+                    entry && href && links.indexOf(href) >= 0
+                      ? { agentId: entry.agentId, entryId: entry.id, index: links.indexOf(href) }
+                      : undefined
+                  }
+                >
+                  {children}
+                </DocumentLink>
+              );
+            },
             img: ({ src, alt, ...props }) => {
               const id = typeof src === 'string' ? chatImageId(src) : null;
               return id ? (

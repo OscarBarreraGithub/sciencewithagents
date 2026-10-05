@@ -18,7 +18,7 @@ import {
 import { api } from '../api';
 import { Modal } from '../Modal';
 import { QuarkWorkspace } from './QuarkWorkspace';
-import { PulsarPanel } from '../PulsarPanel';
+import { JobDetail } from '../JobDetail';
 import { LocalJobsPanel } from '../LocalJobsPanel';
 import { FlowEmpty, FlowHeading } from './WorkspaceFlow';
 import type { HomeData } from './useHomeData';
@@ -57,12 +57,12 @@ export function ActivityFlow({ currentRoute, data }: { currentRoute: string; dat
             </a>
           }
         >
-          See its allowance and resource estimates, why it is waiting, and the conversation
-          responsible for the result.
+          Read the request, waiting reason and saved result, or open the conversation to continue.
         </FlowHeading>
         <div className="flow-form-panel">
-          <PulsarPanel
-            jobId={id}
+          <JobDetail
+            key={id}
+            jobId={id ?? ''}
             open={(agentId) => {
               location.hash = route('chat', agentId);
             }}

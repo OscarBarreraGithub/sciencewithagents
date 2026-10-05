@@ -1,0 +1,226 @@
+.owner-work-board {
+  min-width: 0;
+}
+.owner-board-tabs,
+.owner-board-selection,
+.owner-board-actions,
+.owner-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.owner-board-tabs {
+  margin-bottom: 12px;
+}
+.owner-work-board button,
+.owner-work-board select,
+.owner-work-board input:not([type='checkbox']) {
+  min-height: 44px;
+  max-width: 100%;
+  font: inherit;
+}
+.owner-board-tabs button,
+.owner-board-selection button,
+.owner-board-actions button,
+.owner-board-receipt button,
+.owner-ticket-pending button {
+  padding: 8px 12px;
+  border: 1px solid var(--home-line);
+  border-radius: 10px;
+  background: var(--home-white);
+  color: var(--home-ink);
+  cursor: pointer;
+}
+.owner-board-tabs button[aria-pressed='true'] {
+  border-color: var(--home-blue);
+  background: #e9edfc;
+  color: var(--home-blue);
+}
+.owner-board-selection,
+.owner-board-receipt,
+.owner-ticket-pending {
+  margin: 12px 0;
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
+.owner-ticket-form {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 14px;
+  background: var(--home-paper);
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  min-width: 0;
+}
+.owner-ticket-form h3,
+.owner-ticket-form p {
+  margin: 0;
+}
+.owner-ticket-form p,
+.owner-ticket-sources {
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
+.owner-ticket-sources {
+  margin: 0;
+  padding-left: 22px;
+}
+.owner-ticket-form label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  font-size: var(--text-small);
+  margin: 0;
+  color: var(--home-ink);
+}
+.owner-ticket-form input,
+.owner-ticket-form textarea,
+.owner-ticket-form select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--home-line);
+  border-radius: 8px;
+  background: var(--home-white);
+  color: var(--home-ink);
+  font: inherit;
+}
+.owner-ticket-form textarea {
+  resize: vertical;
+}
+.owner-ticket-ratings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.owner-item-selection {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: var(--text-small);
+  color: var(--home-muted);
+  margin: 0;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.owner-item-selection input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  accent-color: var(--home-blue);
+}
+.owner-row-actions {
+  align-items: stretch;
+  flex-direction: column;
+}
+.todo-completed-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.todo-completed-list > li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--home-line);
+}
+.owner-work-board button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.owner-work-board :focus-visible {
+  outline: 3px solid var(--home-blue);
+  outline-offset: 2px;
+}
+.project-owner-board {
+  margin: 20px 0;
+}
+.project-owner-board .overview-section-body {
+  max-height: none;
+  overflow: visible;
+}
+@media (max-width: 640px) {
+  .owner-row-actions {
+    grid-column: 2;
+    align-items: flex-start;
+  }
+  .owner-ticket-form {
+    padding: 10px;
+  }
+}
+.owner-ticket-ratings input[type='range'] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: var(--home-blue);
+  cursor: pointer;
+}
+.owner-ticket-ratings output {
+  color: var(--home-muted);
+  font-size: var(--text-small);
+}
+.owner-ticket-dialog[open] {
+  position: fixed;
+  inset: calc(var(--modal-top, 0px) + 12px) 0 auto;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 0;
+  width: min(760px, calc(100vw - 24px));
+  height: min(900px, calc(var(--modal-height, 100dvh) - 24px));
+  max-height: calc(var(--modal-height, 100dvh) - 24px);
+  overflow: hidden;
+  border-color: var(--home-line);
+  background: var(--home-paper);
+  color: var(--home-ink);
+}
+.owner-ticket-dialog .modal-heading {
+  flex-shrink: 0;
+  padding: 14px 18px;
+  margin: 0;
+  border-bottom: 1px solid var(--home-line);
+}
+.owner-ticket-dialog .modal-heading h2 {
+  color: var(--home-ink);
+}
+.owner-ticket-request {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.owner-ticket-dialog .owner-ticket-form {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 18px;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  align-content: start;
+}
+.owner-ticket-dialog .owner-board-actions {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 12px 18px;
+  border-top: 1px solid var(--home-line);
+  background: var(--home-white);
+}
+.owner-ticket-dialog p {
+  color: var(--home-muted);
+  margin: 0;
+}
+.owner-ticket-dialog p.todo-error {
+  color: #9a2d1b;
+}
+@media (max-width: 640px) {
+  .owner-ticket-dialog .owner-ticket-form,
+  .owner-ticket-dialog .modal-heading,
+  .owner-ticket-dialog .owner-board-actions {
+    padding: 12px;
+  }
+}

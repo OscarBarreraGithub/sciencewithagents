@@ -10,7 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
 } from 'lucide-react';
-import type { WorkspaceDraft } from '@dock/shared';
+import { withoutChatAttachments, withChatAttachmentText, type WorkspaceDraft } from '@dock/shared';
 import { api, ApiError } from './api';
 import { parseDraftHistory } from './home/chat-contracts';
 import type { SharedDraft } from './useWorkspaceState';
@@ -41,12 +41,19 @@ export function Notepad({
   sending,
   notice,
   controls,
+  overlay,
+  attachments,
   onSend,
   onMinimize,
   localOnly = false,
   localHistory,
   maxLength = 24_000,
   readOnly = false,
+  title,
+  sendLabel = 'Send',
+  statusLabel,
+  recoveryDescription,
+  initialOptionsOpen = false,
 }: {
   draft: SharedDraft;
   agentId: string;
@@ -58,18 +65,25 @@ export function Notepad({
   sending: boolean;
   notice: string;
   controls?: ReactNode;
+  overlay?: ReactNode;
+  attachments?: ReactNode;
   onSend: () => void;
   onMinimize: () => void;
   localOnly?: boolean;
   localHistory?: { versions: { text: string; at: string }[]; restore: (text: string) => void };
   maxLength?: number;
   readOnly?: boolean;
+  title?: string;
+  sendLabel?: string;
+  statusLabel?: string;
+  recoveryDescription?: string;
+  initialOptionsOpen?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const editor = useRef<HTMLTextAreaElement>(null);
   const titleId = useId();
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(initialOptionsOpen);
   const [exported, setExported] = useState('');
   useEffect(() => {
     // Saving and device-transfer problems must stay actionable, even with options tucked away.
@@ -144,10 +158,12 @@ export function Notepad({
       <header className="notepad-bar">
         <div className="notepad-title">
           <p>{mode === 'brief' ? `First request for ${agentName}` : `Message to ${agentName}`}</p>
-          <h2 id={titleId}>{mode === 'brief' ? 'Describe your project' : 'Write at length'}</h2>
+          <h2 id={titleId}>
+            {title ?? (mode === 'brief' ? 'Describe your project' : 'Write at length')}
+          </h2>
         </div>
         <span className={`notepad-status ${draft.error ? 'failed' : ''}`} role="status">
-          {status}
+          {statusLabel ?? status}
         </span>
         <div className="notepad-actions">
           <button
@@ -190,16 +206,17 @@ export function Notepad({
             }}
           >
             {sending ? <RefreshCw className="spin" size={17} /> : <ArrowUp size={17} />}
-            <span>{sending ? 'Sending…' : 'Send'}</span>
+            <span>{sending ? (sendLabel === 'Send' ? 'Sending…' : 'Saving…') : sendLabel}</span>
           </button>
         </div>
       </header>
+      {attachments && <div className="notepad-attachments">{attachments}</div>}
       <div className="notepad-body">
         <div className="notepad-paper">
           <textarea
             ref={editor}
             aria-label={mode === 'brief' ? 'Project description' : `Long message to ${agentName}`}
-            value={draft.text}
+            value={withoutChatAttachments(draft.text)}
             maxLength={maxLength}
             readOnly={readOnly}
             placeholder={
@@ -209,7 +226,7 @@ export function Notepad({
             }
             spellCheck
             onChange={(event) => {
-              draft.setText(event.target.value);
+              draft.setText(withChatAttachmentText(draft.currentText(), event.target.value));
               remember();
             }}
             onSelect={remember}
@@ -288,9 +305,10 @@ export function Notepad({
           {!localOnly && <DraftHandoff draft={draft} />}
           <div className="notepad-export">
             <span>
-              {localOnly
-                ? 'This tab keeps its own draft. Browser-local recovery copies and versions survive closing the tab; reopen Versions to copy them. They do not sync to another device.'
-                : 'Autosaved in this browser as you type, then to this computer.'}{' '}
+              {recoveryDescription ??
+                (localOnly
+                  ? 'This tab keeps its own draft. Browser-local recovery copies and versions survive closing the tab; reopen Versions to copy them. They do not sync to another device.'
+                  : 'Autosaved in this browser as you type, then to this computer.')}{' '}
               Clearing browser data or losing the device can remove unsent drafts.
             </span>
             <button type="button" className="notepad-button" onClick={() => void copy()}>
@@ -303,6 +321,7 @@ export function Notepad({
           </div>
         </section>
       )}
+      {overlay}
     </dialog>,
     document.body,
   );

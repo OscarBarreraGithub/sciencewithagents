@@ -1,6 +1,6 @@
-import { MessageQueue } from './MessageQueue';
+import { AppMessageQueue } from './AppMessageQueue';
 import { ChatMarkdown } from './ChatMarkdown';
-import { ChatImagePicker } from './ChatImages';
+import { ChatAttachmentPicker, useChatAttachmentUpload } from './ChatImages';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
@@ -19,8 +19,8 @@ import {
 } from 'lucide-react';
 import {
   parseMcpFormValues,
-  withoutChatImages,
-  withChatImageText,
+  withoutChatAttachments,
+  withChatAttachmentText,
   jobEstimateSchema,
   type Agent,
   type AgentDetail,
@@ -339,7 +339,11 @@ export function Conversation({
               </div>
             </div>
           )}
-          {timeline(entries).map((row, index, rows) => {
+          {timeline(
+            entries.filter(
+              (entry) => !(entry.kind === 'system' && entry.title === 'Original queued message'),
+            ),
+          ).map((row, index, rows) => {
             if (Array.isArray(row))
               return (
                 <ToolGroup
@@ -447,11 +451,7 @@ export function Conversation({
           )}
         </div>
       </div>
-      <MessageQueue
-        messages={(data?.runs ?? []).filter(
-          (run) => run.status === 'queued' && run.kind === 'user',
-        )}
-      />
+      <AppMessageQueue agent={agent} runs={data?.runs ?? []} />
     </>
   );
 }
@@ -537,6 +537,12 @@ export function Composer({
   );
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const attachmentUpload = useChatAttachmentUpload({
+    currentText: draft.currentText,
+    setText,
+    maxLength,
+    onBusy: setUploading,
+  });
   const [literalSlash, setLiteralSlash] = useState(false);
   // A running Codex turn accepts native steering, so a new message updates it by default.
   // Turning it off sends a separate message; a retry always keeps its recorded mode.
@@ -940,9 +946,9 @@ export function Composer({
                   ? 'Describe an idea, ask a question, or move the work forward…'
                   : `Message ${agent.name}…`)
         }
-        value={withoutChatImages(text)}
+        value={withoutChatAttachments(text)}
         onChange={(event) => {
-          setText(withChatImageText(draft.currentText(), event.target.value));
+          setText(withChatAttachmentText(draft.currentText(), event.target.value));
           setLiteralSlash(false);
           rememberSelection();
         }}
@@ -1068,14 +1074,13 @@ export function Composer({
             <Maximize2 className="composer-notepad-icon" size={16} aria-hidden="true" />{' '}
             <span>Notepad</span>
           </button>
-          <ChatImagePicker
+          <ChatAttachmentPicker
             key={agent.id}
             text={text}
             currentText={draft.currentText}
             setText={setText}
-            maxLength={maxLength}
             disabled={sending || pendingText !== null || !draft.ready || draft.conflict}
-            onBusy={setUploading}
+            uploader={attachmentUpload}
           />
           {!specialized && !steer && (
             <select
@@ -1135,6 +1140,15 @@ export function Composer({
               if (sent) closeNotepad();
             });
           }}
+          attachments={
+            <ChatAttachmentPicker
+              text={text}
+              currentText={draft.currentText}
+              setText={setText}
+              disabled={sending || pendingText !== null || !draft.ready || draft.conflict}
+              uploader={attachmentUpload}
+            />
+          }
           controls={
             specialized ? undefined : (
               <div className="notepad-controls">

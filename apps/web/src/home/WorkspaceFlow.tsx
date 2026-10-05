@@ -15,7 +15,15 @@ import {
   Terminal,
   Users,
 } from 'lucide-react';
-import { agentSchema, type Agent, type AgentDetail, type Snapshot, type Task } from '@dock/shared';
+import {
+  conversationVisibilityIdentity,
+  agentSchema,
+  type ConversationVisibilityTarget,
+  type Agent,
+  type AgentDetail,
+  type Snapshot,
+  type Task,
+} from '@dock/shared';
 import { api, apiUrl, detail } from '../api';
 import { Conversation, Composer } from '../Conversation';
 import { TaskModal, ManagerModal } from '../ProjectActions';
@@ -34,6 +42,8 @@ import {
 } from '../useMirrorChats';
 import { VscodeMirror } from '../VscodeMirror';
 import { ProjectConfiguration } from './ProjectConfiguration';
+import { readProjectSeed, seedProjectBrief } from './SpawnBrief';
+import { ProjectOwnerWorkBoard } from './OwnerWorkBoard';
 import { NewConversation } from './NewConversation';
 import { AssistedSearch } from './AssistedSearch';
 import { EditorStatus } from './EditorStatus';
@@ -41,7 +51,9 @@ import { BrowserStatus } from './BrowserStatus';
 import { surfaceOf } from './chat-contracts';
 import { ConfigPanel, NotesPanel, PanelFrame, SubagentsPanel, type ChatPanel } from './ChatPanels';
 import type { HomeData } from './useHomeData';
-import { resourceAssistantOf } from './resource-chat';
+import { chatAgentKind } from './conversation-list';
+import { useConversationVisibility } from './useConversationVisibility';
+import { ConversationVisibilityButton } from './ConversationVisibilityButton';
 import './workspace-flow.css';
 
 export const flowPages = new Set([
@@ -199,6 +211,8 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
   if (page === 'new')
     return (
       <ProjectConfiguration
+        key={route}
+        seed={target === 'idea' ? readProjectSeed(route.split('/')[2]) : undefined}
         heading={
           <FlowHeading label="A NEW PROJECT" title="Start or connect a project">
             Name it, choose its manager and how its team works. Nothing runs until you send the
@@ -252,6 +266,14 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
             <span>Finished tasks</span>
           </div>
         </div>
+        <ProjectOwnerWorkBoard
+          key={project.id}
+          project={project}
+          state={state}
+          onSeedProject={(seed) => {
+            location.hash = seedProjectBrief(seed);
+          }}
+        />
         <div className="flow-columns">
           <section className="flow-panel">
             <div className="flow-section-title">
@@ -462,6 +484,7 @@ type PaneContext = {
   data: HomeData;
   /** Personal-assistant and resource projects: their chats are Misc, not project managers. */
   special: Set<string>;
+  visibilityAction?: ReactNode;
 };
 
 export function ChatPage({
@@ -630,6 +653,7 @@ export function ChatPage({
         </p>
       </div>
       <div className="chat-pane-tools" role="group" aria-label="Conversation tools">
+        {pane.visibilityAction}
         {agent.interview && (
           <a className="chat-tool" href={go('chat', agent.interview.sourceAgentId)}>
             <ArrowLeft size={17} />
@@ -940,6 +964,7 @@ type ChatFilter = 'all' | ChatKind;
 type RowState = 'awaiting' | 'working' | 'queued' | 'attention' | 'idle' | 'offline';
 type ChatRow = {
   key: string;
+  target: ConversationVisibilityTarget;
   kind: ChatKind;
   // Replaces the kind label, e.g. a native Codex session inside the shared tab.
   tag?: string;
@@ -1026,7 +1051,24 @@ function MainChat({
     setPanel(answerId ? 'notes' : null);
   }, [agentId, answerId]);
   const [menu, setMenu] = useState(false);
-  const mirrors = useMirrorChats();
+  const mirrors = useMirrorChats(true);
+  const visibility = useConversationVisibility();
+  const [archived, setArchived] = useState(false);
+  const records = new Map(
+    (visibility.data ?? []).map((record) => [
+      conversationVisibilityIdentity(record.target),
+      record,
+    ]),
+  );
+  const visibilityAction = (target: ConversationVisibilityTarget, name?: string) => (
+    <ConversationVisibilityButton
+      key={conversationVisibilityIdentity(target)}
+      target={target}
+      record={records.get(conversationVisibilityIdentity(target))}
+      changed={visibility.changed}
+      name={name}
+    />
+  );
   useEffect(() => {
     if (page === 'managers') setFilter('manager');
   }, [page]);
@@ -1050,24 +1092,11 @@ function MainChat({
   const rows: ChatRow[] = [
     ...state.agents.flatMap((agent): ChatRow[] => {
       const surface = surfaceOf(agent);
-      // Terminal-only sessions live in Advanced controls, not the normal chat list.
-      if (agent.archivedAt || agent.nativeRootId || surface === 'terminal') return [];
-      // Computer health owns every diagnosis and consultation, including old records
-      // without a reason. They remain searchable there, never one row per check here.
-      if (resourceAssistantOf(agent) || agent.projectId === data.resources.data?.projectId)
-        return [];
-      if (
-        state.projects.find((p) => p.id === agent.projectId)?.internal &&
-        surface !== 'misc' &&
-        agent.id !== personalId
-      )
-        return [];
-      const kind: ChatKind | null =
-        agent.interview || surface === 'misc' || special.has(agent.projectId)
-          ? 'misc'
-          : agent.role === 'manager'
-            ? 'manager'
-            : null;
+      const kind = chatAgentKind(agent, state, {
+        personalId,
+        personalProjectId: data.frontdesk.data?.projectId,
+        resourceProjectId: data.resources.data?.projectId,
+      });
       if (!kind) return [];
       const rowState: RowState =
         waiting.has(agent.id) || agent.status === 'waiting'
@@ -1082,6 +1111,7 @@ function MainChat({
       return [
         {
           key: agent.id,
+          target: { kind: 'agent', agentId: agent.id },
           kind,
           name: agent.name,
           caption:
@@ -1113,6 +1143,7 @@ function MainChat({
       return [
         {
           key,
+          target: { kind: 'shared', provider: chat.provider ?? 'codex', threadId: chat.threadId },
           kind: 'vscode',
           tag: daemon ? 'Codex session' : undefined,
           name: chat.title || 'Untitled conversation',
@@ -1130,13 +1161,43 @@ function MainChat({
       rowOrder.indexOf(a.state) - rowOrder.indexOf(b.state) ||
       (b.time ?? '').localeCompare(a.time ?? ''),
   );
+  // Saved shared summaries stay restorable even when the editor is offline or switched threads.
+  for (const record of visibility.data ?? []) {
+    if (
+      record.target.kind !== 'shared' ||
+      rows.some(
+        (row) =>
+          conversationVisibilityIdentity(row.target) ===
+          conversationVisibilityIdentity(record.target),
+      )
+    )
+      continue;
+    const key = `${record.target.provider}:${record.target.threadId}`;
+    rows.push({
+      key,
+      target: record.target,
+      kind: 'vscode',
+      tag: record.source === 'codex-daemon' ? 'Codex session' : undefined,
+      name: record.title || 'Untitled conversation',
+      caption: record.caption,
+      time: record.updatedAt,
+      state: 'offline',
+      label: 'Offline',
+      href: `#/chats/vscode/${encodeURIComponent(key)}`,
+      selected: key === editorKey,
+    });
+  }
   const term = query.trim().toLowerCase();
-  const shown = rows.filter(
-    (row) =>
-      (filter === 'all' || row.kind === filter) &&
-      (!term || `${row.name} ${row.caption} ${row.tag ?? ''}`.toLowerCase().includes(term)),
-  );
+  const shown = visibility.data
+    ? rows.filter(
+        (row) =>
+          !!records.get(conversationVisibilityIdentity(row.target))?.archived === archived &&
+          (filter === 'all' || row.kind === filter) &&
+          (!term || `${row.name} ${row.caption} ${row.tag ?? ''}`.toLowerCase().includes(term)),
+      )
+    : [];
   const editor = mirrors.chats.find((chat) => mirrorKey(chat) === editorKey);
+  const editorTarget = rows.find((row) => row.kind === 'vscode' && row.key === editorKey)?.target;
   const selected = !!agentId || !!editorKey;
   const ListTitle = selected ? 'h2' : 'h1';
   return (
@@ -1144,7 +1205,7 @@ function MainChat({
       <aside className="chat-list" aria-label="Conversations">
         <div className="chat-list-head">
           <ListTitle className="chat-list-title" tabIndex={-1}>
-            Chats
+            {archived ? 'Archived' : 'Chats'}
           </ListTitle>
           <div className="chat-new">
             <button
@@ -1173,7 +1234,17 @@ function MainChat({
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        <AssistedSearch />
+        <div className="chat-list-actions" role="group" aria-label="Conversation actions">
+          <AssistedSearch />
+          <button
+            className={`chat-small-button${archived ? ' primary' : ''}`}
+            type="button"
+            aria-pressed={archived}
+            onClick={() => setArchived((value) => !value)}
+          >
+            Archived
+          </button>
+        </div>
         <div className="flow-tabs chat-filters" role="group" aria-label="Conversation type">
           {filters.map(([value, label]) => (
             <button
@@ -1186,51 +1257,67 @@ function MainChat({
             </button>
           ))}
         </div>
+        {visibility.error && (
+          <p className="chat-list-empty" role="alert">
+            {visibility.error}{' '}
+            <button type="button" className="flow-button" onClick={visibility.retry}>
+              Retry visibility
+            </button>
+          </p>
+        )}
         <nav className="chat-list-scroll" aria-label="Conversation list">
           {shown.slice(0, rowLimit).map((row) => (
-            <a
-              key={`${row.kind}:${row.key}`}
-              className={`flow-person chat-row ${row.kind}${row.selected ? ' selected' : ''}`}
-              href={row.href}
-              aria-current={row.selected ? 'page' : undefined}
-            >
-              <span className={`chat-row-icon ${row.kind}`} aria-hidden="true">
-                {row.kind === 'manager' ? (
-                  <Users size={17} />
-                ) : row.kind === 'vscode' ? (
-                  <Terminal size={17} />
-                ) : (
-                  <MessageCircle size={17} />
-                )}
-              </span>
-              <span className="chat-row-text">
-                <strong>{row.name}</strong>
-                <small>
-                  <span className="chat-row-kind">{row.tag ?? kindLabels[row.kind]}</span>{' '}
-                  {row.caption}
-                </small>
-              </span>
-              <span className="chat-row-side">
-                {row.time && <time dateTime={row.time}>{ago(row.time)}</time>}
-                <span className={`chat-row-state ${row.state}`}>
-                  <span className="chat-dot" aria-hidden="true" />
-                  {row.label}
+            <div className="conversation-visible-row" key={`${row.kind}:${row.key}`}>
+              <a
+                className={`flow-person chat-row ${row.kind}${row.selected ? ' selected' : ''}`}
+                href={row.href}
+                aria-current={row.selected ? 'page' : undefined}
+              >
+                <span className={`chat-row-icon ${row.kind}`} aria-hidden="true">
+                  {row.kind === 'manager' ? (
+                    <Users size={17} />
+                  ) : row.kind === 'vscode' ? (
+                    <Terminal size={17} />
+                  ) : (
+                    <MessageCircle size={17} />
+                  )}
                 </span>
-              </span>
-            </a>
+                <span className="chat-row-text">
+                  <strong>{row.name}</strong>
+                  <small>
+                    <span className="chat-row-kind">{row.tag ?? kindLabels[row.kind]}</span>{' '}
+                    {row.caption}
+                  </small>
+                </span>
+                <span className="chat-row-side">
+                  {row.time && <time dateTime={row.time}>{ago(row.time)}</time>}
+                  <span className={`chat-row-state ${row.state}`}>
+                    <span className="chat-dot" aria-hidden="true" />
+                    {row.label}
+                  </span>
+                </span>
+              </a>
+              {visibilityAction(row.target, row.name)}
+            </div>
           ))}
           {!shown.length && (
             <p className="chat-list-empty">
-              {term
-                ? 'No conversation names match. Try a project name, Assisted search, or clear the search.'
-                : filter === 'vscode'
-                  ? mirrors.error ||
-                    (mirrors.loaded
-                      ? 'No shared chats. Share a Codex or Claude chat from VS Code to continue it here. Codex sessions on this computer’s shared Codex server also appear here.'
-                      : 'Checking for shared chats…')
-                  : filter === 'misc'
-                    ? 'Personal and read-only discussions appear here.'
-                    : 'No conversations yet. Choose New to start a project.'}
+              {!visibility.data
+                ? visibility.error
+                  ? 'Conversation visibility is unavailable.'
+                  : 'Reading conversations…'
+                : archived && !term
+                  ? 'No archived conversations.'
+                  : term
+                    ? 'No conversation names match. Try a project name, Assisted search, or clear the search.'
+                    : filter === 'vscode'
+                      ? mirrors.error ||
+                        (mirrors.loaded
+                          ? 'No shared chats. Share a Codex or Claude chat from VS Code to continue it here. Codex sessions on this computer’s shared Codex server also appear here.'
+                          : 'Checking for shared chats…')
+                      : filter === 'misc'
+                        ? 'Personal and read-only discussions appear here.'
+                        : 'No conversations yet. Choose New to start a project.'}
             </p>
           )}
           {shown.length > rowLimit && (
@@ -1248,7 +1335,17 @@ function MainChat({
             state={state}
             refresh={refresh}
             personal={agentId === personalId}
-            pane={{ panel, setPanel, brief, answerId, data, special }}
+            pane={{
+              panel,
+              setPanel,
+              brief,
+              answerId,
+              data,
+              special,
+              visibilityAction: state.agents.some((agent) => agent.id === agentId)
+                ? visibilityAction({ kind: 'agent', agentId })
+                : undefined,
+            }}
           />
         ) : editorKey ? (
           <div className="chat-editor">
@@ -1256,13 +1353,22 @@ function MainChat({
               <ChevronLeft size={20} />
             </a>
             {editor ? (
-              <VscodeMirror key={mirrorKey(editor)} chat={editor} />
+              <VscodeMirror
+                key={mirrorKey(editor)}
+                chat={editor}
+                headerAction={editorTarget ? visibilityAction(editorTarget) : undefined}
+              />
             ) : (
-              <p className="flow-chat-notice" role="status">
-                {mirrors.loaded
-                  ? 'This shared conversation is unavailable. Reopen or share it again where it started on your computer; no other chat has been selected.'
-                  : 'Looking for this shared conversation…'}
-              </p>
+              <>
+                {editorTarget && (
+                  <div className="chat-offline-tools">{visibilityAction(editorTarget)}</div>
+                )}
+                <p className="flow-chat-notice" role="status">
+                  {mirrors.loaded
+                    ? 'This shared conversation is unavailable. Reopen or share it again where it started on your computer; no other chat has been selected.'
+                    : 'Looking for this shared conversation…'}
+                </p>
+              </>
             )}
           </div>
         ) : (

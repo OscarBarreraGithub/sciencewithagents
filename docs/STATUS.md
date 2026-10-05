@@ -16,6 +16,15 @@ remove a stopped manager, cancelling queued work while retaining files and saved
 Computer health links selected process/script identities to QUARK jobs and wakes bounded
 diagnostics for sustained resource changes, with cooldowns and a daily attempt limit.
 
+The October follow-up source adds an immediate first-project notepad, general file uploads,
+held queued-message editing, Ideas/To-dos with completion recovery, direct owner-authored
+background tickets, durable job details, reversible conversation archiving and a direct-reply
+QUARK bypass that keeps workers supervised. Focused checks cover lost acknowledgements,
+edited-message holds, retained attachments, original request evidence and shortened Back
+trails. Chromium and WebKit checks exercise keyboard viewport changes, focus and drafts;
+they do not reproduce every physical iOS keyboard transition. Installation activation and
+the latest published CI result must be checked separately from these source checks.
+
 ## Delivered, with acceptance limits
 
 The app connects project setup, manager/worker conversations, versioned prompt drafts,

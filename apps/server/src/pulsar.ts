@@ -11,6 +11,8 @@ import {
   pulsarPolicyUpdateSchema,
   pulsarStatusSchema,
   jobControlSchema,
+  jobDetailSchema,
+  type JobDetailText,
   tokenUsageSnapshotSchema,
   type PulsarStatus,
   type JobEstimate,
@@ -21,6 +23,7 @@ import {
 import { Conflict, Store, type PrivateRun } from './store.js';
 import { readCapacity, capacityMaxAge } from './capacity.js';
 import { localJobPriority } from './local-jobs.js';
+import { chatBypassAllowed } from './quark-chat.js';
 
 const leaseSchema = z.object({
   runId: z.string(),
@@ -55,6 +58,7 @@ export function initializeScheduling(store: Store) {
 export class Pulsar {
   allowanceDecision: (
     run: PrivateRun,
+    protectedChat?: boolean,
   ) =>
     | string
     | { reason: string; budgetBlock?: PulsarStatus['jobs'][number]['budgetBlock'] }
@@ -173,6 +177,7 @@ export class Pulsar {
           }
         : (task?.scheduling ?? {})),
       ...(project.priority !== null ? { priority: project.priority } : {}),
+      ...(task?.ownerTicket ? { priority: 'background' } : {}),
       ...(['user', 'resume'].includes(run.kind) ? { priority: 'interactive' } : {}),
     });
   }
@@ -295,17 +300,29 @@ export class Pulsar {
         (a, b) =>
           Number(this.isInteractiveDiagnostic(b)) - Number(this.isInteractiveDiagnostic(a)) ||
           rank[this.estimate(b).priority] - rank[this.estimate(a).priority] ||
+          this.backgroundScore(b) - this.backgroundScore(a) ||
           this.projectWeight(b) - this.projectWeight(a),
       );
     return [...runs].sort(
       (a, b) =>
         Number(this.isInteractiveDiagnostic(b)) - Number(this.isInteractiveDiagnostic(a)) ||
         rank[this.estimate(b).priority] - rank[this.estimate(a).priority] ||
+        this.backgroundScore(b) - this.backgroundScore(a) ||
         this.projectWeight(b) - this.projectWeight(a) ||
         String(this.store.getSetting(`pulsar:last-manager:${this.manager(a)}`) ?? '').localeCompare(
           String(this.store.getSetting(`pulsar:last-manager:${this.manager(b)}`) ?? ''),
         ) ||
         a.createdAt.localeCompare(b.createdAt),
+    );
+  }
+  /** Relative effort is a queue hint, never a provider allowance or CPU entitlement. */
+  private backgroundScore(run: PrivateRun) {
+    if (this.estimate(run).priority !== 'background') return 0;
+    const taskId = this.taskId(run);
+    const ticket = taskId ? this.store.task(taskId).ownerTicket : undefined;
+    const ageHours = Math.max(0, (this.clock() - Date.parse(run.createdAt)) / 3600_000);
+    return (
+      (ticket?.priority ?? 3) * 20 - (ticket?.estimatedCompute ?? 3) * 2 + Math.min(ageHours, 168)
     );
   }
   private foregroundWork(except?: string, executing: ReadonlySet<string> = new Set()) {
@@ -328,6 +345,7 @@ export class Pulsar {
     run: PrivateRun,
     executing: ReadonlySet<string> = new Set(),
     preparingPreemption = false,
+    protectedChat = false,
   ): {
     eligible: boolean;
     reason: string;
@@ -338,12 +356,14 @@ export class Pulsar {
     const agent = this.store.agent(run.agentId);
     const taskId = this.taskId(run);
     const reject = (reason: string) => ({ eligible: false, reason });
+    if (run.queueEdit)
+      return reject('Held for editing. Explicitly return this message to the queue when ready.');
     const modelWait = this.store.getSetting(`model-policy:wait:${run.id}`) as number | undefined;
     if (run.status === 'queued' && modelWait && modelWait > this.clock())
       return reject(
         'Model discovery is temporarily unavailable. Your message is saved; QUARK will retry automatically.',
       );
-    const allowance = this.allowanceDecision(run);
+    const allowance = this.allowanceDecision(run, protectedChat);
     if (allowance)
       return typeof allowance === 'string' ? reject(allowance) : { eligible: false, ...allowance };
     if (
@@ -353,12 +373,19 @@ export class Pulsar {
       return reject(
         'Paused. Release this job to let QUARK reconsider it. Running agent turns finish at their boundary.',
       );
+    if (!protectedChat && chatBypassAllowed(this.store, run))
+      return {
+        eligible: true,
+        reason:
+          'Owner chat bypass: direct conversation only. Protected work still requires ordinary QUARK admission.',
+      };
     if (!policy.enabled)
       return {
         eligible: true,
         reason: 'QUARK pacing is off; the existing work queue controls admission.',
       };
-    const all = this.leases();
+    // Rechecking this admitted chat needs no second reservation or provider slot.
+    const all = this.leases().filter((lease) => !protectedChat || lease.runId !== run.id);
     const active = all.filter(
       (l) =>
         !l.finishedAt &&
@@ -686,6 +713,148 @@ export class Pulsar {
       return { saved: true };
     });
   }
+  private statusRow(run: PrivateRun) {
+    const agent = this.store.agent(run.agentId),
+      estimate = this.estimate(run),
+      lease = this.lease(run.id);
+    const taskId = lease ? lease.taskId : this.taskId(run);
+    const held =
+      this.store.getSetting(`pulsar:held:${run.id}`) === true ||
+      (!!taskId && this.store.getSetting(`pulsar:held-task:${taskId}`) === true);
+    const ended = !['queued', 'running'].includes(run.status);
+    const runningAllowance = run.status === 'running' ? this.allowanceDecision(run) : null;
+    const runningBlock =
+      typeof runningAllowance === 'string' ? runningAllowance : runningAllowance?.reason;
+    const decision = ended
+      ? {
+          eligible: false,
+          reason: `Turn ${run.status}. History and original conversation are retained.`,
+        }
+      : run.status === 'running'
+        ? {
+            eligible: !runningBlock,
+            reason:
+              runningBlock ??
+              (held
+                ? 'Finishing this turn; following task turns are paused.'
+                : 'Running with shared QUARK monitoring.'),
+          }
+        : this.decision(run);
+    return {
+      runId: run.id,
+      agentId: agent.id,
+      taskId,
+      projectName: this.store.project(agent.projectId).name,
+      agentName: agent.name,
+      provider: lease?.provider ?? agent.provider,
+      status: run.status,
+      estimate,
+      held,
+      override: this.store.getSetting(`pulsar:override:${run.id}`) === true,
+      ...decision,
+      expectedFinishAt:
+        lease && !lease.finishedAt
+          ? new Date(Date.parse(lease.startedAt) + estimate.expectedSeconds * 1000).toISOString()
+          : null,
+      tokensCharged: lease?.tokensCharged ?? 0,
+      tokenBasis: lease?.tokenBasis ?? 'none',
+    };
+  }
+  /** Direct saved lookup, including jobs outside the recent queue and without a lease. */
+  jobDetail(runId: string) {
+    const run = this.store.run(z.string().uuid().parse(runId));
+    const agent = this.store.agent(run.agentId);
+    const lease = this.lease(run.id);
+    const job = this.statusRow(run);
+    const task = job.taskId ? this.store.task(job.taskId) : null;
+    const text = (value: string): JobDetailText => ({
+      text: value.slice(0, 8192),
+      truncated: value.length > 8192,
+    });
+    const timestamp = (status: string) => {
+      const event = this.store.db
+        .prepare(
+          `SELECT created_at FROM events WHERE agent_id=? AND type=? AND json_extract(data,'$.id')=? ORDER BY id ${status === 'running' ? 'ASC' : 'DESC'} LIMIT 1`,
+        )
+        .get(agent.id, `run.${status}`, run.id);
+      return event ? String(event.created_at) : null;
+    };
+    // Only evidence explicitly attributed to this turn; later errors may belong to another run.
+    const entries = this.store.db
+      .prepare(
+        "SELECT body FROM entries WHERE agent_id=? AND json_extract(body,'$.runId')=? AND json_extract(body,'$.kind') IN ('assistant','system') ORDER BY rowid DESC LIMIT 4",
+      )
+      .all(agent.id, run.id)
+      .map(
+        (row) =>
+          JSON.parse(String(row.body)) as {
+            id: string;
+            kind: 'assistant' | 'system';
+            title: string;
+            text: string;
+            createdAt: string;
+          },
+      );
+    const runStartedAt = timestamp('running');
+    const approval =
+      run.status === 'running' &&
+      agent.status === 'waiting' &&
+      (!run.turnId || !agent.turnId || run.turnId === agent.turnId)
+        ? this.store.db
+            .prepare(
+              "SELECT body FROM approvals WHERE agent_id=? AND json_extract(body,'$.status')='pending' AND json_extract(body,'$.createdAt')>=? ORDER BY rowid DESC LIMIT 1",
+            )
+            .get(agent.id, runStartedAt ?? lease?.startedAt ?? run.createdAt)
+        : null;
+    const waiting = approval
+      ? (JSON.parse(String(approval.body)) as { id: string; title: string })
+      : null;
+    return jobDetailSchema.parse({
+      job: waiting
+        ? { ...job, eligible: false, reason: 'Waiting for your answer in the conversation.' }
+        : job,
+      projectId: agent.projectId,
+      request: text(run.text),
+      kind: run.kind,
+      createdAt: run.createdAt,
+      startedAt: lease?.startedAt ?? runStartedAt,
+      finishedAt: ['queued', 'running'].includes(run.status)
+        ? null
+        : (lease?.finishedAt ?? timestamp(run.status)),
+      worker: {
+        role: agent.role,
+        status: agent.status,
+        model: (lease ? lease.model : agent.model)?.slice(0, 500) ?? null,
+        modelBasis: lease ? 'admission' : 'current',
+      },
+      task: task
+        ? {
+            id: task.id,
+            title: task.title.slice(0, 500),
+            status: task.status,
+            goal: text(task.goal),
+            acceptance: text(task.acceptance),
+            review: task.review ? text(task.review) : null,
+            closure: task.closure
+              ? { reason: text(task.closure.reason), closedAt: task.closure.closedAt }
+              : null,
+          }
+        : null,
+      queueHold: run.status === 'queued' ? (run.queueEdit?.state ?? null) : null,
+      approval: waiting ? { id: waiting.id, title: waiting.title.slice(0, 500) } : null,
+      outcome: entries
+        .slice(0, 3)
+        .reverse()
+        .map((entry) => ({
+          id: entry.id.slice(0, 500),
+          kind: entry.kind,
+          title: entry.title.slice(0, 500),
+          text: text(entry.text),
+          createdAt: entry.createdAt,
+        })),
+      moreOutcome: entries.length > 3,
+    });
+  }
   status(projectId?: string) {
     const scope = projectId ? 'AND a.project_id=?' : '';
     const args = projectId ? [projectId] : [];
@@ -705,55 +874,7 @@ export class Pulsar {
       .reverse();
     const jobs = [...active, ...history]
       .map((row) => JSON.parse(String(row.body)) as PrivateRun)
-      .map((run) => {
-        const agent = this.store.agent(run.agentId),
-          estimate = this.estimate(run),
-          lease = this.lease(run.id);
-        const taskId = this.taskId(run);
-        const held =
-          this.store.getSetting(`pulsar:held:${run.id}`) === true ||
-          (!!taskId && this.store.getSetting(`pulsar:held-task:${taskId}`) === true);
-        const ended = !['queued', 'running'].includes(run.status);
-        const runningAllowance = run.status === 'running' ? this.allowanceDecision(run) : null;
-        const runningBlock =
-          typeof runningAllowance === 'string' ? runningAllowance : runningAllowance?.reason;
-        const decision = ended
-          ? {
-              eligible: false,
-              reason: `Turn ${run.status}. History and original conversation are retained.`,
-            }
-          : run.status === 'running'
-            ? {
-                eligible: !runningBlock,
-                reason:
-                  runningBlock ??
-                  (held
-                    ? 'Finishing this turn; following task turns are paused.'
-                    : 'Running with shared QUARK monitoring.'),
-              }
-            : this.decision(run);
-        return {
-          runId: run.id,
-          agentId: agent.id,
-          taskId,
-          projectName: this.store.project(agent.projectId).name,
-          agentName: agent.name,
-          provider: agent.provider,
-          status: run.status,
-          estimate,
-          held,
-          override: this.store.getSetting(`pulsar:override:${run.id}`) === true,
-          ...decision,
-          expectedFinishAt:
-            lease && !lease.finishedAt
-              ? new Date(
-                  Date.parse(lease.startedAt) + estimate.expectedSeconds * 1000,
-                ).toISOString()
-              : null,
-          tokensCharged: lease?.tokensCharged ?? 0,
-          tokenBasis: lease?.tokenBasis ?? 'none',
-        };
-      });
+      .map((run) => this.statusRow(run));
     return pulsarStatusSchema.parse({
       name: 'QUARK',
       policy: this.policy(),

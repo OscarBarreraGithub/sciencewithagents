@@ -1,4 +1,12 @@
 import { spawn } from 'node:child_process';
+const { claudeAuthScanner } = (await import(
+  new URL(
+    import.meta.url.endsWith('.ts')
+      ? './claude-auth-diagnostics.ts'
+      : './claude-auth-diagnostics.js',
+    import.meta.url,
+  ).href
+)) as typeof import('./claude-auth-diagnostics.js');
 
 // Private stdio supervisor. Parent EOF kills only this invocation's process group,
 // including tool descendants; it never searches for or kills another Claude process.
@@ -11,7 +19,19 @@ const child = spawn(binary, args as string[], {
   detached: true,
   env: process.env,
 });
-child.stderr.on('data', () => {}); // Never forward authentication-bearing diagnostics.
+child.stderr.on(
+  'data',
+  claudeAuthScanner((classification) => {
+    if (!child.pid) return;
+    process.stderr.write(
+      JSON.stringify({
+        classification,
+        observedAt: new Date().toISOString(),
+        nativeProcessId: child.pid,
+      }) + '\n',
+    );
+  }),
+); // Never forward raw authentication-bearing diagnostics.
 child.stdout.pipe(process.stdout, { end: false });
 process.stdin.pipe(child.stdin);
 child.stdin.on('error', () => {});

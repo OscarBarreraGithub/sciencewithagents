@@ -30,6 +30,7 @@ test('Home pull refresh waits for readings, preserves drafts and offers updates 
 }, info) => {
   await page.goto('/#/home');
   await expect(page.locator('.overview')).toBeVisible();
+  await expect(page.locator('.home-demo')).toBeVisible();
   const draft = page.getByRole('textbox', { name: 'New to-do', exact: true });
   await draft.fill('Retain this unsent note while refreshing.');
   await page.locator('.home-content').evaluate((e) => e.scrollTo(0, 0));
@@ -73,6 +74,7 @@ test('Home pull refresh waits for readings, preserves drafts and offers updates 
   await pull(tile);
   await expect(wheel).toContainText('Couldn’t refresh');
   await expect(page.locator('.overview')).toBeVisible();
+  await expect(page.locator('.home-demo')).toBeVisible();
   await page.unroute('**/api/snapshot');
   await page.route('**/', async (route) => {
     if (route.request().resourceType() !== 'fetch') return route.continue();
@@ -96,6 +98,7 @@ test('pull refresh leaves scrolling panels, editing, sideways gestures and other
 }) => {
   await page.goto('/#/home');
   await expect(page.locator('.overview')).toBeVisible();
+  await expect(page.locator('.home-demo')).toBeVisible();
   const wheel = page.locator('.home-pull-wheel');
   const tile = page.locator('.overview-destinations a').first();
   await pull(page.locator('.overview-section-body').first());
@@ -214,13 +217,10 @@ test('orb drifts quietly, varies on tap without an outline and pauses when hidde
 
   // Keyboard focus still shows the accessible outline. WebKit's default Tab skips buttons.
   if (browserName !== 'webkit') {
-    await button.evaluate((element) => element.blur());
-    for (
-      let press = 0;
-      press < 20 && !(await button.evaluate((e) => e === document.activeElement));
-      press += 1
-    )
-      await page.keyboard.press('Tab');
+    await button.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(button).toBeFocused();
     expect(await button.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
       'none',
     );
@@ -291,6 +291,7 @@ test('an unreachable reading stops the wheel and a later pull can retry', async 
   await page.clock.install();
   await page.goto('/#/home');
   await expect(page.locator('.overview')).toBeVisible();
+  await expect(page.locator('.home-demo')).toBeVisible();
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;

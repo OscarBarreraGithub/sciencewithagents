@@ -3,6 +3,14 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   managerWorkItemRequestSchema,
+  ownerTicketRequestSchema,
+  ownerTicketResultSchema,
+  taskCreateSchema,
+  jobEstimateSchema,
+  modelPolicySchema,
+  defaultModelPolicy,
+  policyProvider,
+  workerDefault,
   ownerRequestQuerySchema,
   ownerRequestHttpQuerySchema,
   ownerRequestPageSchema,
@@ -18,7 +26,9 @@ import {
   type WorkItem,
   type WorkItemRequest,
 } from '@dock/shared';
-import { Conflict, Missing, now, Store } from './store.js';
+import { Conflict, Missing, now, Store, publicTask } from './store.js';
+import { projectWorkflow } from './project-workflow.js';
+import { delegationTools } from './worker-tools.js';
 
 const requestCursor = z
   .object({
@@ -122,6 +132,160 @@ export class WorkItems {
 
   save(raw: unknown): WorkItem {
     return this.mutate(workItemRequestSchema.parse(raw), null);
+  }
+
+  ticket(raw: unknown) {
+    const input = ownerTicketRequestSchema.parse(raw);
+    return ownerTicketResultSchema.parse(
+      this.store.operation(`owner-ticket:${input.key}`, input, () => {
+        const project = this.store.project(input.projectId);
+        if (project.internal) throw new Conflict('Choose an existing work project.');
+        this.store.requireActiveAgent(project.managerId);
+        const selected = input.items.map((ref) => {
+          const item = this.get(ref.id);
+          if (item.revision !== ref.expectedRevision)
+            throw new Conflict('A selected to-do changed. Refresh the selection before queueing.');
+          if (item.kind !== 'general')
+            throw new Conflict('Make an idea actionable before queueing it as a to-do.');
+          if (item.status === 'done' || item.taskId || item.assignmentRunId || item.managerId)
+            throw new Conflict('Select open, unassigned to-dos. Existing assignments are kept.');
+          if (item.projectId && item.projectId !== project.id)
+            throw new Conflict('A selected to-do belongs to another project.');
+          return item;
+        });
+        const policy = modelPolicySchema.parse(
+          this.store.getSetting('model-policy') ?? defaultModelPolicy,
+        );
+        const provider = this.store.getSetting(`project-workflow:${project.id}`)
+          ? workerDefault(projectWorkflow(this.store, project.id), 'research').provider
+          : policyProvider(policy, 'reasoning');
+        if (!provider || !policy.enabledProviders.includes(provider))
+          throw new Conflict(
+            'Choose an enabled worker provider in this project’s model settings first.',
+          );
+        const grant = delegationTools(this.store, project.id, provider);
+        const goal = [
+          input.brief,
+          'Owner-selected to-dos:',
+          ...selected.map(
+            (item, index) =>
+              `${index + 1}. ${item.title}\n${item.detail}\nSaved source: ${item.id}, revision ${item.revision}`,
+          ),
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+        const fields = taskCreateSchema.parse({
+          title: input.title,
+          goal,
+          acceptance: input.acceptance,
+        });
+        const task = this.store.addTask(project.id, {
+          ...fields,
+          parentId: null,
+          ownerTicket: {
+            id: randomUUID(),
+            priority: input.priority,
+            estimatedCompute: input.estimatedCompute,
+            sourceItems: selected.map(({ id, revision, title }) => ({ id, revision, title })),
+          },
+          scheduling: jobEstimateSchema.parse({
+            priority: 'background',
+            estimateNote: `Owner-estimated relative compute ${input.estimatedCompute}/5. Planning estimates are not spending limits.`,
+          }),
+        });
+        const worker = this.store.addAgent({
+          projectId: project.id,
+          parentId: task.managerId,
+          taskId: task.id,
+          role: 'implementer',
+          name: 'QUARK ticket worker',
+          cwd: project.root,
+          provider,
+        });
+        this.store.updateAgent(worker.id, {
+          modelSelection: 'policy',
+          toolPolicy: grant.toolPolicy,
+          ...grant.tools,
+        });
+        this.store.setSetting(`model-policy:follow:${worker.id}`, true);
+        this.store.setSetting(`worker-tools:grant:${worker.id}`, {
+          projectId: project.id,
+          revision: grant.revision,
+          tools: grant.tools,
+        });
+        const run = this.store.enqueue(
+          worker.id,
+          `owner-ticket:${task.id}`,
+          [
+            'The owner approved this self-contained background ticket. Implement the selected work directly; no initial manager permission/delegation turn is needed.',
+            `Task: ${task.title}\nOutcome: ${task.goal}\nAcceptance: ${task.acceptance}`,
+            'Keep work bounded, preserve progress and report to the responsible manager for existing independent review/application policy. Do not bypass human review or the two correction-round limit.',
+          ].join('\n\n'),
+          'delegation',
+          task.managerId,
+        );
+        this.store.setSetting(`owner-ticket:run:${run.id}`, task.id);
+        const timestamp = now();
+        const linked = selected.map((item) => {
+          const value = workItemSchema.parse({
+            ...item,
+            projectId: project.id,
+            managerId: task.managerId,
+            taskId: task.id,
+            ownerTicketId: task.ownerTicket!.id,
+            status: 'in_progress',
+            revision: item.revision + 1,
+            updatedAt: timestamp,
+            resolvedAt: null,
+          });
+          this.store.db
+            .prepare('UPDATE work_items SET project_id=?,manager_id=?,task_id=?,body=? WHERE id=?')
+            .run(project.id, task.managerId, task.id, JSON.stringify(value), item.id);
+          this.store.event('work-item.updated', project.id, null, {
+            item: value,
+            actorManagerId: null,
+          });
+          return value;
+        });
+        const updated = this.store.updateTask(task.id, { status: 'working' });
+        this.store.event('owner-ticket.queued', project.id, null, {
+          taskId: task.id,
+          workerId: worker.id,
+          runId: run.id,
+        });
+        return { task: publicTask(updated), workerId: worker.id, runId: run.id, items: linked };
+      }),
+    );
+  }
+
+  /** Call in the acknowledgement transaction: a disposition covered the earlier wording. */
+  sourceChanged(agentId: string, entryId: string) {
+    const rows = this.store.db
+      .prepare(
+        `SELECT w.body FROM work_item_sources s
+      JOIN work_items w ON w.id=s.item_id WHERE s.agent_id=? AND s.entry_id=?
+      AND json_extract(w.body,'$.sourceDisposition') IS NOT NULL`,
+      )
+      .all(agentId, entryId);
+    for (const row of rows) {
+      const previous = workItemSchema.parse(JSON.parse(String(row.body)));
+      const next = {
+        ...previous,
+        sourceDisposition: null,
+        revision: previous.revision + 1,
+        updatedAt: now(),
+      };
+      this.store.db
+        .prepare('UPDATE work_items SET body=? WHERE id=?')
+        .run(JSON.stringify(next), previous.id);
+      this.store.event('work-item.source-changed', previous.projectId, previous.managerId, {
+        itemId: previous.id,
+        agentId,
+        entryId,
+        revision: next.revision,
+        previousDisposition: previous.sourceDisposition,
+      });
+    }
   }
 
   /** Durable inputs are paged independently of the recent conversation preview. */
@@ -255,6 +419,7 @@ export class WorkItems {
             input.managerId !== undefined ? input.managerId : (previous?.managerId ?? null);
           const taskId = input.taskId !== undefined ? input.taskId : (previous?.taskId ?? null);
           const kind = input.kind ?? previous?.kind ?? 'general';
+          if (actorManagerId && kind === 'idea') throw new Conflict('Ideas belong to the owner.');
           if (managerId) {
             const manager = this.manager(managerId);
             // Selecting a manager assigns an unscoped personal to-do to their project.
@@ -267,7 +432,7 @@ export class WorkItems {
               throw new Conflict('Select a manager belonging to this project.');
           }
           if (projectId) this.store.project(projectId);
-          if (kind !== 'general' && (!projectId || !managerId))
+          if (!['general', 'idea'].includes(kind) && (!projectId || !managerId))
             throw new Conflict('Human asks and internal to-dos need a project manager.');
           if (taskId) {
             const task = this.store.task(taskId);
@@ -281,6 +446,8 @@ export class WorkItems {
             throw new Conflict('An assigned to-do keeps its original project and manager.');
           if (previous?.humanReply && (kind !== previous.kind || taskId !== previous.taskId))
             throw new Conflict('An answered ask keeps its original kind and task.');
+          if (previous?.ownerTicketId && (kind !== previous.kind || taskId !== previous.taskId))
+            throw new Conflict('A queued ticket keeps its saved source and task binding.');
           const sources = input.sourceMessages ?? previous?.sourceMessages ?? [];
           const sourceKeys = (values: WorkItem['sourceMessages']) =>
             values.map((source) => `${source.agentId}:${source.entryId}`).toSorted();
@@ -319,6 +486,7 @@ export class WorkItems {
             repliedAt: previous?.repliedAt ?? null,
             replyRunId: previous?.replyRunId ?? null,
             assignmentRunId: previous?.assignmentRunId ?? null,
+            ownerTicketId: previous?.ownerTicketId ?? null,
             createdAt: previous?.createdAt ?? timestamp,
             updatedAt: timestamp,
             resolvedAt: null,
@@ -489,6 +657,11 @@ export function registerWorkItemRoutes(app: FastifyInstance, items: WorkItems, k
     // Only wakes the existing queue; the durable operation owns enqueue and deduplication.
     if (item.replyRunId || item.assignmentRunId) kick?.();
     return item;
+  });
+  app.post('/api/work-items/tickets', async (request, reply) => {
+    const result = items.ticket(request.body);
+    kick?.();
+    return reply.code(201).send(result);
   });
   app.get('/api/projects/:id/notes', async (request) =>
     items.notes(projectParams.parse(request.params).id),

@@ -21,6 +21,109 @@ async function models(page: Page) {
   );
 }
 
+test('Spawn opens a writable brief before setup returns and an early Send waits exactly once', async ({
+  page,
+}) => {
+  await models(page);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let createCalls = 0;
+  const sent: { key: string; text: string }[] = [];
+  await page.route('**/api/projects', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    createCalls++;
+    const response = await route.fetch();
+    await held;
+    await route.fulfill({ response });
+  });
+  await page.route('**/api/agents/*/messages', async (route) => {
+    sent.push(route.request().postDataJSON());
+    await route.fulfill({ json: { status: 'queued' } });
+  });
+  try {
+    await page.goto('/#/new');
+    await page.getByLabel('Project name', { exact: true }).fill(`Fast brief ${Date.now()}`);
+    await page.getByRole('button', { name: 'Spawn', exact: true }).click();
+    const editor = page.getByRole('textbox', { name: 'Project description' });
+    await expect(editor).toBeVisible();
+    await editor.fill('Keep this request while the project prepares.\nSecond requirement.');
+    expect(createCalls).toBe(1);
+    expect(sent).toHaveLength(0);
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(page.getByText('Finishing project setup…', { exact: true })).toBeVisible();
+    expect(sent).toHaveLength(0);
+    release();
+    await expect(page).toHaveURL(/#\/chat\/[^/]+$/);
+    expect(createCalls).toBe(1);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.text).toBe(
+      'Keep this request while the project prepares.\nSecond requirement.',
+    );
+  } finally {
+    release();
+  }
+});
+
+test('initial notepad keeps attachments and allows correcting a definitely refused message', async ({
+  page,
+}) => {
+  await models(page);
+  const requests: { key: string; text: string }[] = [];
+  await page.route('**/api/agents/*/messages', async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill(
+      requests.length === 1
+        ? { status: 400, json: { error: 'Correct this rejected request.' } }
+        : { json: { status: 'queued' } },
+    );
+  });
+  await page.goto('/#/new');
+  await page.getByLabel('Project name', { exact: true }).fill(`Correctable brief ${Date.now()}`);
+  await page.getByRole('button', { name: 'Spawn', exact: true }).click();
+  const brief = page.getByRole('dialog', { name: 'Describe your project', exact: true });
+  const editor = brief.getByRole('textbox', { name: 'Project description' });
+  await editor.fill('Review the attached requirements.');
+  await brief.getByLabel('Choose files').setInputFiles({
+    name: 'requirements.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Retain all three requested changes.'),
+  });
+  await expect(brief.getByRole('link', { name: 'requirements.txt', exact: true })).toBeVisible();
+  await brief.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(brief.getByRole('alert')).toHaveText('Correct this rejected request.');
+  await expect(editor).toBeEditable();
+  await editor.fill('Corrected: review the attached requirements.');
+  await brief.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page).toHaveURL(/#\/chat\/[^/]+$/);
+  expect(requests).toHaveLength(2);
+  expect(requests[0]!.key).not.toBe(requests[1]!.key);
+  expect(requests[1]!.text).toContain('Corrected:');
+  expect(requests[1]!.text.match(/swa-file:([^)]*)/)?.[1]).toBe(
+    requests[0]!.text.match(/swa-file:([^)]*)/)?.[1],
+  );
+});
+
+test('a failed Spawn retains the initial brief through minimize and reload', async ({ page }) => {
+  await models(page);
+  await page.route('**/api/projects', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({ status: 503, json: { error: 'Setup temporarily unavailable' } })
+      : route.continue(),
+  );
+  await page.goto('/#/new');
+  await page.getByLabel('Project name', { exact: true }).fill('Retained initial brief');
+  await page.getByRole('button', { name: 'Spawn', exact: true }).click();
+  const editor = page.getByRole('textbox', { name: 'Project description' });
+  await editor.fill('An initial idea that must survive failed setup.');
+  await expect(page.getByText('Setup temporarily unavailable').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Minimize', exact: true }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Spawn', exact: true }).click();
+  await expect(editor).toHaveValue('An initial idea that must survive failed setup.');
+});
+
 test('revisiting a page trims the Back trail instead of replaying a navigation loop', async ({
   page,
 }) => {
@@ -44,6 +147,30 @@ test('revisiting a page trims the Back trail instead of replaying a navigation l
   await back.click();
   await expect(page).toHaveURL(/#\/welcome$/);
   await back.click();
+  await expect(page).toHaveURL(/#\/home$/);
+});
+
+test('QUARK job navigation keeps a shortened trail through rapid visits and Back taps', async ({
+  page,
+}) => {
+  const job = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  await page.goto('/#/home');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
+  await page.evaluate((id) => {
+    // Hash events may be delivered together during a slow phone render.
+    for (const route of ['work', `job/${id}`, 'settings', `job/${id}`, 'settings'])
+      location.hash = `#/${route}`;
+  }, job);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+  await page.reload();
+  const back = page.getByRole('link', { name: 'Back', exact: true });
+  await back.click();
+  await expect(page).toHaveURL(new RegExp(`#/job/${job}$`));
+  // Two quick taps must consume two return steps instead of reopening a page.
+  await back.evaluate((node) => {
+    (node as HTMLElement).click();
+    (node as HTMLElement).click();
+  });
   await expect(page).toHaveURL(/#\/home$/);
 });
 

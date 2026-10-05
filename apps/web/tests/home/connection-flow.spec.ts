@@ -426,7 +426,7 @@ test('editor chats keep provider identity, drafts and delivery receipts through 
     title: 'Review the experiment',
   };
   let online = true;
-  await page.route('**/api/vscode/windows', (route) =>
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
     route.fulfill({ json: online ? [codex, claude] : [] }),
   );
   for (const state of [codex, claude])

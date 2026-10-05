@@ -954,6 +954,13 @@
   min-height: 44px;
   font-size: var(--text-reading);
 }
+.chat-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+}
 .chat-filters {
   display: flex;
   flex-shrink: 0;
@@ -1355,6 +1362,22 @@ button.chat-folder:disabled {
 .chat-config h4 {
   margin: 0 0 4px;
   font-size: var(--text-small);
+}
+.chat-quark-preference {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.chat-quark-preference [role='switch'] {
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+  padding: 10px 12px;
+}
+.chat-quark-preference [role='switch'][aria-checked='true'] {
+  background: #eef1ff;
+  border-color: var(--home-blue);
+  color: #3246b8;
 }
 .chat-config p,
 .chat-rates ul {
@@ -2079,4 +2102,31 @@ button.chat-folder:disabled {
 }
 .flow-chat-main .composer[data-fit='tight'] > .draft-handoff > p.muted:first-child {
   display: none;
+}
+
+.conversation-visible-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+}
+.conversation-visible-row > .chat-row {
+  flex: 1;
+  min-width: 0;
+}
+.conversation-visible-row > .conversation-visibility-button {
+  flex-shrink: 0;
+  width: 44px;
+  padding: 0;
+}
+.conversation-visible-row .chat-tool-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.chat-offline-tools {
+  padding: 8px;
 }

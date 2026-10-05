@@ -69,16 +69,19 @@ original UUID and are never automatically replayed. Queue reads show up to 100 m
 mark further native pages. Native questions/permissions stay in the original editor.
 Automatic VS Code crash restoration is not promised: reopen the editor/chat and re-share.
 
-## Screenshots
+## Attachments
 
-Phone composers offer **Attach screenshot** with previews, removal and retry. Authenticated
-uploads use generated file IDs and stay under private `data/chat-images/` on the selected host.
-Saved drafts and send receipts retain the image references. Before forwarding to the existing
-native conversation, the server adds local image paths for its native image-reading tool;
-the app renders previews without exposing that transport note. This requires the native
+Phone composers offer **Attach files** with filenames, sizes, image previews, removal and retry.
+Up to four files fit one message; each stored file is at most 8 MB. Authenticated uploads use
+generated file IDs under private `data/chat-files/` on the selected host. Older screenshot
+references remain available under `data/chat-images/`. Saved drafts and send receipts retain
+the references. Before forwarding to the existing native conversation, the server adds local
+file paths for its native file/image/PDF tools and a bounded excerpt for UTF-8 text files;
+the app hides that transport note. Downloads preserve the file contents and filename. Files
+are not automatically executed. This requires the native
 agent to read files on the same computer. Unix-forward companions advertise `canAttachImages:false`
 in hello and every read. The app disables uploads while retaining saved previews/removal, and the
-gateway refuses screenshot references before adding local paths. Remote chats remain text-capable;
+gateway refuses all attachment references before adding local paths. Remote chats remain text-capable;
 attach files in the native remote editor. No remote file-transfer protocol is implemented.
 
 ## Helper visibility

@@ -26,6 +26,35 @@ tasks, branches, receipts and results already live together in the app.
 Internal `pulsar` API paths and storage keys retain their earlier names for compatibility.
 Use [current status](STATUS.md) for release blockers and unfinished utilization automation.
 
+## Direct owner tickets
+
+Home's **Ideas and to-dos** keeps Ideas separate from actionable To-dos. Select several
+to-dos and choose **Package** (or one item's **Send to project**) to write one ticket,
+choose its existing project, priority and estimated compute, then **Queue with QUARK**.
+The project overview uses the same board scoped to its project. **Completed** retains
+finished items across reloads; **Undo** reopens them. **Make to-do** preserves an idea's
+text, and starting a new-project brief keeps the original sources unchanged.
+
+The typed `POST /api/work-items/tickets` route packages 1–20 actionable owner to-dos into
+one existing-project task and queued implementer. It saves the selected text and revisions,
+task/source bindings, priority (1 low–5 high) and estimated compute (1 small–5 large).
+The source row shows the linked task's current status. Sources stay In progress until the
+owner or responsible manager records their outcome; queuing or a worker reply does not
+automatically mark them completed.
+Ideas stay separate until the owner makes them actionable. Completed items remain retained
+and can be reopened; a ticket's source/task binding cannot be removed by an item edit.
+
+Submission requires an idempotency key and each selected item's current revision. A retry
+returns the same task and worker. Invalid or stale selections create neither. It consumes
+no initial manager permission or delegation turn. Central model policy and project worker
+tools still select the launch, and the task worktree is prepared before the worker starts.
+The responsible manager receives the ordinary completion report; independent review,
+human application policy and the two correction-round limit remain in force.
+
+Background ordering uses `20 × priority − 2 × estimated compute + age in hours`, with age
+capped at seven days; direct and other foreground work retain their higher priority class.
+Compute ratings are relative queue hints, not provider allowance or CPU entitlements.
+
 ## New-install setup
 
 A new empty installation starts with shared pacing enabled. Existing workspaces and saved
@@ -53,6 +82,25 @@ configured when they were seen. See [Slurm cluster](CLUSTER.md).
 
 ## Managers need a QUARK lease
 
+An owner's app-managed manager conversation has a separate, off-by-default **Ignore QUARK**
+preference. Its typed `GET/POST /api/agents/:id/chat-quark` contract saves an enabled value
+with a revision and idempotency receipt. Each new literal owner message captures that
+choice; an explicit preference save also updates its queued direct replies. A message receipt
+retry never recaptures the preference, and running turns keep their captured scope.
+It skips allowance caps, reserves and shared pacing for that direct reply. Manual Stop,
+job/project/host pauses, native permissions and provider sign-in/limits still apply. It is
+unavailable for task workers, native children and terminal-controlled conversations.
+
+When ordinary admission is blocked, the host signs a conversation-only lease. Read-only
+inspection, checkpoints and source-linked backlog saves remain available. Manager work-item
+saves cannot impersonate an owner answer or dispatch work. Task creation, delegation, agent messages and
+other protected coordination recheck ordinary admission at each action; they never inherit
+the chat bypass. Fresh headroom can allow coordination during the same reply, upgrading its
+signed scope. Every resulting worker remains under normal QUARK protection. Observed active
+native helpers suspend the owning conversation's bypass: ordinary allowance guards and
+the existing heartbeat/owned-group stopping path apply to the family. Helper observation
+and stopping take time; this does not promise a native pre-dispatch gate or zero overshoot.
+
 Native Claude PreToolUse callbacks check the same QUARK hold and signed manager admission.
 An admitted hook returns no tool permission grant: native permissions still decide. Helper
 activity is retained with the parent, and that run remains open while observed helpers are
@@ -60,7 +108,7 @@ active. Native Stop is followed by owned-group closure when helpers share the pr
 also closes its owned group if an interrupt has not ended the work after its grace period.
 Files, queued requests, quota holds and original session identities remain for continuation.
 
-Every app-managed manager turn must receive a host-signed, 60-second orchestration lease
+Every app-managed manager turn must receive a host-signed, 60-second lease
 before its input reaches Codex or Claude. QUARK renews an unexpired lease on its heartbeat
 after checking current allowance protection. The signature binds the project, manager,
 turn, provider and model. It cannot be transferred, edited or renewed by a model; restarting
@@ -131,6 +179,15 @@ Queued work blocked by an explicit allowance cap appears in Home’s
 Ordinary capacity waits and deliberate queue pauses do not create budget attention items.
 Recent outcomes compare estimated and measured tokens; cache input counts can be large.
 A planning cost is optional and is never presented as a subscription bill.
+
+**Job details** reads the saved job directly, including older turns outside the recent queue.
+It shows the request, task acceptance, worker and model setting at admission when recorded,
+current waiting reason, and up to three bounded saved responses for that turn. Full text,
+tool evidence and interruption details remain available through **Open conversation**.
+Editing holds and requests for an answer link to that conversation; ordinary queued/running
+jobs retain their relevant pause, release and scheduling controls. **Project hourly rate and
+caps** opens the project's QUARK card on the selected computer. Estimates are secondary
+planning information, not completion promises.
 
 The work queue also links directly to local compute jobs.
 

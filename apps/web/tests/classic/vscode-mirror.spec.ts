@@ -15,6 +15,42 @@ async function chooseChat(page: Page, name: string) {
     .click();
 }
 
+test('native editor queued messages expand into a readable list without app edit or steering controls', async ({
+  page,
+}, info) => {
+  const state = {
+    windowId: randomUUID(),
+    label: 'Readonly native queue',
+    threadId: 'native-owned-queue',
+    title: 'Native queue fixture',
+    status: 'busy',
+    message: 'Same conversation as VS Code.',
+    entries: [],
+    queuedMessages: Array.from({ length: 12 }, (_, i) => ({
+      id: `native-${i}`,
+      text: `Native queued message ${i + 1}`,
+    })),
+  };
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: [{ ...state, entries: undefined }] }),
+  );
+  await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
+    route.fulfill({ json: state }),
+  );
+  await page.goto('/');
+  await chooseChat(page, 'Native queue fixture');
+  await page.getByRole('button', { name: 'Expand queue', exact: true }).click();
+  const menu = page.getByRole('dialog', { name: 'Queued messages', exact: true });
+  await expect(menu.getByRole('listitem')).toHaveCount(12);
+  await expect(menu.getByRole('button', { name: /Edit|Steer/ })).toHaveCount(0);
+  expect((await menu.boundingBox())!.height).toBeGreaterThan(page.viewportSize()!.height * 0.8);
+  await page.screenshot({
+    path: `../../data/queued-message-ui/${info.project.name}-native-expanded-queue.png`,
+  });
+  await menu.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(menu).toHaveCount(0);
+});
+
 test('mirror syncs submitted desktop messages, preserves local drafts and keeps retry identity', async ({
   page,
 }, testInfo) => {
@@ -34,7 +70,7 @@ test('mirror syncs submitted desktop messages, preserves local drafts and keeps 
   let submitted = false;
   const keys: string[] = [];
   const receiptKeys: string[] = [];
-  await page.route('**/api/vscode/windows', (route) =>
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
     route.fulfill({ json: [{ ...state, entries: undefined }] }),
   );
   await page.route(`**/api/vscode/windows/${windowId}`, (route) => route.fulfill({ json: state }));
@@ -95,7 +131,7 @@ test('a connected bridge recovers from a temporarily offline provider without re
     entries: [],
   };
   let reads = 0;
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [state] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) => route.fulfill({ json: [state] }));
   await page.route(`**/api/vscode/windows/${state.windowId}`, (route) => {
     reads++;
     if (reads > 1) state.status = 'idle';
@@ -123,7 +159,7 @@ test('checking an unknown delivery never resends a request that missed the gatew
   };
   let sends = 0,
     checks = 0;
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [state] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) => route.fulfill({ json: [state] }));
   await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
     route.fulfill({ json: state }),
   );
@@ -175,7 +211,7 @@ test('long history scrolls independently and incoming messages do not move a rea
       text: `Message ${index}: this saved conversation remains readable on both screens.\n\nA second paragraph with some **important details**.`,
     })),
   };
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [state] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) => route.fulfill({ json: [state] }));
   await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
     route.fulfill({ json: state }),
   );
@@ -213,7 +249,7 @@ test('long history scrolls independently and incoming messages do not move a rea
 test('empty mirror provides setup guidance without exposing a shell or package-manager commands', async ({
   page,
 }) => {
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) => route.fulfill({ json: [] }));
   await page.goto('/?mirror=1');
   const dialog = page.getByRole('region', { name: 'VS Code conversations' });
   await expect(dialog).toContainText('Share a Conversation');
@@ -238,7 +274,7 @@ test('a late receipt cannot clear the draft of a newly shared conversation', asy
     complete = resolve;
   });
   let started = false;
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [state] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) => route.fulfill({ json: [state] }));
   await page.route(`**/api/vscode/windows/${windowId}`, (route) => route.fulfill({ json: state }));
   await page.route(`**/api/vscode/windows/${windowId}/send`, async (route) => {
     started = true;
@@ -307,7 +343,9 @@ test('chat navigation separates providers and drafts, preserves selection, and r
     ],
   };
   let sent: Record<string, string> | undefined;
-  await page.route('**/api/vscode/windows', (route) => route.fulfill({ json: [codex, claude] }));
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: [codex, claude] }),
+  );
   for (const state of [codex, claude])
     await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
       route.fulfill({ json: state }),
@@ -364,7 +402,7 @@ test('offline chats stay visible and reconnect to the same thread with a new win
   };
   let online = true,
     posts = 0;
-  await page.route('**/api/vscode/windows', (route) =>
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
     route.fulfill({ json: online ? [state] : [] }),
   );
   await page.route(/\/api\/vscode\/windows\/[^/]+$/, (route) => route.fulfill({ json: state }));

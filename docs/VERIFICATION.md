@@ -71,6 +71,10 @@ browser checks at desktop, 412×915, 360×800, 915×412 and, for phone work, iPh
 - Compact coordinator/resource evidence, bounded detail reads and totals-only manager
   accounting. Fresh-context checks cover queued owner follow-ups, inactivity measured from
   owner messages, retained choices/history and cancellation while a native session closes.
+- Owner controls: queued-message edit holds and recoverable steering receipts, general file
+  retention, immediate Spawn drafts, direct background tickets, completion Undo, reversible
+  chat archiving and reply-only QUARK bypass with worker supervision. Boundary checks include
+  selected computers, interrupted requests, reloads and independent source-message triage.
 - Retained classic-workspace regression checks.
 
 **Limits:**

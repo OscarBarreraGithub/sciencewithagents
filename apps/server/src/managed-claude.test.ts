@@ -90,6 +90,28 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+it('retains auth diagnostic attribution in the existing events without changing run/account state', async () => {
+  const session = await managed.prepare(store.agent(managerId));
+  const before = store.agent(managerId);
+  const observation = {
+    classification: 'refresh-invalid-grant' as const,
+    observedAt: '2026-10-05T07:26:10.000Z',
+    nativeProcessId: 123,
+    supervisorProcessId: 122,
+    sessionId: session.options.sessionId,
+  };
+  session.options.authDiagnostic?.(observation);
+  const events = store.events().filter((event) => event.type === 'provider.auth_diagnostic');
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({
+    agentId: managerId,
+    projectId: before.projectId,
+    data: { ...observation, provider: 'claude', source: 'managed-session' },
+  });
+  expect(store.agent(managerId)).toEqual(before);
+  expect((session as FixtureSession).submit).not.toHaveBeenCalled();
+});
+
 it('refreshes changed host instructions and tool definitions without replacing the saved conversation', async () => {
   let charter = 'Original instructions';
   let description = 'Original tool';
