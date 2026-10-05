@@ -3,7 +3,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { BrowserSetup, checkNativeBrowser } from './browser-setup.js';
 import { proxyPath } from './hosts.js';
 import type { Provider } from './codex.js';
-function client({ missing = false, fail = false, state = { browsers: [] } as unknown } = {}) {
+function client({
+  missing = false,
+  fail = false,
+  state = { browsers: [] } as unknown,
+  servers = [{ name: 'cua_repl', runtimeStatus: 'connected', tools: { js: {} } }],
+} = {}) {
   const p = new EventEmitter() as Provider;
   p.ready = true;
   p.close = vi.fn(async () => {});
@@ -13,7 +18,7 @@ function client({ missing = false, fail = false, state = { browsers: [] } as unk
     if (method === 'thread/archive') return {};
     if (method === 'mcpServerStatus/list')
       return {
-        data: missing ? [] : [{ name: 'cua_repl', runtimeStatus: 'connected', tools: { js: {} } }],
+        data: missing ? [] : servers,
       };
     if (method === 'mcpServer/tool/call') {
       if (fail) throw new Error('Bearer private-token never returned');
@@ -76,6 +81,35 @@ describe('native browser discovery', () => {
     expect(p.close).toHaveBeenCalledTimes(1);
     await setup.close();
     await expect(setup.check()).rejects.toThrow('stopping');
+  });
+  it('does not mistake modern native tools for missing browser setup or a verified connection', async () => {
+    const p = client({
+      servers: [{ name: 'node_repl', runtimeStatus: 'connected', tools: { js: {} } }],
+    });
+    expect(await checkNativeBrowser(p)).toMatchObject({
+      state: 'unavailable',
+      nativeTools: true,
+      connectedBrowsers: 0,
+      message: expect.stringContaining('in this conversation'),
+    });
+    expect(p.request).not.toHaveBeenCalledWith('mcpServer/tool/call', expect.anything());
+    expect(p.request).not.toHaveBeenCalledWith('turn/start', expect.anything());
+    expect(p.request).toHaveBeenCalledWith('thread/archive', { threadId: 'diagnostic' });
+  });
+  it('keeps mixed native inventories unverified unless an extension connection is observed', async () => {
+    const servers = [
+      { name: 'cua_repl', runtimeStatus: 'connected', tools: { js: {} } },
+      { name: 'node_repl', runtimeStatus: 'connected', tools: { js: {} } },
+    ];
+    expect((await checkNativeBrowser(client({ servers }))).state).toBe('unavailable');
+    expect(
+      await checkNativeBrowser(client({ servers, state: { browsers: [{ type: 'extension' }] } })),
+    ).toMatchObject({ state: 'connected', nativeTools: true, connectedBrowsers: 1 });
+    expect(
+      await checkNativeBrowser(
+        client({ servers: [{ name: 'node_repl', runtimeStatus: 'disabled', tools: { js: {} } }] }),
+      ),
+    ).toMatchObject({ state: 'setup-needed', nativeTools: false });
   });
   it('only proxies the fixed authenticated setup endpoints', () => {
     expect(proxyPath('GET', '/browser/setup')).toBe('/api/browser/setup');

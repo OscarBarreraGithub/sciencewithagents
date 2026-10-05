@@ -648,3 +648,4 @@ export * from './project-apps.js';
 export * from './publishing-accounts.js';
 
 export * from './owner-terminal.js';
+export * from './native-goal.js';

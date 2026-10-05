@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { nativeGoalActionSchema } from './native-goal.js';
 
 export const mirrorSendSchema = z
   .object({
@@ -72,6 +73,8 @@ export const mirrorStateSchema = z.object({
   // Capability omission means an older companion, or a provider without steering.
   canSteer: z.boolean().optional(),
   canQueue: z.boolean().optional(),
+  // New companions support explicit native goal reads/actions; omission is unsupported.
+  canManageGoal: z.boolean().optional(),
   // Remote sockets cannot read screenshot files stored on the app computer.
   // Omission preserves local behavior for older companions.
   canAttachImages: z.boolean().optional(),
@@ -110,6 +113,10 @@ export const mirrorCommandSchema = z.discriminatedUnion('type', [
     .strict(),
   z.object({ id: z.uuid(), type: z.literal('send'), input: mirrorSendSchema }).strict(),
   z.object({ id: z.uuid(), type: z.literal('control'), input: mirrorControlSchema }).strict(),
+  z.object({ id: z.uuid(), type: z.literal('goal_read') }).strict(),
+  z
+    .object({ id: z.uuid(), type: z.literal('goal_action'), input: nativeGoalActionSchema })
+    .strict(),
 ]);
 // A bridge never raises the global 32 KiB WebSocket input limit. Large transcripts
 // travel in small, bounded frames and are only assembled for an outstanding read.

@@ -18,6 +18,13 @@ import {
   type MirrorResult,
   type MirrorSend,
   type MirrorState,
+  nativeGoalActionSchema,
+  nativeGoalSchema,
+  nativeGoalVersion,
+  nativeGoalActionProblem,
+  nativeGoalParams,
+  type NativeGoalView,
+  type NativeGoalAction,
 } from '@dock/shared';
 
 const execute = promisify(execFile);
@@ -278,6 +285,7 @@ export class CodexDaemonChats {
           ? 'Check Codex on the computer for its current request or status.'
           : '',
       canSteer: true,
+      canManageGoal: true,
       paged: true,
       groupedActivity: true,
       ...(token && token.length <= 128 ? { stopToken: token, steerToken: token } : {}),
@@ -488,6 +496,103 @@ export class CodexDaemonChats {
   }
   control(windowId: string, input: MirrorControl): Promise<MirrorResult> {
     return this.mutate(windowId, mirrorControlSchema.parse(input));
+  }
+  async goal(windowId: string): Promise<NativeGoalView> {
+    let threadId = this.summaries.get(windowId)?.threadId ?? null;
+    const unavailable = (message: string): NativeGoalView => ({
+      threadId,
+      supported: false,
+      goal: null,
+      token: null,
+      message,
+    });
+    try {
+      const thread = await this.selected(windowId, false);
+      threadId = thread.id;
+      const response = object(await this.request('thread/goal/get', { threadId }));
+      if (!Object.hasOwn(response, 'goal'))
+        return unavailable(
+          'This native Codex connection does not expose goals. Messages remain available here.',
+        );
+      const goal = response.goal === null ? null : nativeGoalSchema.parse(response.goal);
+      if (goal && goal.threadId !== threadId)
+        return unavailable('The native goal identity changed. Refresh its status.');
+      return {
+        threadId,
+        supported: true,
+        goal,
+        token: goal ? createHash('sha256').update(nativeGoalVersion(goal)).digest('hex') : null,
+        message: '',
+      };
+    } catch (error) {
+      return unavailable(
+        error instanceof NativeRejected && error.code === -32601
+          ? 'This native Codex connection does not expose goals. Messages remain available here.'
+          : 'Native goal status is unavailable. Refresh its status; your conversation is unchanged.',
+      );
+    }
+  }
+  async goalAction(windowId: string, raw: NativeGoalAction): Promise<MirrorResult> {
+    const input = nativeGoalActionSchema.parse(raw);
+    if ((input.provider ?? 'codex') !== 'codex' || this.mutations.has(windowId))
+      return {
+        state: 'not_sent',
+        message: 'This conversation is unavailable or another request is pending.',
+      };
+    this.mutations.add(windowId);
+    let submitted = false;
+    try {
+      const current = await this.goal(windowId);
+      const problem = nativeGoalActionProblem(input, current);
+      if (problem) return { state: 'not_sent', message: problem };
+      submitted = true;
+      if (input.action === 'clear') {
+        await this.request('thread/goal/clear', { threadId: input.threadId });
+        this.lastDiscovery = -Infinity;
+        return {
+          state: 'sent',
+          message: 'Native goal cleared. This conversation and its files are retained.',
+        };
+      }
+      const response = object(await this.request('thread/goal/set', nativeGoalParams(input)));
+      const goal = nativeGoalSchema.parse(response.goal);
+      if (
+        goal.threadId !== input.threadId ||
+        goal.status !== (input.action === 'pause' ? 'paused' : 'active') ||
+        (input.action === 'create'
+          ? goal.objective !== input.objective
+          : goal.objective !== current.goal?.objective ||
+            goal.createdAt !== current.goal?.createdAt ||
+            goal.tokenBudget !== current.goal?.tokenBudget)
+      )
+        throw new Error('Native goal acknowledgement did not match this action.');
+      this.lastDiscovery = -Infinity;
+      return {
+        state: 'sent',
+        message:
+          input.action === 'pause'
+            ? 'Native goal paused. Work already underway may finish at its safe boundary.'
+            : input.action === 'resume'
+              ? 'The existing native goal was resumed.'
+              : 'Native goal created in this conversation.',
+      };
+    } catch (error) {
+      return error instanceof NativeRejected || !submitted
+        ? {
+            state: 'not_sent',
+            message: (error instanceof Error
+              ? error.message
+              : 'Native goals are unavailable.'
+            ).slice(0, 1000),
+          }
+        : {
+            state: 'uncertain',
+            message:
+              'Codex did not confirm the goal action. Inspect its current status; this action will not be repeated automatically.',
+          };
+    } finally {
+      this.mutations.delete(windowId);
+    }
   }
   close(): void {
     this.closed = true;

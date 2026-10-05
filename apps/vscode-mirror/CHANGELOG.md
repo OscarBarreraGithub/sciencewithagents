@@ -1,5 +1,11 @@
 # Changes
 
+## 0.2.10
+
+Read, create, pause, resume and clear native Codex goals from a shared conversation in
+sciencewithagents. Keep the same thread, objective and native budget; inspect uncertain
+actions without replaying them. Activate at a safe editor reload; none is forced.
+
 ## 0.2.9
 
 Recheck helper provenance before sharing history or sending a message, and clear a saved

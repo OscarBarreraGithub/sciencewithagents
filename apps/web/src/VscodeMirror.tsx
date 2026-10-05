@@ -40,6 +40,7 @@ import {
 } from './useMirrorChats';
 import './VscodeMirror.css';
 import { MirrorStopReply } from './MirrorStopReply';
+import { NativeGoalCard } from './NativeGoalCard';
 import { Notepad, type DraftSelection } from './Notepad';
 import { useBrowserNotepad } from './useBrowserNotepad';
 
@@ -709,6 +710,16 @@ export function VscodeMirror({
             {daemon ? chat.label : `${provider} in ${chat.label}`}
           </p>
         </div>
+        {chat.threadId && (chat.provider ?? 'codex') === 'codex' && (
+          <NativeGoalCard
+            key={identity}
+            goalPath={`/vscode/windows/${chat.windowId}/goal`}
+            threadId={chat.threadId}
+            provider={chat.provider ?? 'codex'}
+            online={status !== 'offline'}
+            place={daemon ? 'on your computer' : 'in VS Code'}
+          />
+        )}
         {headerAction}
         <details className="mirror-controls">
           <summary aria-label="Chat information">

@@ -95,6 +95,13 @@ Untracked processes remain distinguishable from app-owned work. See [resource mo
 
 ## Native capabilities and saved evidence
 
+Supported shared Codex chats expose their native **Goal** in the app: the objective,
+status, elapsed work and token accounting, with controls to set, pause and resume it.
+These operate on the same conversation as VS Code. A goal does not move the conversation
+into QUARK or override provider limits. Older companions need a safe update before their
+controls are available. Claude and app-managed goal continuation are separate capabilities;
+the app does not substitute a new goal or an unsupervised loop when they are unavailable.
+
 **Expand queue** opens queued messages in a full-height list. App-managed messages and
 follow-ups queued here for shared VS Code chats can be held and edited in the notepad
 before dispatch; minimizing, reloads or another message completing never

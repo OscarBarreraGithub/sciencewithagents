@@ -167,7 +167,9 @@ Native integration still needs compatibility checks when provider protocols chan
 
 Browser workflows additionally need the provider's native browser integration and its site
 permissions. Shell/network access does not grant browser access. **Chats → Browser** provides
-a token-free Codex setup check and native Codex/Claude instructions; providers that require
-an active conversation for inventory are reported as unverified. A failed check never widens
+a token-free Codex setup check and native Codex/Claude instructions. Legacy Computer Use
+inventory can report a connected extension; newer native Node REPL tools and providers that
+require an active conversation remain unverified by this check. The check is advisory and
+never blocks an agent's native browser tools. A failed check never widens
 permissions. Report the specific missing setup once and continue independent work rather
 than repeatedly retrying a denied browser action.

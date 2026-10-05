@@ -7,6 +7,8 @@ import {
   type MirrorSend,
   type MirrorResult,
   type MirrorControl,
+  type NativeGoalView,
+  type NativeGoalAction,
 } from '@dock/shared';
 import { bridgeSymbol, patch, restore } from './patch.js';
 import { MirrorConnection, isCodexConnection } from './connection.js';
@@ -22,6 +24,8 @@ interface Adapter {
   read(): Promise<MirrorState>;
   send(input: MirrorSend): Promise<MirrorResult>;
   control(input: MirrorControl): Promise<MirrorResult>;
+  goal?(): Promise<NativeGoalView>;
+  goalAction?(input: NativeGoalAction): Promise<MirrorResult>;
   dispose(): void;
 }
 const providers = {
@@ -121,7 +125,22 @@ export async function activate(context: vscode.ExtensionContext) {
                 ? await bridge.adapter.read()
                 : command.type === 'send'
                   ? await bridge.adapter.send(command.input)
-                  : await bridge.adapter.control(command.input);
+                  : command.type === 'control'
+                    ? await bridge.adapter.control(command.input)
+                    : command.type === 'goal_read'
+                      ? ((await bridge.adapter.goal?.()) ?? {
+                          threadId: bridge.adapter.summary.threadId,
+                          supported: false,
+                          goal: null,
+                          token: null,
+                          message:
+                            'This provider does not expose native goals. Messages remain available here.',
+                        })
+                      : ((await bridge.adapter.goalAction?.(command.input)) ?? {
+                          state: 'not_sent',
+                          message:
+                            'This provider does not expose native goals. Nothing was changed.',
+                        });
             if (command.type === 'read' && command.page)
               result = {
                 ...mirrorPage(result as MirrorState, command.page),

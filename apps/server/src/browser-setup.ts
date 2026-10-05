@@ -51,6 +51,7 @@ export async function checkNativeBrowser(client: Provider): Promise<BrowserSetup
     );
     threadId = started.thread.id;
     let server;
+    let modernTools = false;
     for (let attempt = 0; attempt < 6; attempt++) {
       const status = inventory.parse(
         await client.request('mcpServerStatus/list', {
@@ -60,11 +61,25 @@ export async function checkNativeBrowser(client: Provider): Promise<BrowserSetup
         }),
       );
       server = status.data.find((item) => item.name === 'cua_repl');
+      modernTools = status.data.some(
+        (item) =>
+          item.name === 'node_repl' && item.runtimeStatus === 'connected' && !!item.tools.js,
+      );
       if (!server || !['starting', 'notStarted'].includes(server.runtimeStatus ?? '')) break;
       await delay(500);
     }
-    nativeTools = server?.runtimeStatus === 'connected' && !!server.tools.js;
-    if (!nativeTools)
+    const legacyTools = server?.runtimeStatus === 'connected' && !!server.tools.js;
+    nativeTools = legacyTools || modernTools;
+    const modernUnverified = () =>
+      result(
+        'unavailable',
+        'This check could not verify the browser connection. Ask your agent to check Chrome in this conversation.',
+      );
+    // Node REPL also supports the newer native Browser integration. Its presence
+    // is not proof of a connected browser, and absence of legacy CUA is not proof
+    // that the owner needs to install or change native permissions.
+    if (!legacyTools && modernTools) return modernUnverified();
+    if (!legacyTools)
       return result(
         'setup-needed',
         'Codex browser tools are not connected. Open ChatGPT’s Computer Use settings to install or reconnect the browser integration.',
@@ -103,6 +118,7 @@ export async function checkNativeBrowser(client: Provider): Promise<BrowserSetup
           `${count} browser connection${count === 1 ? '' : 's'} reported by Codex. Individual sites may still need permission or sign-in.`,
           count,
         );
+      if (modernTools) return modernUnverified();
       // Native releases can require an actual model turn for inventory. Do not invent
       // turn metadata or report an empty inventory as a verified disconnected browser.
       if (state.data.errors?.length)

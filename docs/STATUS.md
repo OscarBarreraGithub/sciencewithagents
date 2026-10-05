@@ -27,6 +27,11 @@ the latest published CI result must be checked separately from these source chec
 Shared VS Code follow-ups queued from this app remain editable until native handoff;
 messages already in the editor's queue retain its native controls. Shared queue delivery
 uses native turn boundaries without silently steering an active reply.
+Compatible shared Codex connections also expose native goal creation, status, accounting,
+pause, resume and clearing in the app. Existing budgets and native conversation identities
+are preserved. An older companion needs a safe update/reload; the app does not interrupt
+an active editor to activate it. Claude and QUARK-managed automatic goal continuation are
+not exposed through these native controls.
 
 ## Delivered, with acceptance limits
 

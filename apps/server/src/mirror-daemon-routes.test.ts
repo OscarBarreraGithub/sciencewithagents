@@ -8,6 +8,7 @@ import {
   type MirrorState,
   type MirrorPageQuery,
   type MirrorResult,
+  type NativeGoalView,
 } from '@dock/shared';
 import { Store } from './store.js';
 import { repoRoot } from './paths.js';
@@ -25,6 +26,7 @@ const state: MirrorState = {
   status: 'busy',
   message: '',
   canSteer: true,
+  canManageGoal: true,
   steerToken: 'active-turn',
   stopToken: 'active-turn',
   paged: true,
@@ -48,6 +50,18 @@ const daemon = {
   read: vi.fn(async (_id: string, page?: MirrorPageQuery) => mirrorPage(state, page)),
   send: vi.fn(async (): Promise<MirrorResult> => ({ state: 'sent', message: 'Guidance sent' })),
   control: vi.fn(async (): Promise<MirrorResult> => ({ state: 'sent', message: 'Stop requested' })),
+  goal: vi.fn(
+    async (): Promise<NativeGoalView> => ({
+      threadId: 'native-thread',
+      supported: true,
+      goal: null,
+      token: null,
+      message: '',
+    }),
+  ),
+  goalAction: vi.fn(
+    async (): Promise<MirrorResult> => ({ state: 'sent', message: 'Goal created' }),
+  ),
   close: vi.fn(),
 };
 beforeEach(async () => {
@@ -73,6 +87,32 @@ const send = () => ({
   threadId: 'native-thread',
   expectedTurnId: 'active-turn',
   text: 'Use the smaller example.',
+});
+it('discovers a daemon goal on its first direct route request after restart without reading the transcript', async () => {
+  const view = await app.inject({ url: `/api/vscode/windows/${windowId}/goal` });
+  expect(view.json()).toMatchObject({ threadId: 'native-thread', supported: true, goal: null });
+  expect(daemon.discover).toHaveBeenCalledTimes(1);
+  expect(daemon.read).not.toHaveBeenCalled();
+  discovered = false;
+  const input = {
+    key: randomUUID(),
+    threadId: 'native-thread',
+    action: 'create',
+    objective: 'New owner goal',
+    expectedToken: null,
+  };
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: `/api/vscode/windows/${windowId}/goal`,
+        payload: input,
+      })
+    ).json().state,
+  ).toBe('sent');
+  expect(daemon.discover).toHaveBeenCalledTimes(2);
+  expect(daemon.goalAction).toHaveBeenCalledExactlyOnceWith(windowId, input);
+  expect(daemon.read).not.toHaveBeenCalled();
 });
 
 it('discovers existing sessions and returns bounded source-aware pages through the same phone routes', async () => {

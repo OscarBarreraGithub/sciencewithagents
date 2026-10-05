@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 import { afterEach, expect, it, vi } from 'vitest';
 import { CodexDaemonChats } from './codex-daemon-chats.js';
+import type { NativeGoal, NativeGoalAction } from '@dock/shared';
 
 type Frame = { id?: number; method: string; params: Record<string, unknown> };
 type Thread = {
@@ -123,6 +124,152 @@ function fixture() {
   };
   return { chats, locate, state, thread, sockets, frames, mutations, input, busy };
 }
+
+function goalFixture() {
+  const f = fixture();
+  const state = {
+    goal: {
+      threadId: f.thread.id,
+      objective: 'Original native objective',
+      status: 'blocked',
+      createdAt: 10,
+      updatedAt: 20,
+      tokensUsed: 120,
+      timeUsedSeconds: 5,
+      tokenBudget: 5000,
+    } as NativeGoal | null,
+    reject: false,
+    disconnect: false,
+  };
+  f.state.mutation = (frame, socket) => {
+    if (frame.method === 'thread/goal/get') return socket.reply(frame, { goal: state.goal });
+    if (frame.method === 'thread/goal/clear') {
+      state.goal = null;
+      return socket.reply(frame, {});
+    }
+    if (frame.method === 'thread/goal/set') {
+      if (state.reject) return socket.reject(frame, 'Native usage limit is still active');
+      if (state.disconnect) return socket.terminate();
+      state.goal = {
+        ...(state.goal ?? {
+          threadId: f.thread.id,
+          objective: String(frame.params.objective),
+          createdAt: 30,
+          tokensUsed: 0,
+          timeUsedSeconds: 0,
+          tokenBudget: null,
+        }),
+        status: frame.params.status as NativeGoal['status'],
+        updatedAt: 30,
+      };
+      return socket.reply(frame, { goal: state.goal });
+    }
+    throw new Error(`Unexpected goal method: ${frame.method}`);
+  };
+  return { ...f, goalState: state };
+}
+it('reads and resumes the exact loaded daemon goal without starting a provider, model or full transcript read', async () => {
+  const f = goalFixture();
+  await f.chats.discover();
+  const window = f.chats.windows()[0];
+  const view = await f.chats.goal(window.windowId);
+  expect(view).toMatchObject({ supported: true, goal: { status: 'blocked', tokenBudget: 5000 } });
+  expect(
+    (
+      await f.chats.goalAction(window.windowId, {
+        key: randomUUID(),
+        threadId: f.thread.id,
+        action: 'resume',
+        expectedToken: view.token!,
+      })
+    ).state,
+  ).toBe('sent');
+  expect(
+    f
+      .frames()
+      .filter((frame) => frame.method === 'thread/goal/set')
+      .map((frame) => frame.params),
+  ).toEqual([{ threadId: f.thread.id, status: 'active' }]);
+  expect(
+    f
+      .frames()
+      .filter((frame) => frame.method === 'thread/read')
+      .every((frame) => frame.params.includeTurns === false),
+  ).toBe(true);
+  expect(f.mutations()).toHaveLength(0);
+});
+it('keeps daemon goal controls bound to a loaded native identity and current lifecycle across devices', async () => {
+  const f = goalFixture();
+  await f.chats.discover();
+  const window = f.chats.windows()[0];
+  const view = await f.chats.goal(window.windowId);
+  const input: NativeGoalAction = {
+    key: randomUUID(),
+    threadId: f.thread.id,
+    action: 'resume',
+    expectedToken: view.token!,
+  };
+  f.goalState.goal!.status = 'paused';
+  expect((await f.chats.goalAction(window.windowId, input)).state).toBe('not_sent');
+  const paused = await f.chats.goal(window.windowId);
+  f.state.loaded = [];
+  expect(
+    (await f.chats.goalAction(window.windowId, { ...input, expectedToken: paused.token! })).state,
+  ).toBe('not_sent');
+  expect(f.frames().filter((frame) => frame.method === 'thread/goal/set')).toHaveLength(0);
+});
+it('clears a completed daemon goal explicitly before creating another, preserves budget and reports native failure truthfully', async () => {
+  const f = goalFixture();
+  await f.chats.discover();
+  const window = f.chats.windows()[0];
+  let view = await f.chats.goal(window.windowId);
+  const resume: NativeGoalAction = {
+    key: randomUUID(),
+    threadId: f.thread.id,
+    action: 'resume',
+    expectedToken: view.token!,
+  };
+  f.goalState.reject = true;
+  expect((await f.chats.goalAction(window.windowId, resume)).state).toBe('not_sent');
+  f.goalState.reject = false;
+  f.goalState.goal!.status = 'complete';
+  view = await f.chats.goal(window.windowId);
+  expect(
+    (
+      await f.chats.goalAction(window.windowId, {
+        key: randomUUID(),
+        threadId: f.thread.id,
+        action: 'clear',
+        expectedToken: view.token!,
+      })
+    ).state,
+  ).toBe('sent');
+  expect((await f.chats.goal(window.windowId)).goal).toBeNull();
+  expect(
+    (
+      await f.chats.goalAction(window.windowId, {
+        key: randomUUID(),
+        threadId: f.thread.id,
+        action: 'create',
+        objective: 'Next native objective',
+        expectedToken: null,
+      })
+    ).state,
+  ).toBe('sent');
+  expect(f.goalState.goal).toMatchObject({ objective: 'Next native objective', tokenBudget: null });
+  f.goalState.goal!.status = 'paused';
+  view = await f.chats.goal(window.windowId);
+  f.goalState.disconnect = true;
+  expect(
+    (
+      await f.chats.goalAction(window.windowId, {
+        ...resume,
+        key: randomUUID(),
+        expectedToken: view.token!,
+      })
+    ).state,
+  ).toBe('uncertain');
+});
 
 it('discovers metadata only, coalesces foreground refresh and excludes ephemeral threads', async () => {
   const f = fixture();

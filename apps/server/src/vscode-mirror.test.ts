@@ -17,6 +17,8 @@ import {
   mirrorPage,
   type MirrorPageQuery,
   type MirrorState,
+  type NativeGoalView,
+  type NativeGoalAction,
 } from '@dock/shared';
 
 let root: string,
@@ -105,6 +107,270 @@ async function connect(
   });
   await expect.poll(() => mirrors.windows().length).toBe(1);
 }
+const goalView = (): NativeGoalView => ({
+  threadId: 'thread',
+  supported: true,
+  token: 'a'.repeat(64),
+  message: '',
+  goal: {
+    threadId: 'thread',
+    objective: 'Original owner objective',
+    status: 'blocked',
+    createdAt: 10,
+    updatedAt: 20,
+    tokensUsed: 120,
+    timeUsedSeconds: 5,
+    tokenBudget: 5000,
+  },
+});
+it('reads native goals lazily and preserves exact durable lifecycle receipts across restart', async () => {
+  const commands: string[] = [];
+  await connect(
+    (command) => {
+      commands.push(command.type);
+      return command.type === 'goal_read'
+        ? goalView()
+        : { state: 'sent', message: 'Existing native goal resumed.' };
+    },
+    undefined,
+    false,
+    true,
+    { canManageGoal: true },
+  );
+  const url = `/api/vscode/windows/${windowId}/goal`;
+  expect((await app.inject({ url, headers })).json()).toMatchObject({
+    goal: { status: 'blocked' },
+    supported: true,
+  });
+  expect(commands).toEqual(['goal_read']);
+  const input: NativeGoalAction = {
+    key: randomUUID(),
+    threadId: 'thread',
+    action: 'resume',
+    expectedToken: (await mirrors.goal(windowId)).token!,
+  };
+  const first = await app.inject({ method: 'POST', url, headers, payload: input });
+  expect(first.json().state).toBe('sent');
+  expect((await app.inject({ method: 'POST', url, headers, payload: input })).json()).toEqual(
+    first.json(),
+  );
+  const recovered = new VscodeMirrors(store);
+  try {
+    expect(await recovered.goalAction(randomUUID(), input)).toEqual(first.json());
+  } finally {
+    recovered.close();
+  }
+  expect(commands.filter((type) => type === 'goal_action')).toHaveLength(1);
+  expect(
+    (await app.inject({ method: 'POST', url, headers, payload: { ...input, action: 'pause' } }))
+      .statusCode,
+  ).toBe(409);
+  const evidence = store.db
+    .prepare("SELECT data FROM events WHERE type='mirror.goal_observed'")
+    .get() as { data: string };
+  expect(JSON.parse(evidence.data).goal).toMatchObject({
+    objective: 'Original owner objective',
+    tokenBudget: 5000,
+  });
+});
+it('keeps an in-flight goal action uncertain on exact-key retry and serializes competing device actions', async () => {
+  let finish: (() => void) | undefined;
+  let writes = 0;
+  await connect(
+    (command) =>
+      command.type === 'goal_read'
+        ? goalView()
+        : new Promise((resolve) => {
+            writes++;
+            finish = () => resolve({ state: 'sent', message: 'Goal resumed.' });
+          }),
+    undefined,
+    false,
+    true,
+    { canManageGoal: true },
+  );
+  const input: NativeGoalAction = {
+    key: randomUUID(),
+    threadId: 'thread',
+    action: 'resume',
+    expectedToken: (await mirrors.goal(windowId)).token!,
+  };
+  const first = mirrors.goalAction(windowId, input);
+  await expect.poll(() => writes).toBe(1);
+  expect((await mirrors.goalAction(windowId, input)).state).toBe('uncertain');
+  expect((await mirrors.goalAction(windowId, { ...input, key: randomUUID() })).state).toBe(
+    'not_sent',
+  );
+  finish!();
+  expect((await first).state).toBe('sent');
+  expect(mirrors.receipt(input.key).state).toBe('sent');
+  expect(writes).toBe(1);
+});
+it('never replays an unconfirmed native goal action after disconnect or process recovery', async () => {
+  let writes = 0;
+  await connect(
+    (command) => {
+      if (command.type === 'goal_read') return goalView();
+      writes++;
+      socket!.terminate();
+      return undefined;
+    },
+    undefined,
+    false,
+    true,
+    { canManageGoal: true },
+  );
+  const input: NativeGoalAction = {
+    key: randomUUID(),
+    threadId: 'thread',
+    action: 'resume',
+    expectedToken: (await mirrors.goal(windowId)).token!,
+  };
+  expect((await mirrors.goalAction(windowId, input)).state).toBe('uncertain');
+  const recovered = new VscodeMirrors(store);
+  try {
+    expect((await recovered.goalAction(windowId, input)).state).toBe('uncertain');
+  } finally {
+    recovered.close();
+  }
+  expect(writes).toBe(1);
+});
+it('rejects an older device action after a same-second native pause/resume cycle while allowing native progress changes', async () => {
+  const view = goalView();
+  view.goal!.status = 'paused';
+  let writes = 0;
+  await connect(
+    (command) => {
+      if (command.type === 'goal_read') return view;
+      const input = command.input as NativeGoalAction;
+      writes++;
+      view.goal!.status = input.action === 'pause' ? 'paused' : 'active';
+      view.token = (view.goal!.status === 'paused' ? 'a' : 'b').repeat(64);
+      return { state: 'sent', message: 'Native lifecycle acknowledged.' };
+    },
+    undefined,
+    false,
+    true,
+    { canManageGoal: true },
+  );
+  const before = await mirrors.goal(windowId);
+  const old: NativeGoalAction = {
+    key: randomUUID(),
+    threadId: 'thread',
+    action: 'resume',
+    expectedToken: before.token!,
+  };
+  expect((await mirrors.goalAction(windowId, old)).state).toBe('sent');
+  const active = await mirrors.goal(windowId);
+  Object.assign(view.goal!, { tokensUsed: 240, timeUsedSeconds: 10, updatedAt: 25 });
+  expect(
+    (
+      await mirrors.goalAction(windowId, {
+        key: randomUUID(),
+        threadId: 'thread',
+        action: 'pause',
+        expectedToken: active.token!,
+      })
+    ).state,
+  ).toBe('sent');
+  const after = await mirrors.goal(windowId);
+  expect(after.goal!.createdAt).toBe(before.goal!.createdAt);
+  expect(after.goal!.status).toBe(before.goal!.status);
+  expect(after.token).not.toBe(before.token);
+  expect((await mirrors.goalAction(windowId, { ...old, key: randomUUID() })).state).toBe(
+    'not_sent',
+  );
+  expect(writes).toBe(2);
+});
+it('rejects stale native goal identity and status before forwarding and retains completed evidence when explicitly clearing', async () => {
+  const view = goalView();
+  let writes = 0;
+  await connect(
+    (command) => {
+      if (command.type === 'goal_read') return view;
+      writes++;
+      return { state: 'sent', message: 'Native goal cleared.' };
+    },
+    undefined,
+    false,
+    true,
+    { canManageGoal: true },
+  );
+  const base = {
+    key: randomUUID(),
+    threadId: 'thread',
+    action: 'resume' as const,
+    expectedToken: 'b'.repeat(64),
+  };
+  expect((await mirrors.goalAction(windowId, base)).state).toBe('not_sent');
+  expect(
+    (await mirrors.goalAction(windowId, { ...base, key: randomUUID(), threadId: 'other' })).state,
+  ).toBe('not_sent');
+  view.goal!.status = 'active';
+  expect(
+    (
+      await mirrors.goalAction(windowId, {
+        ...base,
+        key: randomUUID(),
+        action: 'clear',
+        expectedToken: (await mirrors.goal(windowId)).token!,
+      })
+    ).state,
+  ).toBe('not_sent');
+  view.goal!.status = 'complete';
+  expect(
+    (
+      await mirrors.goalAction(windowId, {
+        ...base,
+        key: randomUUID(),
+        action: 'clear',
+        expectedToken: (await mirrors.goal(windowId)).token!,
+      })
+    ).state,
+  ).toBe('sent');
+  expect(writes).toBe(1);
+  expect(
+    store.db.prepare("SELECT count(*) AS n FROM events WHERE type='mirror.goal_observed'").get(),
+  ).toMatchObject({ n: 3 });
+});
+it('reports older companions and Claude goal limitations without sending unsupported native commands', async () => {
+  let commands = 0;
+  await connect(() => {
+    commands++;
+    return {};
+  });
+  const view = await mirrors.goal(windowId);
+  expect(view).toMatchObject({ supported: false, goal: null });
+  expect(view.message).toContain('installed companion');
+  expect(
+    (
+      await mirrors.goalAction(windowId, {
+        key: randomUUID(),
+        threadId: 'thread',
+        action: 'create',
+        objective: 'Owner goal',
+        expectedToken: null,
+      })
+    ).state,
+  ).toBe('not_sent');
+  expect(commands).toBe(0);
+  expect(
+    (
+      await app.inject({
+        url: `/api/vscode/windows/${windowId}/goal`,
+        headers: { ...headers, origin: 'https://unrelated.example.test' },
+      })
+    ).statusCode,
+  ).toBe(403);
+});
+it('allows exact goal reads/actions through the selected-host route and rejects arbitrary native RPC', () => {
+  for (const method of ['GET', 'POST'])
+    expect(proxyPath(method, `/vscode/windows/${windowId}/goal`)).toBe(
+      `/api/vscode/windows/${windowId}/goal`,
+    );
+  expect(proxyPath('POST', `/vscode/windows/${windowId}/goal/set`)).toBeNull();
+  expect(proxyPath('POST', '/vscode/goal')).toBeNull();
+});
 describe('VS Code mirror gateway', () => {
   it.each([
     { kind: 'screenshots', reference: chatImageReference },

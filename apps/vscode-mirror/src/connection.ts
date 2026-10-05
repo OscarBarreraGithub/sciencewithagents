@@ -1,7 +1,15 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { codexTranscript as transcript, codexQueue, isBackgroundCodexThread } from '@dock/shared';
 export { codexTranscript as transcript } from '@dock/shared';
 import type { MirrorState, MirrorSend, MirrorResult, MirrorControl } from '@dock/shared';
+import {
+  nativeGoalSchema,
+  nativeGoalVersion,
+  nativeGoalActionProblem,
+  nativeGoalParams,
+  type NativeGoalView,
+  type NativeGoalAction,
+} from '@dock/shared';
 
 type ObjectValue = Record<string, unknown>;
 export const object = (value: unknown): ObjectValue =>
@@ -89,6 +97,7 @@ export class MirrorConnection {
   private readonly turnEntries = new WeakMap<ObjectValue, MirrorState['entries']>();
   private state: MirrorState;
   private readonly live = new Map<string, MirrorState['entries'][number]>();
+  private goalChanging = false;
   constructor(
     private readonly connection: Connection,
     label: string,
@@ -102,6 +111,7 @@ export class MirrorConnection {
       message: 'Use sciencewithagents Mirror: Share a Conversation in VS Code.',
       entries: [],
       canSteer: true,
+      canManageGoal: true,
     };
     this.subscription = connection.registerProvider(this.providerName, {
       onInitialized: () => {
@@ -629,6 +639,111 @@ export class MirrorConnection {
         message:
           'Stop was not confirmed. Check the conversation; this request will not be repeated automatically.',
       };
+    }
+  }
+  /** Small native metadata reads, independent of transcript paging or a model turn. */
+  async goal(): Promise<NativeGoalView> {
+    const threadId = this.threadId;
+    const unavailable = (message: string): NativeGoalView => ({
+      threadId,
+      supported: false,
+      goal: null,
+      token: null,
+      message,
+    });
+    if (!threadId) return unavailable('Share a conversation to use its native goal.');
+    try {
+      const thread = object(
+        object(await this.request('thread/read', { threadId, includeTurns: false })).thread,
+      );
+      this.checkThread(thread, threadId);
+      const response = object(await this.request('thread/goal/get', { threadId }));
+      if (!Object.hasOwn(response, 'goal'))
+        return unavailable(
+          'This native Codex connection does not expose goals. Messages remain available here.',
+        );
+      const goal = response.goal === null ? null : nativeGoalSchema.parse(response.goal);
+      if (this.threadId !== threadId || (goal && goal.threadId !== threadId))
+        return unavailable(
+          'The shared conversation changed. Refresh before choosing a goal action.',
+        );
+      return {
+        threadId,
+        supported: true,
+        goal,
+        token: goal ? createHash('sha256').update(nativeGoalVersion(goal)).digest('hex') : null,
+        message: '',
+      };
+    } catch (error) {
+      return unavailable(
+        error instanceof NativeRequestRejected && error.code === -32601
+          ? 'This native Codex connection does not expose goals. Messages remain available here.'
+          : 'Native goal status is unavailable. Refresh its status; your conversation is unchanged.',
+      );
+    }
+  }
+  async goalAction(input: NativeGoalAction): Promise<MirrorResult> {
+    if (
+      this.goalChanging ||
+      (input.provider ?? 'codex') !== 'codex' ||
+      input.threadId !== this.threadId
+    )
+      return {
+        state: 'not_sent',
+        message:
+          'The shared conversation changed or a goal action is pending. Nothing was changed.',
+      };
+    this.goalChanging = true;
+    try {
+      const current = await this.goal();
+      const problem = nativeGoalActionProblem(input, current);
+      if (problem || this.threadId !== input.threadId)
+        return {
+          state: 'not_sent',
+          message: problem ?? 'The shared conversation changed. Nothing was changed.',
+        };
+      try {
+        if (input.action === 'clear') {
+          await this.request('thread/goal/clear', { threadId: input.threadId });
+          this.dirty = true;
+          return {
+            state: 'sent',
+            message: 'Native goal cleared. This conversation and its files are retained.',
+          };
+        }
+        const response = object(await this.request('thread/goal/set', nativeGoalParams(input)));
+        const goal = nativeGoalSchema.parse(response.goal);
+        if (
+          goal.threadId !== input.threadId ||
+          goal.status !== (input.action === 'pause' ? 'paused' : 'active') ||
+          (input.action === 'create'
+            ? goal.objective !== input.objective
+            : goal.objective !== current.goal?.objective ||
+              goal.createdAt !== current.goal?.createdAt ||
+              goal.tokenBudget !== current.goal?.tokenBudget)
+        )
+          throw new Error('Native goal acknowledgement did not match this action.');
+        this.dirty = true;
+        return {
+          state: 'sent',
+          message:
+            input.action === 'pause'
+              ? 'Native goal paused. Work already underway may finish at its safe boundary.'
+              : input.action === 'resume'
+                ? 'The existing native goal was resumed.'
+                : 'Native goal created in this conversation.',
+        };
+      } catch (error) {
+        return error instanceof NativeRequestRejected
+          ? { state: 'not_sent', message: error.message.slice(0, 1000) }
+          : {
+              state: 'uncertain',
+              message:
+                'Codex did not confirm the goal action. Inspect its current status; this action will not be repeated automatically.',
+            };
+      }
+    } finally {
+      this.goalChanging = false;
     }
   }
   dispose() {

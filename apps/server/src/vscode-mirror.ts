@@ -21,6 +21,11 @@ import {
   type MirrorSend,
   type MirrorControl,
   type MirrorResult,
+  nativeGoalActionSchema,
+  nativeGoalViewSchema,
+  nativeGoalActionProblem,
+  type NativeGoalAction,
+  type NativeGoalView,
 } from '@dock/shared';
 import { Store, Conflict, Missing } from './store.js';
 import { conversationHidden } from './conversations.js';
@@ -28,7 +33,7 @@ import type { CodexDaemonChats } from './codex-daemon-chats.js';
 
 type DaemonChats = Pick<
   CodexDaemonChats,
-  'discover' | 'windows' | 'read' | 'send' | 'control' | 'close'
+  'discover' | 'windows' | 'read' | 'send' | 'control' | 'goal' | 'goalAction' | 'close'
 >;
 
 type Peer = {
@@ -61,6 +66,7 @@ export class VscodeMirrors {
   private peers = new Map<string, Peer>();
   private listing?: Promise<void>;
   private reads = new Map<string, Promise<MirrorState>>();
+  private goalChanges = new Set<string>();
   readonly queue: MirrorOutbox;
   constructor(
     private readonly store: Store,
@@ -249,7 +255,9 @@ export class VscodeMirrors {
     if (!peer && this.daemon && this.window(windowId)?.source === 'codex-daemon') {
       if (value.type === 'read') return this.daemon.read(windowId, value.page);
       if (value.type === 'send') return this.daemon.send(windowId, value.input);
-      return this.daemon.control(windowId, value.input);
+      if (value.type === 'control') return this.daemon.control(windowId, value.input);
+      if (value.type === 'goal_read') return this.daemon.goal(windowId);
+      return this.daemon.goalAction(windowId, value.input);
     }
     if (!peer)
       throw new Missing(
@@ -520,6 +528,153 @@ export class VscodeMirrors {
             'No delivery receipt is available yet. Inspect the conversation on the computer before clearing this message. Nothing was resent.',
         };
   }
+  private goalRevisionKey(threadId: string) {
+    return `mirror:goal-revision:codex:${threadId}`;
+  }
+  private versionedGoal(view: NativeGoalView): NativeGoalView {
+    if (!view.threadId || !view.token) return view;
+    const revision = this.store.getSetting(this.goalRevisionKey(view.threadId)) ?? 0;
+    return {
+      ...view,
+      token: createHash('sha256')
+        .update(JSON.stringify([view.token, revision]))
+        .digest('hex'),
+    };
+  }
+  async goal(windowId: string): Promise<NativeGoalView> {
+    return this.versionedGoal(await this.nativeGoal(windowId));
+  }
+  private async nativeGoal(windowId: string): Promise<NativeGoalView> {
+    const window = this.window(windowId);
+    const unavailable = (message: string): NativeGoalView => ({
+      threadId: window?.threadId ?? null,
+      supported: false,
+      goal: null,
+      token: null,
+      message,
+    });
+    if (!window || window.status === 'offline')
+      return unavailable(
+        'The shared conversation is offline. Your messages and goal are retained.',
+      );
+    if ((window.provider ?? 'codex') !== 'codex')
+      return unavailable(
+        'This provider does not expose native goals. Messages remain available here.',
+      );
+    if (!window.canManageGoal)
+      return unavailable(
+        'The installed companion does not expose native goals yet. Existing messages remain available here.',
+      );
+    try {
+      const view = nativeGoalViewSchema.parse(
+        await this.request(windowId, { id: randomUUID(), type: 'goal_read' }),
+      );
+      if (
+        view.threadId !== window.threadId ||
+        (view.goal && view.goal.threadId !== window.threadId)
+      )
+        return unavailable('The shared conversation changed. Refresh its goal status.');
+      return view;
+    } catch {
+      return unavailable(
+        'Native goal status is unavailable. Refresh its status; your conversation is unchanged.',
+      );
+    }
+  }
+  async goalAction(windowId: string, raw: NativeGoalAction): Promise<MirrorResult> {
+    const input = nativeGoalActionSchema.parse(raw);
+    const digest = createHash('sha256')
+      .update(JSON.stringify({ goal: input }))
+      .digest('hex');
+    const saved = this.store.db
+      .prepare('SELECT input_hash,result FROM mirror_deliveries WHERE key=?')
+      .get(input.key) as { input_hash: string; result: string } | undefined;
+    if (saved) {
+      if (saved.input_hash !== digest)
+        throw new Conflict('This receipt belongs to a different action. Nothing was repeated.');
+      return mirrorResultSchema.parse(JSON.parse(saved.result));
+    }
+    const window = this.window(windowId);
+    if (
+      !window ||
+      window.status === 'offline' ||
+      !window.canManageGoal ||
+      window.threadId !== input.threadId ||
+      (window.provider ?? 'codex') !== (input.provider ?? 'codex') ||
+      (input.provider ?? 'codex') !== 'codex'
+    )
+      return {
+        state: 'not_sent',
+        message: 'Native goals are unavailable for this shared conversation. Nothing was changed.',
+      };
+    const identity = `codex:${input.threadId}`;
+    if (this.goalChanges.has(identity))
+      return {
+        state: 'not_sent',
+        message: 'Another goal action is pending. Refresh its status before choosing an action.',
+      };
+    const pending: MirrorResult = {
+      state: 'uncertain',
+      message:
+        'The native goal action was not confirmed. Inspect its current status; nothing is repeated automatically.',
+    };
+    this.goalChanges.add(identity);
+    try {
+      this.store.transaction(() => {
+        this.store.db
+          .prepare('INSERT INTO mirror_deliveries(key,input_hash,result) VALUES (?,?,?)')
+          .run(input.key, digest, JSON.stringify(pending));
+        this.store.event('mirror.goal_requested', null, null, {
+          key: input.key,
+          windowId,
+          threadId: input.threadId,
+          action: input.action,
+          ...(input.action === 'create' ? { objective: input.objective } : {}),
+        });
+      });
+      let result: MirrorResult;
+      try {
+        const current = await this.nativeGoal(windowId);
+        const problem = nativeGoalActionProblem(input, this.versionedGoal(current));
+        this.store.event('mirror.goal_observed', null, null, {
+          key: input.key,
+          threadId: input.threadId,
+          goal: current.goal,
+        });
+        if (problem) result = { state: 'not_sent', message: problem };
+        else {
+          // An app action invalidates older device controls even if native timestamps
+          // and status return to the same value within one second. Progress is separate.
+          const revisionKey = this.goalRevisionKey(input.threadId);
+          const revision = z
+            .number()
+            .int()
+            .nonnegative()
+            .parse(this.store.getSetting(revisionKey) ?? 0);
+          this.store.setSetting(revisionKey, revision + 1);
+          const nativeInput = { ...input, expectedToken: current.token };
+          result = mirrorResultSchema.parse(
+            await this.request(windowId, {
+              id: randomUUID(),
+              type: 'goal_action',
+              input: nativeInput,
+            }),
+          );
+        }
+      } catch {
+        result = pending;
+      }
+      this.store.transaction(() => {
+        this.store.db
+          .prepare('UPDATE mirror_deliveries SET result=? WHERE key=?')
+          .run(JSON.stringify(result), input.key);
+        this.store.event('mirror.goal_result', null, null, { key: input.key, state: result.state });
+      });
+      return result;
+    } finally {
+      this.goalChanges.delete(identity);
+    }
+  }
   close() {
     this.queue.close();
     this.daemon?.close();
@@ -571,6 +726,13 @@ export function registerMirrorRoutes(
   );
   app.post('/api/vscode/windows/:id/control', discover, async (request) =>
     mirrors.control(windowId(request.params), mirrorControlSchema.parse(request.body)),
+  );
+  // Goal reads are lazy metadata only, never full transcript discovery or a model turn.
+  app.get('/api/vscode/windows/:id/goal', discover, async (request) =>
+    mirrors.goal(windowId(request.params)),
+  );
+  app.post('/api/vscode/windows/:id/goal', discover, async (request) =>
+    mirrors.goalAction(windowId(request.params), nativeGoalActionSchema.parse(request.body)),
   );
   // Never register the extension producer on the public/paired phone entry. A phone
   // may consume the chosen transcript; it cannot impersonate a local extension.

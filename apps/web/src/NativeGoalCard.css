@@ -1,0 +1,170 @@
+button.native-goal-entry {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 8px 11px;
+  white-space: nowrap;
+}
+.native-goal-chip {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: #5b6d4e;
+  font-size: var(--text-caption);
+}
+.native-goal-chip.active {
+  background: #e5eee2;
+  color: var(--green);
+}
+.native-goal-chip.pending,
+.native-goal-chip.blocked,
+.native-goal-chip.usageLimited,
+.native-goal-chip.budgetLimited {
+  background: #f6f0e5;
+  color: #6b5837;
+}
+.native-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+dialog.native-goal-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.native-goal-dialog .modal-heading {
+  flex-shrink: 0;
+}
+.native-goal p {
+  margin: 0;
+}
+.native-goal h3 {
+  margin: 4px 0 0;
+}
+.native-goal button {
+  min-height: 44px;
+  align-self: flex-start;
+}
+.native-goal-current {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.native-goal-clear {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.native-goal-objective {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+.native-goal-measures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.native-goal-measures div {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.native-goal-measures dt {
+  font-size: var(--text-caption);
+  color: var(--muted);
+}
+.native-goal-measures dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: var(--text-body);
+}
+.native-goal-create {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.native-goal-create textarea {
+  width: 100%;
+  min-height: 7.5em;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid #dfe7d2;
+  border-radius: 8px;
+  font: inherit;
+}
+.native-goal-create textarea[readonly] {
+  background: var(--soft);
+}
+.native-goal .native-goal-note {
+  font-size: var(--text-small);
+  color: var(--muted);
+}
+.native-goal-notice,
+.native-goal-pending {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f6f0e5;
+  color: #6b5837;
+}
+.native-goal-pending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.native-goal-pending p {
+  flex: 1 1 100%;
+}
+.native-goal .native-goal-receipt {
+  color: var(--ink);
+}
+@media (max-width: 720px) {
+  .native-goal-entry > svg {
+    display: none;
+  }
+  button.native-goal-entry {
+    min-width: 44px;
+    padding: 6px 9px;
+    gap: 5px;
+  }
+  /* Phones show the status as a dot; the button's name still states it. */
+  .native-goal-entry .native-goal-chip {
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    font-size: 0;
+    background: var(--muted);
+  }
+  .native-goal-entry .native-goal-chip.active {
+    background: var(--green);
+  }
+  .native-goal-entry .native-goal-chip.pending,
+  .native-goal-entry .native-goal-chip.blocked,
+  .native-goal-entry .native-goal-chip.usageLimited,
+  .native-goal-entry .native-goal-chip.budgetLimited {
+    background: #c9963b;
+  }
+  .native-goal-dialog {
+    padding: 18px;
+  }
+}
+@media (max-width: 480px) {
+  /* The title keeps its own row when Goal joins the phone's chat actions. */
+  .mirror-header:has(.native-goal-entry) {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .mirror-header:has(.native-goal-entry) > div {
+    flex-basis: calc(100% - 48px);
+  }
+  .mirror-header:has(.native-goal-entry) h1 {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}

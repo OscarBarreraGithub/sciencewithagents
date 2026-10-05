@@ -104,6 +104,10 @@ qualification does not certify remote provider builds or cluster policies.
   and remain under that editor’s control. Uncertain delivery is inspected, never auto-repeated.
 - **Stop reply** targets the observed reply. It cannot undo completed work or cancel every
   future native action. Lost acknowledgements offer a receipt check, never an automatic replay.
+- **Goal** in a shared Codex chat shows its native objective, status and accounting. Set a
+  goal, pause it, or resume after a pause, blocker or replenished usage. Existing goal budgets
+  stay unchanged. Clear a non-active goal before starting another; chats and files remain.
+  Older companions need a safe update/reload. Claude does not expose these native controls.
 - Models, permissions, native questions, slash menus, attachments and unsupported rich tools
   stay in VS Code. This is a text mirror, not complete provider UI parity.
 
@@ -112,6 +116,9 @@ remains available under the parent work. Separately launched active helpers can 
 in the provider's own picker; sciencewithagents cannot promise to hide them there.
 
 ## Compatibility and removal
+
+App-managed goal continuation still needs QUARK admission integration. The native Goal
+controls above apply to shared Codex conversations.
 
 The local companion is qualified on **macOS arm64**; Remote SSH is a Unix transport preview
 with the acceptance limit above. It checks actual provider connection structure

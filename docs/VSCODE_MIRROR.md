@@ -82,6 +82,26 @@ never automatically replayed. Late saved delivery receipts can resolve uncertain
 send. Native questions and permissions stay in the original editor.
 Automatic VS Code crash restoration is not promised: reopen the editor/chat and re-share.
 
+## Native goals
+
+The app's Goal control reads the selected Codex thread's native objective, status and
+accounting. Set, Pause and Resume use the native goal lifecycle, preserving its model,
+permissions and existing budget. Resume does not raise an exhausted goal budget or alter
+QUARK limits. Shared editor goals remain native work, outside QUARK's managed queue.
+Pause an active goal before clearing it. Clearing removes the native goal, not the chat
+or files; the app retains the prior objective in its private action history.
+
+Actions bind the exact shared thread and observed goal. An update in the editor or on
+another device can require a fresh read; uncertain acknowledgements retain the original
+receipt for inspection instead of repeating the mutation. Reading a goal creates no model
+turn and does not load the full conversation. Goal controls require a compatible provider
+and companion, or an already-loaded compatible native daemon session. Updating an active
+companion can require a safe editor reload; the app does not reload running work itself.
+
+App-managed native automatic goal continuation is not enabled: each managed turn still
+requires QUARK admission. A provider's goal resume can start work independently of an
+ordinary turn request, so exposing it without that supervision would be misleading.
+
 ## Attachments
 
 Phone composers offer **Attach files** with filenames, sizes, image previews, removal and retry.

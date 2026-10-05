@@ -38,6 +38,9 @@ The README is the current public landing; a separate website and Guide/FAQ are d
 - **Clean conversations.** Archive and restore chats without stopping their work or deleting
   history. Shared VS Code chats retain their native identity; background helper
   and resource records do not masquerade as personal chats. No separate editor login is needed.
+- **Native goals from your phone.** In a supported shared Codex chat, see the same goal as
+  VS Code and pause or resume it without returning to the editor. Progress comes from Codex;
+  unavailable native controls are explained rather than replaced by a second conversation.
 - **Computer health with context.** See memory pressure, trends and app/project groups, then ask
   a selectable assistant about a slowdown. Automatic checks are bounded and optional.
 - **Read the result.** Equations render directly in chat. LaTeX reports reflow for the phone,

@@ -13,6 +13,13 @@ and private receipts; rerun the relevant checks when a change touches these area
 
 **Real environments (Apple Silicon macOS):**
 
+- Native goal controls were exercised on October 5 with a disposable copy of the installed
+  Codex extension and updated companion. An emulated phone read the original paused goal,
+  resumed it into a real native turn, paused it and cleared only the goal. Objective, identity
+  and budget were retained; an exact-key retry returned the saved receipt. The fixture was
+  archived and its editor/server closed. Separate browser checks covered all four layouts
+  and WebKit, including lost acknowledgements, saved drafts and selected-computer routing.
+  The owner’s active editor was not reloaded; this is not physical iPhone certification.
 - Isolated live work exercised an Opus manager, Sol implementation, independent Opus review,
   one correction and manager integration while another project awaited a human answer. QUARK
   priority/pause instructions persisted; a quota stop ended an executing owned Python child
