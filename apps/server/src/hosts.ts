@@ -184,7 +184,10 @@ async function authenticatedHeaders(
         headers: base,
       }),
     };
-  } catch {
+  } catch (error) {
+    // SSH has spawned but may not have opened its local listener yet. Only the initial
+    // read-only handshake retries this; authentication/identity failures remain terminal.
+    if (error instanceof Error && 'code' in error && error.code === 'ECONNREFUSED') throw error;
     throw new HostUnavailable(
       'This computer could not authenticate its saved connection. No request was sent. Check its sciencewithagents connection setup before retrying.',
     );

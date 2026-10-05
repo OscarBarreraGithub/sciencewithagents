@@ -106,6 +106,9 @@ Cross-account assistant memory/routing is intentionally not automatic.
 - The gateway pins identity on connection **and every request**. The receiving server
   checks the expected identity before acting. This closes replacement on the same port
   between a handshake and a write; a mismatch must not receive the message body as work.
+- A fresh SSH tunnel may take a few seconds to open. Its read-only authentication handshake
+  waits for the listener and preserves the destination app's address through the temporary
+  local port. A failed identity or key check stops the connection; work requests are not replayed.
 - The entry gate authenticates the phone. Its cookies, Cloudflare headers and user
   authorization headers are not forwarded to another computer. Locked/revoked phone
   streams close, including SSH-proxied events and terminal sockets.

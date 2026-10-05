@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { get, globalAgent } from 'node:http';
+import { createConnection, createServer as createTcpServer } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -58,6 +60,8 @@ beforeEach(async () => {
       modelMode: 'json',
     };
     app.addHook('onRequest', async (request, reply) => {
+      if (request.headers.host !== `127.0.0.1:${fixture.config.remotePort}`)
+        return reply.code(403).send({ error: 'Only the exact app host is allowed.' });
       if (
         fixture.access &&
         !['/api/host-info', '/api/local-access/proof'].includes(request.url.split('?')[0]) &&
@@ -201,6 +205,53 @@ function checkHeaders(index: number) {
 }
 
 describe('isolated computer connections', () => {
+  it('waits for a cold authenticated tunnel and preserves the destination Host on a different port', async () => {
+    const fixture = fixtures[0];
+    fixture.access = new LocalAccess(prepareLocalAccess(root, fixture.config.remotePort));
+    const config = { ...fixture.config, credential: fixture.access.configuration.host };
+    const reservation = createTcpServer();
+    reservation.listen(0, '127.0.0.1');
+    await once(reservation, 'listening');
+    const port = (reservation.address() as { port: number }).port;
+    await new Promise<void>((resolve) => reservation.close(() => resolve()));
+    const sockets = new Set<ReturnType<typeof createConnection>>();
+    const forward = createTcpServer((socket) => {
+      const upstream = createConnection(fixture.config.remotePort, '127.0.0.1');
+      for (const peer of [socket, upstream]) {
+        sockets.add(peer);
+        peer.on('close', () => sockets.delete(peer));
+        peer.on('error', () => {
+          socket.destroy();
+          upstream.destroy();
+        });
+      }
+      socket.pipe(upstream).pipe(socket);
+    });
+    let ready: Promise<void> = Promise.resolve();
+    const authenticated = new Hosts(root, async () => {
+      ready = delay(250).then(async () => {
+        forward.listen(port, '127.0.0.1');
+        await once(forward, 'listening');
+      });
+      return { port, alive: () => true, close: async () => {} };
+    }, [config]);
+    try {
+      const response = await authenticated.forward(config.id, 'GET', '/api/snapshot');
+      expect(response.statusCode).toBe(200);
+      response.resume();
+      await once(response, 'end');
+      expect(authenticated.status().hosts[0].status).toBe('connected');
+      expect(fixture.headers[0].host).toBe(`127.0.0.1:${fixture.config.remotePort}`);
+      expect(fixture.headers[0].authorization).toMatch(/^Dock host\./);
+      expect(fixture.writes).toEqual([]);
+    } finally {
+      await authenticated.close();
+      await ready;
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => forward.close(() => resolve()));
+    }
+  });
+
   it('authenticates protected host reads, writes, streams and sockets without forwarding entry credentials', async () => {
     const fixture = fixtures[0];
     fixture.access = new LocalAccess(prepareLocalAccess(root, fixture.config.remotePort));

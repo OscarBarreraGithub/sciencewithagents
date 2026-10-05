@@ -1,5 +1,6 @@
 /** Node-only local client protocol. Do not export from the browser contract barrel. */
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { get, type IncomingMessage } from 'node:http';
 import { z } from 'zod';
 export const localRoleSchema = z.enum(['owner', 'bridge', 'host']);
 export type LocalRole = z.infer<typeof localRoleSchema>;
@@ -50,34 +51,35 @@ export async function localAuthorization(
   )
     throw new Error('Invalid local connection.');
   const challenge = randomBytes(32).toString('hex');
-  const response = await fetch(
-    `${connection?.transportOrigin ?? origin}/api/local-access/proof?role=${role}&challenge=${challenge}`,
-    {
-      headers: connection?.headers,
-      redirect: 'error',
-      signal: AbortSignal.timeout(5000),
-    },
-  );
-  if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
-    await response.body?.cancel();
+  // The TCP destination may be an SSH forward. Preserve the pinned app's Host header;
+  // Node fetch can replace it with the temporary tunnel port. HTTP get never follows redirects.
+  const response = await new Promise<IncomingMessage>((resolve, reject) => {
+    get(
+      `${connection?.transportOrigin ?? origin}/api/local-access/proof?role=${role}&challenge=${challenge}`,
+      { headers: connection?.headers, signal: AbortSignal.timeout(5000), agent: false },
+      resolve,
+    ).once('error', reject);
+  });
+  if (
+    response.statusCode !== 200 ||
+    !response.headers['content-type']?.includes('application/json')
+  ) {
+    response.destroy();
     throw new Error(
       'The local app could not be authenticated. Open sciencewithagents and reconnect.',
     );
   }
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('The local app returned no authentication proof.');
   const parts: Uint8Array[] = [];
   let size = 0;
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    for await (const chunk of response) {
+      const value = Buffer.from(chunk);
       size += value.byteLength;
       if (size > 4096) throw new Error('The local app returned an invalid authentication proof.');
       parts.push(value);
     }
   } finally {
-    await reader.cancel();
+    response.destroy();
   }
   const value = localProofSchema.parse(JSON.parse(Buffer.concat(parts).toString('utf8')));
   if (
