@@ -64,8 +64,9 @@ the local draft for copying. This does not replace access to the running host fo
   publication are not connected.
 - **Setup progress:** GitHub/Cloudflare copy prompts work, but do not yet detect completion
   or hide completed steps. Native Codex/Claude sign-in/model checks are separate and connected.
-- **Updates:** the update prompt still expects a recovery-copy reference prepared in the app.
-  Moving that preparation entirely into the setup agent's workflow remains outstanding.
+- **Updates:** Settings checks GitHub and assigns an agent after automatically verifying a
+  database recovery copy. Local customization and source/build preparation remain agent-led;
+  quit/reopen and running-app verification are explicit final steps, not unattended activation.
 - **Orb:** seven shapes, random selection and tap feedback exist; broader variety and the
   requested longer, quiet animation remain unfinished.
 

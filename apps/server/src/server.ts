@@ -1,4 +1,5 @@
 import { BugReports, registerBugReportRoutes } from './bug-reports.js';
+import { registerAppUpdateRoutes } from './app-updates.js';
 import { openBrowserSetup } from './browser-setup.js';
 import { browserSetupActionSchema } from '@dock/shared';
 import { repoRoot } from './paths.js';
@@ -536,11 +537,15 @@ export async function createServer(
       },
     });
   const agentId = (params: unknown) => z.object({ id }).parse(params).id;
-  registerBugReportRoutes(
-    app,
-    new BugReports(store, runtime.dataDir, repoRoot, runtime.workItems, runtime.pulsar),
-    () => runtime.kick(),
+  const maintenance = new BugReports(
+    store,
+    runtime.dataDir,
+    repoRoot,
+    runtime.workItems,
+    runtime.pulsar,
   );
+  registerBugReportRoutes(app, maintenance, () => runtime.kick());
+  registerAppUpdateRoutes(app, maintenance, () => runtime.kick(), options.demo);
   registerDocumentRoutes(app, runtime.documents);
   registerChatImageRoutes(app, runtime.chatImages);
   registerDocumentFormattingRoutes(app, runtime.documentFormatting);

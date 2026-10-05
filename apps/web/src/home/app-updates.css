@@ -1,0 +1,70 @@
+.app-updates-page {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  max-width: 1000px;
+  margin-inline: auto;
+  align-content: start;
+}
+.app-updates-page .flow-heading {
+  margin: 8px 0;
+}
+.app-updates-page .app-update-panel,
+.app-updates-page .app-update-fallback {
+  width: 100%;
+  max-width: 960px;
+  box-sizing: border-box;
+  min-width: 0;
+  margin: 0;
+}
+.app-update-panel h2 {
+  margin: 0 0 12px;
+}
+.app-update-panel p,
+.app-update-preservation p {
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  margin: 12px 0;
+}
+.app-update-panel small {
+  display: block;
+  color: var(--home-muted);
+}
+.app-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+.app-update-actions .flow-button {
+  min-height: 48px;
+  white-space: normal;
+  text-align: left;
+}
+.app-update-preservation {
+  max-width: 850px;
+  color: var(--home-muted);
+}
+.app-update-fallback summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+  font-weight: 600;
+}
+.app-update-fallback .setup-prompt-head {
+  gap: 12px;
+}
+.app-update-fallback .setup-prompt-head > span {
+  min-width: 0;
+  flex: 1;
+}
+.app-update-fallback .setup-prompt-head button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .app-update-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

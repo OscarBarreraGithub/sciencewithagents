@@ -72,6 +72,7 @@ const titles: Record<string, string> = {
   models: 'Model preferences',
   phone: 'Phone access',
   recovery: 'Recovery copies',
+  updates: 'App updates',
   workspace: 'Open conversations',
 };
 const href = (page: string) => `#/${page}`;
@@ -561,6 +562,13 @@ export function Home() {
                   Report a bug
                 </button>
                 <p>Save an issue locally and assign it to the app’s maintenance manager.</p>
+              </section>
+              <section>
+                <h3>App updates</h3>
+                <p>Check GitHub and update with an agent, preserving your workspace.</p>
+                <a className="setup-link" href={href('updates')}>
+                  Check for updates <ArrowRight size={16} />
+                </a>
               </section>
               <section>
                 <h3>App display</h3>

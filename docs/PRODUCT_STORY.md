@@ -42,8 +42,10 @@ The README is the current public landing; a separate website and Guide/FAQ are d
   record a manager decision or ask the person according to the project policy. Managers apply
   reviewed changes by default; projects may require human approval instead.
 - **Your local version.** The MIT source can be customized. An update agent reconciles upstream
-  changes with local modifications and preserves private records; source Git alone is not a
-  backup of conversations or browser drafts.
+  changes with local modifications and preserves private records. Settings can check GitHub
+  without spending tokens, then prepare a verified database copy and assign the update to the
+  maintenance agent. Activation waits for a safe quit/reopen; source Git alone is not a backup
+  of conversations or browser drafts.
 
 QUARK's reset-window forecasts alert managers to spare Claude capacity for suitable authorized
 work; they do not guarantee full utilization. Do not promote custom project-app registration,

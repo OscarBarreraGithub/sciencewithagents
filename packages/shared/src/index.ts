@@ -590,6 +590,7 @@ export const agentTaskResultSchema = z
   .strict();
 
 export * from './bug-reports.js';
+export * from './app-updates.js';
 export * from './browser-setup.js';
 export * from './latex-reading.js';
 export * from './chat-images.js';

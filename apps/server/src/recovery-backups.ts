@@ -232,13 +232,17 @@ export class RecoveryBackups {
   }
 }
 
-export function registerRecoveryBackupRoutes(app: FastifyInstance, store: Store, dataDir: string) {
+export function recoveryBackupsFor(store: Store, dataDir: string) {
   let service = services.get(store);
   if (!service) {
     service = new RecoveryBackups(store, dataDir);
     services.set(store, service);
   }
-  const backups = service;
+  return service;
+}
+
+export function registerRecoveryBackupRoutes(app: FastifyInstance, store: Store, dataDir: string) {
+  const backups = recoveryBackupsFor(store, dataDir);
   app.get('/api/recovery-backups', async () => backups.status());
   app.get('/api/recovery-backups/:id', async (request) =>
     backups.get(z.object({ id: z.string().uuid() }).parse(request.params).id),

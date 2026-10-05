@@ -8,7 +8,8 @@ showing **Verified recovery copy**. This does not start a model turn, stop work 
 change a conversation. Expand a dated row to see counts, its reference and **Check this copy**.
 The list scrolls within a bounded panel; expanded details do not stretch the whole page.
 
-For an app update, open **Use this copy before updating** on a verified copy and choose
+For an app update, **Settings → App updates** prepares the database copy automatically before
+assigning the maintenance agent. Alternatively, open **Use this copy before updating** on a verified copy and choose
 **Copy update request**. Give it to the coding agent that set up this computer. The request
 includes this copy's reference and the [update runbook](UPDATE_APP.md); it does not start
 an update or send a model request. If clipboard access fails, the same text stays selectable.

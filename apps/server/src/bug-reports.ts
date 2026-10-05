@@ -27,7 +27,7 @@ export class BugReports {
     readonly pulsar: Pulsar,
   ) {}
 
-  private manager() {
+  manager() {
     const saved = this.store.getSetting(managerKey);
     if (typeof saved === 'string') {
       const agent = this.store.agent(saved);
@@ -55,7 +55,7 @@ export class BugReports {
         : this.store.updateAgent(project.managerId, { name: 'sciencewithagents maintenance' });
       this.store.updateAgent(manager.id, {
         scope:
-          'Fix owner-reported sciencewithagents app bugs in bounded delegated tasks. Keep evidence in the private bug-report folder and internal work items, never owner Notes. Preserve unrelated projects and running work. Use independent review before applying changes. No permission bypass, public uploads, deployments or automatic app restarts.',
+          'Maintain this sciencewithagents installation: fix owner-reported bugs and prepare explicitly requested GitHub updates in bounded tasks. Keep evidence in private data folders and internal work items, never owner Notes. Preserve local customizations, user data, accounts, unrelated projects and running work. Use independent review before applying changes. No permission bypass, public uploads, deployments or automatic app restarts.',
       });
       this.store.setSetting(managerKey, manager.id);
       return this.store.agent(manager.id);

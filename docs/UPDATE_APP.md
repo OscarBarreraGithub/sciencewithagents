@@ -1,9 +1,21 @@
 # Update an existing installation
 
-Open **Settings → Recovery copies**, create a copy and open **Use this copy before updating**.
-Give the copied request to the coding agent that set up this computer. The app prepares a
-verified recovery reference; the agent performs the source update. This is not an automatic
-updater. Opening or copying the request never sends a model prompt or stops work.
+Open **Settings → App updates** (also under **? → Check for updates**). The selected computer
+checks the public GitHub source without using a model or changing its working files.
+Choose **Update with an agent** to prepare a verified database recovery copy and assign one
+internal work item to the existing maintenance manager, using the central model policy and QUARK.
+**Open update conversation** shows its progress, questions or queue blocker. Lost responses
+reuse the same request instead of starting another turn. A failed copy prevents assignment.
+
+The agent preserves local changes, prepares and reviews the update, and builds it. It does
+not restart the app hosting its own conversation. Once it reports **Ready to reopen**, quit
+and reopen through the existing launcher after active work finishes; have the agent verify
+the running app afterwards. This is an agent-assisted update, not a silent automatic installer
+or a guarantee that arbitrary customizations will merge without a decision.
+
+**Use my own setup agent** supplies a complete copyable request if the installed app is older
+or its provider is unavailable. No manually supplied recovery reference is required. The older
+Recovery copies handoff remains usable. Opening or copying instructions starts no model work.
 
 ## Intended workflow: adapt updates to each person's app
 
@@ -19,11 +31,24 @@ is easy to understand. A general extension marketplace or guaranteed compatibili
 arbitrary source edits is not a prerequisite. If an update and a customization require a
 real product choice, preserve the existing behavior and explain the specific choice.
 
-The update agent should handle the precautionary source/configuration and database copies
-as part of the update. The person should not need a separate everyday backup ritual merely
-to receive updates. The current UI still starts with a manually created recovery copy and
-copied request; simplifying that entry point is requested, not implemented here. Copies on
-this computer remain distinct from a backup protecting against loss of the computer.
+The app prepares the initial database copy; the update agent handles fresh copies and source/
+configuration preservation as needed. The person does not need a separate everyday backup
+ritual to receive updates. Copies on this computer remain distinct from protection against
+loss of the computer. Updating can replace or remove obsolete source code; never delete,
+reinitialize or replace the owner's saved workspace to make an update pass.
+
+## In-app maintenance manager
+
+Use the pinned revision supplied with the request, not a changing branch name. Follow the
+runbook below for inspection, preservation and isolated preparation, but **do not execute
+its stop/reopen steps from a manager running inside this app**. Keep the live server running;
+stage and test in a separate worktree, preserve existing served web assets while building,
+and prepare activation instructions for the existing launcher. Mark the internal item done
+only when the reviewed source/build is ready; that status does not certify activation.
+Keep a short private receipt of the previous upstream base, retained customizations, target,
+checks, data directory and remaining restart/verification step under ignored `data/app-updates/`.
+If work or a customization blocks activation, record a concise human action item and retain
+all copies. Never stop unrelated processes or replay interrupted model requests.
 
 ## Setup-agent runbook
 
@@ -35,7 +60,8 @@ this computer remain distinct from a backup protecting against loss of the compu
    uncommitted work. Preserve local changes; do not reset, clean, overwrite, or update a
    different clone. Record the current revision and the behavior the person expects to keep.
 2. Inspect **Work** and pending permissions. Let work finish or obtain an explicit stop;
-   do not terminate work merely to update. Recheck the supplied copy using **Check this copy**.
+   do not terminate work merely to update. Recheck any supplied copy using **Check this copy**,
+   or prepare and verify one yourself if none was supplied.
    Make a fresh copy if records changed. A lost creation response uses **Try again** with the
    same request, including after reload. A failed copy must be repaired before proceeding.
    See [coverage and integrity checks](RECOVERY_COPIES.md): project/task files, native provider

@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
+import { AppUpdates } from './AppUpdates';
 import {
   ArrowUpRight,
   DatabaseBackup,
@@ -7,6 +8,7 @@ import {
   ShieldCheck,
   Smartphone,
   Sparkles,
+  Download,
 } from 'lucide-react';
 import { frontdeskStatusSchema } from '@dock/shared';
 import { api, apiScope } from '../api';
@@ -34,6 +36,7 @@ export const connectionPages = new Set([
   'computers',
   'phone',
   'recovery',
+  'updates',
 ]);
 const navigate = (path: string) => {
   location.hash = `#/${path}`;
@@ -65,6 +68,7 @@ function SettingsCard({
 
 export function ConnectionFlow({ route, data }: { route: string; data: HomeData }) {
   const [page, target] = route.split('/');
+  if (page === 'updates') return <AppUpdates />;
   if (page === 'assistant') return <AssistantPage data={data} />;
   if (page === 'vscode') return <EditorPage target={target} />;
   if (page === 'search') return <SearchPage data={data} projectId={target} />;
@@ -93,7 +97,11 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
             Pair a phone, manage its access and add the app to your home screen.
           </SettingsCard>
           <SettingsCard to="recovery" title="Recovery copies" icon={<DatabaseBackup />}>
-            Keep private copies of your records and prepare an update with your setup agent.
+            Keep private copies of your records.
+          </SettingsCard>
+          <SettingsCard to="updates" title="App updates" icon={<Download />}>
+            Check GitHub and ask an agent to update this computer while preserving your data and
+            customizations.
           </SettingsCard>
         </div>
       </section>

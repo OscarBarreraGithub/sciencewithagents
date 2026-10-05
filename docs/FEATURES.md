@@ -19,7 +19,7 @@ This describes connected source behavior, not a blanket release certification.
 | Computer health      | Current pressure, charts, project/job attribution, grouped apps/processes and full-screen Ask                    | Detailed probes are macOS-specific; automatic checks are bounded and off on fresh installs      |
 | Phone                | Optional private Tailscale or configured domain, one-time passkey pairing and computer confirmation              | No recurring app lock; physical retention/reconnect needs device acceptance                     |
 | Multiple computers   | Select configured hosts with separate accounts/projects/history; two copyable setup prompts                      | Connection is agent-assisted over a verified private route, not automatic discovery             |
-| Updates and recovery | Consistent local recovery copies, source-backup controls and agent-led update handoff                            | Git source backup excludes conversations, browser drafts and uncommitted files                  |
+| Updates and recovery | GitHub update check, automatic pre-update database copy, maintenance-agent assignment and source backups                            | Agent handles customizations; quit/reopen is explicit. Source backup excludes private conversations                  |
 | Provider maintenance | Refresh usage, check native connection, supported CLI update paths                                               | Custom/embedded installations and sign-in may require a person; no silent provider substitution |
 
 ## Report a bug
