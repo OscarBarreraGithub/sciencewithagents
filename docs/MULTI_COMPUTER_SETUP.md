@@ -18,6 +18,12 @@ and its own signed-in Codex or Claude. Provider credentials, repositories and pr
 move through this setup. A computer must be on, logged in, running Agent Dock and reachable.
 The entry computer must also remain on for phone access. This is not cloud execution.
 
+There is no shared sciencewithagents cloud account. Sign in to the chosen provider normally
+on each computer; using your own provider account on both does not copy app history or
+credentials. Provider allowance may be shared by that account, but QUARK admission and
+reservations currently stay per computer. Connecting hosts does not create a global allowance
+coordinator across machines.
+
 Each computer has its own personalized assistant. Its visibility defaults to no projects;
 selecting projects shares only those on that computer. Merely switching between personal,
 school and family computers never shares their conversations with another account's model.

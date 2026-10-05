@@ -202,7 +202,7 @@
   padding: 12px 0;
   cursor: pointer;
 }
-.flow-form-panel pre {
+.flow-form-panel :where(pre) {
   max-width: 100%;
   overflow-wrap: anywhere;
   border-radius: 10px;

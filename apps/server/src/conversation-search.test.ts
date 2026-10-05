@@ -53,7 +53,7 @@ function fixture() {
       store,
       root,
       {
-        policy: new ModelPolicy(store, models),
+        policy: new ModelPolicy(store, models, () => now),
         mirrorWindows: mirrors,
         release,
         interrupt,
@@ -320,6 +320,9 @@ it('retries literal Unicode and markup evidence after discovery failure without 
     'Codex model discovery failed. Refresh available models to retry.',
   );
   expect(f.store.runs()).toHaveLength(0);
+  await expect(f.search.ask(input)).rejects.toMatchObject({ code: 'MODEL_DISCOVERY_WAIT' });
+  expect(f.models).toHaveBeenCalledTimes(1);
+  f.advance(60_001);
   const result = await f.search.ask(input);
   expect(result.query).toBe(literal);
   expect(result.candidates).toEqual([

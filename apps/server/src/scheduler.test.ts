@@ -19,6 +19,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await runtime.close();
+  vi.restoreAllMocks();
   if (store.db.isOpen) store.close();
   rmSync(root, { recursive: true, force: true });
 });
@@ -65,7 +66,31 @@ describe('bounded deterministic queue controls', () => {
     expect(store.entries(manager).filter((entry) => entry.kind === 'assistant')).toHaveLength(1);
   });
   it('limits starts across projects, keeps per-agent order and lets current work finish when paused', async () => {
-    const calls = vi.spyOn(DemoProvider.prototype, 'request');
+    // Finish turns explicitly: model preparation may make another project's head
+    // ready first, and CI timing must not decide whether a turn is still running.
+    const finishes = new Map<string, () => void>();
+    const request = DemoProvider.prototype.request;
+    const calls = vi.spyOn(DemoProvider.prototype, 'request').mockImplementation(async function (
+      this: DemoProvider,
+      method,
+      raw,
+    ) {
+      if (method !== 'turn/start') return request.call(this, method, raw);
+      const turnId = randomUUID();
+      finishes.set(this.threadId, () => {
+        finishes.delete(this.threadId);
+        this.emit('notification', 'turn/completed', {
+          threadId: this.threadId,
+          turn: { id: turnId, status: 'completed' },
+        });
+      });
+      return { turn: { id: turnId, status: 'inProgress' } };
+    });
+    const finish = (agentId: string) => {
+      const done = finishes.get(store.agent(agentId).threadId!);
+      expect(done).toBeDefined();
+      done!();
+    };
     settings(false, 1);
     const other = store.addManager(
       store.agent(manager).projectId,
@@ -80,19 +105,29 @@ describe('bounded deterministic queue controls', () => {
     expect(store.run(second.id).status).toBe('queued');
     expect(store.run(third.id).status).toBe('queued');
     settings(true, 1);
+    finish(manager);
     await vi.waitFor(() => expect(store.run(first.id).status).toBe('completed'));
     expect(store.run(second.id).status).toBe('queued');
     expect(store.run(third.id).status).toBe('queued');
     settings(false, 1);
     runtime.kick();
-    await vi.waitFor(() => expect(store.run(second.id).status).toBe('running'));
-    expect(store.run(third.id).status).toBe('queued');
+    await vi.waitFor(() => expect(store.runs(['running'])).toHaveLength(1));
+    const next = store.runs(['running'])[0]!;
+    const remaining = next.id === second.id ? third : second;
+    expect([second.id, third.id]).toContain(next.id);
+    expect(store.run(remaining.id).status).toBe('queued');
+    finish(next.agentId);
+    await vi.waitFor(() => expect(store.run(remaining.id).status).toBe('running'));
+    expect(store.runs(['running'])).toHaveLength(1);
+    finish(remaining.agentId);
     await vi.waitFor(() => expect(store.run(third.id).status).toBe('completed'));
+    await vi.waitFor(() => expect(store.run(second.id).status).toBe('completed'));
     const starts = store
       .events()
       .filter((event) => event.type === 'run.running')
       .map((event) => (event.data as { id: string }).id);
-    expect([...new Set(starts)]).toEqual([first.id, second.id, third.id]);
+    expect([...new Set(starts)].sort()).toEqual([first.id, second.id, third.id].sort());
+    expect(starts.indexOf(first.id)).toBeLessThan(starts.indexOf(second.id));
     expect(calls.mock.calls.filter(([method]) => method === 'turn/start')).toHaveLength(3);
     calls.mockRestore();
   });

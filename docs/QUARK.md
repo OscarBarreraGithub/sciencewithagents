@@ -41,6 +41,24 @@ The [agent usage/dispatch guide](AGENT_USAGE_ACCESS.md) and source-packaged
 submission through a private local client. Managed agents already receive typed tools and
 charters; the external client grants no orchestration lease and cannot increase caps.
 
+## Cluster integration boundary
+
+FASRC cached SSH access and read-only Slurm/account queries have been exercised. They are
+not yet connected to QUARK. The next bounded slice is one collector for queue state/pending
+reasons, account fairshare, requested/allocated resources, recent exit states and efficiency.
+Use native Slurm structured output; project-specific progress scripts remain optional probes,
+not frequent whole-filesystem scans. Fairshare affects scheduling priority; it is not a fixed
+remaining CPU allowance or a reliable completion-time promise.
+
+Before managed submission, record the approved account/partition, per-job CPU/GPU/memory/time
+limits and aggregate running/pending/array limits. One designated controller should issue
+receipts tied to Slurm job IDs and reconcile an uncertain submission before retrying it.
+Local QUARK limits do not currently govern remote Slurm work or coordinate multiple hosts.
+Batch jobs can outlive the Mac connection; monitoring resumes by job ID after reconnect.
+Interactive notebooks need a compute allocation and a private, reconnectable SSH tunnel.
+Expired SSH authentication requires a visible re-login path; a control socket cannot survive
+a powered-off client. Do not run compute work on login nodes or alter unrelated cluster jobs.
+
 ## Managers need a QUARK lease
 
 Native Claude PreToolUse callbacks check the same QUARK hold and signed manager admission.

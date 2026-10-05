@@ -1,3 +1,4 @@
+import { latexAuthoringCharter } from './latex-authoring.js';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {
   existsSync,
@@ -175,7 +176,7 @@ it('uses the direct conversation charter with native capabilities and retains it
     cwd: store.agent(agent.id).cwd,
     sandbox: 'workspace-write',
     approvalPolicy: 'never',
-    developerInstructions: `${conversationCharter}\n\n${chatFormattingCharter}`,
+    developerInstructions: `${conversationCharter}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}`,
     config: { 'sandbox_workspace_write.network_access': true },
   });
   expect(request.mock.calls.some(([method]) => method === 'turn/start')).toBe(false);

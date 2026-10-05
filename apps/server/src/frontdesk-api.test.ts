@@ -1,3 +1,4 @@
+import { latexAuthoringCharter } from './latex-authoring.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -243,7 +244,7 @@ describe('personal assistant API and runtime integration', () => {
       sandbox: 'read-only',
       approvalPolicy: 'on-request',
       approvalsReviewer: 'user',
-      developerInstructions: `${frontdeskCharter}\n\n${chatFormattingCharter}`,
+      developerInstructions: `${frontdeskCharter}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}`,
       config: {
         web_search: 'disabled',
         features: { multi_agent: false, multi_agent_v2: false, image_generation: false },
@@ -261,7 +262,7 @@ describe('personal assistant API and runtime integration', () => {
       'thread/resume',
       expect.objectContaining({
         threadId: first.threadId,
-        developerInstructions: `${frontdeskCharter}\n\n${chatFormattingCharter}`,
+        developerInstructions: `${frontdeskCharter}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}`,
         sandbox: 'read-only',
         approvalPolicy: 'on-request',
         approvalsReviewer: 'user',
@@ -270,7 +271,7 @@ describe('personal assistant API and runtime integration', () => {
     runtime.externalControl.add(agentId);
     const transition = runtime.prepareNativeContext(agentId, 'thread/start', {})!;
     expect(transition.params).toMatchObject({
-      developerInstructions: `${frontdeskCharter}\n\n${chatFormattingCharter}`,
+      developerInstructions: `${frontdeskCharter}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}`,
       dynamicTools: expect.arrayContaining([
         expect.objectContaining({ name: 'dock_frontdesk_route' }),
       ]),

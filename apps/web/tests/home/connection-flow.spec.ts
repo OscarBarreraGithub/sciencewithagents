@@ -536,6 +536,16 @@ test('another computer has copyable prompts for each machine without starting se
   await expect(install.locator('pre')).toContainText('docs/CONTRIBUTOR_SETUP.md');
   await expect(install.locator('pre')).toContainText('docs/MULTI_COMPUTER_SETUP.md');
   await expect(install.locator('pre')).toContainText('Applications launcher');
+  // A generic form-panel background once made this light text invisible on a light box.
+  const colors = await install.locator('pre').evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { foreground: style.color, background: style.backgroundColor };
+  });
+  expect(colors).toEqual({
+    foreground: 'rgb(238, 240, 245)',
+    background: 'rgb(29, 34, 48)',
+  });
+  await expect(guide).toContainText('Sign in to Codex or Claude normally on each computer');
   await install.getByRole('button', { name: 'Copy', exact: true }).click();
   expect(await page.evaluate(() => sessionStorage.getItem('test:copied'))).toBe(
     await install.locator('pre').textContent(),

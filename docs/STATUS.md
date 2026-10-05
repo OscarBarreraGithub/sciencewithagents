@@ -50,8 +50,9 @@ the local draft for copying. This does not replace access to the running host fo
 - **Request coverage:** saved prompts, work items and handoffs retain evidence, but managers
   still need to triage each request. There is no automatic proof that every small ask became
   a task or was completed. RLM-assisted archive audits are being evaluated, not shipped.
-- **Cluster integration:** FASRC SSH/Slurm connection reuse, shared cluster accounting and
-  submission guards are under investigation. Existing SSH scripts are not a QUARK adapter.
+- **Cluster integration:** cached FASRC SSH access, monitoring-script inspection and read-only
+  job/account queries are verified. QUARK's cluster collector, submission guards, job tracking
+  and notebook tunnels remain unimplemented. See [the integration boundary](QUARK.md#cluster-integration-boundary).
 
 - **Hourly allowance budgets:** per-provider `% usage / hour` is a measured estimate. Enforced
   budgets are allocations within provider windows, not rolling hourly rate limits.

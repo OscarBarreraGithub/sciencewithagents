@@ -130,7 +130,12 @@ export function HostSelector({
           <PromptCard label="On your main computer" prompt={connectComputerPrompt} />
         </details>
         <p className="muted">
-          Each computer keeps its own Codex and Claude sign-ins, tools, projects and conversations.
+          Sign in to Codex or Claude normally on each computer. You can use your own account on
+          both; credentials are not copied. Projects, conversations and QUARK queues stay on the
+          computer running them. Linking computers lets you switch between them; it does not combine
+          their histories or coordinate one shared allowance across machines.
+        </p>
+        <p className="muted">
           Both computers must be on and running the app. Copying a prompt does not start setup or
           transfer any account or history.
         </p>

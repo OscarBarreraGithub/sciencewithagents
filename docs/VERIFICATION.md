@@ -4,6 +4,16 @@ Use [Status](STATUS.md) for the release decision and [CI](https://github.com/Osc
 for the source actually checked. Historical passing runs do not certify a newer revision.
 Private logs, screenshots, disposable databases and native-session receipts stay under `data/`.
 
+## Computer setup prompt and publication checks — 2026-10-04
+
+The computer-connection prompts retain a readable dark background inside generic form panels.
+Five viewport/browser profiles verify colors, both copy buttons, clipboard fallback, larger
+text and absence of setup side effects. This fixes a CSS specificity conflict, not missing text.
+The five failures in the first updated public CI run were reproduced or traced to obsolete
+charter expectations, the new discovery retry delay and an assumed cross-project start order.
+Focused checks now include the formatting charter, exercise the retry delay with a controlled
+clock and explicitly finish fixture turns while checking concurrency, pause and per-agent order.
+
 ## Phone to-do and manager headings — 2026-10-04
 
 Regression checks reproduce Home cards shrinking when the keyboard opens and manager names
