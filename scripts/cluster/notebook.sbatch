@@ -13,7 +13,7 @@
 #SBATCH --output=notebook-%j.log
 set -euo pipefail
 
-[ -n "${SLURM_JOB_ID:-}" ] || {
+[[ "${SLURM_JOB_ID:-}" =~ ^[0-9]{1,20}$ ]] || {
   echo "Submit this with sbatch; notebooks never run on a login node." >&2
   exit 1
 }
@@ -73,10 +73,11 @@ PY_PORT
 # Jupyter then prints it as "token=..." in its startup URLs.
 JUPYTER_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export JUPYTER_TOKEN
-printf '{"node":"%s","port":%s,"token":"%s"}\n' "$node" "$port" "$JUPYTER_TOKEN" >"$file"
+base_url="/notebooks/$SLURM_JOB_ID/"
+printf '{"node":"%s","port":%s,"token":"%s","baseUrl":"%s"}\n' "$node" "$port" "$JUPYTER_TOKEN" "$base_url" >"$file"
 chmod 600 "$file"
 
 cd "${1:-$HOME}"
 # Compute nodes can resolve their own name to a different interface than login nodes do.
 # Listen on this compute node's IPv4 interfaces; the token and private SSH forward remain.
-jupyter lab --no-browser --ip=0.0.0.0 --port="$port" --ServerApp.port_retries=0
+jupyter lab --no-browser --ip=0.0.0.0 --port="$port" --ServerApp.port_retries=0 --ServerApp.base_url="$base_url"

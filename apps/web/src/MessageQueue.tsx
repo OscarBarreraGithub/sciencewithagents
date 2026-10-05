@@ -34,12 +34,13 @@ export function MessageQueue({
     <>
       <details className="message-queue" open>
         <summary>
-          {error ? (
+          {error && !messages.length ? (
             'Queue unavailable'
           ) : (
             <>
               Queued messages · {messages.length}
               {hasMore ? '+' : ''}
+              {error ? ' · native queue unavailable' : ''}
             </>
           )}
         </summary>

@@ -148,6 +148,9 @@ Setup guides use numbered steps and readable, copyable prompts with a selectable
 Only actual checks can establish completion. Optional GitHub/Cloudflare setup is not a local-use
 prerequisite. Connecting another computer provides prompts for that computer and the main host.
 Phone pairing remains protected; no repeated app lock or separate VS Code authentication.
+QUARK opens cluster notebooks in a separate tab on their configured private notebook origin.
+Phone and selected-computer launches retain the QUARK view; blocked popups offer a short-lived
+link and explicit fresh launch when it expires. Notebook handoffs never enter app draft storage.
 
 Apps uses rounded icons and titles. LaTeX opens a simple file/recent-document library and
 a full-screen PDF reader. Fit width, pinch/button zoom and page navigation must remain usable

@@ -132,7 +132,7 @@ it.each(['older companion', 'Claude'] as const)(
 );
 
 it.each(['codex', 'claude'] as const)(
-  'forwards an explicitly advertised %s native queue once and retains its acknowledgement',
+  'keeps app-originated %s queue input durable and editable before native handoff',
   async (provider) => {
     const commands: MirrorCommand[] = [];
     await connect(
@@ -154,9 +154,10 @@ it.each(['codex', 'claude'] as const)(
     };
     const result = await mirrors.send(windowId, request);
     expect(result.state).toBe('sent');
-    expect(commands[0]).toMatchObject({ type: 'send', input: request });
+    expect(result.message).toContain('Queued here');
+    expect(mirrors.queue.list({ provider, threadId: 'thread' }).items[0]?.text).toBe(request.text);
     expect(await new VscodeMirrors(store).send(randomUUID(), request)).toEqual(result);
-    expect(commands).toHaveLength(1);
+    expect(commands).toHaveLength(0);
     await expect(mirrors.send(windowId, { ...request, mode: undefined })).rejects.toThrow(
       'different message',
     );
@@ -167,7 +168,7 @@ it.each(['codex', 'claude'] as const)(
 );
 
 it.each(['codex', 'claude'] as const)(
-  'does not forward a queue request to an older %s companion',
+  'can stage an app queue with an older %s companion without unsupported native queue writes',
   async (provider) => {
     let commands = 0;
     await connect(
@@ -183,8 +184,8 @@ it.each(['codex', 'claude'] as const)(
       text: 'Next step',
       mode: 'queue' as const,
     };
-    expect((await mirrors.send(windowId, request)).state).toBe('not_sent');
+    expect((await mirrors.send(windowId, request)).state).toBe('sent');
     expect(commands).toBe(0);
-    expect(mirrors.receipt(request.key).state).toBe('not_sent');
+    expect(mirrors.receipt(request.key).state).toBe('sent');
   },
 );

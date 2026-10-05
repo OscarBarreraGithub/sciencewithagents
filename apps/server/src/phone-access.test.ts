@@ -227,7 +227,33 @@ describe('protected phone entry', () => {
         })
       ).statusCode,
     ).toBe(401);
+    expect(
+      (
+        await remote.inject({
+          url: '/api/vscode/queued?provider=codex&threadId=personal',
+          headers: remoteHeaders(),
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await remote.inject({
+          method: 'POST',
+          url: `/api/vscode/queued/${randomUUID()}`,
+          headers: remoteHeaders(),
+          payload: { key: randomUUID(), clientId: randomUUID(), revision: 0, action: 'edit' },
+        })
+      ).statusCode,
+    ).toBe(401);
     const { cookie } = await pair();
+    expect(
+      (
+        await remote.inject({
+          url: '/api/vscode/queued?provider=codex&threadId=personal',
+          headers: remoteHeaders(cookie),
+        })
+      ).json(),
+    ).toEqual({ items: [] });
     expect(
       (
         await remote.inject({

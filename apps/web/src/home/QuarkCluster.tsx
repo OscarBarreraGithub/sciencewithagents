@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, Server } from 'lucide-react';
 import {
   clusterNotebooksSchema,
+  clusterNotebookLaunchResultSchema,
   clusterSignInSchema,
   type ClusterSignIn,
   type ClusterQueueJob,
@@ -74,7 +75,8 @@ function Owner({ owner }: { owner: ClusterQueueJob['owner'] }) {
   ) : null;
 }
 
-type NotebookControl = { local: boolean; busy: boolean; open: () => void };
+type NotebookControl = { available: boolean; message: string; busy: boolean; open: () => void };
+type NotebookLink = { jobId: string; url: string | null; remote: boolean; expiresAt?: number };
 /** Notebook template jobs: one running, numeric job on a single compute node. */
 const notebookJob = (job: ClusterQueueJob) =>
   job.state === 'RUNNING' &&
@@ -105,15 +107,12 @@ function QueueJob({ job, notebook }: { job: ClusterQueueJob; notebook?: Notebook
       </small>
       <Owner owner={job.owner} />
       {notebook &&
-        (notebook.local ? (
+        (notebook.available ? (
           <button className="flow-button" disabled={notebook.busy} onClick={notebook.open}>
             {notebook.busy ? 'Opening…' : 'Open notebook'}
           </button>
         ) : (
-          <small>
-            Open this notebook in the browser on the computer connected to the cluster. Its tunnel
-            listens only on that computer’s 127.0.0.1.
-          </small>
+          <small>{notebook.message}</small>
         ))}
     </li>
   );
@@ -344,7 +343,23 @@ function ClusterSettingsForm({ saved, done }: { saved: ClusterSettings | null; d
 export function QuarkCluster({ reading }: { reading: HomeData['cluster'] }) {
   const notebooks = useReading('/cluster/notebooks', clusterNotebooksSchema.parse);
   const [opening, setOpening] = useState<string | null>(null);
-  const [notebookLink, setNotebookLink] = useState<{ jobId: string; url: string } | null>(null);
+  const [notebookLink, setNotebookLink] = useState<NotebookLink | null>(null);
+  useEffect(() => {
+    if (!notebookLink?.remote || !notebookLink.url || !notebookLink.expiresAt) return;
+    const expire = () =>
+      setNotebookLink((current) =>
+        current === notebookLink ? { ...current, url: null } : current,
+      );
+    const timer = window.setTimeout(expire, Math.max(0, notebookLink.expiresAt - Date.now()));
+    const hidden = () => {
+      if (document.hidden) expire();
+    };
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', hidden);
+    };
+  }, [notebookLink]);
   const [editing, setEditing] = useState(false);
   const [allPartitions, setAllPartitions] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -379,20 +394,36 @@ export function QuarkCluster({ reading }: { reading: HomeData['cluster'] }) {
   const running = queue.items.filter((job) => job.state === 'RUNNING');
   const pending = queue.items.filter((job) => job.state !== 'RUNNING');
   const partitions = s.limits.partitions.filter((p) => allPartitions || p.accessible !== false);
-  // The tunnel URL carries Jupyter's token: it goes to a new tab, never into storage.
+  // Reserve the tab during the gesture, and remove its opener before any async work.
+  // URLs and remote handoffs stay only in this component's memory.
   async function openNotebook(jobId: string) {
+    const remote = !notebooks.data?.localBrowser;
     const tab = window.open('about:blank', '_blank');
+    if (tab) tab.opener = null;
+    setNotebookLink(null);
     setOpening(jobId);
     setError('');
     try {
-      const opened = await api<{ jobId: string; url: string }>('/cluster/notebooks/open', {
-        key: crypto.randomUUID(),
-        jobId,
-      });
-      if (tab) {
-        tab.opener = null;
-        tab.location.href = opened.url;
-      } else setNotebookLink(opened);
+      const opened = clusterNotebookLaunchResultSchema.parse(
+        await api(remote ? '/cluster/notebooks/launch' : '/cluster/notebooks/open', {
+          key: crypto.randomUUID(),
+          jobId,
+        }),
+      );
+      if (opened.jobId !== jobId)
+        throw new Error('This notebook launch did not match the selected job. Open it again.');
+      if (remote) {
+        const address = new URL(opened.url);
+        if (address.protocol !== 'https:' || address.origin === window.location.origin)
+          throw new Error('Notebook access needs its separate private HTTPS address.');
+      }
+      if (tab && !tab.closed) tab.location.href = opened.url;
+      else
+        setNotebookLink({
+          ...opened,
+          remote,
+          ...(remote ? { expiresAt: Date.now() + 30_000 } : {}),
+        });
     } catch (e) {
       tab?.close();
       setError(e instanceof Error ? e.message : 'The notebook could not be opened.');
@@ -523,7 +554,8 @@ export function QuarkCluster({ reading }: { reading: HomeData['cluster'] }) {
                   notebook={
                     notebooks.data && notebookJob(job)
                       ? {
-                          local: notebooks.data.localBrowser,
+                          available: notebooks.data.localBrowser || notebooks.data.remoteAvailable,
+                          message: notebooks.data.remoteMessage,
                           busy: opening === job.jobId,
                           open: () => void openNotebook(job.jobId),
                         }
@@ -565,10 +597,37 @@ export function QuarkCluster({ reading }: { reading: HomeData['cluster'] }) {
       </div>
       {notebookLink && (
         <p className="quark-cluster-message">
-          <a href={notebookLink.url} target="_blank" rel="noopener noreferrer">
-            Open notebook {notebookLink.jobId}
-          </a>{' '}
-          (your browser blocked the new tab).
+          {notebookLink.url ? (
+            <a
+              href={notebookLink.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => {
+                if (!notebookLink.remote) return;
+                if ((notebookLink.expiresAt ?? 0) <= Date.now()) {
+                  event.preventDefault();
+                  void openNotebook(notebookLink.jobId);
+                } else
+                  window.setTimeout(
+                    () => setNotebookLink((current) => (current === notebookLink ? null : current)),
+                    0,
+                  );
+              }}
+            >
+              Open notebook {notebookLink.jobId}
+            </a>
+          ) : (
+            <button
+              className="flow-button"
+              disabled={opening === notebookLink.jobId}
+              onClick={() => void openNotebook(notebookLink.jobId)}
+            >
+              Open notebook {notebookLink.jobId}
+            </button>
+          )}{' '}
+          {notebookLink.url
+            ? '(your browser blocked the new tab).'
+            : 'Open again for a fresh link.'}
         </p>
       )}
       {!!notebooks.data?.notebooks.length && (

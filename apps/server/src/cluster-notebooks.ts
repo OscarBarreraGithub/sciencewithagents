@@ -25,6 +25,10 @@ const connectionSchema = z
     node: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/),
     port: z.number().int().min(1024).max(65535),
     token: z.string().regex(/^[A-Za-z0-9_-]{16,128}$/),
+    baseUrl: z
+      .string()
+      .regex(/^(?:\/|\/notebooks\/\d{1,20}\/)$/)
+      .default('/'),
   })
   .strict();
 const same = (a: ClusterNotebook, b: ClusterNotebook) =>
@@ -32,8 +36,11 @@ const same = (a: ClusterNotebook, b: ClusterNotebook) =>
   a.jobId === b.jobId &&
   a.node === b.node &&
   a.remotePort === b.remotePort &&
-  a.localPort === b.localPort;
+  a.localPort === b.localPort &&
+  (a.baseUrl ?? '/') === (b.baseUrl ?? '/');
 type Target = ReturnType<ClusterMonitor['target']>;
+/** Server-only connection: never persisted or returned through a remote app API. */
+export type NotebookConnection = { notebook: ClusterNotebook; token: string; baseUrl: string };
 
 /** An unused loopback port on this computer. */
 export const freeLoopbackPort = () =>
@@ -57,7 +64,17 @@ export const freeLoopbackPort = () =>
  */
 export class ClusterNotebooks {
   /** Repeated or concurrent opens of one job share a single attempt and forward. */
-  private opening = new Map<string, Promise<{ jobId: string; url: string }>>();
+  private opening = new Map<string, Promise<NotebookConnection>>();
+  private watchers = new Set<() => void>();
+  watch(change: () => void) {
+    this.watchers.add(change);
+    return () => {
+      this.watchers.delete(change);
+    };
+  }
+  isOpen(notebook: ClusterNotebook) {
+    return this.saved().some((item) => same(item, notebook));
+  }
   constructor(
     private cluster: ClusterMonitor,
     private freePort = freeLoopbackPort,
@@ -69,6 +86,7 @@ export class ClusterNotebooks {
   }
   private save(notebooks: ClusterNotebook[]) {
     this.cluster.store.setSetting(key, notebooks.slice(-8));
+    for (const change of this.watchers) change();
   }
   /** Removes exactly these records, keeping any opened meanwhile. */
   private remove(notebooks: ClusterNotebook[]) {
@@ -104,6 +122,14 @@ export class ClusterNotebooks {
       await this.forward(notebook, 'cancel').catch(() => {});
   }
   async open(raw: unknown) {
+    const { notebook, token, baseUrl } = await this.connect(raw);
+    // The token stays out of storage and goes only to the owner's local browser.
+    return {
+      jobId: notebook.jobId,
+      url: `http://127.0.0.1:${notebook.localPort}${baseUrl}lab?token=${encodeURIComponent(token)}`,
+    };
+  }
+  async connect(raw: unknown) {
     const { jobId } = clusterNotebookOpenSchema.parse(raw);
     const target = this.cluster.target();
     if (!target.alias || !this.cluster.settings()?.enabled)
@@ -155,10 +181,14 @@ export class ClusterNotebooks {
     // The connection file must name the allocation Slurm reports, never a login node.
     if (connection.node !== job.nodeList)
       throw new Conflict('The notebook does not belong to this job’s compute node.');
+    if (connection.baseUrl !== '/' && connection.baseUrl !== `/notebooks/${jobId}/`)
+      throw new Conflict('The notebook address does not belong to this job.');
     const saved = this.saved();
     const previous = saved.find((item) => item.alias === alias && item.jobId === jobId);
     const reuse =
-      previous?.node === connection.node && previous.remotePort === connection.port
+      previous?.node === connection.node &&
+      previous.remotePort === connection.port &&
+      (previous.baseUrl ?? '/') === connection.baseUrl
         ? previous
         : null;
     if (!previous && saved.length >= 8)
@@ -170,6 +200,7 @@ export class ClusterNotebooks {
       remotePort: connection.port,
       localPort: await this.freePort(),
       openedAt: new Date().toISOString(),
+      ...(connection.baseUrl === '/' ? {} : { baseUrl: connection.baseUrl }),
     };
     current();
     const forwarded = await this.forward(notebook, 'forward');
@@ -186,11 +217,7 @@ export class ClusterNotebooks {
       notebook,
     ]);
     this.cluster.store.event('cluster.notebook_opened', null, null, { jobId });
-    // The token stays out of storage; this reply goes only to the owner's local browser.
-    return {
-      jobId,
-      url: `http://127.0.0.1:${notebook.localPort}/lab?token=${encodeURIComponent(connection.token)}`,
-    };
+    return { notebook, token: connection.token, baseUrl: connection.baseUrl };
   }
   async close(raw: unknown) {
     const { jobId } = clusterNotebookCloseSchema.parse(raw);

@@ -47,6 +47,12 @@ and private receipts; rerun the relevant checks when a change touches these area
   removed it. The test found and corrected split-DNS interface binding: the same node and
   port became reachable when Jupyter listened on the compute node's IPv4 interfaces.
   Connection and job-log files were private; the token was absent from stored app records.
+  The separate notebook gateway was also checked against a real compute-node Jupyter server:
+  native Lab and status pages returned 200, a kernel executed a calculation over WebSocket,
+  and revocation closed both HTTP and the active socket. This used a simulated HTTPS Host on
+  loopback, not a publicly routed phone origin. The owned job, scratch files and forward were
+  removed while the existing SSH sign-in remained running. Separate local checks covered
+  one-use handoffs, device removal, selected-host lease expiry and lost hostname isolation.
   Native writing-role checks exercised files, HTTPS, browser rendering and cached SSH without
   app permission prompts; read-only roles remain restricted. A private Unix reverse forward
   worked on FASRC, but an actual remote VS Code workspace still needs acceptance.
@@ -75,6 +81,9 @@ browser checks at desktop, 412×915, 360×800, 915×412 and, for phone work, iPh
   retention, immediate Spawn drafts, direct background tickets, completion Undo, reversible
   chat archiving and reply-only QUARK bypass with worker supervision. Boundary checks include
   selected computers, interrupted requests, reloads and independent source-message triage.
+- Shared-chat queue checks use the real app outbox with a simulated editor bridge. They cover
+  held edits, native handoff, exact-key recovery, late steering acknowledgements and selected
+  computers across all five browser profiles. They do not certify every native editor version.
 - Retained classic-workspace regression checks.
 
 **Limits:**

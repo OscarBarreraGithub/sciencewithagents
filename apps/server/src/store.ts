@@ -1,3 +1,4 @@
+import { requireQueueHold } from './queue-hold.js';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
@@ -713,28 +714,7 @@ export class Store extends EventEmitter {
       throw new Conflict('Only app-owned queued owner messages can be edited.');
     if (run.status !== 'queued')
       throw new Conflict('This message has already started or left the queue. It was not changed.');
-    if (input.revision !== run.queueRevision)
-      throw new Conflict(
-        'This queued message changed on another tab or device. Reopen it before editing.',
-        'QUEUE_CHANGED',
-      );
-    if (['edit', 'takeover'].includes(input.action)) {
-      if (input.action !== 'takeover' && run.queueEdit && run.queueEdit.clientId !== input.clientId)
-        throw new Conflict(
-          'This message is held by another browser. Its saved draft is retained.',
-          'QUEUE_HELD',
-        );
-      if (run.queueEdit?.state === 'steering' && input.action !== 'takeover')
-        throw new Conflict(
-          'The steering outcome is uncertain. Inspect the running reply; this item remains held.',
-        );
-    } else if (!run.queueEdit || run.queueEdit.clientId !== input.clientId) {
-      throw new Conflict('Hold this message for editing before changing or sending it.');
-    } else if (run.queueEdit.state !== 'editing' && input.action !== 'remove') {
-      throw new Conflict(
-        'The steering outcome is uncertain. This item remains held and will not be resent.',
-      );
-    }
+    requireQueueHold(run, input);
     const draft = input.text ?? run.queueEdit?.text ?? run.text;
     if (['queue', 'steer'].includes(input.action) && !draft.trim())
       throw new Conflict('Write a message before queuing or steering it.');

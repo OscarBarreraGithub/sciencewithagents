@@ -367,6 +367,11 @@ export const clusterNotebookSchema = z
     remotePort: z.number().int().min(1024).max(65535),
     localPort: z.number().int().min(1024).max(65535),
     openedAt: z.string().datetime(),
+    /** Older jobs use / and remain available in the local browser. */
+    baseUrl: z
+      .string()
+      .regex(/^(?:\/|\/notebooks\/\d{1,20}\/)$/)
+      .optional(),
   })
   .strict();
 export const clusterNotebookOpenSchema = z
@@ -378,7 +383,19 @@ export const clusterNotebookCloseSchema = z
 export const clusterNotebooksSchema = z
   .object({
     localBrowser: z.boolean(),
+    remoteAvailable: z.boolean().default(false),
+    remoteMessage: z
+      .string()
+      .max(300)
+      .default('Phone notebooks need a separate notebook address on this computer.'),
     notebooks: z.array(clusterNotebookSchema.extend({ running: z.boolean() })).max(8),
   })
   .strict();
 export type ClusterNotebook = z.infer<typeof clusterNotebookSchema>;
+
+/** A one-use notebook-only handoff. No Jupyter or app credentials appear in it. */
+export const clusterNotebookLaunchResultSchema = z
+  .object({ jobId: z.string().regex(/^\d{1,20}$/), url: z.string().url() })
+  .strict();
+export const clusterNotebookLaunchKeySchema = z.object({ key: z.string().uuid() }).strict();
+export type ClusterNotebookLaunchResult = z.infer<typeof clusterNotebookLaunchResultSchema>;

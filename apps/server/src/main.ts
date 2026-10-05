@@ -20,6 +20,7 @@ import { CodexDaemonChats } from './codex-daemon-chats.js';
 import { prepareAgentClient } from './agent-client.js';
 import { initializeScheduling } from './pulsar.js';
 import { LocalAccess, prepareLocalAccess } from './local-access.js';
+import { NotebookGateway, readNotebookConfig } from './notebook-gateway.js';
 
 process.umask(0o077);
 const demo = process.argv.includes('--demo');
@@ -62,6 +63,7 @@ let tunnel: PhoneTunnel | undefined;
 let terminals: Terminals | undefined;
 let backups: SourceBackups | undefined;
 let hosts: Hosts | undefined;
+let notebookGateway: NotebookGateway | undefined;
 let app: Awaited<ReturnType<typeof createServer>> | undefined;
 let remote: Awaited<ReturnType<typeof createServer>> | undefined;
 let phoneStarting: Promise<void> | undefined;
@@ -93,6 +95,7 @@ function stop() {
     // Close marks Runtime stopped synchronously; do not dispatch new queued work while
     // slower network, backup, or browser connections are still draining below.
     const runtimeClosing = close(() => runtime?.close());
+    await close(() => notebookGateway?.close());
     await close(() => tunnel?.close());
     await close(() => backups?.close());
     await close(() => terminals?.close());
@@ -175,6 +178,35 @@ startup = (async () => {
       : undefined,
   );
   const phone = new PhoneAccess(store, phoneConfig, undefined, phoneIssue);
+  let notebookConfig: ReturnType<typeof readNotebookConfig> = null;
+  let notebookIssue: string | undefined;
+  if (!demo) {
+    try {
+      notebookConfig = readNotebookConfig(root);
+    } catch {
+      notebookIssue =
+        'Notebook access configuration needs setup. App views still work; check private data/notebook-access.json.';
+    }
+  }
+  notebookGateway = new NotebookGateway(
+    notebookConfig,
+    runtime.clusterNotebooks,
+    ready,
+    Date.now,
+    notebookIssue,
+    () =>
+      !notebookConfig ||
+      !phone.config ||
+      new URL(notebookConfig.origin).hostname !== new URL(phone.config.origin).hostname,
+  );
+  await notebookGateway.listen(
+    [
+      `http://127.0.0.1:${port}`,
+      `http://localhost:${port}`,
+      ...(phoneConfig ? [phoneConfig.origin] : []),
+    ],
+    [port, ...(phoneConfig ? [phoneConfig.port] : [])],
+  );
   const mirrors = new VscodeMirrors(
     store,
     demo ? undefined : new CodexDaemonChats(binary),
@@ -217,6 +249,7 @@ startup = (async () => {
           port: phone.config.port,
           webDir: join(repoRoot, 'apps/web/dist'),
           phone,
+          notebookGateway,
           terminals,
           mirrors,
           backups,
@@ -255,6 +288,7 @@ startup = (async () => {
     devPort: process.env.DOCK_DEV === '1' ? 5178 : undefined,
     demo,
     phone,
+    notebookGateway,
     tunnel,
     phoneSetup,
     repairPhoneListener: activatePhone,

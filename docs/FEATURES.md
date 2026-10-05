@@ -17,6 +17,7 @@ This describes connected source behavior, not a blanket release certification.
 | Context maintenance  | Native Claude 60% compaction with handoff hooks; natural Codex compaction                                        | External native/editor sessions need their own supported integration; no perfect-memory claim       |
 | QUARK                | Shared queue, priority/weights, caps/reserves, spending sliders, leases, pauses and coordinator chat             | Estimated attribution and stopping latency prevent an exact provider-enforced spending ceiling      |
 | Slurm cluster        | Shared cached queue, pending reasons, fairshare, native limits, recent efficiency and submitted-job tracking     | Advisory only: no app cluster limits; native SSH sign-in and site rules apply                       |
+| Cluster notebooks    | Open running compute-node Jupyter notebooks through the existing private SSH connection                          | Phone/selected-computer access needs that worker's separately configured notebook HTTPS address     |
 | Computer health      | Current pressure, charts, project/job attribution, grouped apps/processes and full-screen Ask                    | Detailed probes are macOS-specific; automatic checks are bounded and off on fresh installs          |
 | Phone                | Optional private Tailscale or configured domain, one-time passkey pairing and computer confirmation              | No recurring app lock; physical retention/reconnect needs device acceptance                         |
 | Multiple computers   | Select configured hosts with separate accounts/projects/history; two copyable setup prompts                      | Connection is agent-assisted over a verified private route, not automatic discovery                 |
@@ -91,13 +92,15 @@ Untracked processes remain distinguishable from app-owned work. See [resource mo
 
 ## Native capabilities and saved evidence
 
-**Expand queue** opens queued messages in a full-height list. App-managed messages can be
-held and edited in the notepad; minimizing, reloads or another message completing never
+**Expand queue** opens queued messages in a full-height list. App-managed messages and
+follow-ups queued here for shared VS Code chats can be held and edited in the notepad
+before dispatch; minimizing, reloads or another message completing never
 release the edit hold. **Save and queue** releases it explicitly. Supported Codex sessions
 also offer an explicit **Steer now** action. Lost acknowledgements stay available for
-inspection rather than being silently resent. Native editor queues remain under their
-editor's supported controls. Original queued wording stays searchable after an edit;
-material changes reopen earlier source-message triage.
+inspection rather than being silently resent. Messages queued directly in the native editor
+or already handed to it remain under that editor's supported controls. Original wording
+and saved edits remain retained; material changes to app-managed messages reopen earlier
+source-message triage.
 
 New managed agents inherit native tools, skills, hooks and configured integrations. Supported
 native unattended policies give writing roles full native access (files, browsers, SSH) with

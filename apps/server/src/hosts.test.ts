@@ -93,6 +93,16 @@ beforeEach(async () => {
         .header('Set-Cookie', 'private=secret')
         .send(Buffer.from('%PDF-1.4\n' + label)),
     );
+    app.post('/api/cluster/notebooks/launch', (request) => {
+      fixture.writes.push({ notebookAction: 'launch', body: request.body });
+      return { jobId: '50593230', url: 'https://notebooks.example.test/launch#fixture' };
+    });
+    for (const action of ['renew', 'revoke']) {
+      app.post(`/api/cluster/notebooks/${action}`, (request) => {
+        fixture.writes.push({ notebookAction: action, body: request.body });
+        return { accepted: true };
+      });
+    }
     app.post('/api/chat-files', (request) => {
       fixture.headers.push(request.headers);
       fixture.writes.push({ upload: request.body });
@@ -920,4 +930,35 @@ it('routes queued messages to only the selected pinned host without forwarding p
   expect(fixtures[0].writes).toEqual([]);
   expect(fixtures[2].writes).toEqual([]);
   checkHeaders(1);
+});
+
+it('tracks a selected-host notebook launch beyond its response and revokes only its receipt on source removal', async () => {
+  const fixture = fixtures[0],
+    key = randomUUID();
+  const result = await gateway.inject({
+    method: 'POST',
+    url: `/api/hosts/${fixture.config.id}/proxy/cluster/notebooks/launch`,
+    headers: { 'x-test-device': 'notebook-phone' },
+    payload: { key, jobId: '50593230' },
+  });
+  expect(result.statusCode).toBe(200);
+  expect(result.json().url).toMatch(/^https:\/\/notebooks\./);
+  expect(watchers.get('notebook-phone')?.size).toBe(1);
+  for (const close of watchers.get('notebook-phone') ?? []) close();
+  const deadline = Date.now() + 1000;
+  while (
+    !fixture.writes.some(
+      (item) => (item as { notebookAction?: string }).notebookAction === 'revoke',
+    ) &&
+    Date.now() < deadline
+  )
+    await delay(5);
+  expect(fixture.writes).toContainEqual({ notebookAction: 'revoke', body: { key } });
+  expect(watchers.get('notebook-phone')?.size).toBe(0);
+  const denied = await gateway.inject({
+    method: 'POST',
+    url: `/api/hosts/${fixture.config.id}/proxy/cluster/notebooks/renew`,
+    payload: { key },
+  });
+  expect(denied.statusCode).toBe(404);
 });

@@ -105,18 +105,49 @@ permissions.
 When the job runs, **Open notebook** on it in QUARK adds a forward to your shared sign-in
 from `127.0.0.1` on this computer to that node. The app first checks that the connection file
 names the node Slurm reports for the job, so it never tunnels to a login node or another host.
-The token is read when you open the notebook and sent only to this computer's browser; it is
-not stored, although it stays in that tab's address as with any Jupyter link. Open tunnels
+For local opening, the token is read into a normal Jupyter link for this computer’s browser.
+The app does not store it; it can remain in that local tab’s address. Open tunnels
 are restored after a new sign-in and closed once a complete, successful queue reading shows
 their job ended; failed or truncated readings keep them. Each tunnel belongs to the alias it
 was opened through: changing the alias closes it through that alias's sign-in, and it is never
 reissued through another host. Repeated taps share one tunnel. Closing a tunnel leaves the job
 running; stop the job itself with `scancel`.
 
-Notebook pages run their own code, so they must not share the app's address. Opening one from
-a phone, or from another computer's app with this computer selected, needs a separate private
-address for this computer, such as a dedicated Tailscale Serve port. Until then, open
-notebooks in this computer's browser; other devices can see and close its tunnels.
+Notebook pages run their own code and must use a different hostname from every app entry.
+For phone or selected-computer opening, the computer connected to the cluster can have a
+private `data/notebook-access.json` (owner-only file, mode 600):
+
+```json
+{ "origin": "https://notebooks.example.org", "port": 4332 }
+```
+
+`origin` is an exact HTTPS origin without a path or external port. `port` is the optional
+loopback listener port (default 4332), separate from app and phone ports. Arrange HTTPS routing
+for that notebook-only hostname to `127.0.0.1:4332` on this computer, including WebSocket
+upgrades. A different port on the app’s hostname is unsupported because cookies share a
+hostname. Configuring this file does not publish an address or configure hosting. Invalid
+configuration or a failed optional listener leaves the app and saved views available.
+
+The current notebook template uses `/notebooks/<job>/` as Jupyter’s native base URL, following
+[Jupyter Server’s base_url setting](https://jupyter-server.readthedocs.io/en/latest/other/full-config.html#ServerApp.base_url).
+Older jobs still open locally; phone access asks for the current template. A paired browser
+receives a 60-second one-use launch handoff, then a notebook-only HttpOnly cookie. The launch
+page waits up to 90 seconds for Jupyter startup before opening Lab, with a retry action if
+the job takes longer; revoked access stops the wait. Native
+Jupyter HTTP and kernel WebSocket traffic go through the validated private forward; app,
+phone, host and provider credentials are never forwarded. The gateway preserves native
+Jupyter authentication and XSRF checks. Its launch URL contains no Jupyter token; authorized
+notebook code may still see Jupyter’s own notebook token through native Jupyter behavior.
+
+Notebook sessions last at most 8 hours and end when their tunnel closes, its alias changes,
+or a successful queue reading proves the job ended. Removing a paired device or disabling
+phone access revokes directly issued sessions. For a selected computer, the entry app renews
+an exact-launch 90-second lease every 30 seconds; failed revocation delivery or an entry-app
+crash stops renewal, so the selected host closes HTTP/WebSocket access after the remaining
+lease (about 90 seconds at most). Notebook data never relays through the entry app: each selected
+computer needs its own reachable notebook origin. Restarting either gateway requires opening
+a new launch. Closing access leaves the Slurm job running. Until hosting is configured, other
+devices can still see and close saved tunnels; local notebook opening remains available.
 
 ## Sign-in and reconnecting
 

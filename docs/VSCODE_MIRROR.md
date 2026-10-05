@@ -61,12 +61,24 @@ Offline summaries are bounded; an offline reload cannot reconstruct the editor's
 SQLite records send/stop intent before forwarding. Lost replies keep the original receipt;
 Check delivery/status is read-only. Never replay an uncertain action after reconnect or crash.
 Codex guidance and both Stop paths bind the observed active turn; a stale target is refused.
-Codex exposes **Queue next** when a native queue read succeeds; older providers retain
-steering and keep unsupported queue sends unsent. Claude follow-up uses its native queue.
-A compact, scrollable list shows the provider's current queued messages, including messages
-sent from the computer. Queue acceptance is not execution; uncertain receipts retain their
-original UUID and are never automatically replayed. Queue reads show up to 100 messages and
-mark further native pages. Native questions/permissions stay in the original editor.
+**Queue next** from this app first saves a durable app-owned outbox item. **Expand queue**
+shows it beside separately labelled native editor messages. Opening **Edit** atomically holds
+that item; autosave, minimize and reload keep the hold. **Save and queue** explicitly releases
+it; discarding edits explicitly queues the earlier wording. Revisions and browser ownership
+prevent competing devices from overwriting an edit. Original submissions and saved revisions
+remain private in outbox records and action receipts.
+
+Delivery waits for the observed turn boundary. An idle conversation receives a normal message;
+if native goal work has already started another turn, a supported native queue can accept the
+handoff. Providers without a native queue wait for idle. The outbox never silently steers or
+launches a provider. A dispatch claim closes editing; an edit claim prevents dispatch. Held
+Codex items can explicitly **Steer now** to the exact observed turn; Claude stays queue-only.
+
+Native messages entered in the editor, and app items already handed to its queue, remain
+read-only here. Native queue reads show up to 100 messages and mark further pages. A definite
+failed handoff requires explicit edit/requeue; uncertain handoffs remain inspectable and are
+never automatically replayed. Late saved delivery receipts can resolve uncertainty without a
+send. Native questions and permissions stay in the original editor.
 Automatic VS Code crash restoration is not promised: reopen the editor/chat and re-share.
 
 ## Attachments

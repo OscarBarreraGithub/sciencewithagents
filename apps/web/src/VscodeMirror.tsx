@@ -1,4 +1,4 @@
-import { MessageQueue } from './MessageQueue';
+import { MirrorMessageQueue } from './MirrorMessageQueue';
 import { ChatMarkdown } from './ChatMarkdown';
 import { ChatAttachmentPicker, useChatAttachmentUpload } from './ChatImages';
 import {
@@ -685,6 +685,8 @@ export function VscodeMirror({
         }
       }
       if (mounted.current) setReceipt(result.message);
+      if (result.state === 'sent' && input.mode === 'queue')
+        window.dispatchEvent(new CustomEvent('dock:mirror-queue', { detail: identity }));
     } catch {
       if (mounted.current)
         setReceipt('Delivery not confirmed. Use Check delivery; do not retype and resend.');
@@ -863,11 +865,15 @@ export function VscodeMirror({
           void send();
         }}
       >
-        <MessageQueue
-          messages={state?.queuedMessages ?? []}
-          hasMore={state?.queueHasMore}
-          error={state?.queueReadError}
-        />
+        {chat.threadId && (
+          <MirrorMessageQueue
+            key={identity}
+            provider={chat.provider ?? 'codex'}
+            threadId={chat.threadId}
+            canSteer={canSteer}
+            nativeQueue={state}
+          />
+        )}
         {state?.canSteer && state?.canQueue && (
           <label className="mirror-send-timing">
             Send timing{' '}

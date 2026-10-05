@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 
 const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
 const job = (jobId: string, state: string, extra: Record<string, unknown> = {}) => ({
@@ -386,7 +387,14 @@ test('a running notebook job opens a loopback tunnel in its own tab', async ({ p
   const closes: unknown[] = [];
   await page.route('**/api/cluster', (route) => route.fulfill({ json: base }));
   await page.route('**/api/cluster/notebooks', (route) =>
-    route.fulfill({ json: { localBrowser: local, notebooks } }),
+    route.fulfill({
+      json: {
+        localBrowser: local,
+        notebooks,
+        remoteMessage:
+          'Open this notebook in the browser on the computer connected to the cluster.',
+      },
+    }),
   );
   await page.route('**/api/cluster/notebooks/open', async (route) => {
     expect(route.request().postDataJSON()).toMatchObject({ jobId: '51000003' });
@@ -435,4 +443,211 @@ test('a running notebook job opens a loopback tunnel in its own tab', async ({ p
     }),
   ).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Open notebook' })).toHaveCount(0);
+});
+
+for (const mode of ['phone', 'selected-host'] as const) {
+  test(`${mode} notebook launch retries, refreshes blocked-popup handoffs and keeps the QUARK location`, async ({
+    page,
+    baseURL,
+  }, info) => {
+    const base = reading('connected');
+    base.queue.items = [job('51000003', 'RUNNING', { name: 'notebook', nodeList: 'node101' })];
+    const host = randomUUID();
+    const prefix = mode === 'selected-host' ? `/api/hosts/${host}/proxy` : '/api';
+    if (mode === 'selected-host') {
+      await page.addInitScript((id) => localStorage.setItem('dock:host', id), host);
+      await page.route('**/api/hosts', (route) =>
+        route.fulfill({
+          json: {
+            local: { id: 'local', label: 'Entry fixture' },
+            setupError: null,
+            hosts: [
+              {
+                id: host,
+                label: 'Selected fixture',
+                accountLabel: 'owner fixture',
+                status: 'connected',
+                error: null,
+              },
+            ],
+          },
+        }),
+      );
+      await page.route(`**${prefix}/**`, async (route) => {
+        const source = route.request();
+        const url = source.url().replace(prefix, '/api');
+        if (new URL(url).pathname === '/api/events')
+          return route.fulfill({
+            contentType: 'text/event-stream',
+            body: 'event: ready\ndata: {}\n\n',
+          });
+        const response = await page.request.fetch(url, {
+          method: source.method(),
+          data: source.postData() ?? undefined,
+          headers: { 'Content-Type': 'application/json', Origin: baseURL! },
+        });
+        return route.fulfill({ response });
+      });
+    }
+    await page.route(`**${prefix}/cluster`, (route) => route.fulfill({ json: base }));
+    await page.route(`**${prefix}/cluster/notebooks`, (route) =>
+      route.fulfill({
+        json: { localBrowser: false, remoteAvailable: true, remoteMessage: '', notebooks: [] },
+      }),
+    );
+    const notebookOrigin = 'https://notebooks.example.test:9443';
+    await page.context().route(`${notebookOrigin}/**`, (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: '<title>Private notebook fixture</title>',
+      }),
+    );
+    const attempts: { key: string; jobId: string }[] = [];
+    const urls: string[] = [];
+    let releaseLaunch = () => {};
+    const readyToLaunch = new Promise<void>((resolve) => {
+      releaseLaunch = resolve;
+    });
+    await page.route(`**${prefix}/cluster/notebooks/launch`, async (route) => {
+      attempts.push(route.request().postDataJSON());
+      urls.push(route.request().url());
+      // The first failure checks opener removal while the request is still pending.
+      if (attempts.length === 1) {
+        await expect
+          .poll(
+            () =>
+              page
+                .context()
+                .pages()
+                .filter((tab) => tab !== page && !tab.isClosed()).length,
+          )
+          .toBe(1);
+        const tab = page
+          .context()
+          .pages()
+          .find((tab) => tab !== page && !tab.isClosed())!;
+        expect(await tab.evaluate(() => window.opener)).toBeNull();
+        return route.fulfill({
+          status: 503,
+          json: { error: 'Notebook address temporarily unavailable.' },
+        });
+      }
+      if (attempts.length === 2) await readyToLaunch;
+      return route.fulfill({
+        json: {
+          jobId: '51000003',
+          url: `${notebookOrigin}/launch#notebook-fixture-handoff-${attempts.length}`,
+        },
+      });
+    });
+    let localOpens = 0;
+    await page.route(`**${prefix}/cluster/notebooks/open`, (route) => {
+      localOpens++;
+      return route.abort();
+    });
+    await page.goto('/#/work');
+    const panel = page.getByRole('region', { name: 'Lab cluster · Slurm cluster' });
+    const open = panel.getByRole('button', { name: 'Open notebook', exact: true });
+    await expect(open).toBeEnabled();
+    await open.click();
+    await expect(panel.getByRole('alert')).toContainText(
+      'Notebook address temporarily unavailable.',
+    );
+    await expect.poll(() => page.context().pages().length).toBe(1);
+    await open.scrollIntoViewIfNeeded();
+    const location = page.url();
+    const nextTab = page.context().waitForEvent('page');
+    await open.click();
+    const launched = await nextTab;
+    // Removing the previous error can legitimately re-anchor the page. Measure
+    // retention after that UI update and before navigating the reserved tab.
+    await expect(panel.getByRole('alert')).toHaveCount(0);
+    const scroll = await page.locator('#home-content').evaluate((element) => element.scrollTop);
+    releaseLaunch();
+    await expect
+      .poll(() => launched.url())
+      .toBe(`${notebookOrigin}/launch#notebook-fixture-handoff-2`);
+    expect(await launched.evaluate(() => window.opener)).toBeNull();
+    await launched.close();
+    expect(page.url()).toBe(location);
+    expect(await page.locator('#home-content').evaluate((element) => element.scrollTop)).toBe(
+      scroll,
+    );
+    expect(attempts[1].key).not.toBe(attempts[0].key);
+
+    await page.clock.install();
+    await page.evaluate(() => {
+      window.open = () => null;
+    });
+    await open.click();
+    const fallback = panel.getByRole('link', { name: 'Open notebook 51000003', exact: true });
+    await expect(fallback).toHaveAttribute(
+      'href',
+      `${notebookOrigin}/launch#notebook-fixture-handoff-3`,
+    );
+    await expect(fallback).toHaveAttribute('rel', 'noopener noreferrer');
+    await page.clock.fastForward(31_000);
+    await expect(fallback).toHaveCount(0);
+    await expect(panel.getByText('Open again for a fresh link.')).toBeVisible();
+    await panel.getByRole('button', { name: 'Open notebook 51000003', exact: true }).click();
+    await expect(fallback).toHaveAttribute(
+      'href',
+      `${notebookOrigin}/launch#notebook-fixture-handoff-4`,
+    );
+    expect(attempts[3].key).not.toBe(attempts[2].key);
+    expect(attempts.every((attempt) => attempt.jobId === '51000003')).toBe(true);
+    expect(
+      urls.every((url) => new URL(url).pathname === `${prefix}/cluster/notebooks/launch`),
+    ).toBe(true);
+    expect(localOpens).toBe(0);
+    expect(
+      await page.evaluate(() =>
+        [localStorage, sessionStorage].some((storage) =>
+          Object.values(storage).some((value) => value.includes('notebook-fixture-handoff-')),
+        ),
+      ),
+    ).toBe(false);
+    await mkdir('../../data/notebook-ui', { recursive: true });
+    await page.screenshot({
+      path: `../../data/notebook-ui/${info.project.name}-${mode}-fallback.png`,
+    });
+    const manualTab = page.context().waitForEvent('page');
+    await fallback.click();
+    const manual = await manualTab;
+    await expect
+      .poll(() => manual.url())
+      .toBe(`${notebookOrigin}/launch#notebook-fixture-handoff-4`);
+    expect(await manual.evaluate(() => window.opener)).toBeNull();
+    await manual.close();
+    expect(page.url()).toBe(location);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  });
+}
+
+test('phone notebook setup shows the current unavailable message without offering a local tunnel', async ({
+  page,
+}) => {
+  const base = reading('connected');
+  base.queue.items = [job('51000003', 'RUNNING', { name: 'notebook', nodeList: 'node101' })];
+  await page.route('**/api/cluster', (route) => route.fulfill({ json: base }));
+  await page.route('**/api/cluster/notebooks', (route) =>
+    route.fulfill({
+      json: {
+        localBrowser: false,
+        remoteAvailable: false,
+        remoteMessage: 'Ask your setup agent to connect this computer’s private notebook address.',
+        notebooks: [],
+      },
+    }),
+  );
+  await page.goto('/#/work');
+  const panel = page.getByRole('region', { name: 'Lab cluster · Slurm cluster' });
+  await expect(
+    panel.getByText('Ask your setup agent to connect this computer’s private notebook address.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Open notebook', exact: true })).toHaveCount(0);
 });

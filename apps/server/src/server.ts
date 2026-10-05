@@ -91,6 +91,7 @@ import {
 } from './interviews.js';
 import { registerAgentClient, type prepareAgentClient } from './agent-client.js';
 import type { LocalAccess } from './local-access.js';
+import type { NotebookGateway, NotebookIssuer } from './notebook-gateway.js';
 import type { LocalRole } from '@dock/shared/dist/local-authorization.js';
 import { projectTools } from './worker-tools.js';
 import {
@@ -116,6 +117,7 @@ export async function createServer(
     terminals?: Terminals;
     ownsRuntime?: boolean;
     phone?: PhoneAccess;
+    notebookGateway?: NotebookGateway;
     tunnel?: Pick<PhoneTunnel, 'retry'>;
     phoneSetup?: PhoneSetup;
     repairPhoneListener?: () => Promise<void>;
@@ -825,6 +827,10 @@ export async function createServer(
     !options.remote && localRoles.get(request) !== 'host';
   app.get('/api/cluster/notebooks', async (request) => ({
     localBrowser: notebookBrowser(request),
+    ...(options.notebookGateway?.status() ?? {
+      remoteAvailable: false,
+      remoteMessage: 'Phone notebooks need a separate notebook address on this computer.',
+    }),
     notebooks: runtime.clusterNotebooks.list(),
   }));
   app.post('/api/cluster/notebooks/open', async (request) => {
@@ -834,6 +840,37 @@ export async function createServer(
       );
     return runtime.clusterNotebooks.open(request.body);
   });
+  app.post('/api/cluster/notebooks/launch', async (request) => {
+    if (!options.notebookGateway || options.demo)
+      throw new Conflict('Phone notebooks need a separate notebook address on this computer.');
+    const session = phoneSessions.get(request);
+    const role = localRoles.get(request);
+    const issuer: NotebookIssuer =
+      session && phone
+        ? {
+            id: `phone:${session.deviceId}`,
+            valid: () => phone.valid(session),
+            watch: (close) => phone.watch(session, close),
+          }
+        : role === 'host'
+          ? { id: 'host', delegated: true, valid: () => options.ready?.() ?? true }
+          : {
+              id: 'local',
+              valid: () =>
+                !options.localAccess ||
+                role === 'owner' ||
+                !!options.localAccess.browser(request.headers.cookie ?? ''),
+            };
+    return options.notebookGateway.launch(request.body, issuer);
+  });
+  for (const action of ['renew', 'revoke'] as const) {
+    app.post(`/api/cluster/notebooks/${action}`, async (request, reply) => {
+      if (localRoles.get(request) !== 'host')
+        return reply.code(403).send({ error: 'A computer connection is required.' });
+      if (!options.notebookGateway) throw new Conflict('Notebook access is unavailable.');
+      return options.notebookGateway[action](request.body);
+    });
+  }
   app.post('/api/cluster/notebooks/close', async (request) =>
     runtime.clusterNotebooks.close(request.body),
   );

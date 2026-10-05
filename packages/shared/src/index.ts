@@ -1,3 +1,5 @@
+export * from './mirror-outbox.js';
+export * from './queued-message.js';
 export * from './work-items.js';
 export * from './archive.js';
 export * from './project-workflow.js';
@@ -334,16 +336,6 @@ export const runSchema = z.object({
     .nullable()
     .optional(),
 });
-export const queuedMessageActionSchema = z
-  .object({
-    key: id,
-    clientId: id,
-    revision: z.number().int().nonnegative(),
-    action: z.enum(['edit', 'takeover', 'save', 'queue', 'discard', 'steer', 'remove']),
-    text: z.string().max(24_000).optional(),
-  })
-  .strict();
-export type QueuedMessageAction = z.infer<typeof queuedMessageActionSchema>;
 export const queuedMessageReceiptSchema = z
   .object({
     status: z.enum(['applied', 'uncertain', 'not_found']),

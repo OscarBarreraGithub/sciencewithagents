@@ -24,6 +24,9 @@ edited-message holds, retained attachments, original request evidence and shorte
 trails. Chromium and WebKit checks exercise keyboard viewport changes, focus and drafts;
 they do not reproduce every physical iOS keyboard transition. Installation activation and
 the latest published CI result must be checked separately from these source checks.
+Shared VS Code follow-ups queued from this app remain editable until native handoff;
+messages already in the editor's queue retain its native controls. Shared queue delivery
+uses native turn boundaries without silently steering an active reply.
 
 ## Delivered, with acceptance limits
 
@@ -89,8 +92,11 @@ and model choices remain. Active work is never discarded by an inactivity timer.
   local SSH server. A bounded real Slurm job completed with native file creation, submission,
   polling, copy-back and scratch cleanup. A real compute-node Jupyter server also opened
   through the app's private SSH forward, including repeated-open and close checks. Real
-  password/code sign-in remains a device/site acceptance check. Phone notebook access needs
-  a separate private address. See [Slurm cluster](CLUSTER.md).
+  password/code sign-in remains a device/site acceptance check. The optional notebook gateway
+  connects phone/selected-computer launches, HTTP and kernel WebSockets through a separate
+  notebook-only HTTPS address. Each worker computer needs that address configured; the app
+  does not automatically create DNS or publish a notebook port. Live hosting and physical-phone
+  acceptance must be verified for the installation. See [Slurm cluster](CLUSTER.md).
 
 - **Apps:** LaTeX/PDF reading and manager-owned project-app registration are connected.
   Local app ports and optional published HTTPS links are recorded; registration does not

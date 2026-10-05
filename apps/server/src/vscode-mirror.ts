@@ -1,8 +1,11 @@
+import { MirrorOutbox } from './mirror-outbox.js';
 import { randomUUID, createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type WebSocket from 'ws';
 import { z } from 'zod';
 import {
+  mirrorQueueQuerySchema,
+  mirrorQueuedActionSchema,
   mirrorCommandSchema,
   mirrorFrameSchema,
   mirrorStateSchema,
@@ -58,6 +61,7 @@ export class VscodeMirrors {
   private peers = new Map<string, Peer>();
   private listing?: Promise<void>;
   private reads = new Map<string, Promise<MirrorState>>();
+  readonly queue: MirrorOutbox;
   constructor(
     private readonly store: Store,
     private readonly daemon?: DaemonChats,
@@ -66,6 +70,12 @@ export class VscodeMirrors {
     store.db.exec(
       'CREATE TABLE IF NOT EXISTS mirror_deliveries (key TEXT PRIMARY KEY, input_hash TEXT NOT NULL, result TEXT NOT NULL)',
     );
+    this.queue = new MirrorOutbox(store, {
+      windows: () => this.list(true),
+      read: (id) => this.read(id, {}),
+      send: (id, input) => this.deliver(id, input),
+      receipt: (key) => this.receipt(key),
+    });
   }
   windows() {
     const editors = [...this.peers.values()].map((p) => p.window);
@@ -308,7 +318,54 @@ export class VscodeMirrors {
     }
     return page !== undefined && !paged ? mirrorPage(value, page) : value;
   }
-  async send(windowId: string, input: MirrorSend): Promise<MirrorResult> {
+  async send(windowId: string, raw: MirrorSend): Promise<MirrorResult> {
+    const input = mirrorSendSchema.parse(raw);
+    if (input.mode !== 'queue') return this.deliver(windowId, input);
+    const digest = createHash('sha256').update(JSON.stringify(input)).digest('hex');
+    return this.store.transaction(() => {
+      const saved = this.store.db
+        .prepare('SELECT input_hash, result FROM mirror_deliveries WHERE key=?')
+        .get(input.key);
+      if (saved) {
+        if (saved.input_hash !== digest)
+          throw new Conflict(
+            'This submission ID belongs to a different message. Nothing was queued.',
+          );
+        return mirrorResultSchema.parse(JSON.parse(String(saved.result)));
+      }
+      const window = this.window(windowId);
+      if (
+        !window ||
+        window.threadId !== input.threadId ||
+        (window.provider ?? 'codex') !== (input.provider ?? 'codex')
+      )
+        return {
+          state: 'not_sent',
+          message: 'This conversation is no longer shared. Nothing was queued.',
+        } as MirrorResult;
+      if (window.canAttachImages === false && chatAttachmentCount(input.text))
+        return {
+          state: 'not_sent',
+          message:
+            'Remote files cannot be sent here. Attach them in the native remote editor. Nothing was queued.',
+        } as MirrorResult;
+      if (this.prepareText(input.text).length > 32000)
+        throw new Conflict(
+          'Shorten the message slightly to leave room for its attachments. Nothing was queued.',
+        );
+      const result = this.queue.enqueue(window, input);
+      this.store.db
+        .prepare('INSERT INTO mirror_deliveries VALUES(?,?,?)')
+        .run(input.key, digest, JSON.stringify(result));
+      this.store.event('mirror.send_result', null, null, {
+        key: input.key,
+        state: result.state,
+        outbox: result.state === 'sent',
+      });
+      return result;
+    });
+  }
+  private async deliver(windowId: string, input: MirrorSend): Promise<MirrorResult> {
     input = mirrorSendSchema.parse(input);
     // A VS Code restart changes its window connection ID, not the chosen provider
     // thread or this durable delivery identity. A retry only returns the old result.
@@ -464,10 +521,17 @@ export class VscodeMirrors {
         };
   }
   close() {
+    this.queue.close();
     this.daemon?.close();
     for (const peer of this.peers.values()) peer.socket.terminate();
   }
 }
+
+/** Browser capability describes the app outbox; native snapshots stay authoritative internally. */
+const publicQueueCapability = <T extends Omit<MirrorState, 'entries'>>(window: T): T => ({
+  ...window,
+  canQueue: !!window.threadId && ['idle', 'busy'].includes(window.status),
+});
 
 export function registerMirrorRoutes(
   app: FastifyInstance,
@@ -476,15 +540,31 @@ export function registerMirrorRoutes(
 ) {
   const windowId = (params: unknown) => z.object({ id: z.uuid() }).parse(params).id;
   const discover = { preHandler: async () => mirrors.discover() };
+  app.get('/api/vscode/queued', async (request) =>
+    mirrors.queue.list(mirrorQueueQuerySchema.parse(request.query)),
+  );
+  app.get('/api/vscode/queued/:id', async (request) =>
+    mirrors.queue.item(windowId(request.params)),
+  );
+  app.get('/api/vscode/queued/:id/receipts/:key', async (request) => {
+    const params = z.object({ id: z.uuid(), key: z.uuid() }).parse(request.params);
+    return mirrors.queue.receipt(params.id, params.key);
+  });
+  app.post('/api/vscode/queued/:id', async (request) =>
+    mirrors.queue.action(windowId(request.params), mirrorQueuedActionSchema.parse(request.body)),
+  );
+
   app.get('/api/vscode/windows', async (request) => {
     const query = conversationListQuerySchema.parse(request.query);
-    return mirrors.list(query.includeArchived === 'true');
+    return (await mirrors.list(query.includeArchived === 'true')).map(publicQueueCapability);
   });
   app.get('/api/vscode/deliveries/:id', async (request) =>
     mirrors.receipt(windowId(request.params)),
   );
   app.get('/api/vscode/windows/:id', discover, async (request) =>
-    mirrors.read(windowId(request.params), mirrorPageQuerySchema.parse(request.query)),
+    publicQueueCapability(
+      await mirrors.read(windowId(request.params), mirrorPageQuerySchema.parse(request.query)),
+    ),
   );
   app.post('/api/vscode/windows/:id/send', discover, async (request) =>
     mirrors.send(windowId(request.params), mirrorSendSchema.parse(request.body)),
@@ -495,6 +575,7 @@ export function registerMirrorRoutes(
   // Never register the extension producer on the public/paired phone entry. A phone
   // may consume the chosen transcript; it cannot impersonate a local extension.
   if (!remote) {
+    app.addHook('onReady', async () => mirrors.queue.start());
     app.get('/api/vscode/bridge', { websocket: true }, (socket, request) => {
       if (
         request.headers.origin ||

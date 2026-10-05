@@ -10,9 +10,11 @@ import { promisify } from 'node:util';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import WebSocket, { type RawData } from 'ws';
 import { z } from 'zod';
+import { NotebookDelegations } from './notebook-delegations.js';
 import { localAuthorization } from '@dock/shared/dist/local-authorization.js';
 import {
   hostConnectionsSchema,
+  clusterNotebookOpenSchema,
   chatImageBodyLimit,
   hostInfoSchema,
   hostsStatusSchema,
@@ -20,6 +22,7 @@ import {
   ownerRequestHttpQuerySchema,
   conversationVisibilityQuerySchema,
   conversationListQuerySchema,
+  mirrorQueueQuerySchema,
   type HostConnection,
   type HostSummary,
 } from '@dock/shared';
@@ -434,10 +437,10 @@ export class Hosts {
 
 const uuid = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const getPaths = new RegExp(
-  `^/(?:apps|publishing-accounts|chat-images/${uuid}|chat-files/${uuid}(?:/info|/preview)?|health|browser/setup|setup(?:/(?:sign-in|claude-sign-in))?|documents(?:/browse|/${uuid}(?:/pdf|/reading|/assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif))?)?|snapshot|attention|capacity|resources|cluster(?:/sign-in|/notebooks)?|pulsar(?:/jobs/${uuid})?|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|archive/editors|work-items|bug-reports|app-updates|conversations(?:/visibility|/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid})?|vscode/deliveries/${uuid}|agents/${uuid}(?:/chat-quark|/mcp|/export|/recovery|/owner-requests|/usage|/receipts/${uuid}|/queued/${uuid}/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
+  `^/(?:apps|publishing-accounts|chat-images/${uuid}|chat-files/${uuid}(?:/info|/preview)?|health|browser/setup|setup(?:/(?:sign-in|claude-sign-in))?|documents(?:/browse|/${uuid}(?:/pdf|/reading|/assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif))?)?|snapshot|attention|capacity|resources|cluster(?:/sign-in|/notebooks)?|pulsar(?:/jobs/${uuid})?|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|archive/editors|work-items|bug-reports|app-updates|conversations(?:/visibility|/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid})?|vscode/deliveries/${uuid}|vscode/queued(?:/${uuid}(?:/receipts/${uuid})?)?|agents/${uuid}(?:/chat-quark|/mcp|/export|/recovery|/owner-requests|/usage|/receipts/${uuid}|/queued/${uuid}/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
 );
 const postPaths = new RegExp(
-  `^/(?:apps/${uuid}/remove|publishing-accounts/check|chat-images|chat-files|browser/(?:check|open-setup)|documents/(?:from-message|${uuid}/(?:open|build))|projects(?:/(?:connect-folder|track-folder))?|archive/(?:search|read)|work-items(?:/tickets)?|bug-reports|app-updates/(?:check|start)|conversations(?:/search|/visibility)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|cluster/(?:settings|refresh|sign-in(?:/(?:respond|cancel))?|notebooks/close)|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control)|agents/${uuid}/(?:interviews|messages|queued/${uuid}|commands|settings|chat-quark|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
+  `^/(?:apps/${uuid}/remove|publishing-accounts/check|chat-images|chat-files|browser/(?:check|open-setup)|documents/(?:from-message|${uuid}/(?:open|build))|projects(?:/(?:connect-folder|track-folder))?|archive/(?:search|read)|work-items(?:/tickets)?|bug-reports|app-updates/(?:check|start)|conversations(?:/search|/visibility)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|cluster/(?:settings|refresh|sign-in(?:/(?:respond|cancel))?|notebooks/(?:close|launch|renew|revoke))|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control)|vscode/queued/${uuid}|agents/${uuid}/(?:interviews|messages|queued/${uuid}|commands|settings|chat-quark|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
 );
 const terminalPath = new RegExp(`^/agents/${uuid}/terminal$`);
 
@@ -476,6 +479,9 @@ export function proxyPath(method: string, path: string, socket = false) {
                 ? 'projectId'
                 : null;
     const params = new URLSearchParams(query);
+    const mirrorQueue = pathname === '/vscode/queued';
+    if (mirrorQueue && !mirrorQueueQuerySchema.safeParse(Object.fromEntries(params)).success)
+      return null;
     const mirrorRead = new RegExp(`^/vscode/windows/${uuid}$`).test(pathname);
     const ownerRequests = new RegExp(`^/agents/${uuid}/owner-requests$`).test(pathname);
     const visibility = pathname === '/conversations/visibility';
@@ -495,7 +501,7 @@ export function proxyPath(method: string, path: string, socket = false) {
     if (mirrorRead && !mirrorPageQuerySchema.safeParse(Object.fromEntries(params)).success)
       return null;
     for (const [name, value] of params) {
-      if (mirrorRead || ownerRequests || visibility || conversationList) {
+      if (mirrorRead || mirrorQueue || ownerRequests || visibility || conversationList) {
         if (params.getAll(name).length !== 1 || /[\x00-\x1f]/.test(value)) return null;
         continue;
       }
@@ -549,6 +555,14 @@ export function registerHostRoutes(
   options: GatewayOptions = {},
 ) {
   const active = new Set<() => void>();
+  const notebookDelegations = new NotebookDelegations(async (hostId, action, key) => {
+    const response = await hosts.forward(hostId, 'POST', `/api/cluster/notebooks/${action}`, {
+      key,
+    });
+    const accepted = response.statusCode === 200;
+    response.resume();
+    if (!accepted) throw new HostUnavailable();
+  });
   const watch = (request: FastifyRequest, close: () => void) => {
     active.add(close);
     const unwatch = options.watch?.(request, close) ?? (() => {});
@@ -582,7 +596,10 @@ export function registerHostRoutes(
       const target = raw.startsWith(prefix)
         ? proxyPath(request.method, raw.slice(prefix.length))
         : null;
-      if (!target)
+      if (
+        !target ||
+        ['/api/cluster/notebooks/renew', '/api/cluster/notebooks/revoke'].includes(target)
+      )
         return reply
           .code(404)
           .send({ error: 'This action is not available through the computer connection.' });
@@ -623,6 +640,14 @@ export function registerHostRoutes(
         ) {
           response.destroy();
           return reply.code(502).send(failure(new HostUnavailable()));
+        }
+        if (target === '/api/cluster/notebooks/launch' && response.statusCode === 200) {
+          const { key } = clusterNotebookOpenSchema.parse(request.body);
+          notebookDelegations.track(
+            request.params.hostId,
+            key,
+            (close) => options.watch?.(request, close) ?? (() => {}),
+          );
         }
         // Never relay cookies, auth, Location, forwarding headers or downstream security policy.
         for (const name of ['content-type', 'content-disposition']) {
@@ -731,6 +756,7 @@ export function registerHostRoutes(
     },
   );
   app.addHook('preClose', async () => {
+    notebookDelegations.close();
     for (const close of active) close();
     active.clear();
   });

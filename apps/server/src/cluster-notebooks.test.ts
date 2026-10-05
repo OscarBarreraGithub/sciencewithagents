@@ -236,3 +236,28 @@ it('keeps tunnels when the queue reading failed or was cut short', async () => {
   expect(controls.filter((args) => args[1] === 'cancel')).toEqual([]);
   expect(notebooks.list()).toHaveLength(1);
 });
+
+it('keeps prefixed notebook credentials private and invalidates the exact opened target', async () => {
+  const { cluster, notebooks, state } = setup();
+  configure(cluster);
+  await cluster.tick();
+  Object.assign(state.connection, { baseUrl: '/notebooks/50593230/' });
+  const connected = await notebooks.connect({ key: randomUUID(), jobId: '50593230' });
+  expect(connected.baseUrl).toBe('/notebooks/50593230/');
+  expect(connected.token).toBe(token);
+  expect(notebooks.isOpen(connected.notebook)).toBe(true);
+  expect((await open(notebooks)).url).toBe(
+    `http://127.0.0.1:43210/notebooks/50593230/lab?token=${token}`,
+  );
+  let invalidated = false;
+  const unwatch = notebooks.watch(() => {
+    invalidated = !notebooks.isOpen(connected.notebook);
+  });
+  await notebooks.close({ jobId: '50593230' });
+  expect(invalidated).toBe(true);
+  expect(notebooks.isOpen(connected.notebook)).toBe(false);
+  unwatch();
+  Object.assign(state.connection, { baseUrl: '/notebooks/999/' });
+  await expect(open(notebooks)).rejects.toThrow('does not belong to this job');
+  expect(JSON.stringify(store.db.prepare('SELECT * FROM settings').all())).not.toContain(token);
+});

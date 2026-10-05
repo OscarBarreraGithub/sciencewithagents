@@ -168,7 +168,7 @@ it('refuses provider mismatches and retains one native Stop receipt', async () =
   expect(daemon.control).toHaveBeenCalledExactlyOnceWith(windowId, stop);
 });
 
-it('deduplicates an uncertain queue receipt across lookup and gateway restart', async () => {
+it('deduplicates durable app enqueue and never repeats an uncertain native handoff after restart', async () => {
   const { expectedTurnId: _, ...base } = send();
   const input = { ...base, mode: 'queue' as const };
   daemon.send.mockResolvedValueOnce({ state: 'uncertain', message: 'Native acknowledgement lost' });
@@ -177,14 +177,35 @@ it('deduplicates an uncertain queue receipt across lookup and gateway restart', 
     url: `/api/vscode/windows/${windowId}/send`,
     payload: input,
   });
-  expect(first.json().state).toBe('uncertain');
+  expect(first.json().state).toBe('sent');
+  expect(daemon.send).not.toHaveBeenCalled();
   const duplicate = await app.inject({
     method: 'POST',
     url: `/api/vscode/windows/${windowId}/send`,
     payload: input,
   });
-  expect(duplicate.json().state).toBe('uncertain');
+  expect(duplicate.json()).toEqual(first.json());
+  const row = mirrors.queue.list({ provider: 'codex', threadId: 'native-thread' }).items[0];
+  state.status = 'idle';
+  try {
+    await mirrors.queue.pump();
+  } finally {
+    state.status = 'busy';
+  }
+  expect(mirrors.queue.item(row.id).status).toBe('uncertain');
   const restarted = new VscodeMirrors(store, daemon);
-  expect((await restarted.send(windowId, input)).state).toBe('uncertain');
-  expect(daemon.send).toHaveBeenCalledExactlyOnceWith(windowId, input);
+  try {
+    expect((await restarted.send(windowId, input)).state).toBe('sent');
+    await restarted.queue.pump();
+    expect(daemon.send).toHaveBeenCalledTimes(1);
+    expect(daemon.send.mock.calls[0]).toMatchObject([
+      windowId,
+      { ...base, key: expect.any(String) },
+    ]);
+    expect(
+      (daemon.send.mock.calls[0] as unknown as [string, Record<string, unknown>])[1].expectedTurnId,
+    ).toBeUndefined();
+  } finally {
+    restarted.close();
+  }
 });
