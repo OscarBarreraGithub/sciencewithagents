@@ -122,8 +122,8 @@ export function HostSelector({
         </p>
         <p>
           Tailscale setup can be tricky. Let the setup agents exchange connection details and
-          troubleshoot together—paste their handoffs between computers when needed. They can
-          handle the configuration and tell you when an account or network approval is needed.
+          troubleshoot together—paste their handoffs between computers when needed. They can handle
+          the configuration and tell you when an account or network approval is needed.
         </p>
         <PromptCard label="On the new computer" prompt={newComputerPrompt} />
         <details className="host-connect-finish">

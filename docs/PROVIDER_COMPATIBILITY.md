@@ -32,7 +32,7 @@ cache lifetime and hidden reasoning are not recoverable guarantees. The local vi
 archive and host recovery evidence remain available if provider resume is unavailable.
 
 New orchestration starts fresh. Historical imports preserve their actual provenance;
-complete team indexing starts only when Agent Dock observes the original activity.
+complete team indexing starts only when sciencewithagents observes the original activity.
 In the checked Codex API, `thread/resume` cannot override `dynamicTools`. Existing rollouts retain their
 saved tool definitions. Do not force a new context merely to add a feature to an old thread;
 offer an explicit new context and retain the old archive. The optional newly documented

@@ -27,9 +27,9 @@ The entry computer is shown by its hostname (without a trailing `.local`), so it
 the same from local and remote browsers; it does not refer to the device displaying the app.
 
 The entry computer serves the phone's paired HTTPS page. Other computers are reached
-through an existing SSH connection from that entry computer. Each runs its own Agent Dock
+through an existing SSH connection from that entry computer. Each runs its own sciencewithagents
 and its own signed-in Codex or Claude. Provider credentials, repositories and provider threads never
-move through this setup. A computer must be on, logged in, running Agent Dock and reachable.
+move through this setup. A computer must be on, logged in, running sciencewithagents and reachable.
 The entry computer must also remain on for phone access. This is not cloud execution.
 
 There is no shared sciencewithagents cloud account. Sign in to the chosen provider normally
@@ -51,7 +51,7 @@ Cross-account assistant memory/routing is intentionally not automatic.
    provider sign-in, settings, MCPs, skills and files. Do not copy the maintainer's `data/`,
    Codex home, credentials, SSH keys or browser profile. Confirm the person has authority
    over the intended installation; a similarly named account is not sufficient.
-2. Use an existing, privately reachable SSH route. Agent Dock does not enable Remote Login,
+2. Use an existing, privately reachable SSH route. sciencewithagents does not enable Remote Login,
    alter firewall/privacy settings, open router ports or configure an arbitrary network
    from the browser. If no route exists, record which physical/setup step is missing and
    continue other work. Never repurpose an unrelated school/HPC or GitHub SSH alias.

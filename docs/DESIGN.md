@@ -109,9 +109,11 @@ still constrain automatic decisions. Provider actions are Refresh, Check connect
 supported update checks. Detailed accounting stays available to agents without a separate
 technical usage page. No cache-warming settings; that work is deferred.
 
-The intended automatic five-hour mode must use actual reset/rate evidence, suitable pending
-work, shared reserves, independent model windows and computer pressure. It must not override
-explicit model choices or invent work to spend allowance. This mode is not yet implemented.
+Five-hour pacing must use actual reset/rate evidence, suitable pending work, shared reserves,
+independent model windows and computer pressure. It must not override explicit model choices
+or invent work to spend allowance. Capacity forecasts and coordinator wakeups are advisory;
+managers choose eligible work. Fully automatic utilization is not implemented, and neither
+exhausting a window nor force-switching conversations is guaranteed.
 
 ## Computer health, setup and Apps
 

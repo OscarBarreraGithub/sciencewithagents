@@ -1,21 +1,20 @@
 # Agent-led setup from a clone
 
 For the person: clone/open this repository with your coding agent and ask it to follow this
-guide. The agent does the technical steps below. Complete your own account sign-in only
-when the provider asks; never send passwords or codes through chat. GitHub backups are optional; do not require GitHub or Cloudflare account login on the phone.
+guide; the [README setup prompt](../README.md#set-up) is the canonical copyable request.
+Your agent handles the technical steps below. You complete your own account sign-ins when
+the provider asks and, if pairing a phone, save its passkey and confirm the matching number
+on the computer. Never send passwords or codes through chat.
 
-Your choices are private GitHub backup, optional phone access, and the phone connection
-(no-domain Tailscale or Cloudflare with your own domain). All are optional for local use.
-Your agent handles the technical work; you complete your account sign-ins and, if pairing,
-save the phone passkey and confirm its matching number on the computer.
-
-The [README setup prompt](../README.md#set-up) is the canonical copyable request.
+Private GitHub backup, phone access and the phone connection (no-domain Tailscale or
+Cloudflare with your own domain) are optional choices; local use needs none of them.
+The phone never requires a GitHub or Cloudflare account login.
 
 ## Setup agent
 
 The current interface connects projects, conversations, tasks, reviews, shared editor chats,
 usage/QUARK, advanced controls and configured phone/recovery settings. Use the normal app for
-those journeys. Welcome/setup now checks native sign-in/models and provides native Codex device-code
+those journeys. Welcome/setup checks native sign-in/models and provides native Codex device-code
 sign-in. On Mac, Welcome also opens Claude’s native Terminal/browser sign-in after confirming
 it is signed out; account details stay with Claude. Initial source setup uses this guide.
 Phone access offers optional Tailscale setup inside the app; see [PHONE_SETUP.md](PHONE_SETUP.md),
@@ -41,7 +40,7 @@ private GitHub backup need their chosen native connection tool and GitHub CLI re
 Install optional tools for the features the person wants; a missing optional tool must not
 be described as a failed core installation. Browser-test downloads are developer-only.
 
-1. Read AGENTS.md, README.md, current STATUS.md and the latest DECISIONS.md sections.
+1. Read AGENTS.md, README.md, STATUS.md and DECISIONS.md.
    Confirm the actual directory and installed **Node 24+ and Git**, then the owner’s chosen
    **Codex CLI or Claude Code**. Neither provider requires the other.
    The Codex desktop app alone is not proof that its CLI is installed and on the setup PATH.
@@ -156,10 +155,10 @@ dependency. Report which optional step needs repair and leave the local workspac
 
 - A sandbox refusal can appear as npm's generic “root-owned cache” error. In the verified
   incident it was access to a machine-wide cache, not evidence requiring `sudo chown`.
-  The wrapper now defaults npm's cache to ignored `data/npm-cache`; the workspace config keeps pnpm's
+  The wrapper defaults npm's cache to ignored `data/npm-cache`; the workspace config keeps pnpm's
   store under `data/pnpm-store`. Do not weaken filesystem permissions to repair a cache.
 - A clone installed with the old global pnpm store may report `ERR_PNPM_UNEXPECTED_STORE`.
-  Reinstall dependencies in that clone with the new store configuration; do not delete
+  Reinstall dependencies in that clone with the project-local store configuration; do not delete
   projects or edit global configuration. Noninteractive automation may use `CI=true` for
   the normal pnpm reinstall. Preserve the lockfile and do not treat a reinstall as an upgrade.
 - Git write access, browser process permissions and Cloudflare MCP execution are distinct
@@ -174,7 +173,7 @@ dependency. Report which optional step needs repair and leave the local workspac
 
 ## QUARK tools and usage
 
-The normal setup script now installs a standalone usage reader when available (pinned,
+The normal setup script installs a standalone usage reader when available (pinned,
 checksum-verified Apple Silicon download otherwise). Reader failures do not turn a successful
 source build into a failed app install. They leave a clear incomplete usage step: readings stay
 unknown and QUARK can hold jobs requiring them. Retry `node scripts/setup-usage-collector.mjs`

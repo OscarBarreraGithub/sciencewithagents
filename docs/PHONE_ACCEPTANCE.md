@@ -10,7 +10,7 @@ result privately; browser emulation does not certify physical retention or conne
 
 ## Owner journey
 
-1. **New phone or intentional re-pair only:** on the computer, open Agent Dock →
+1. **New phone or intentional re-pair only:** on the computer, open sciencewithagents →
    **Phone access**. Wait for the connection-ready
    message after the setup agent has verified and activated paired mode. Choose
    **Create a new code** to show the QR, address and instructions; they are hidden while
@@ -45,7 +45,7 @@ result privately; browser emulation does not certify physical retention or conne
    resending messages. Check team/child history and native terminal. After a terminal
    disconnect, **Reconnect terminal** restores its view; **Take control here** deliberately
    transfers input from the other device. Check the phone keyboard and orientation.
-7. Once work is idle, have the setup agent restart only Agent Dock. Confirm the same
+7. Once work is idle, have the setup agent restart only sciencewithagents. Confirm the same
    conversation and enrollment return. Inspect interrupted work before resuming; neither
    command input nor approvals should replay automatically.
 8. Turn phone access off and back on from the computer: active connections stop and private
@@ -92,7 +92,7 @@ See [WebKit's login-cookie explanation](https://webkit.org/blog/14787/webkit-fea
 - Preserve the owner database before initial activation. Keep one app/tunnel, no idle test
   browsers, no unrelated process kills. The Mac must be awake and online; no physical reboot
   or power-setting change is authorized merely by this checklist.
-- For normal use, open the installed Agent Dock app; it owns its server and tunnel. After
+- For normal use, open the installed sciencewithagents app; it owns its server and tunnel. After
   power-on and login, reopen it manually. Streamlined login-item setup remains deferred;
   enable the optional login service only if the owner explicitly chooses it. Do not leave
   a developer preview or install a second cloudflared daemon. Stop temporary acceptance processes

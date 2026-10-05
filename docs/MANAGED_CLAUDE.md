@@ -27,7 +27,7 @@ tool permission. See [migration and limits](WORKER_TOOLS.md) and current VERIFIC
 
 ## What this gives you
 
-Claude can be a project/module manager or a task worker in the same Agent Dock project
+Claude can be a project/module manager or a task worker in the same sciencewithagents project
 as Codex. It uses the computer's installed, signed-in **Claude Code**, not a replacement
 model API client. Each conversation stays with its original provider and local account.
 Computer selection still chooses a separate installation; it does not move history or
@@ -42,7 +42,7 @@ there is no second Claude scheduler. Managers apply exact reviewed changes by de
 Projects may require human approval instead through their workflow setting.
 
 This is different from [sharing a live VS Code chat](VSCODE_MIRROR.md). A mirrored chat
-remains owned by the original extension. A managed conversation is owned by Agent Dock's
+remains owned by the original extension. A managed conversation is owned by sciencewithagents's
 native provider lifecycle and durable archive. Editor sharing does not import a manager.
 
 ## Supported roles and controls
@@ -64,7 +64,7 @@ software already running as the owner.
 
 ## Authentication, billing and local setup
 
-Sign in through Claude Code's own flow on the selected computer. Agent Dock reads its
+Sign in through Claude Code's own flow on the selected computer. sciencewithagents reads its
 native authentication-status projection and stores an account-affinity hash, not an email,
 organization identifier, OAuth token or API key. It requires an identifiable first-party
 subscription login. Missing authentication, missing historical affinity or an account
@@ -73,7 +73,7 @@ change stops managed continuation without replacing the conversation.
 The adapter rechecks affinity before each submitted turn. It rejects conflicting API-key,
 bearer-token, alternate-provider, endpoint/header and OAuth-environment overrides before
 authentication checks or spawning a model process. It does not unset them, change the
-account, use paid API billing as a fallback or provide an Agent Dock sign-in broker.
+account, use paid API billing as a fallback or provide an sciencewithagents sign-in broker.
 The native executable is selected by host setup (`DOCK_CLAUDE_BIN`), never a browser path.
 
 This distinction matters: in noninteractive CLI mode an environment API key can override
@@ -144,7 +144,7 @@ On host restart, interrupted work remains available for inspection and old appro
 The owner explicitly continues after inspecting the result. App startup never resumes native
 work or replays user input; continuation behavior can vary with the installed native version.
 
-Visible text and tool evidence use stable IDs in Agent Dock's archive. Terminal results
+Visible text and tool evidence use stable IDs in sciencewithagents's archive. Terminal results
 are deduplicated and matched to original submissions when the provider reports them, so an
 old result cannot complete a newer delivery. Thinking/signatures and unrelated authentication
 frames are not archived. Provider-owned history remains in Claude's local storage; back it

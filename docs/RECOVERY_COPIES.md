@@ -3,7 +3,7 @@
 ## Everyday use
 
 Open **Settings → Recovery copies**. Choose **Create recovery copy**.
-Agent Dock saves an extra snapshot on the selected computer and checks it before
+sciencewithagents saves an extra snapshot on the selected computer and checks it before
 showing **Verified recovery copy**. This does not start a model turn, stop work or
 change a conversation. Expand a dated row to see counts, its reference and **Check this copy**.
 The list scrolls within a bounded panel; expanded details do not stretch the whole page.
@@ -36,7 +36,7 @@ files remain private for your setup agent to inspect.
 
 ## What this protects
 
-Included is the Agent Dock database: managed conversation entries, agent/task
+Included is the sciencewithagents database: managed conversation entries, agent/task
 records and context identities, decisions, approvals and events, retained image
 bytes, saved app views/drafts, delivery receipts, and private app security metadata.
 Counts describe database records, not proof that all provider context was retained.
@@ -74,7 +74,7 @@ presented as complete-machine recovery.
    its original receipt is available, and SQLite integrity. A standalone file
    without its original receipt can be integrity-checked, but its original hash
    cannot be independently authenticated from that file alone.
-2. Let active work finish or explicitly stop it, then quit Agent Dock. Preserve
+2. Let active work finish or explicitly stop it, then quit sciencewithagents. Preserve
    the entire current data directory and all project/worktree/provider files
    separately. Do not overwrite a running database or remove existing data.
 3. Copy the chosen database into a **new, separate private data directory** as

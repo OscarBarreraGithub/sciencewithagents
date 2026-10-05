@@ -17,25 +17,23 @@ or a guarantee that arbitrary customizations will merge without a decision.
 or its provider is unavailable. No manually supplied recovery reference is required. The older
 Recovery copies handoff remains usable. Opening or copying instructions starts no model work.
 
-## Intended workflow: adapt updates to each person's app
+## Keep local customizations
 
-The owner wants people to customize their local app, including providers and the interface,
-then ask their coding agent to bring over an upstream update while preserving that work.
-The agent compares the previous upstream base, the new release and the customized copy,
-adapts the relevant changes, and checks the person's actual workflows. A clean merge alone
-does not establish that the customization still works. Maintain a short local record of the
-upstream base and intentional customizations, including their purpose and useful checks.
+People may customize their app, including providers and the interface. To carry them forward:
 
-Keep provider code, presentation and persistent settings reasonably separate so this work
-is easy to understand. A general extension marketplace or guaranteed compatibility for
-arbitrary source edits is not a prerequisite. If an update and a customization require a
-real product choice, preserve the existing behavior and explain the specific choice.
+- Keep a short local record of the upstream base and each intentional customization, with
+  its purpose and a check that shows it still works.
+- Compare the previous upstream base, the new release and the customized copy; port the
+  upstream changes into the customized copy instead of overwriting it.
+- Check the person's actual workflows afterwards. A clean merge does not prove that a
+  customization still works.
+- If an update and a customization need a real product choice, keep the existing behavior
+  and explain the specific choice.
 
-The app prepares the initial database copy; the update agent handles fresh copies and source/
-configuration preservation as needed. The person does not need a separate everyday backup
-ritual to receive updates. Copies on this computer remain distinct from protection against
-loss of the computer. Updating can replace or remove obsolete source code; never delete,
-reinitialize or replace the owner's saved workspace to make an update pass.
+Source code can change, and an update may replace or delete obsolete code. The saved private
+workspace must stay: never delete, reinitialize or replace it to make an update pass. The app
+prepares the initial database copy and the agent makes any fresh copies, so no separate
+everyday backup ritual is needed. Copies on this computer do not protect against losing it.
 
 ## In-app maintenance manager
 

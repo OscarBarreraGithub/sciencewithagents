@@ -24,6 +24,22 @@ Browser checks are separate. Do not run every live smoke script as a setup step 
 passing suites merely to increase the test count. [Verification](../docs/VERIFICATION.md)
 records what actually ran; a script's presence is not a current compatibility result.
 
+## Private data and test cleanup
+
+`data/` contains the live database (including its sidecars), connection credentials, saved
+files, manager records, recovery copies and task worktrees alongside development artifacts.
+Never bulk-delete it or assume that every worktree belongs to this repository. Put ad-hoc
+checks in one dated scratch directory, rather than adding files at its root.
+
+The editor probes retain disposable `mirror-vscode-*` and `claude-mirror-vscode-*` directories.
+After confirming that their exact editor/browser/server processes have stopped, their copied
+`extensions/` and `profile/` directories can be removed; retain evidence and screenshots needed
+to investigate failures. Do not apply this rule to ordinary editor profiles, recovery copies or
+task worktrees. Remove a task worktree only after verifying its task is closed and its files
+are clean, using that project's Git worktree command rather than deleting the directory.
+
+## Public website staging
+
 The public site staging command is:
 
 ```sh

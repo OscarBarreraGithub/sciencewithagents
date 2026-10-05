@@ -5,10 +5,9 @@ projects and desktop/phone browser checks.** This is not a claim that every devi
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
 
-The earlier provider-routing, Claude review and manager-lease failures are corrected.
-The beta pass also fixed owned-process stopping, delayed allowance attribution, crowded
-attention/QUARK layouts, keyboard composers, draft races and helper search filtering.
-Product work below remains outside this polish pass.
+The beta covers provider routing, Claude review, manager leases, owned-process stopping,
+delayed allowance attribution, crowded attention/QUARK layouts, keyboard composers,
+concurrent drafts and helper search filtering. Product work below remains outside it.
 Paired devices can browse existing folders on the selected host. New project managers have
 scoped project-folder writes; explicit read-only choices and reviewer restrictions are preserved.
 Spawn creates a fresh manager even for a previously connected folder. Chat configuration can
@@ -36,11 +35,11 @@ layout and long chat history. They do not certify physical Home Screen retention
 reconnection, hardware keyboards or all OS/browser versions. Use [phone acceptance](PHONE_ACCEPTANCE.md)
 on the actual device. The companion is installed from source; no marketplace release is claimed.
 
-Routine work no longer stops at legacy raw-token estimates. Actual provider allowance caps,
+Routine work is not stopped by raw-token estimates. Actual provider allowance caps,
 reserves, resource checks and saved pauses remain enforced. **Help → Report a bug** saves a
 private report and dispatches it to one maintenance manager through normal delegation/review.
 
-Provider outages no longer block saved views: model discovery retries queued messages,
+Provider outages do not block saved views: model discovery retries queued messages,
 provider preparation runs independently, and bounded queue/SSE work yields to HTTP requests.
 Browser drafts survive failed first reads and ambiguous sends; a cold reconnect can display
 the local draft for copying. This does not replace access to the running host for saved history.

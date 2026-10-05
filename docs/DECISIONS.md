@@ -52,7 +52,9 @@ only authorized owner choices can increase caps or reduce reserves. Hard guards 
 and histories while stopping owned work. Bounded grace is not unlimited overspend.
 
 Use a conversation plus a simple status board, with project/task budget sliders and priorities.
-Detailed accounting remains queryable by agents. Automatic five-hour utilization is unfinished.
+Detailed accounting remains queryable by agents. QUARK forecasts five-hour capacity and sends
+advisory coordinator wakeups; using spare allowance stays agent-led, without guaranteed window
+use or forced provider switches.
 Context-cache warming is off and deferred; do not send keepalive prompts as routine behavior.
 
 Routine work uses shared headroom without a mandatory per-task budget ceremony. Raw-token
