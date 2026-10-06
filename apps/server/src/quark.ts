@@ -1403,7 +1403,7 @@ export class Quark {
               ? 'protected'
               : rate === null || projected === null
                 ? 'unknown'
-                : projected! < reserve
+                : target !== null && rate > target
                   ? 'fast'
                   : shortWindow && projected! > reserve + 10
                     ? 'underused'

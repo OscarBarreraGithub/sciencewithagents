@@ -62,7 +62,9 @@ after an observation timeout. The owner's installation and unrelated work were p
 Optional project/task hourly limits now share rolling reservations across managers, workers
 and pending starts, separately for reported Codex and Claude windows. Focused scheduler
 checks and desktop/phone-width demo browser checks cover concurrency, retry, restart,
-delayed reports and resets; completed real-account hourly-window behavior remains unverified.
+delayed reports and resets. Retained real-account observations also cover completed hourly
+rate arithmetic, reset baselines and headroom stop/resume events. A real hourly cap binding
+and releasing, and precise per-project allowance attribution, remain unvalidated.
 QUARK foregrounds separate provider reserve controls and project hourly-rate controls, with
 current estimates, a bounded 12-hour history and account depletion forecasts. Zero hourly usage
 pauses that provider's project work. New reserve settings default to 20% per provider; existing
@@ -90,7 +92,8 @@ and model choices remain. Active work is never discarded by an inactivity timer.
 ## Additional workflows and limits
 
 - **Request coverage:** structured source-message links, dispositions and paged untriaged
-  inputs now survive steering, compaction and restarts. Managers still triage meaning;
+  inputs survive steering, compaction and restarts. Manager reminders also include older
+  open work; checkpoints report outstanding items without resolving them. Managers still triage meaning;
   read-only archive review pages full retained app text and selected available editor transcripts.
   There is no automatic proof that every small ask became
   a task or was completed. RLM-assisted archive audits are being evaluated, not shipped.

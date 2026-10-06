@@ -825,6 +825,56 @@ it('keeps reset-clock jitter in one window and reports distinct project rates ov
   ).toBeNull();
 });
 
+it.each([
+  { reserve: 0, consumed: 6, state: 'fast', projected: 0 },
+  { reserve: 5, consumed: 6, state: 'fast', projected: 0 },
+  { reserve: 0, consumed: 0, state: 'on-track', projected: 94 },
+])(
+  'forecasts early exhaustion with reserve $reserve and consumption $consumed',
+  ({ reserve, consumed, state, projected }) => {
+    store.setSetting('pulsar:policy', {
+      ...pulsar.policy(),
+      providerReserves: {
+        ...pulsar.policy().providerReserves,
+        codex: { ...pulsar.policy().providerReserves.codex, reservePercent: reserve },
+      },
+    });
+    for (let n = 1; n <= 6; n++) {
+      vi.setSystemTime(start + n * 60_000);
+      usage(6 + (n * consumed) / 6);
+      quark.sync();
+    }
+    const policy = pulsar.policy();
+    const forecast = quark.utilization().find((row) => row.provider === 'codex')!;
+    expect(forecast).toMatchObject({
+      state,
+      reservePercent: reserve,
+      observedPercentPerHour: consumed * 10,
+      projectedRemainingPercent: projected,
+    });
+    if (consumed > 0) {
+      expect(forecast.observedPercentPerHour).toBeGreaterThan(forecast.targetPercentPerHour!);
+      expect(Date.parse(forecast.exhaustionAt!)).toBeLessThan(Date.parse(forecast.resetsAt!));
+    }
+    expect(pulsar.policy()).toEqual(policy);
+    // Neither old reports nor an elapsed reset can supply a current forecast.
+    vi.setSystemTime(start + 10 * 60_000);
+    expect(quark.utilization().find((row) => row.provider === 'codex')).toMatchObject({
+      state: 'unknown',
+      observedPercentPerHour: null,
+      projectedRemainingPercent: null,
+    });
+    vi.setSystemTime(reset + 60_000);
+    usage(6 + consumed);
+    quark.sync();
+    expect(quark.utilization().find((row) => row.provider === 'codex')).toMatchObject({
+      state: 'unknown',
+      observedPercentPerHour: null,
+      projectedRemainingPercent: null,
+    });
+  },
+);
+
 it('reports spare five-hour capacity using account-wide readings without granting extra budget', () => {
   const sessionReset = start + 5 * 3600_000;
   const setSession = (used: number, end = sessionReset) => {

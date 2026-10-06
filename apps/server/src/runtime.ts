@@ -2213,6 +2213,7 @@ export class Runtime {
     const status = {
       ...current,
       ownerRequests: this.workItems.ownerRequests(agentId, { limit: 5 }),
+      openWork: this.openWork(agent.projectId),
       jobs: current.jobs.slice(0, 5).map((job) => ({ ...job, reason: job.reason.slice(0, 240) })),
       holds: current.holds
         .slice(0, 6)
@@ -2281,6 +2282,29 @@ export class Runtime {
       return null;
     this.managerNotices.set(agentId, { runId: run.id, at, fingerprint, urgent });
     return status;
+  }
+  /** Bounded preview of unresolved project work; nextCursor pages the complete list. */
+  private openWork(projectId: string) {
+    const page = this.workItems.page(projectId, { limit: 5 });
+    return {
+      items: page.items.map((item) => ({
+        id: item.id,
+        revision: item.revision,
+        kind: item.kind,
+        status: item.status,
+        title: item.title,
+        detail: item.detail.slice(0, 240),
+        truncated: item.detail.length > 240,
+        managerId: item.managerId,
+        taskId: item.taskId,
+        sourceMessages: item.sourceMessages.length,
+      })),
+      total: page.total,
+      omitted: page.remaining,
+      nextCursor: page.nextCursor,
+      notice:
+        'Unresolved items stay in scope until outcome evidence or a recorded owner decision resolves them; newer requests add to them. Read full details with dock_inspect {workItems:{}} first, then follow each returned nextCursor until null for the complete list.',
+    };
   }
   private managerToolResult(agentId: string, result: unknown) {
     const notice = this.managerNotice(agentId);
@@ -4289,7 +4313,17 @@ export class Runtime {
       if (name === 'dock_checkpoint') {
         const value = checkpointSchema.parse(raw);
         this.store.updateAgent(agent.id, { checkpoint: value.summary });
-        return { saved: true };
+        if (agent.role !== 'manager' || agent.interview) return { saved: true };
+        // A saved summary is recall, not completion; report what remains without resolving it.
+        return {
+          saved: true,
+          coverage: {
+            openWorkItems: this.workItems.page(agent.projectId, { limit: 1 }).total,
+            ownerRequestsAwaitingTriage: this.workItems.ownerRequests(agent.id, { limit: 1 }).total,
+            notice:
+              'Saving a checkpoint resolves no work item or owner request. Reconcile open items through dock_inspect {workItems:{}} and its nextCursor before claiming all requests are complete; independent asks may remain open while one task finishes.',
+          },
+        };
       }
       if (name === 'dock_review') {
         const value = reviewSchema.parse(raw);

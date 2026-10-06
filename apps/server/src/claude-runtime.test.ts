@@ -771,6 +771,42 @@ describe('Claude uses the shared runtime without Codex protocol substitution', (
     expect(session.submit).toHaveBeenCalledTimes(1);
     expect(store.runs().filter((item) => item.agentId === manager)).toHaveLength(1);
   });
+  it('restores earlier open work and its checkpoint across native compaction without a new turn', async () => {
+    const { session, run } = await start();
+    const item = runtime.workItems.saveForManager(manager, {
+      key: randomUUID(),
+      title: 'Earlier open ask',
+      detail: 'Next: verify output. Evidence: fixture log. Blocker: none.',
+      status: 'waiting',
+    });
+    store.updateAgent(manager, { checkpoint: `Open: ${item.id} waiting.` });
+    const hook = session.options.hook!;
+    const event = { session_id: session.options.sessionId, trigger: 'auto' };
+    expect(hook({ ...event, hook_event_name: 'PreCompact' }, run.id)).toEqual({});
+    expect(hook({ ...event, hook_event_name: 'PostCompact' }, run.id)).toEqual({});
+    const resumed = hook({ ...event, hook_event_name: 'SessionStart' }, run.id) as {
+      hookSpecificOutput: { additionalContext: string };
+    };
+    expect(resumed.hookSpecificOutput.additionalContext).toContain(`Open: ${item.id} waiting.`);
+    expect(resumed.hookSpecificOutput.additionalContext).toContain(item.detail);
+    const update = hook(
+      {
+        ...event,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Read',
+        tool_use_id: 'after-compact',
+      },
+      run.id,
+    ) as { hookSpecificOutput: { additionalContext: string } };
+    const notice = JSON.parse(
+      update.hookSpecificOutput.additionalContext.replace('QUARK update (host evidence): ', ''),
+    );
+    expect(notice.openWork).toMatchObject({ total: 1, nextCursor: null });
+    expect(notice.openWork.items).toEqual([
+      expect.objectContaining({ id: item.id, status: 'waiting', managerId: manager }),
+    ]);
+    expect(session.submit).toHaveBeenCalledTimes(1);
+  });
   it('fences hooks by original run/session and rechecks signed manager leases without renewing them', async () => {
     const { run, session } = await start();
     const event = {

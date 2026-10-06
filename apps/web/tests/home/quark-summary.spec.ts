@@ -1,6 +1,12 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 
+test.afterEach(async ({ page }) => {
+  // Finish polling response reads before context teardown disposes them.
+  // Waiting preserves genuine route errors instead of hiding them.
+  await page.unrouteAll({ behavior: 'wait' });
+});
+
 const at = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString();
 const window = (
   id: string,

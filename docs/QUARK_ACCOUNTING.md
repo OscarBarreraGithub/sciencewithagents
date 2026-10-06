@@ -200,6 +200,7 @@ as negative spending. Window charts restart on a changed reset or regressing met
 while task/project spending grants do not. Hourly rates divide attributed percentage points
 of the full named allowance by elapsed sample hours (up to one hour, at least five minutes),
 without dividing by the remaining balance or the allowance window's duration.
+Account forecasts flag projected exhaustion before reset even when the saved reserve is zero.
 Append-only interval evidence, durable observations, bounded display results and incremental
 budget totals support inspection and restart recovery without a monitoring model loop.
 

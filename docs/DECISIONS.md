@@ -33,6 +33,9 @@ Notes belong to the owner. Managers can read them for context but cannot write o
 them. Each manager keeps durable internal work, human action items, decisions and checkpoints.
 Human summaries are one or two readable lines. One blocked item does not stop independent
 work. Claude uses native 60% compaction with saved handoffs; Codex manages its context naturally.
+Steering and adjacent questions add to the outstanding work unless the owner explicitly
+cancels or replaces it. Handoffs preserve item IDs, assignees, next actions and evidence;
+checkpoints and completion reports reconcile earlier open requests, including triaged items.
 
 ## Shared budgets and computer capacity
 

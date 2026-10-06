@@ -21,13 +21,49 @@ async function chats(page: Page) {
 
 const go = (page: Page, route: string) =>
   page.evaluate((route) => (location.hash = `#/${route}`), route);
-const at = (page: Page, route: string) =>
-  expect(page).toHaveURL(new RegExp(`#/${route.replace(/[.*+?^${}()|[\]\\%]/g, '\\$&')}$`));
+async function at(page: Page, route: string) {
+  await expect(page).toHaveURL(new RegExp(`#/${route.replace(/[.*+?^${}()|[\]\\%]/g, '\\$&')}$`));
+  // Hash changes precede React's destination render, especially after reload.
+  // Wait for that surface before choosing a control whose phone layout changes.
+  const agent = /^chat\/([^/]+)/.exec(route)?.[1];
+  if (agent) {
+    await expect(page.locator(`a.chat-row[href="#/chat/${agent}"]`)).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(page.locator('.main-chat.has-selection .chat-pane-inner')).toBeVisible();
+  } else if (route === shared) {
+    await expect(page.locator('.main-chat.has-selection .chat-editor')).toBeVisible();
+  } else {
+    const titles: Record<string, string> = {
+      home: 'Home',
+      settings: 'Settings',
+      phone: 'Phone access',
+      chats: 'Chats',
+    };
+    const title = titles[route];
+    expect(title).toBeTruthy();
+    await expect(page.locator('#home-content').getByRole('heading', { level: 1 })).toHaveText(
+      title!,
+    );
+  }
+}
 
 /** The app's Back: the visible control, or the phone swipe where chats hide the header. */
 async function back(page: Page) {
+  const route = new URL(page.url()).hash.slice(2);
+  await at(page, route);
   const link = page.locator('a.home-back');
-  if (await link.isVisible()) return link.click();
+  const phoneChat =
+    (route.startsWith('chat/') || route === shared) &&
+    (await page.evaluate(
+      () => matchMedia('(max-width: 700px), (max-height: 500px) and (pointer: coarse)').matches,
+    ));
+  if (!phoneChat) {
+    await expect(link).toBeVisible();
+    return link.click();
+  }
+  await expect(link).toBeHidden();
   await page.locator('#home-content').evaluate((node) => {
     const dispatch = (type: string, x: number) => {
       const event = new Event(type, { bubbles: true, cancelable: true });
@@ -57,7 +93,7 @@ async function record(page: Page) {
 
 test('switching conversations retires the earlier chat, even after a settings detour', async ({
   page,
-}) => {
+}, info) => {
   const [a, b] = await chats(page);
   await page.goto('/#/home');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home');
@@ -92,6 +128,8 @@ test('switching conversations retires the earlier chat, even after a settings de
   await go(page, `chat/${b}`);
   await at(page, `chat/${b}`);
   await page.reload();
+  await at(page, `chat/${b}`);
+  await page.screenshot({ path: info.outputPath('reloaded-chat-before-back.png') });
   const seen = await record(page);
   await back(page);
   await at(page, 'chats');
@@ -106,6 +144,57 @@ test('switching conversations retires the earlier chat, even after a settings de
   await at(page, 'home');
   const routes = await seen();
   expect(routes.slice(routes.indexOf(`#/${shared}`) + 1)).toEqual(['#/chats', '#/home']);
+});
+
+test('Back waits for a reloaded chat destination before selecting its phone control', async ({
+  page,
+}) => {
+  const [, b] = await chats(page);
+  await page.goto('/#/settings');
+  await at(page, 'settings');
+  await go(page, `chat/${b}`);
+  await at(page, `chat/${b}`);
+  let entered!: () => void, release!: () => void;
+  const fetched = new Promise<void>((resolve) => (entered = resolve));
+  const ready = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/snapshot', async (route) => {
+    const response = await route.fetch();
+    entered();
+    await ready;
+    await route.fulfill({ response });
+  });
+  try {
+    await page.reload();
+    await fetched;
+    // The transient pre-chat header exists while its saved destination is loading.
+    await expect(page.locator('a.home-back')).toBeVisible();
+    await page.evaluate(() => {
+      const state = window as unknown as { earlyBack: boolean };
+      state.earlyBack = false;
+      document.addEventListener(
+        'click',
+        (event) => {
+          if (
+            (event.target as Element).closest('a.home-back') &&
+            !document.querySelector('.main-chat.has-selection')
+          )
+            state.earlyBack = true;
+        },
+        true,
+      );
+    });
+    const returning = back(page);
+    await expect(page.locator('a.home-back')).toBeVisible();
+    release();
+    await returning;
+    expect(await page.evaluate(() => (window as unknown as { earlyBack: boolean }).earlyBack)).toBe(
+      false,
+    );
+    await at(page, 'settings');
+  } finally {
+    release();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
 });
 
 test('an old saved trail with mixed conversations is normalized on reload', async ({ page }) => {

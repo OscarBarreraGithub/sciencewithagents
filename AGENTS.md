@@ -20,6 +20,9 @@ Build bounded working slices, not project-wide implementation plans. Keep plans 
 page. A review finding needs a concrete fix, an explicit disposition or a smaller task.
 Continue independent authorized work when one item needs human input. Do not infer new
 permission from old maintainer approvals or equate passing tests with the requested outcome.
+Adjacent questions and steering add to unfinished work unless the person explicitly cancels
+or replaces it. Keep stable work IDs, assignees, next actions and evidence across handoffs and
+compaction; reconcile earlier open requests before claiming completion.
 
 Use strict TypeScript, pnpm workspaces, shared Zod contracts, parameterized SQLite,
 generated IDs, durable idempotency and append-only events. Runtime data belongs under

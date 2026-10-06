@@ -135,6 +135,12 @@ null; `includeDone:true` includes completed items. Reads stay within the caller'
 Raw prompts remain available through history/read, but prompt storage alone does not prove
 every request was recognized or completed. Managers reconcile the list with source evidence
 after compaction and before reporting completion; no automatic perfect-recall claim is made.
+Adjacent status or privacy questions add to the open work. Deferral, cancellation or
+replacement needs an explicit owner decision recorded with its source message. Coalesced
+manager updates (`quarkUpdate` on existing tool replies or Claude post-tool context, never a
+new turn) carry `openWork`: up to five unresolved items with IDs, status, owner and task
+references, short previews and the same `nextCursor`. A manager `dock_checkpoint` reply
+reports open-item and untriaged-request counts; saving a summary resolves nothing.
 
 `dock_inspect {}` and ordinary host state include `workerTools`, with its `toolPolicy`, revision and
 the owner-granted Codex ceiling. Optional `dock_delegate.tools` accepts:
