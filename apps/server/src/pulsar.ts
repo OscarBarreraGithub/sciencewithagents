@@ -5,6 +5,7 @@ import {
   quarkProjectPolicySchema,
   modelPolicySchema,
   jobEstimateSchema,
+  jobPrioritySchema,
   pulsarPolicySchema,
   providerReservePolicy,
   effectiveProviderReserve,
@@ -150,6 +151,41 @@ export class Pulsar {
       ? saved
       : null;
   }
+  /** Explicit task scheduling applies to its queued automatic turns without replacing them. */
+  scheduleTask(taskId: string, raw: unknown, withinTransaction = false) {
+    const estimate = jobEstimateSchema.parse(raw);
+    const before = this.store.task(taskId);
+    const queued = this.store.db
+      .prepare(
+        `SELECT r.body FROM runs r JOIN agents a ON a.id=r.agent_id
+         WHERE r.status='queued' AND a.project_id=? ORDER BY r.rowid`,
+      )
+      .all(before.projectId)
+      .map((row) => JSON.parse(String(row.body)) as PrivateRun)
+      .filter(
+        (run) =>
+          !before.ownerTicket &&
+          this.taskId(run) === taskId &&
+          !['user', 'resume'].includes(run.kind),
+      )
+      .map((run) => ({ run, estimate: this.estimate(run) }));
+    const save = () => {
+      const task = this.store.updateTask(taskId, { scheduling: estimate });
+      this.store.setSetting(`pulsar:task-priority:${taskId}`, estimate.priority);
+      for (const entry of queued)
+        this.store.setSetting(`pulsar:estimate:${entry.run.id}`, {
+          ...entry.estimate,
+          priority: estimate.priority,
+        });
+      this.store.event('pulsar.task_scheduled', task.projectId, null, {
+        taskId,
+        priority: estimate.priority,
+        queuedRunIds: queued.map((entry) => entry.run.id),
+      });
+      return task;
+    };
+    return withinTransaction ? save() : this.store.transaction(save);
+  }
   estimate(run: PrivateRun): JobEstimate {
     // Changing a project priority affects future admission, not the admitted turn's record.
     const admitted = this.lease(run.id);
@@ -158,6 +194,9 @@ export class Pulsar {
     if (saved) return jobEstimateSchema.parse(saved);
     const taskId = this.taskId(run);
     const task = taskId ? this.store.task(taskId) : null;
+    const explicitTaskPriority = taskId
+      ? this.store.getSetting(`pulsar:task-priority:${taskId}`)
+      : null;
     const agent = this.store.agent(run.agentId);
     const project = quarkProjectPolicySchema.parse(
       this.store.getSetting(`quark:project:${this.store.agent(run.agentId).projectId}`) ?? {},
@@ -177,6 +216,9 @@ export class Pulsar {
           }
         : (task?.scheduling ?? {})),
       ...(project.priority !== null ? { priority: project.priority } : {}),
+      ...(explicitTaskPriority !== null
+        ? { priority: jobPrioritySchema.parse(explicitTaskPriority) }
+        : {}),
       ...(task?.ownerTicket ? { priority: 'background' } : {}),
       ...(['user', 'resume'].includes(run.kind) ? { priority: 'interactive' } : {}),
     });
@@ -698,7 +740,7 @@ export class Pulsar {
       }
       if (input.action === 'configure') {
         this.store.setSetting(`pulsar:estimate:${run.id}`, input.estimate);
-        if (taskId) this.store.updateTask(taskId, { scheduling: input.estimate });
+        if (taskId) this.scheduleTask(taskId, input.estimate, true);
       }
       if (input.action === 'override') this.store.setSetting(`pulsar:override:${run.id}`, true);
       if (input.action === 'cancel') {

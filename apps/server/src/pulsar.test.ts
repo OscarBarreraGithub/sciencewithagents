@@ -448,6 +448,76 @@ it('keeps admitted estimates stable while the next turn inherits a changed proje
   );
   expect(pulsar.estimate(followup).priority).toBe('background');
 });
+it('reprioritizes an owned task across existing and future automatic runs without changing admitted work or forecasts', () => {
+  const value = job('Promoted task'),
+    unrelated = job('Unrelated task');
+  store.setSetting(`quark:project:${value.project.id}`, { priority: 'high' });
+  expect(pulsar.reserve(value.run, new Set())).toBe(true);
+  store.updateRun(value.run.id, { status: 'running' });
+  const admitted = pulsar.estimate(store.run(value.run.id));
+  const lease = store.db.prepare('SELECT body FROM pulsar_leases WHERE run_id=?').get(value.run.id);
+  const queued = store.enqueue(
+    value.worker.id,
+    randomUUID(),
+    'Retained exact request',
+    'message',
+    value.project.managerId,
+  );
+  const explicit = jobEstimateSchema.parse({
+    priority: 'background',
+    quotaPercent: 0.4,
+    expectedTokens: 7000,
+    expectedSeconds: 900,
+  });
+  store.setSetting(`pulsar:estimate:${queued.id}`, explicit);
+  const report = store.enqueue(
+    value.project.managerId,
+    randomUUID(),
+    'Retained manager report',
+    'report',
+    value.worker.id,
+  );
+  const reportBefore = pulsar.estimate(report);
+  const owner = store.enqueue(value.worker.id, randomUUID(), 'Direct owner message', 'user');
+  const queuedBefore = store.run(queued.id),
+    reportRunBefore = store.run(report.id);
+  const changed = pulsar.scheduleTask(value.task.id, {
+    ...value.task.scheduling,
+    priority: 'interactive',
+  });
+  expect(changed.scheduling.priority).toBe('interactive');
+  expect(pulsar.estimate(queued)).toEqual({ ...explicit, priority: 'interactive' });
+  expect(pulsar.estimate(report)).toEqual({ ...reportBefore, priority: 'interactive' });
+  expect(store.run(queued.id)).toEqual(queuedBefore);
+  expect(store.run(report.id)).toEqual(reportRunBefore);
+  expect(pulsar.estimate(store.run(value.run.id))).toEqual(admitted);
+  expect(
+    store.db.prepare('SELECT body FROM pulsar_leases WHERE run_id=?').get(value.run.id),
+  ).toEqual(lease);
+  expect(pulsar.estimate(owner).priority).toBe('interactive');
+  expect(pulsar.estimate(unrelated.run).priority).toBe('normal');
+  const next = store.enqueue(
+    value.worker.id,
+    randomUUID(),
+    'Future continuation',
+    'message',
+    value.project.managerId,
+  );
+  expect(pulsar.estimate(next).priority).toBe('interactive');
+  expect(pulsar.ordered([unrelated.run, queued])[0]!.id).toBe(queued.id);
+  store.close();
+  store = new Store(join(root, 'dock.sqlite'));
+  pulsar = new Pulsar(
+    store,
+    () => machine,
+    () => clock,
+  );
+  expect(pulsar.estimate(store.run(queued.id))).toEqual({ ...explicit, priority: 'interactive' });
+  expect(pulsar.estimate(store.run(next.id)).priority).toBe('interactive');
+  usage(99);
+  expect(pulsar.decision(store.run(queued.id)).eligible).toBe(false);
+  expect(pulsar.decision(store.run(queued.id)).reason).toContain('protecting headroom');
+});
 it('applies background project policy to agent-dispatched local jobs while preserving owner interactive work', () => {
   const foreground = job('Foreground'),
     background = job('Local background project');

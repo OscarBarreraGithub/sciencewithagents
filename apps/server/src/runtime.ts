@@ -4354,7 +4354,7 @@ export class Runtime {
           );
         if (['done', 'integrated', 'split', 'cancelled'].includes(task.status))
           throw new Conflict('This task is closed.');
-        return publicTask(this.store.updateTask(task.id, { scheduling: value.estimate }));
+        return publicTask(this.pulsar.scheduleTask(task.id, value.estimate, true));
       }
       if (name === 'dock_task_create') {
         const value = taskCreateSchema.parse(raw);

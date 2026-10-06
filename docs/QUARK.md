@@ -218,6 +218,11 @@ New managers automatically receive the tools and instructions. Codex managers ca
 installed Claude models, select an exact reported model/effort and delegate bounded work;
 Claude can inspect Codex usage the same way. `dock_inspect {capacity:true}` reads shared
 capacity, `{scheduling:true}` reads project jobs, and `dock_schedule` updates an owned task.
+An explicit task priority overrides the project's default for that task's future automatic
+turns and its existing queued automatic runs. Those queued runs keep their IDs, prompts and
+cost estimates; admitted/running turns and direct owner messages keep their own choices.
+Inherited task priorities still follow the project default. Priority orders eligible work;
+it does not release saved holds, adaptive pacing, reserves or allowance budgets.
 Give optional continuous development background priority and leave the app open. The host
 waits and resumes admission as capacity changes; managers must not create polling turns.
 Work still needs clear assignments and completion criteria; QUARK does not invent a backlog.
