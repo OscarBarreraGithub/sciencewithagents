@@ -225,7 +225,11 @@ Work still needs clear assignments and completion criteria; QUARK does not inven
 ## Shared admission rules
 
 - Interactive, high, normal, then background; equal-priority managers share access by last
-  admission. Input order within one conversation is preserved, even at identical timestamps.
+  admission. An idle conversation selects its earliest direct owner or recovery input ahead
+  of automatic coordination turns, under that input's own admission rules. These inputs
+  retain FIFO order regardless of saved priority, including editing holds and identical
+  timestamps. Recovery input can come from the owner or QUARK's verified stop recovery.
+  Automatic coordination remains saved in its own order; active turns finish first.
 - One Claude slot by default, three Codex slots, plus the existing overall group limit.
   All managers on this host reserve from the same transactionally saved allowance ledger.
 - Separate Codex and Claude remaining reserves default to 20% for new settings. Existing

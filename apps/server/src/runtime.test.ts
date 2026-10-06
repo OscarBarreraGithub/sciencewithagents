@@ -17,6 +17,7 @@ import {
   workerToolsSchema,
   projectWorkflowSchema,
   withProjectDecisionPolicy,
+  jobEstimateSchema,
 } from '@dock/shared';
 
 let root: string,
@@ -57,6 +58,318 @@ const task = async () =>
     goal: 'Implement one result',
     acceptance: 'The fixture has one new result',
   })) as { id: string };
+
+describe('owner input ahead of automatic coordination', () => {
+  let provider: DemoProvider, requests: ReturnType<typeof vi.spyOn>;
+  beforeEach(async () => {
+    await runtime.close();
+    provider = new DemoProvider();
+    const request = provider.request.bind(provider);
+    requests = vi
+      .spyOn(provider, 'request')
+      .mockImplementation(async (method, raw) =>
+        method === 'turn/start'
+          ? { turn: { id: randomUUID(), status: 'inProgress' } }
+          : request(method, raw),
+      );
+    runtime = new Runtime(store, root, 'codex', async () => provider);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+  const drain = () => (runtime as unknown as { drain(): Promise<void> }).drain();
+  const starts = () => requests.mock.calls.filter(([method]) => method === 'turn/start');
+  const report = () => {
+    const task = store.addTask(project, {
+      title: 'Retained result',
+      goal: 'Read evidence',
+      acceptance: 'Report evidence',
+      parentId: null,
+    });
+    const worker = store.addAgent({
+      projectId: project,
+      taskId: task.id,
+      parentId: manager,
+      role: 'researcher',
+      name: 'Completed researcher',
+      cwd: projectRoot,
+    });
+    const run = store.enqueue(manager, randomUUID(), 'Retained worker result', 'report', worker.id);
+    store.setSetting(`pulsar:estimate:${run.id}`, jobEstimateSchema.parse({ priority: 'high' }));
+    return store.run(run.id);
+  };
+  const usage = (usedPercent: number, reset: string) =>
+    store.setSetting(
+      'capacity:v1:codex',
+      parseCapacity(
+        'codex',
+        [
+          {
+            provider: 'codex',
+            source: 'oauth',
+            usage: {
+              updatedAt: new Date().toISOString(),
+              secondary: { usedPercent, windowMinutes: 10080, resetsAt: reset },
+            },
+          },
+        ],
+        Date.now(),
+      ),
+    );
+  const machine = () =>
+    vi.spyOn(runtime.capacity, 'status').mockReturnValue({
+      ...runtime.capacity.status(),
+      machine: {
+        observedAt: new Date().toISOString(),
+        cpuCount: 8,
+        cpuUsedPercent: 10,
+        memoryTotalBytes: 32 * 1024 ** 3,
+        memoryAvailableBytes: 16 * 1024 ** 3,
+        diskAvailableBytes: 100 * 1024 ** 3,
+        loadPerCore: 0.1,
+      },
+    });
+  const finish = (runId: string) => {
+    provider.emit('notification', 'turn/completed', {
+      threadId: store.agent(manager).threadId,
+      turn: { id: store.run(runId).turnId, status: 'completed' },
+    });
+  };
+
+  it('starts eligible owner input once past an adaptive-paced report without changing the report', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const now = Date.now(),
+      reset = new Date(now + 7 * 86400_000).toISOString();
+    usage(10, reset);
+    runtime.quark.sync();
+    const prior = store.enqueue(manager, randomUUID(), 'Previously admitted work');
+    expect(runtime.pulsar.reserve(prior, new Set())).toBe(true);
+    runtime.quark.begin(prior);
+    store.updateRun(prior.id, { status: 'running' });
+    for (let i = 1; i <= 10; i++) {
+      vi.setSystemTime(now + i * 60_000);
+      usage(10 + 0.2 * i, reset);
+      runtime.quark.sync();
+    }
+    store.updateRun(prior.id, { status: 'completed' });
+    runtime.quark.sync();
+    runtime.pulsar.settle(prior.id);
+    store.updateAgent(manager, { status: 'idle' });
+    store.setSetting('pulsar:policy', { enabled: true, reservePercent: 5 });
+    machine();
+    const automatic = report();
+    const owner = store.enqueue(manager, randomUUID(), 'Owner question');
+    expect(runtime.quark.block(automatic, true)).toMatchObject({ cause: 'headroom' });
+    expect(runtime.pulsar.decision(owner).eligible).toBe(true);
+    runtime.kick();
+    await vi.waitFor(() => expect(store.run(owner.id).status).toBe('running'));
+    const calls = requests.mock.calls.length;
+    for (let i = 0; i < 3; i++) await drain();
+    expect(starts()).toHaveLength(1);
+    expect(requests.mock.calls).toHaveLength(calls);
+    expect(store.run(automatic.id)).toEqual(automatic);
+    expect(runtime.pulsar.lease(automatic.id)).toBeNull();
+    expect(store.getSetting(`quark:manager-lease:${automatic.id}`)).toBeNull();
+    expect(runtime.quark.runs(true).some((run) => run.runId === automatic.id)).toBe(false);
+    expect(
+      store
+        .events()
+        .filter(
+          (e) => e.type === 'pulsar.admitted' && (e.data as { runId: string }).runId === owner.id,
+        ),
+    ).toHaveLength(1);
+    expect(store.runs()).toHaveLength(3);
+  });
+
+  it.each([false, true])(
+    'background owner input ignores queued peers but preserves other-agent foreground contention: %s',
+    async (otherForeground) => {
+      usage(10, new Date(Date.now() + 7 * 86400_000).toISOString());
+      runtime.quark.sync();
+      store.setSetting('pulsar:policy', { enabled: true, reservePercent: 5 });
+      machine();
+      const automatic = report();
+      const first = store.enqueue(manager, randomUUID(), 'First background input');
+      const later = store.enqueue(manager, randomUUID(), 'Later interactive input');
+      store.setSetting(
+        `pulsar:estimate:${first.id}`,
+        jobEstimateSchema.parse({ priority: 'background' }),
+      );
+      if (otherForeground) {
+        const other = store.addManager(project, 'Other foreground manager', 'Independent work');
+        store.enqueue(other.id, randomUUID(), 'Other conversation');
+        runtime.externalControl.add(other.id);
+      }
+      // Same-conversation reports remain visible to global/local foreground demand.
+      expect(runtime.pulsar.wantsForeground(new Set())).toBe(true);
+      if (otherForeground) {
+        expect(runtime.pulsar.decision(first)).toMatchObject({
+          eligible: false,
+          reason: expect.stringContaining('yielding'),
+        });
+        const reserve = vi.spyOn(runtime.pulsar, 'reserve');
+        runtime.kick();
+        await vi.waitFor(() =>
+          expect(reserve.mock.calls.some(([run]) => run.id === first.id)).toBe(true),
+        );
+        expect(starts()).toHaveLength(0);
+        expect(runtime.pulsar.lease(first.id)).toBeNull();
+      } else {
+        expect(runtime.pulsar.decision(first).eligible).toBe(true);
+        // A running peer is still foreground; only queued peers are ignored.
+        store.updateRun(automatic.id, { status: 'running' });
+        expect(runtime.pulsar.decision(first).eligible).toBe(false);
+        store.updateRun(automatic.id, { status: 'queued' });
+        runtime.kick();
+        await vi.waitFor(() => expect(store.run(first.id).status).toBe('running'));
+        expect(starts()).toHaveLength(1);
+      }
+      expect(store.run(later.id).status).toBe('queued');
+      expect(store.run(automatic.id)).toEqual(automatic);
+      expect(runtime.pulsar.lease(automatic.id)).toBeNull();
+    },
+  );
+
+  it.each([
+    ['user', 'resume'],
+    ['resume', 'user'],
+  ] as const)(
+    'keeps %s then %s FIFO ahead of reports despite saved priorities and identical timestamps',
+    async (firstKind, secondKind) => {
+      const automatic = report();
+      const first = store.enqueue(manager, randomUUID(), 'First input', firstKind);
+      const second = store.enqueue(manager, randomUUID(), 'Second input', secondKind);
+      store.updateRun(second.id, { createdAt: first.createdAt });
+      store.setSetting(
+        `pulsar:estimate:${first.id}`,
+        jobEstimateSchema.parse({ priority: 'normal' }),
+      );
+      store.setSetting(
+        `pulsar:estimate:${second.id}`,
+        jobEstimateSchema.parse({ priority: 'interactive' }),
+      );
+      runtime.kick();
+      await vi.waitFor(() => expect(store.run(first.id).status).toBe('running'));
+      expect(store.run(second.id).status).toBe('queued');
+      expect(store.run(automatic.id)).toEqual(automatic);
+      finish(first.id);
+      await vi.waitFor(() => expect(store.run(second.id).status).toBe('running'));
+      expect(store.run(automatic.id)).toEqual(automatic);
+      expect(starts()).toHaveLength(2);
+      expect(runtime.pulsar.lease(automatic.id)).toBeNull();
+    },
+  );
+
+  it('holds later input behind an edited owner head and releases that same input', async () => {
+    const automatic = report();
+    const first = store.enqueue(manager, randomUUID(), 'First input');
+    const second = store.enqueue(manager, randomUUID(), 'Later input');
+    store.updateRun(first.id, {
+      queueEdit: { state: 'editing', clientId: randomUUID(), text: 'Unsaved revision' },
+    });
+    await drain();
+    expect(starts()).toHaveLength(0);
+    expect(requests).not.toHaveBeenCalled();
+    expect(store.run(first.id)).toMatchObject({
+      status: 'queued',
+      text: first.text,
+      queueEdit: { state: 'editing' },
+    });
+    expect(store.run(second.id).status).toBe('queued');
+    expect(store.run(automatic.id)).toEqual(automatic);
+    store.updateRun(first.id, { queueEdit: null });
+    runtime.kick();
+    await vi.waitFor(() => expect(store.run(first.id).status).toBe('running'));
+    expect(store.run(second.id).status).toBe('queued');
+    expect(starts()).toHaveLength(1);
+  });
+
+  it.each(['manual pause', 'own allowance cap'] as const)(
+    'preserves the selected input’s %s',
+    async (guard) => {
+      const automatic = report();
+      const first = store.enqueue(manager, randomUUID(), 'Protected owner input');
+      const later = store.enqueue(manager, randomUUID(), 'Later input');
+      if (guard === 'manual pause') store.setSetting(`pulsar:held:${first.id}`, true);
+      else {
+        usage(10, new Date(Date.now() + 7 * 86400_000).toISOString());
+        runtime.quark.sync();
+        runtime.quark.saveBudget({
+          key: randomUUID(),
+          projectId: project,
+          taskId: null,
+          provider: 'codex',
+          windowId: 'secondary',
+          limitPercent: 0.1,
+        });
+        expect(runtime.quark.block(first, true)).toMatchObject({ cause: 'budget' });
+      }
+      const reserve = vi.spyOn(runtime.pulsar, 'reserve');
+      runtime.kick();
+      await vi.waitFor(() =>
+        expect(reserve.mock.calls.some(([run]) => run.id === first.id)).toBe(true),
+      );
+      await drain();
+      expect(store.run(first.id).status).toBe('queued');
+      expect(store.run(later.id).status).toBe('queued');
+      expect(store.run(automatic.id)).toEqual(automatic);
+      expect(starts()).toHaveLength(0);
+      expect(runtime.pulsar.lease(first.id)).toBeNull();
+      expect(runtime.pulsar.lease(automatic.id)).toBeNull();
+    },
+  );
+
+  it('does not mark the actor waiting for automatic-turn exhaustion before its pending input starts', async () => {
+    const automatic = report();
+    const owner = store.enqueue(manager, randomUUID(), 'Continue with this request');
+    store.updateAgent(manager, { autoTurns: 12 });
+    runtime.kick();
+    await vi.waitFor(() => expect(store.run(owner.id).status).toBe('running'));
+    expect(store.agent(manager).status).toBe('running');
+    expect(store.entries(manager).some((entry) => entry.title === 'Automatic work paused')).toBe(
+      false,
+    );
+    expect(store.run(automatic.id)).toEqual(automatic);
+    expect(starts()).toHaveLength(1);
+  });
+
+  it.each(['executing', 'external control', 'task workspace', 'global slot'] as const)(
+    'preserves %s ownership before preparing selected owner input',
+    async (guard) => {
+      const automatic = report();
+      const owner = store.enqueue(manager, randomUUID(), 'Wait for the owned turn');
+      if (guard === 'executing') runtime.executing.add(manager);
+      else if (guard === 'external control') runtime.externalControl.add(manager);
+      else {
+        const task = store.addTask(project, {
+          title: 'Owned workspace',
+          goal: 'Work',
+          acceptance: 'Evidence',
+          parentId: null,
+        });
+        const peer = store.addAgent({
+          projectId: project,
+          taskId: task.id,
+          parentId: manager,
+          role: 'implementer',
+          name: 'Workspace owner',
+          cwd: projectRoot,
+        });
+        runtime.executing.add(peer.id);
+        if (guard === 'task workspace') store.updateAgent(manager, { taskId: task.id });
+        else store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 1 });
+      }
+      await drain();
+      expect(store.run(owner.id).status).toBe('queued');
+      expect(store.run(automatic.id)).toEqual(automatic);
+      expect(requests).not.toHaveBeenCalled();
+      expect(runtime.pulsar.lease(owner.id)).toBeNull();
+      runtime.executing.clear();
+      runtime.externalControl.clear();
+    },
+  );
+});
 
 it('gives managers a compact shared-budget view while retaining full task evidence on demand', async () => {
   const t = await task();

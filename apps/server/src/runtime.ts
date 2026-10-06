@@ -815,7 +815,21 @@ export class Runtime {
         ]),
       );
       this.coordinator.tick();
-      const queued = this.store.runs(['queued']).filter((run) => !run.queueEdit);
+      const allQueued = this.store.runs(['queued']);
+      const conversationHeads = new Map<string, string>();
+      const inputHeads = new Map<string, string>();
+      for (const run of allQueued) {
+        if (!conversationHeads.has(run.agentId)) conversationHeads.set(run.agentId, run.id);
+        // Recovery can be automatic. Keep it in FIFO with direct owner input,
+        // including editing holds, ahead of automatic coordination turns.
+        if (
+          run.sourceId === null &&
+          (run.kind === 'user' || run.kind === 'resume') &&
+          !inputHeads.has(run.agentId)
+        )
+          inputHeads.set(run.agentId, run.id);
+      }
+      const queued = allQueued.filter((run) => !run.queueEdit);
       const queuedIds = new Set(queued.map((run) => run.id));
       for (const id of this.preparedRuns) if (!queuedIds.has(id)) this.preparedRuns.delete(id);
       const waiting = this.pulsar.ordered(queued);
@@ -888,8 +902,9 @@ export class Runtime {
           continue;
         const agent = this.store.agent(run.agentId);
         if (agent.nativeRootId) continue; // Native turns are owned by the parent provider.
-        // Priority never reorders input within one conversation.
-        if (queued.find((r) => r.agentId === run.agentId)?.id !== run.id) continue;
+        // Saved priority never reorders owner/recovery input in a conversation.
+        if ((inputHeads.get(run.agentId) ?? conversationHeads.get(run.agentId)) !== run.id)
+          continue;
         if (['interrupted', 'failed', 'waiting'].includes(agent.status)) continue;
         const autoTurnLimit = this.pulsar.policy().enabled
           ? this.pulsar.policy().maxAutomaticTurns

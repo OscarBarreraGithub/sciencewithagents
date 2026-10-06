@@ -326,9 +326,13 @@ export class Pulsar {
     );
   }
   private foregroundWork(except?: string, executing: ReadonlySet<string> = new Set()) {
+    const agentId = except ? this.store.run(except).agentId : null;
     return this.store.runs(['queued', 'running']).some((run) => {
       if (run.id === except || this.estimate(run).priority === 'background') return false;
       if (run.status === 'running') return true;
+      // Runtime selects one input per conversation; queued peers cannot contend
+      // with that input for foreground admission. Global demand still sees them.
+      if (run.agentId === agentId) return false;
       if (
         run.status !== 'queued' ||
         ['waiting', 'interrupted', 'failed'].includes(this.store.agent(run.agentId).status)
