@@ -130,31 +130,52 @@ test('a lost registration response reloads with the exact saved body and keeps a
   );
   const inputs: (typeof saved)[] = [];
   let registeredClient = '';
+  let recovering = false;
+  let unavailableReplies = 0;
+  let recoveredReplies = 0;
   await page.route('**/api/workspace/clients', async (route) => {
-    inputs.push(route.request().postDataJSON());
+    const canRecover = recovering;
+    const input = route.request().postDataJSON();
+    expect(input).toEqual(saved);
+    inputs.push(input);
     const response = await route.fetch();
     const value = await response.json();
     expect(response.ok()).toBe(true);
-    registeredClient = value.client.id;
-    if (inputs.length === 1)
-      return route.fulfill({
+    registeredClient ||= value.client.id;
+    expect(value.client.id).toBe(registeredClient);
+    // A later mounted hook may retry a failed bootstrap before reload. Keep
+    // every receipt unavailable until the fixture explicitly permits recovery.
+    if (!canRecover) {
+      await route.fulfill({
         status: 503,
         json: { error: 'Owned fixture lost registration receipt' },
       });
+      unavailableReplies++;
+      return;
+    }
     await route.fulfill({ response });
+    recoveredReplies++;
   });
   await page.goto(`/#/chat/${id}`);
   await expect(page.getByRole('alert').first()).toContainText('lost registration receipt');
+  await expect(page.locator('.message-queue')).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect.poll(() => unavailableReplies).toBeGreaterThanOrEqual(2);
   expect(
     await page.evaluate(() =>
       JSON.parse(localStorage.getItem('dock:local:workspace:registration')!),
     ),
   ).toEqual(saved);
+  expect(await page.evaluate(() => localStorage.getItem('dock:local:workspace:client'))).toBeNull();
   await expect(page.locator('.composer textarea')).toHaveValue('Retained local draft');
+  const failedAttempts = inputs.length;
+  recovering = true;
   await page.reload();
   const list = await openQueue(page);
   await expect(list.getByRole('button', { name: 'Edit', exact: true }).first()).toBeEnabled();
-  expect(inputs).toEqual([saved, saved]);
+  await expect.poll(() => recoveredReplies).toBeGreaterThan(0);
+  expect(inputs.length).toBeGreaterThan(failedAttempts);
+  expect(inputs).toEqual(Array.from({ length: inputs.length }, () => saved));
   expect(await page.evaluate(() => localStorage.getItem('dock:local:workspace:client'))).toBe(
     registeredClient,
   );

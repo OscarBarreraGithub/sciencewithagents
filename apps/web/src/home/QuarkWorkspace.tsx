@@ -4,7 +4,6 @@ import {
   latestFamily,
   allowanceWindowLabel,
   projectRatesSchema,
-  providerReservePolicy,
   type ProjectRates,
   quarkCoordinatorStatusSchema,
   quarkDefaultFamilies,
@@ -18,7 +17,7 @@ import { ProviderActions } from './ProviderActions';
 import { ago, resetLabel } from './HomeOverview';
 import { SchedulerPanel } from '../SchedulerPanel';
 import { useReading, type HomeData } from './useHomeData';
-import { ChatPage, FlowHeading, FlowEmpty, stateNames } from './WorkspaceFlow';
+import { ChatPage, FlowEmpty, stateNames } from './WorkspaceFlow';
 import { AssistantFullscreen } from './AssistantFullscreen';
 import { BudgetSlider, type BoardBudget, type BudgetEdits } from './BudgetSlider';
 import { ProviderReserveControl, SharedProtectionControl } from './ProviderReserveControl';
@@ -28,6 +27,8 @@ import './quark-workspace.css';
 
 const columns = ['Waiting', 'Working', 'Paused / needs input', 'Completed'] as const;
 type Column = (typeof columns)[number];
+// The summary counts the same cards as these board columns, in reading order.
+const summaryColumns = [columns[1], columns[0], columns[2]];
 type Job = QuarkCoordinatorStatus['queue']['jobs'][number];
 type Card = {
   id: string;
@@ -88,87 +89,101 @@ function placeTask(
   ];
 }
 
+/** Keep the default reason bounded; the complete provider message remains in details. */
+function shortReason(message: string) {
+  const text = message.trim();
+  const lead = /^(?:.+?[.!?](?:\s+|$)){1,2}/.exec(text)?.[0] ?? text;
+  return lead.trim().length <= 120
+    ? lead.trim()
+    : 'Usage reading needs attention. Check connection.';
+}
+
+const windowExpired = (window: ProviderCapacity['windows'][number], now: number) =>
+  !!window.resetsAt && Date.parse(window.resetsAt) <= now;
+
 function QuarkAllowance({
   provider,
-  forecast,
   pacing,
   accounts,
 }: {
   provider: ProviderCapacity;
-  forecast: string;
   pacing: QuarkCoordinatorStatus['utilization'];
   accounts: ProjectRates['accounts'];
 }) {
   const [open, setOpen] = useState(false);
-  const stale = provider.stale || provider.state !== 'ready';
   const now = Date.now();
+  // Freshness comes from the server; a scheduled check does not expire a reading.
+  const stale = provider.stale || provider.state !== 'ready' || !provider.observedAt;
+  const reason = shortReason(provider.message);
+  const when = (at: string) =>
+    new Date(at).toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  // Pace projections come from the reading, so an old reading shows none.
+  const paced = stale
+    ? []
+    : pacing.filter(
+        (window) =>
+          (window.state === 'underused' || window.state === 'fast') &&
+          provider.windows.some(
+            (reading) => reading.id === window.windowId && !windowExpired(reading, now),
+          ),
+      );
   return (
-    <div className="quark-account" aria-label={`${provider.label} allowance`}>
-      <h2>{provider.label}</h2>
+    <div
+      className={`quark-account${stale ? ' is-stale' : ''}`}
+      aria-label={`${provider.label} allowance`}
+    >
+      <header>
+        <h2>{provider.label}</h2>
+        <small>
+          {provider.observedAt
+            ? `${stale ? 'Last reading' : 'Updated'} ${ago(provider.observedAt, now)}`
+            : 'Allowance not reported yet'}
+        </small>
+      </header>
+      {stale && reason && <p className="quark-account-reason">{reason}</p>}
       {provider.windows.length ? (
-        provider.windows.map((window) => {
-          const account = accounts.find((a) => a.windowId === window.id);
-          const when = (at: string) =>
-            new Date(at).toLocaleString([], {
-              month: 'short',
-              day: 'numeric',
+        <ul className="quark-account-windows">
+          {provider.windows.map((window) => {
+            const old = stale || windowExpired(window, now);
+            const pace = paced.find((item) => item.windowId === window.id);
+            return (
+              <li key={window.id} className={old ? 'is-stale' : undefined}>
+                <span>{allowanceWindowLabel(window)}</span>
+                <strong>
+                  {Math.round(100 - window.usedPercent)}% left{old && ' · old'}
+                </strong>
+                <small>
+                  {resetLabel(window.resetsAt, now)}
+                  {pace && (pace.state === 'fast' ? ' · ahead of pace' : ' · spare before reset')}
+                </small>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        provider.observedAt && (
+          <p className="quark-account-reason">The last reading has no allowance windows.</p>
+        )
+      )}
+      <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+        <summary>Details & actions</summary>
+        {stale && provider.message && <p>{provider.message}</p>}
+        {stale && provider.nextRefreshAt && (
+          <small>
+            Next automatic check:{' '}
+            {new Date(provider.nextRefreshAt).toLocaleTimeString([], {
               hour: 'numeric',
               minute: '2-digit',
-            });
-          return (
-            <div className="quark-account-window" key={window.id}>
-              <span>{allowanceWindowLabel(window)}</span>
-              <strong>
-                {Math.round(100 - window.usedPercent)}% left{stale && ' · old'}
-              </strong>
-              <small>{resetLabel(window.resetsAt, now)}</small>
-              {account && (
-                <>
-                  <small>
-                    Account rate{' '}
-                    {account.estimatedPercentPerHour === null
-                      ? 'needs comparable readings'
-                      : `≈${Number(account.estimatedPercentPerHour.toFixed(1))}% / hour`}
-                    .
-                  </small>
-                  <small>
-                    {account.reserveAt && !account.stale
-                      ? account.resetBeforeReserve
-                        ? `Reset comes first, before the projected reserve at ${when(account.reserveAt)}.`
-                        : account.remainingPercent <= account.effectiveReservePercent
-                          ? 'Effective reserve already reached at the reading.'
-                          : `Reserve projected ${when(account.reserveAt)}.`
-                      : 'Reserve depletion time is not yet known.'}
-                    {account.exhaustionAt && !account.stale
-                      ? ` Zero projected ${when(account.exhaustionAt)}${window.resetsAt && Date.parse(window.resetsAt) < Date.parse(account.exhaustionAt) ? ' if the allowance did not reset first' : ''}.`
-                      : ' No exhaustion estimate from this rate.'}
-                  </small>
-                  <small>
-                    Saved project ceilings total{' '}
-                    {Number(account.configuredProjectPercentPerHour.toFixed(1))}% / hour ·{' '}
-                    {account.uncappedProjects} uncapped projects. External activity also uses this
-                    account.
-                  </small>
-                </>
-              )}
-            </div>
-          );
-        })
-      ) : (
-        <p>
-          {provider.observedAt
-            ? 'The last reading has no allowance windows.'
-            : 'Allowance hasn’t been reported yet.'}
-        </p>
-      )}
-      <small>
-        {stale ? 'Last reading' : 'Updated'} {ago(provider.observedAt, now) ?? 'not available'}
-        {provider.observedAt && ` · as of ${new Date(provider.observedAt).toLocaleString()}`}
-      </small>
-      <p>{forecast}</p>
-      {pacing
-        .filter((window) => window.state === 'underused' || window.state === 'fast')
-        .map((window) => (
+            })}
+            . Refresh uses the same waiting period.
+          </small>
+        )}
+        {paced.map((window) => (
           <p key={window.windowId}>
             <strong>
               {window.state === 'underused'
@@ -182,17 +197,51 @@ function QuarkAllowance({
               : ' Managers should slow new starts.'}
           </p>
         ))}
-      <details onToggle={(event) => setOpen(event.currentTarget.open)}>
-        <summary>{stale ? 'Reading needs attention' : 'Account actions'}</summary>
-        {stale && <p>{provider.message}</p>}
-        {stale && provider.nextRefreshAt && (
+        {provider.windows.map((window) => {
+          const account = accounts.find((a) => a.windowId === window.id);
+          const old = stale || windowExpired(window, now);
+          return (
+            <div className="quark-account-window" key={window.id}>
+              <strong>{allowanceWindowLabel(window)}</strong>
+              <small>
+                {window.resetsAt ? `Resets ${when(window.resetsAt)}.` : 'Reset time not reported.'}
+              </small>
+              {account && (
+                <>
+                  <small>
+                    {old ? 'Last observed account rate' : 'Account rate'}{' '}
+                    {account.estimatedPercentPerHour === null
+                      ? 'needs comparable readings'
+                      : `≈${Number(account.estimatedPercentPerHour.toFixed(1))}% / hour`}
+                    .
+                  </small>
+                  <small>
+                    {account.reserveAt && !account.stale && !old
+                      ? account.resetBeforeReserve
+                        ? `Reset comes first, before the projected reserve at ${when(account.reserveAt)}.`
+                        : account.remainingPercent <= account.effectiveReservePercent
+                          ? 'Effective reserve already reached at the reading.'
+                          : `Reserve projected ${when(account.reserveAt)}.`
+                      : 'Reserve depletion time is not yet known.'}
+                    {account.exhaustionAt && !account.stale && !old
+                      ? ` Zero projected ${when(account.exhaustionAt)}${window.resetsAt && Date.parse(window.resetsAt) < Date.parse(account.exhaustionAt) ? ' if the allowance did not reset first' : ''}.`
+                      : ' No exhaustion estimate from this rate.'}
+                  </small>
+                  <small>
+                    Saved project ceilings total{' '}
+                    {Number(account.configuredProjectPercentPerHour.toFixed(1))}% / hour ·{' '}
+                    {account.uncappedProjects} uncapped projects. External activity also uses this
+                    account.
+                  </small>
+                </>
+              )}
+            </div>
+          );
+        })}
+        {provider.observedAt && (
           <small>
-            Next automatic check:{' '}
-            {new Date(provider.nextRefreshAt).toLocaleTimeString([], {
-              hour: 'numeric',
-              minute: '2-digit',
-            })}
-            . Refresh uses the same waiting period.
+            {stale ? 'Last reading' : 'Updated'} as of{' '}
+            {new Date(provider.observedAt).toLocaleString()}.
           </small>
         )}
         {open && <ProviderActions provider={provider.provider} showQuarkLink={false} />}
@@ -209,6 +258,7 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [filter, setFilter] = useState('all');
+  const filters = useRef<HTMLDivElement>(null);
   const [completedSearch, setCompletedSearch] = useState('');
   const [limits, setLimits] = useState<Partial<Record<Column, number>>>({});
   const [projectLimit, setProjectLimit] = useState(projectPage);
@@ -466,10 +516,12 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
   });
   return (
     <section className="flow-page activity-page quark-workspace">
-      <FlowHeading label="QUARK" title="QUARK">
-        QUARK stands for Queued Usage, Agent Routing Kernel. Tell it what comes first. It
-        coordinates the queue, protects your allowance and keeps your decisions.
-      </FlowHeading>
+      <header className="flow-heading">
+        <div>
+          <h1 tabIndex={-1}>QUARK</h1>
+          <p className="flow-subtitle">Queued Usage, Agent Routing Kernel.</p>
+        </div>
+      </header>
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -492,50 +544,32 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
       ) : (
         <>
           <div className="quark-overview">
-            <div>
-              <span>Shared allowance</span>
-              <strong>{s.queue.policy.enabled ? 'Protected' : 'Pacing off'}</strong>
-              <small>
-                One account per provider on{' '}
-                {apiScope() === 'local'
-                  ? (data.hosts.data?.local.label ?? 'this computer')
-                  : (data.hosts.data?.hosts.find((h) => h.id === apiScope())?.label ??
-                    'the selected computer')}
-                .
-              </small>
+            <div className="quark-summary-counts" aria-label="Work on the board">
+              {summaryColumns.map((column) => (
+                <button
+                  key={column}
+                  aria-pressed={filter === column}
+                  onClick={() => {
+                    setFilter(column);
+                    filters.current?.scrollIntoView({ block: 'start' });
+                  }}
+                >
+                  <strong>{cards.filter((c) => c.column === column).length}</strong>{' '}
+                  <span>{column}</span>
+                </button>
+              ))}
             </div>
-            <div>
-              <span>Running</span>
-              <strong>{cards.filter((c) => c.column === 'Working').length}</strong>
-              <small>
-                {cards.filter((c) => c.column === 'Waiting').length} waiting for their turn
-              </small>
-            </div>
-            {s.capacity.map((provider) => {
-              const windows = provider.windows.filter((w) => w.scope === 'general');
-              const room =
-                windows.length && !provider.stale
-                  ? Math.max(
-                      0,
-                      Math.min(
-                        ...windows.map(
-                          (w) =>
-                            100 -
-                            w.usedPercent -
-                            (s.utilization.find(
-                              (item) =>
-                                item.provider === provider.provider && item.windowId === w.id,
-                            )?.reservePercent ??
-                              providerReservePolicy(s.queue.policy, provider.provider)
-                                .reservePercent),
-                        ),
-                      ),
-                    )
-                  : null;
-              const demand = s.queue.jobs
-                .filter((j) => j.provider === provider.provider && j.agentId !== s.agentId)
-                .reduce((n, j) => n + j.estimate.quotaPercent, 0);
-              return (
+            <small className="quark-summary-scope">
+              {s.queue.policy.enabled ? 'Allowance protection on' : 'Pacing off'} · one account per
+              provider on{' '}
+              {apiScope() === 'local'
+                ? (data.hosts.data?.local.label ?? 'this computer')
+                : (data.hosts.data?.hosts.find((h) => h.id === apiScope())?.label ??
+                  'the selected computer')}
+              .
+            </small>
+            <div className="quark-summary-providers">
+              {s.capacity.map((provider) => (
                 <QuarkAllowance
                   key={provider.provider}
                   provider={provider}
@@ -545,16 +579,9 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                       (account) => account.provider === provider.provider,
                     ) ?? []
                   }
-                  forecast={
-                    room === null
-                      ? 'Waiting for a fresh reading before starting more work.'
-                      : demand <= room
-                        ? 'The queued work fits the available allowance.'
-                        : 'Some queued work will need to wait for more allowance.'
-                  }
                 />
-              );
-            })}
+              ))}
+            </div>
           </div>
           <section className="quark-reserve-section" aria-label="Shared provider reserves">
             <h2>Shared reserves</h2>
@@ -763,7 +790,7 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
               </button>
             )}
           </div>
-          <div className="flow-filters quark-filters" aria-label="Board status">
+          <div ref={filters} className="flow-filters quark-filters" aria-label="Board status">
             {['all', ...columns].map((c) => (
               <button
                 key={c}

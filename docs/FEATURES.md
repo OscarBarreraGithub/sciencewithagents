@@ -59,6 +59,9 @@ The board shows current project rates and 12-hour history beside separate Codex/
 controls; a zero hourly rate pauses that provider's project work. Separate reserve controls
 accept 0–100%, with opt-in timed release near reported resets. Depletion forecasts use observed
 account activity, including work outside the app; unknown intervals remain gaps.
+The compact overview links work counts to their board columns and shows remaining windows
+and resets. Account forecasts, refresh and connection actions expand under Details; old
+readings are labelled and do not support fresh-looking projections.
 Unknown usage holds new protected work; transient read failures and quota exhaustion
 have distinct recovery paths.
 

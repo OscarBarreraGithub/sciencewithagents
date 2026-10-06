@@ -129,6 +129,10 @@ outcome, project, actual model, priority, estimated usage/resources and waiting 
 Do not fabricate deadlines, completion or available allowance.
 
 Show shared remaining windows, reserve controls and live spending sliders with the board.
+Keep the top summary compact: useful board counts, remaining allowance and reset times,
+with a clear action when a reading is stale or unavailable. Counts must describe the items
+they open. Expand detailed forecasts and account information on demand; do not fill the
+default view with repeated unknown estimates, timestamps or empty status columns.
 Allow owner instructions to change project priority, weight, pause and allocation. Caps/reserves
 still constrain automatic decisions. Provider actions are Refresh, Check connection and
 supported update checks. Detailed accounting stays available to agents without a separate

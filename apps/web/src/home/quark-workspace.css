@@ -11,34 +11,63 @@
 }
 .quark-overview {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  background: var(--q-border);
-  border: 1px solid var(--q-border);
-  border-radius: 18px;
-  overflow: hidden;
-  margin: 26px 0;
+  gap: 10px;
+  margin: 18px 0 26px;
+  min-width: 0;
 }
-.quark-overview > div {
+.quark-summary-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.quark-summary-counts button {
   display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 20px;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-height: 44px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--q-border);
+  border-radius: 12px;
   background: #fafcfb;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-.quark-overview span {
+.quark-summary-counts button[aria-pressed='true'] {
+  border-color: #426d5d;
+  background: #eef4f0;
+}
+.quark-summary-counts strong {
+  font-size: var(--text-lead);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.quark-summary-counts span {
   font-size: var(--text-small);
   color: var(--q-muted);
+  min-width: 0;
 }
-.quark-overview strong {
-  font-size: 28px;
-  letter-spacing: -0.04em;
-  font-weight: 550;
-}
-.quark-overview small {
+.quark-summary-scope {
   font-size: var(--text-caption);
-  line-height: 1.6;
   color: var(--q-muted);
+}
+.quark-summary-providers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .quark-summary-counts button {
+    flex-direction: column;
+    gap: 0;
+    padding: 6px 10px;
+  }
+  .quark-summary-counts span {
+    font-size: var(--text-caption);
+    line-height: 1.3;
+  }
 }
 .quark-desk {
   background: white;
@@ -373,9 +402,6 @@
   .quark-board {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .quark-overview {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 @media (max-width: 600px) {
   .quark-board {
@@ -388,12 +414,6 @@
   }
   .quark-desk .flow-chat-main {
     height: 480px;
-  }
-  .quark-overview > div {
-    padding: 16px;
-  }
-  .quark-overview strong {
-    font-size: 25px;
   }
   .quark-board-heading {
     align-items: flex-start;
@@ -505,27 +525,73 @@
   margin-top: 12px;
 }
 
+.quark-account {
+  min-width: 0;
+  padding: 12px 14px 0;
+  border: 1px solid var(--q-border);
+  border-radius: 12px;
+  background: #fafcfb;
+}
+.quark-account > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 10px;
+}
 .quark-account h2 {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: var(--text-body);
+}
+.quark-account > header small {
+  font-size: var(--text-caption);
+  color: var(--q-muted);
+}
+.quark-account.is-stale > header small,
+.quark-account-reason {
+  color: #8a5a16;
+}
+.quark-account-windows {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.quark-account-windows li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 10px;
+  align-items: baseline;
+  font-size: var(--text-small);
+}
+.quark-account-windows strong {
+  white-space: nowrap;
+}
+.quark-account-windows small {
+  grid-column: 1 / -1;
+  font-size: var(--text-caption);
+  color: var(--q-muted);
+}
+.quark-account-windows li.is-stale strong {
+  color: var(--q-muted);
+  font-weight: 500;
 }
 .quark-account-window {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 5px 10px;
-  align-items: baseline;
-}
-.quark-account-window strong {
-  font-size: var(--text-lead);
-  white-space: nowrap;
-}
-.quark-account-window small {
-  grid-column: 1 / -1;
+  gap: 2px;
+  margin: 8px 0;
 }
 .quark-account p {
-  margin: 4px 0;
+  margin: 6px 0 0;
   font-size: var(--text-small);
   line-height: 1.5;
+}
+.quark-account details small {
+  display: block;
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--q-muted);
 }
 .quark-account summary {
   padding: 12px 0;
@@ -533,10 +599,8 @@
   font-size: var(--text-small);
   cursor: pointer;
 }
-@media (max-width: 600px) {
-  .quark-overview .quark-account {
-    grid-column: 1 / -1;
-  }
+.quark-account details[open] {
+  padding-bottom: 12px;
 }
 /* A budget or task link's destination card stays marked while its link is open. */
 .quark-ticket.is-target,
