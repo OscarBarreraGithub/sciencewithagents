@@ -105,6 +105,19 @@ into QUARK or override provider limits. Older companions need a safe update befo
 controls are available. Claude and app-managed goal continuation are separate capabilities;
 the app does not substitute a new goal or an unsupervised loop when they are unavailable.
 
+App-owned Codex and Claude project managers offer a separate, explicit opt-in **Goal**.
+Its objective and progress persist through reloads and restarts. First and follow-up turns
+use the manager's ordinary model and QUARK admission, including existing reserves and
+hourly/window limits; native automatic goals are not used to bypass admission. Reading the
+goal starts no model turn, and unchanged progress does not generate polling turns.
+Adjacent owner asks add to outstanding work unless explicitly cancelled or replaced. Completion
+requires reconciling scoped open requests, work items, tasks and active/pending helpers.
+**Pause goal** holds queued goal work, and **Resume goal** reuses that receipt under QUARK.
+**Stop goal** cancels unstarted goal work without claiming completion; an active reply
+continues until the separate **Stop reply** action. Failed or interrupted work needs the
+existing chat inspection/resume path. Existing managers and standalone chats are not
+automatically enrolled, and there is no additional raw-token budget.
+
 The compact **Queued messages** row opens a full-height list of short previews; **Read full
 text** expands a message. App-managed messages and
 follow-ups queued here for shared VS Code chats can be held and edited in the notepad

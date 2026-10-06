@@ -32,8 +32,11 @@ remote editor can start its normal socket retry loop. New hook preparation requi
 
 Actual private forwarding to a disposable loopback HTTP fixture was checked on FASRC, including
 0700/0600 permissions and exact cleanup. Disposable local Unix/WebSocket fixtures cover first-run
-failure/retry, permissions, reconnect and stop. Actual remote VS Code installation/native controls
-remain unverified; this transport preview does not certify remote provider builds or site policy.
+failure/retry, permissions, reconnect and stop. A real Remote SSH editor reached the cluster,
+but native Codex startup failed while its state database was on NFS. A supported, isolated
+node-local database override initialized successfully while preserving native history and
+credentials. Remote conversation history, send, steering and Stop remain unverified. Published transport
+support does not certify remote provider builds or site policy.
 
 Codex uses observed native thread/turn identities for history, text sends, steering and Stop.
 Claude uses the selected loaded channel and its native input/interrupt lifecycle. Provider
@@ -103,9 +106,11 @@ turn and does not load the full conversation. Goal controls require a compatible
 and companion, or an already-loaded compatible native daemon session. Updating an active
 companion can require a safe editor reload; the app does not reload running work itself.
 
-App-managed native automatic goal continuation is not enabled: each managed turn still
-requires QUARK admission. A provider's goal resume can start work independently of an
-ordinary turn request, so exposing it without that supervision would be misleading.
+App-owned Codex and Claude managers have a separate explicit opt-in Goal with saved objective
+and progress. Its follow-up turns use the existing QUARK queue and admission; it does not
+enable the provider's independent native automatic goal loop. Pause holds queued goal work;
+Stop cancels unstarted goal work, leaving an active reply to the existing Stop reply action.
+Shared native Codex goals above remain a different lifecycle, with their existing native budget.
 
 ## Attachments
 

@@ -1,0 +1,132 @@
+.chat-tool.managed-goal-entry {
+  position: relative;
+}
+.managed-goal-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--home-muted);
+}
+.managed-goal-dot.active {
+  background: var(--green, #3f7d3a);
+}
+.managed-goal-dot.pending,
+.managed-goal-dot.waiting,
+.managed-goal-dot.blocked {
+  background: #c9963b;
+}
+dialog.managed-goal-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 16px));
+  position: fixed;
+  top: calc(var(--modal-top, 0px) + 8px);
+  bottom: auto;
+  margin-block: 0;
+  max-height: calc(var(--modal-height, 100dvh) - 16px);
+  overflow: hidden;
+}
+.managed-goal-dialog .modal-heading {
+  flex-shrink: 0;
+}
+.managed-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.managed-goal p {
+  margin: 0;
+}
+.managed-goal h3 {
+  margin: 2px 0 0;
+  font-size: var(--text-small);
+  color: var(--home-muted);
+}
+.managed-goal-outcome,
+.managed-goal-current,
+.managed-goal-edit,
+.managed-goal-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.managed-goal-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--home-ink);
+}
+.managed-goal-details summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 650;
+}
+.managed-goal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.managed-goal button {
+  min-height: 44px;
+}
+.managed-goal-refresh {
+  align-self: flex-start;
+}
+.managed-goal-edit textarea {
+  width: 100%;
+  min-height: 6em;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid var(--home-line);
+  border-radius: 8px;
+  font: inherit;
+}
+.managed-goal-edit textarea[readonly] {
+  background: var(--soft, #f4f5f0);
+}
+.managed-goal .managed-goal-note {
+  font-size: var(--text-small);
+  color: var(--home-muted);
+}
+.managed-goal-queue {
+  padding: 8px 10px;
+  border: 1px solid var(--home-line);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.managed-goal-notice,
+.managed-goal-pending,
+.managed-goal-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f6f0e5;
+  color: #6b5837;
+}
+.managed-goal-pending p,
+.managed-goal-confirm p {
+  flex: 1 1 100%;
+}
+.managed-goal .managed-goal-receipt {
+  color: var(--home-ink);
+}
+@media (max-width: 1100px) {
+  /* Narrow toolbars hide labels; the dot stays on the icon and the name states the status. */
+  .managed-goal-entry .managed-goal-dot {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+  }
+}
+@media (max-width: 720px) {
+  .managed-goal-dialog {
+    padding: 16px;
+  }
+}

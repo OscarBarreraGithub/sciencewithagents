@@ -36,6 +36,7 @@ import {
   pauseWorkerSchema,
   workerDefault,
   managedCodexSource,
+  managedGoalUpdateSchema,
 } from '@dock/shared';
 import { CodexRpc, threadResponse, toolCall, turnResponse, type Provider } from './codex.js';
 import { Conflict, Store, now, publicTask, type PrivateAgent, type PrivateRun } from './store.js';
@@ -57,6 +58,7 @@ import {
 } from './workspaces.js';
 import { projectWorkflow } from './project-workflow.js';
 import { WorkItems } from './work-items.js';
+import { ManagedGoals } from './managed-goals.js';
 import { ProjectApps } from './project-apps.js';
 import { sourceBackupStatus } from './source-backups.js';
 import { nativeConfigMutations, type NativeTransition } from './native-relay.js';
@@ -152,6 +154,7 @@ function coordinationReceipt(agentId: string, key: string) {
 
 export class Runtime {
   readonly workItems: WorkItems;
+  readonly managedGoals: ManagedGoals;
   readonly apps: ProjectApps;
   readonly modelPolicy: ModelPolicy;
   readonly setup: Setup;
@@ -245,6 +248,14 @@ export class Runtime {
     }
     if (event.type.startsWith('run.') || event.type === 'usage.observed')
       this.pulsar.reconcile(event.agentId);
+    if (event.agentId && event.type === 'run.queued') {
+      const identity = z.object({ id: z.string().uuid() }).passthrough().safeParse(event.data);
+      if (identity.success) this.managedGoals.queued(this.store.run(identity.data.id));
+    }
+    if (event.agentId && ['run.failed', 'run.interrupted'].includes(event.type)) {
+      const identity = z.object({ id: z.string().uuid() }).passthrough().safeParse(event.data);
+      if (identity.success) this.managedGoals.finish(this.store.run(identity.data.id), false);
+    }
     // Streaming text changes the display, not queue eligibility. Re-running the
     // scheduler for every delta can starve HTTP while several agents respond.
     if (event.type !== 'entry.updated') this.kick();
@@ -265,6 +276,7 @@ export class Runtime {
     this.documents = new Documents(store, dataDir);
     this.chatImages = new ChatImages(store, dataDir);
     this.workItems = new WorkItems(store);
+    this.managedGoals = new ManagedGoals(store, this.workItems);
     this.apps = new ProjectApps(store);
     this.capacity = new CapacityMonitor(store, dataDir);
     this.cluster = new ClusterMonitor(store);
@@ -275,6 +287,8 @@ export class Runtime {
     this.quark = new Quark(store, this.pulsar);
     this.quark.executing = () => this.executing;
     this.pulsar.allowanceDecision = (run, protectedChat = false) => {
+      const goalReason = this.managedGoals.admissionReason(run);
+      if (goalReason) return goalReason;
       const agent = this.store.agent(run.agentId);
       if (run.status === 'queued' && this.providerMaintenance?.blocks(agent.provider))
         return 'Waiting for the requested provider update.';
@@ -542,6 +556,15 @@ export class Runtime {
       : this.frontdesk.isFrontdesk(agent.id)
         ? this.frontdesk.definitionsFor(agent.id)
         : toolsFor(agent.role);
+    if (this.managedGoals.supported(agent.id))
+      base.push({
+        type: 'function' as const,
+        name: 'dock_goal_update',
+        description:
+          'Record progress for an explicitly owner-enabled managed goal in this admitted turn. Continue needs useful next work; wait for workers/human input instead of polling. Complete only after reconciling this manager’s open internal/human work, tasks and owner requests. Cannot create, replace or resume a goal. Read its latest revision with dock_inspect {goal:true}.',
+        inputSchema: z.toJSONSchema(managedGoalUpdateSchema),
+        deferLoading: false,
+      });
     if (
       agent.assignment?.tier !== 'undergrad' ||
       !this.modelPolicy.policy().escalation ||
@@ -565,6 +588,7 @@ export class Runtime {
   }
   async initialize() {
     this.store.recover();
+    this.managedGoals.recover();
     this.localJobs.recover();
     this.pulsar.reconcile();
     this.frontdesk.reconcile();
@@ -1630,6 +1654,7 @@ export class Runtime {
       }
     }
     const claimed = this.store.transaction(() => {
+      if (this.managedGoals.admissionReason(this.store.run(run.id))) return null;
       const current = this.store.claimQueuedRun(run.id);
       if (!current) return null;
       this.store.updateAgent(agent.id, {
@@ -2214,6 +2239,7 @@ export class Runtime {
       ...current,
       ownerRequests: this.workItems.ownerRequests(agentId, { limit: 5 }),
       openWork: this.openWork(agent.projectId),
+      managedGoal: this.managedGoals.context(agentId),
       jobs: current.jobs.slice(0, 5).map((job) => ({ ...job, reason: job.reason.slice(0, 240) })),
       holds: current.holds
         .slice(0, 6)
@@ -2419,6 +2445,7 @@ export class Runtime {
         agent.role === 'manager' && !agent.interview
           ? this.workItems.ownerRequests(agent.id, { limit: 10 })
           : null,
+      managedGoal: this.managedGoals.context(agent.id),
       projectNotes: {
         ...notes,
         text: preview(notes.text, 1200),
@@ -3470,6 +3497,7 @@ export class Runtime {
         turnId: null,
       });
       if (error) this.system(agentId, 'Turn failed', this.errorText(error));
+      this.managedGoals.finish(this.store.run(run.id), status === 'completed');
       if (
         run &&
         agent.parentId &&
@@ -3832,7 +3860,7 @@ export class Runtime {
       throw new Conflict(
         'Notes belong to the owner. Keep your plans and progress in dock_work_item (kind internal) and dock_checkpoint instead.',
       );
-    if (!toolsFor(agent.role).some((t) => t.name === name))
+    if (!this.tools(agent).some((t) => t.name === name))
       throw new Conflict('This role does not have that capability.');
     if (agent.nativeRootId && name === 'dock_review')
       throw new Conflict(
@@ -3867,6 +3895,11 @@ export class Runtime {
     };
     if (agent.role === 'manager') this.quark.sync();
     requireLease();
+    if (name === 'dock_goal_update') {
+      if (!active)
+        throw new Conflict('Goal progress requires this manager’s active admitted turn.');
+      return this.managedGoals.update(agent.id, key, raw, this.store.run(active.id));
+    }
     if (name === 'dock_pause_worker') {
       const value = pauseWorkerSchema.parse(raw);
       const worker = this.store.agent(value.agentId);
@@ -4249,6 +4282,7 @@ export class Runtime {
       }
       if (name === 'dock_inspect') {
         const value = inspectSchema.parse(raw);
+        if (value.goal) return this.managedGoals.view(agent.id);
         if (value.capacity) return this.capacity.status();
         if (value.cluster) return this.cluster.status();
         if (value.resources) return this.resources.context();

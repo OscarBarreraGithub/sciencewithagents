@@ -195,6 +195,18 @@ test('manager PDF links retain the mounted chat, its draft and exact scroll posi
   });
   expect(created.ok()).toBe(true);
   const project = await created.json();
+  // Saved entries keep their identities across reads; a poll must not replace every link.
+  const entries = Array.from({ length: 24 }, (_, index) => ({
+    id: randomUUID(),
+    agentId: project.managerId,
+    runId: null,
+    kind: 'assistant',
+    title: 'Report',
+    status: 'completed',
+    createdAt: new Date().toISOString(),
+    text: `Reading paragraph ${index}. ${'Keep this chat position while reading the document. '.repeat(4)}\n\n[Read the thermal report](/saved/project/thermal.pdf)`,
+  }));
+  let detailReads = 0;
   let resolvedLocalLink = false;
   await page.route('**/api/documents/from-message', (route) => {
     expect(route.request().postDataJSON()).toMatchObject({ agentId: project.managerId, index: 0 });
@@ -209,35 +221,50 @@ test('manager PDF links retain the mounted chat, its draft and exact scroll posi
   await page.route(new RegExp(`/api/agents/${project.managerId}(?:\\?.*)?$`), async (route) => {
     const response = await route.fetch();
     const detail = await response.json();
-    detail.entries = Array.from({ length: 24 }, (_, index) => ({
-      id: randomUUID(),
-      agentId: project.managerId,
-      runId: null,
-      kind: 'assistant',
-      title: 'Report',
-      status: 'completed',
-      createdAt: new Date().toISOString(),
-      text: `Reading paragraph ${index}. ${'Keep this chat position while reading the document. '.repeat(4)}\n\n[Read the thermal report](/saved/project/thermal.pdf)`,
-    }));
+    detail.entries = entries;
     await route.fulfill({ json: detail });
+    detailReads++;
   });
+  await page.clock.install();
   await page.goto(`/#/chat/${project.managerId}`);
   const conversation = page.locator('.conversation');
   await expect(conversation).toBeVisible();
+  const mountedChat = await conversation.elementHandle();
+  expect(mountedChat).not.toBeNull();
+  // Capture each opening before DocumentHost saves it. WebKit can scroll a link into
+  // view during click/focus, so a later opening need not share the first one's baseline.
+  await conversation.evaluate((element) => {
+    window.addEventListener(
+      'dock:document',
+      () => element.setAttribute('data-test-document-opening-top', String(element.scrollTop)),
+      { capture: true },
+    );
+  });
   await page.locator('.composer textarea').fill('Keep my unfinished question.');
+  await page.evaluate(() => document.fonts.ready);
   await conversation.evaluate((element) => {
     element.scrollTop = element.scrollHeight / 2;
   });
   const link = conversation.getByRole('link', { name: 'Read the thermal report' }).nth(12);
+  const mountedLink = await link.elementHandle();
+  expect(mountedLink).not.toBeNull();
   await link.scrollIntoViewIfNeeded();
   const before = await conversation.evaluate((element) => element.scrollTop);
   await link.click();
   const reader = await rendered(page);
+  expect(Number(await conversation.getAttribute('data-test-document-opening-top'))).toBeCloseTo(
+    before,
+    0,
+  );
   expect(resolvedLocalLink).toBe(true);
   expect(new URL(page.url()).hash).toBe(`#/chat/${project.managerId}`);
   await page.screenshot({
     path: `../../data/latex-reader-20261004/${info.project.name}-from-chat.png`,
   });
+  const readsBefore = detailReads;
+  await page.clock.fastForward(5100);
+  await expect.poll(() => detailReads).toBeGreaterThan(readsBefore);
+  expect(await mountedLink!.evaluate((element) => element.isConnected)).toBe(true);
   await reader.getByRole('button', { name: 'Back to where I was' }).click();
   await expect(reader).toHaveCount(0);
   await expect
@@ -246,6 +273,7 @@ test('manager PDF links retain the mounted chat, its draft and exact scroll posi
   await expect(page.locator('.composer textarea')).toHaveValue('Keep my unfinished question.');
   await link.click();
   await rendered(page);
+  const reopened = Number(await conversation.getAttribute('data-test-document-opening-top'));
   // Synthetic touch events exercise the reader gesture handler; this is emulation, not an iPhone claim.
   await reader.locator('.pdf-scroll').evaluate((element) => {
     const touch = (x: number) => ({ identifier: 1, target: element, clientX: x, clientY: 200 });
@@ -262,7 +290,24 @@ test('manager PDF links retain the mounted chat, its draft and exact scroll posi
   await expect(reader).toHaveCount(0);
   await expect
     .poll(() => conversation.evaluate((element) => element.scrollTop))
-    .toBeCloseTo(before, 0);
+    .toBeCloseTo(reopened, 0);
+  await expect(page.locator('.composer textarea')).toHaveValue('Keep my unfinished question.');
+  expect(new URL(page.url()).hash).toBe(`#/chat/${project.managerId}`);
+  expect(
+    await mountedChat!.evaluate(
+      (element) => element.isConnected && element === document.querySelector('.conversation'),
+    ),
+  ).toBe(true);
+  expect(await mountedLink!.evaluate((element) => element.isConnected)).toBe(true);
+  await page.screenshot({ path: info.outputPath('restored-chat.png') });
+  await info.attach('document-return-positions', {
+    body: JSON.stringify({
+      firstOpening: before,
+      secondOpening: reopened,
+      finalReturn: await conversation.evaluate((element) => element.scrollTop),
+    }),
+    contentType: 'application/json',
+  });
 });
 
 test('a direct document link opens on first load and one Back closes it', async ({ page }) => {

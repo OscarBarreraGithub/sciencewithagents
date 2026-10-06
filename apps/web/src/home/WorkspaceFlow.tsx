@@ -49,6 +49,7 @@ import { readProjectSeed, seedProjectBrief } from './SpawnBrief';
 import { ProjectOwnerWorkBoard } from './OwnerWorkBoard';
 import { NewConversation } from './NewConversation';
 import { useBackStep } from './Navigation';
+import { ManagedGoalCard } from './ManagedGoalCard';
 import { AssistedSearch } from './AssistedSearch';
 import { EditorStatus } from './EditorStatus';
 import { BrowserStatus } from './BrowserStatus';
@@ -616,7 +617,13 @@ export function ChatPage({
   };
   const managerView = !!pane && !!agent && managesProject(agent, pane.special);
   const panel = pane?.panel && (pane.panel === 'config' || managerView) ? pane.panel : null;
-  useBackStep(panel ? () => pane?.setPanel(null) : null);
+  // One Back step: an open Goal dialog closes first, then the open panel behind it.
+  const [goalBack, setGoalBack] = useState<(() => void) | null>(null);
+  const registerGoalBack = useCallback(
+    (close: (() => void) | null) => setGoalBack(() => close),
+    [],
+  );
+  useBackStep(goalBack ?? (panel ? () => pane?.setPanel(null) : null));
   if (!agent)
     return (
       <FlowEmpty title="Opening the conversation…">
@@ -689,6 +696,15 @@ export function ChatPage({
             <ShieldCheck size={17} />
             <span className="chat-tool-label">Assistant privacy</span>
           </a>
+        )}
+        {managerView && !readOnly && !pane.archived && (
+          // Opt-in only: the server's `supported` answer decides whether Goal is offered.
+          <ManagedGoalCard
+            key={agent.id}
+            agentId={agent.id}
+            activity={agent.status}
+            onBack={registerGoalBack}
+          />
         )}
         {managerView && (
           <>

@@ -23,12 +23,18 @@ export function conversationEntries(
     SELECT e.rowid AS ordinal, e.body,
       CASE WHEN json_extract(r.body,'$.kind') IN ('message','report') AND
         (json_extract(e.body,'$.kind')='message' OR
-          (json_extract(e.body,'$.kind') IN ('assistant','tool') AND o.run_id IS NULL))
+          (json_extract(e.body,'$.kind') IN ('assistant','tool') AND o.run_id IS NULL AND g.key IS NULL))
         THEN json_extract(r.body,'$.kind') ELSE NULL END AS coordination_kind,
       json_extract(r.body,'$.sourceId') AS source_id
     FROM entries e
     LEFT JOIN runs r ON r.id=json_extract(e.body,'$.runId') AND r.agent_id=e.agent_id
     LEFT JOIN owner_runs o ON o.run_id=r.id
+    -- Host-tagged goal reports are substantive owner work. Keep their output in
+    -- the main conversation while their generated message input remains coordination.
+    LEFT JOIN settings g ON g.key='managed-goal:run:'||r.id
+      AND json_extract(r.body,'$.sourceId')=e.agent_id
+      AND json_type(g.value)='text'
+      AND r.key LIKE 'goal:'||json_extract(g.value,'$')||':after:%'
     WHERE e.agent_id=?${before ? ' AND e.rowid<(SELECT rowid FROM entries WHERE id=? AND agent_id=?)' : ''}
   ) SELECT body, coordination_kind, source_id FROM classified
     ${channel === 'all' ? '' : `WHERE coordination_kind IS ${channel === 'conversation' ? '' : 'NOT '}NULL`}

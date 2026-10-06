@@ -231,3 +231,104 @@ it('keeps pending approvals and human work items primary without exposing anothe
     (await app.inject({ url: `/api/agents/${manager}?channel=guessed`, headers })).statusCode,
   ).toBe(400);
 });
+
+it('retains trusted goal output in primary paged history across replacement and reload without rewriting entries', async () => {
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  const initial = runtime.managedGoals.ownerAction(manager, {
+    key: randomUUID(),
+    action: 'create',
+    expectedRevision: null,
+    objective: 'Retain substantive goal work in this conversation',
+  });
+  const first = store.run(initial.continuation!.runId);
+  store.updateRun(first.id, { status: 'running' });
+  const checkpoint = runtime.managedGoals.update(
+    manager,
+    randomUUID(),
+    {
+      goalId: initial.goal!.id,
+      expectedRevision: initial.goal!.revision,
+      action: 'continue',
+      summary: 'Initial evidence saved',
+      nextAction: 'Verify the retained outcome',
+    },
+    store.run(first.id),
+  );
+  store.updateRun(first.id, { status: 'completed' });
+  store.updateAgent(manager, { status: 'idle' });
+  runtime.managedGoals.finish(store.run(first.id), true);
+  const automatic = store.run(runtime.managedGoals.view(manager).continuation!.runId);
+  expect(automatic.sourceId).toBe(manager);
+  expect(store.getSetting(`managed-goal:run:${automatic.id}`)).toBe(checkpoint.id);
+  const expected = [first.id];
+  for (let index = 0; index < 220; index++)
+    expected.push(
+      append(automatic.id, index % 2 ? 'tool' : 'assistant', `Substantive result ${index}`).id,
+    );
+  store.updateRun(automatic.id, { status: 'completed' });
+  // A goal-shaped key alone is not trusted goal provenance.
+  const untrusted = store.enqueue(
+    manager,
+    `goal:${checkpoint.id}:after:${randomUUID()}`,
+    'Internal scheduling',
+    'report',
+    manager,
+  );
+  store.updateRun(untrusted.id, { status: 'completed' });
+  const internal = append(
+    untrusted.id,
+    'assistant',
+    'Ordinary internal report remains coordination',
+  );
+  const other = store.addAgent({
+    projectId: store.agent(manager).projectId,
+    parentId: manager,
+    taskId: null,
+    name: 'Other worker',
+    role: 'researcher',
+    cwd: root,
+  });
+  const foreignSource = store.enqueue(
+    manager,
+    `goal:${checkpoint.id}:after:${randomUUID()}`,
+    'Worker report',
+    'report',
+    other.id,
+  );
+  store.updateRun(foreignSource.id, { status: 'completed' });
+  store.setSetting(`managed-goal:run:${foreignSource.id}`, checkpoint.id);
+  const foreignReply = append(
+    foreignSource.id,
+    'assistant',
+    'Worker acknowledgment still belongs in coordination',
+  );
+  const latest = await page('conversation');
+  expect(latest.entries.map((entry) => entry.id)).toEqual(expected.slice(-200));
+  expect(latest.hasMore).toBe(true);
+  const earlier = await page('conversation', latest.entries[0]!.id);
+  expect(earlier.entries.map((entry) => entry.id)).toEqual(expected.slice(0, 21));
+  expect(earlier.hasMore).toBe(false);
+  const coordination = [automatic.id, untrusted.id, internal.id, foreignSource.id, foreignReply.id];
+  expect((await page('coordination')).entries.map((entry) => entry.id)).toEqual(coordination);
+  const replaced = runtime.managedGoals.ownerAction(manager, {
+    key: randomUUID(),
+    action: 'replace',
+    expectedRevision: runtime.managedGoals.view(manager).goal!.revision,
+    objective: 'A new explicit goal',
+  });
+  expected.push(replaced.continuation!.runId);
+  const savedBodies = store.db
+    .prepare('SELECT id,body FROM entries WHERE agent_id=? ORDER BY rowid')
+    .all(manager);
+  await app.close();
+  await open();
+  const reloaded = await page('conversation');
+  expect(reloaded.entries.map((entry) => entry.id)).toEqual(expected.slice(-200));
+  expect(
+    (await page('conversation', reloaded.entries[0]!.id)).entries.map((entry) => entry.id),
+  ).toEqual(expected.slice(0, 22));
+  expect((await page('coordination')).entries.map((entry) => entry.id)).toEqual(coordination);
+  expect(
+    store.db.prepare('SELECT id,body FROM entries WHERE agent_id=? ORDER BY rowid').all(manager),
+  ).toEqual(savedBodies);
+});

@@ -37,6 +37,8 @@ import {
   decisionSchema,
   detailSchema,
   agentDetailQuerySchema,
+  managedGoalActionSchema,
+  managedGoalViewSchema,
   id,
   modelSchema,
   mcpCatalogSchema,
@@ -1101,6 +1103,27 @@ export async function createServer(
       entries: page.entries,
       runs: store.runsForAgent(target).map((r) => runSchema.parse(r)),
       hasMore: page.hasMore,
+    });
+  });
+  const goalView = (target: string) => {
+    const saved = runtime.managedGoals.saved(target);
+    const reason = saved?.goal.continuationRunId
+      ? (runtime.pulsar.status().jobs.find((job) => job.runId === saved.goal.continuationRunId)
+          ?.reason ?? null)
+      : null;
+    return managedGoalViewSchema.parse(runtime.managedGoals.view(target, reason));
+  };
+  app.get('/api/agents/:id/goal', async (request) => goalView(agentId(request.params)));
+  app.post('/api/agents/:id/goal', async (request) => {
+    const target = agentId(request.params);
+    runtime.requireDirectControl(target);
+    if (terminals.active(target))
+      throw new Conflict('Return from native control before changing the managed goal.');
+    const input = managedGoalActionSchema.parse(request.body);
+    return runtime.withLock(`managed-goal:${target}`, async () => {
+      runtime.managedGoals.ownerAction(target, input);
+      runtime.kick();
+      return goalView(target);
     });
   });
   app.get('/api/models', async (request) => {

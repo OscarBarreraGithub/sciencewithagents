@@ -536,6 +536,7 @@ export const inspectSchema = z
     catalog: catalogQuerySchema.optional(),
     workItems: workItemPageQuerySchema.optional(),
     ownerRequests: ownerRequestQuerySchema.optional(),
+    goal: z.literal(true).optional(),
     models: z.literal(true).optional(),
     provider: providerIdSchema.optional(),
     changes: z.literal(true).optional(),
@@ -665,3 +666,4 @@ export * from './publishing-accounts.js';
 
 export * from './owner-terminal.js';
 export * from './native-goal.js';
+export * from './managed-goal.js';

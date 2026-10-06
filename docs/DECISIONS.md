@@ -37,6 +37,14 @@ Steering and adjacent questions add to the outstanding work unless the owner exp
 cancels or replaces it. Handoffs preserve item IDs, assignees, next actions and evidence;
 checkpoints and completion reports reconcile earlier open requests, including triaged items.
 
+App-owned Codex and Claude manager goals are explicit opt-in, with durable objective and
+progress. Continuations are ordinary queued turns under existing QUARK admission, reserves
+and hourly/window limits, never a native automatic-goal bypass or a second scheduler.
+Unchanged progress waits without model polling. Completion reconciles the manager's scoped
+requests, work items, tasks and active/pending helpers. Pause holds queued goal work; Stop
+cancels only unstarted goal work without claiming completion or interrupting an active reply.
+Existing managers are not automatically enrolled; shared native Codex goals remain separate.
+
 ## Shared budgets and computer capacity
 
 QUARK shares account/model windows across projects on the same computer, including independently reported model

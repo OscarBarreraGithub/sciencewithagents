@@ -1,6 +1,6 @@
 # Current status
 
-Checked 2026-10-05. **Beta: current workflows have been exercised with real Codex/Claude
+Checked 2026-10-06. **Beta: current workflows have been exercised with real Codex/Claude
 projects and desktop/phone browser checks.** This is not a claim that every device or
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
@@ -33,6 +33,17 @@ are preserved. An older companion needs a safe update/reload; the app does not i
 an active editor to activate it. Claude and QUARK-managed automatic goal continuation are
 not exposed through these native controls.
 
+App-owned Codex and Claude project managers now have a separate, explicit opt-in Goal.
+The objective and progress persist; each first or follow-up turn uses existing QUARK
+admission, provider reserves and hourly/window limits. Pause holds queued goal work;
+Resume reuses it under those gates. Stop cancels only unstarted goal work and retains the
+record; an active reply needs the existing Stop reply control. Existing managers are not
+automatically enrolled. Unchanged progress does not trigger polling turns. Focused
+persistence, admission and history checks pass across Chromium and WebKit layouts.
+Bounded real Codex and Claude goals each completed two turns, retaining their native session
+and exact queued continuation through Pause and an app restart. The completed real result
+also passed five browser-layout checks. These checks do not certify an unlimited autonomous run.
+
 ## Delivered, with acceptance limits
 
 The app connects project setup, manager/worker conversations, versioned prompt drafts,
@@ -52,6 +63,8 @@ Desktop and simulated phone checks include failed requests, retry, saved data, k
 layout and long chat history. They do not certify physical Home Screen retention, cellular
 reconnection, hardware keyboards or all OS/browser versions. Use [phone acceptance](PHONE_ACCEPTANCE.md)
 on the actual device. The companion is installed from source; no marketplace release is claimed.
+Physical iPhone acceptance, Claude authentication through a full renewal cycle and
+completed real-account five-hour utilization/precision remain open checks.
 
 Routine work is not stopped by raw-token estimates. Actual provider allowance caps,
 reserves, resource checks and saved pauses remain enforced. **Help → Report a bug** saves a
@@ -108,6 +121,12 @@ and model choices remain. Active work is never discarded by an inactivity timer.
   notebook-only HTTPS address. Each worker computer needs that address configured; the app
   does not automatically create DNS or publish a notebook port. Live hosting and physical-phone
   acceptance must be verified for the installation. See [Slurm cluster](CLUSTER.md).
+
+- **Remote editor:** the published private Unix transport and actual SSH connection have
+  been checked. The native Codex database on NFS failed to finish startup; a supported,
+  isolated node-local database override initialized successfully without moving native
+  history or credentials. Remote history, send, steering and Stop remain unverified.
+  See [shared native conversations](VSCODE_MIRROR.md).
 
 - **Apps:** LaTeX/PDF reading and manager-owned project-app registration are connected.
   Local app ports and optional published HTTPS links are recorded; registration does not
