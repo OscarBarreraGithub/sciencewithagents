@@ -2250,3 +2250,28 @@ button.chat-folder:disabled {
   font-weight: 650;
   cursor: pointer;
 }
+
+/* A workspace reconnect keeps its short explanation and Retry fully visible at every width;
+   the usual notice height caps apply to every other notice. */
+.flow-chat-notice.workspace-reconnect-notice,
+.chat-pane .flow-chat-notice.workspace-reconnect-notice,
+.main-chat.has-selection .chat-pane .flow-chat-notice.workspace-reconnect-notice {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+.workspace-reconnect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.workspace-reconnect p {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+}
+.workspace-reconnect .flow-button {
+  flex: none;
+  min-height: 44px;
+}

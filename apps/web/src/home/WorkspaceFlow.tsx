@@ -9,6 +9,7 @@ import {
   MessageCircle,
   NotebookPen,
   Plus,
+  RefreshCw,
   Search,
   Settings2,
   ShieldCheck,
@@ -531,6 +532,8 @@ export function ChatPage({
   const [error, setError] = useState('');
   const [connectedId, setConnectedId] = useState<string | null>(null);
   const connected = connectedId === id;
+  // The saved retry clears the hook's error as it starts; keep its notice until it settles.
+  const [reconnecting, setReconnecting] = useState(false);
   const [busy, setBusy] = useState(false);
   const interviewKeys = useRef({ evidence: crypto.randomUUID(), native: crypto.randomUUID() });
   const [nativeDiscussion, setNativeDiscussion] = useState(true);
@@ -766,12 +769,14 @@ export function ChatPage({
       )}
     </PanelFrame>
   );
+  const reconnect = !!workspace.error || reconnecting;
   // The pane keeps the notice area for connection, errors and record explanations only.
   const showNotice =
     (!pane && !embedded) ||
     !!(
       error ||
       workspace.error ||
+      reconnecting ||
       readError ||
       !connected ||
       agent.interview ||
@@ -817,23 +822,54 @@ export function ChatPage({
             </FlowHeading>
           )}
       {showNotice && (
-        <div className="flow-chat-notice" role="status">
-          {(error || workspace.error || readError) && (
-            <p role="alert">{error || workspace.error || readError}</p>
-          )}
-          {!connected && !readError
-            ? 'Connecting to this computer. Your saved messages and draft are retained.'
-            : agent.archivedAt
-              ? 'This manager was removed. Its files and conversation history are saved; it cannot start more work.'
-              : agent.interview
-                ? agent.interview.continuity === 'native-fork'
-                  ? `A separate read-only discussion using the saved ${agent.provider === 'claude' ? 'Claude' : 'Codex'} conversation. ${currentConversation?.nativeDiscussion === 'prepared' ? 'The native history has been copied.' : 'The copy is prepared when you send your first question.'} The original work and review stay unchanged. If that history is unavailable, open Original worker and choose Saved evidence only.`
-                  : 'A new read-only discussion using saved evidence. The original task, review and conversation stay unchanged.'
-                : agent.nativeRootId
-                  ? 'Native helper activity is retained here. Direct input and stop controls belong to the owning conversation.'
-                  : readOnly
-                    ? 'This is the saved record. Ask about the work in a separate read-only discussion.'
-                    : 'Your draft stays private to this browser. Sending is always your choice.'}
+        <div
+          className={`flow-chat-notice${reconnect ? ' workspace-reconnect-notice' : ''}`}
+          role="status"
+        >
+          {(error || readError) && <p role="alert">{error || readError}</p>}
+          {reconnect ? (
+            // Technical detail stays in Open conversations; this offers the same saved retry.
+            <div className="workspace-reconnect">
+              <p>
+                This browser’s conversation list needs to reconnect. Your messages and draft are
+                kept.
+              </p>
+              <button
+                type="button"
+                className="flow-button"
+                disabled={reconnecting || workspace.busy}
+                onClick={() => {
+                  setReconnecting(true);
+                  void workspace.retry().finally(() => {
+                    if (alive.current) setReconnecting(false);
+                  });
+                }}
+              >
+                <RefreshCw size={15} aria-hidden="true" />
+                {reconnecting ? 'Retrying…' : 'Retry connection'}
+              </button>
+            </div>
+          ) : null}
+          {!reconnect ||
+          !connected ||
+          agent.archivedAt ||
+          agent.interview ||
+          agent.nativeRootId ||
+          readOnly
+            ? !connected && !readError
+              ? 'Connecting to this computer. Your saved messages and draft are retained.'
+              : agent.archivedAt
+                ? 'This manager was removed. Its files and conversation history are saved; it cannot start more work.'
+                : agent.interview
+                  ? agent.interview.continuity === 'native-fork'
+                    ? `A separate read-only discussion using the saved ${agent.provider === 'claude' ? 'Claude' : 'Codex'} conversation. ${currentConversation?.nativeDiscussion === 'prepared' ? 'The native history has been copied.' : 'The copy is prepared when you send your first question.'} The original work and review stay unchanged. If that history is unavailable, open Original worker and choose Saved evidence only.`
+                    : 'A new read-only discussion using saved evidence. The original task, review and conversation stay unchanged.'
+                  : agent.nativeRootId
+                    ? 'Native helper activity is retained here. Direct input and stop controls belong to the owning conversation.'
+                    : readOnly
+                      ? 'This is the saved record. Ask about the work in a separate read-only discussion.'
+                      : 'Your draft stays private to this browser. Sending is always your choice.'
+            : null}
         </div>
       )}
       <div
