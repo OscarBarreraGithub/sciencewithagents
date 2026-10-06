@@ -313,6 +313,9 @@ export const entrySchema = z.object({
   image: generatedImageSchema.optional(),
   status: z.string(),
   createdAt: z.string(),
+  // Assistant replies only: the provider's explicit message phase. Absent means unknown;
+  // never inferred from wording, status or turn completion.
+  phase: z.enum(['commentary', 'final']).optional(),
   ownerInput: z
     .object({ delivery: z.enum(['submitted', 'uncertain']) })
     .strict()

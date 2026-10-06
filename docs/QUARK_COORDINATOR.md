@@ -112,8 +112,15 @@ the GET after a conflict or to see a later edit. Host forwarding supports these 
 The coordinator uses the existing runtime, signed leases and cached usage collector. Global
 queue pause, provider update and exhausted headroom can also delay QUARK's replies; the
 ordinary queue and usage controls remain available without an AI account. Automatic wakes
-are coalesced, separated by at least five minutes and limited to four per hour; a turn ends
-at three minutes. Failed/interrupted turns need inspection, not blind replay. The private
+need material demand: queued or running work of a real project that only the owner cannot
+unblock. QUARK's own notices, paused/zero-rate/exhausted-grant work, live percentages, worker
+slot changes and elapsed reset time are not changes. A wake follows new work, a new forecast
+overrun, or a window turning fast/underused (or a new reported reset) for that work; its prompt
+states the reason. Wakes are coalesced, at least five minutes apart and at most four per hour;
+a turn ends at three minutes. Automatic notices are rejected for paused, finished or
+owner-blocked projects, including a zero rate on the manager's own provider, and while an
+earlier notice to that manager is still queued. Owner-directed notices are delivered as asked.
+Existing queued notices are never deleted automatically. Failed/interrupted turns need inspection, not blind replay. The private
 TIMING_EXAMPLES.md and manager context contain recent measured active turn durations,
 forecasts, token basis and attributed allowance by reported window. Selection favors the
 manager's project/provider/model while retaining representative provider/model/role variety.

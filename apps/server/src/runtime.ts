@@ -126,6 +126,9 @@ const completedItem = z.object({
   turnId: z.string(),
   item: z.object({ id: z.string(), type: z.string() }).passthrough(),
 });
+/** Native Codex MessagePhase is `commentary | final_answer`; anything else stays unknown. */
+const assistantPhase = (value: unknown): Entry['phase'] =>
+  value === 'commentary' ? 'commentary' : value === 'final_answer' ? 'final' : undefined;
 
 /** Connection and job counts only; queue detail changes too often for a notice fingerprint. */
 function clusterNotice(summary: ReturnType<ClusterMonitor['summary']>) {
@@ -3250,6 +3253,8 @@ export class Runtime {
         text: ((existing?.text ?? '') + v.delta).slice(0, 200_000),
         status: 'streaming',
         createdAt: existing?.createdAt ?? now(),
+        // Deltas carry no phase; keep the one the item explicitly supplied.
+        ...(existing?.kind === 'assistant' && existing.phase ? { phase: existing.phase } : {}),
       });
     } else if (method === 'turn/started') {
       const turn = z.object({ id: z.string() }).passthrough().parse(p.turn);
@@ -3396,8 +3401,12 @@ export class Runtime {
       text = JSON.stringify(v, null, 2);
     }
     const id = `${agentId}:${v.id}`;
-    const existing = this.store.entries(agentId).find((e) => e.id === id);
+    const existing = this.store.savedEntry(agentId, id);
     if (started && existing?.status === 'complete') return;
+    const phase =
+      v.type === 'agentMessage'
+        ? (assistantPhase(v.phase) ?? (existing?.kind === 'assistant' ? existing.phase : undefined))
+        : undefined;
     const entry: Entry = {
       id,
       agentId,
@@ -3417,6 +3426,7 @@ export class Runtime {
           : text,
       status: started ? 'running' : 'complete',
       createdAt: existing?.createdAt ?? now(),
+      ...(phase ? { phase } : {}),
     };
     if (imageBytes) this.store.imageEntry(entry, imageBytes);
     else this.store.entry(entry);

@@ -11,7 +11,12 @@ import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import WebSocket from 'ws';
-import { hostConnectionsSchema, type HostConnection } from '@dock/shared';
+import {
+  agentDetailQuerySchema,
+  hostConnectionsSchema,
+  managedGoalActionSchema,
+  type HostConnection,
+} from '@dock/shared';
 import {
   assertDedicatedForward,
   Hosts,
@@ -178,6 +183,21 @@ beforeEach(async () => {
       fixture.headers.push(request.headers);
       fixture.writes.push(request.body);
       return { held: true };
+    });
+    // The receiving routes parse their own typed query/body; these echo what arrived.
+    app.get(`/api/agents/${agentId}`, (request) => {
+      fixture.headers.push(request.headers);
+      return { hostId: fixture.hostId, query: agentDetailQuerySchema.parse(request.query) };
+    });
+    app.get(`/api/agents/${agentId}/goal`, (request) => {
+      fixture.headers.push(request.headers);
+      return { hostId: fixture.hostId, goal: null };
+    });
+    app.post(`/api/agents/${agentId}/goal`, (request) => {
+      fixture.headers.push(request.headers);
+      const action = managedGoalActionSchema.parse(request.body);
+      fixture.writes.push({ goal: action });
+      return { hostId: fixture.hostId, goal: action };
     });
     app.get('/api/events', (request, reply) => {
       fixture.headers.push(request.headers);
@@ -685,6 +705,70 @@ describe('isolated computer connections', () => {
     ])
       expect(proxyPath('GET', invalid)).toBeNull();
     expect(proxyPath('POST', `${path}?archived=true`)).toBeNull();
+  });
+  it('opens a remote manager by exact detail channel and managed goal routes only', async () => {
+    // Saved entry IDs are opaque (`agent:item`, `agent:claude:report:tool`) and travel encoded.
+    const before = encodeURIComponent(`${agentId}:claude:report:toolu_01`);
+    for (const channel of ['all', 'conversation', 'coordination'])
+      for (const query of [
+        `channel=${channel}`,
+        `before=${before}&channel=${channel}`,
+        `channel=${channel}&before=${before}`,
+      ])
+        expect(proxyPath('GET', `/agents/${agentId}?${query}`)).toBe(
+          `/api/agents/${agentId}?${query}`,
+        );
+    expect(proxyPath('GET', `/agents/${agentId}/goal`)).toBe(`/api/agents/${agentId}/goal`);
+    expect(proxyPath('POST', `/agents/${agentId}/goal`)).toBe(`/api/agents/${agentId}/goal`);
+    for (const invalid of [
+      `/agents/${agentId}?channel=private`,
+      `/agents/${agentId}?channel=`,
+      `/agents/${agentId}?channel=all&channel=conversation`,
+      `/agents/${agentId}?before=a&before=b`,
+      `/agents/${agentId}?before=`,
+      `/agents/${agentId}?before=${'x'.repeat(121)}`,
+      `/agents/${agentId}?channel=all&path=/tmp`,
+      `/agents/${agentId}?before=a%0Ab`,
+      `/agents/${agentId}?channel=all%00`,
+      `/agents/${agentId}/goal?channel=all`,
+      `/agents/${agentId}/goal/history`,
+      `/agents/${agentId}/goals`,
+      '/agents/not-an-id/goal',
+    ])
+      expect(proxyPath('GET', invalid)).toBeNull();
+    expect(proxyPath('POST', `/agents/${agentId}/goal?action=pause`)).toBeNull();
+    expect(proxyPath('POST', `/agents/${agentId}/goal/clear`)).toBeNull();
+    expect(proxyPath('DELETE', `/agents/${agentId}/goal`)).toBeNull();
+    expect(proxyPath('PUT', `/agents/${agentId}/goal`)).toBeNull();
+
+    const detail = await gateway.inject({
+      url: path(1, `/agents/${agentId}?channel=conversation&before=${before}`),
+      headers: privateHeaders,
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toEqual({
+      hostId: fixtures[1].hostId,
+      query: { before: `${agentId}:claude:report:toolu_01`, channel: 'conversation' },
+    });
+    const goal = await gateway.inject({ url: path(1, `/agents/${agentId}/goal`) });
+    expect(goal.json()).toEqual({ hostId: fixtures[1].hostId, goal: null });
+    const action = { key: randomUUID(), action: 'pause', expectedRevision: 1 };
+    const saved = await gateway.inject({
+      method: 'POST',
+      url: path(1, `/agents/${agentId}/goal`),
+      payload: action,
+      headers: privateHeaders,
+    });
+    expect(saved.json()).toEqual({ hostId: fixtures[1].hostId, goal: action });
+    expect(fixtures[1].writes).toEqual([{ goal: action }]);
+    checkHeaders(1);
+    for (const url of [
+      path(1, `/agents/${agentId}?channel=private`),
+      path(1, `/agents/${agentId}/goal?channel=all`),
+    ])
+      expect((await gateway.inject({ url })).statusCode).toBe(404);
+    expect(fixtures[0].headers.concat(fixtures[2].headers)).toEqual([]);
+    expect(fixtures[1].headers).toHaveLength(3);
   });
   it('streams a registered PDF from the selected computer without forwarding private headers', async () => {
     const response = await gateway.inject(path(1, `/documents/${agentId}/pdf`));

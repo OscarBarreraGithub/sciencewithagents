@@ -469,3 +469,109 @@ it('coalesces automatic wakes durably and never wakes an idle queue', async () =
   coordinator.tick();
   expect(store.runs().filter((r) => r.agentId === s.agentId)).toHaveLength(1);
 });
+function zeroRate(projectId: string, provider: 'codex' | 'claude') {
+  quark.saveBudget({
+    key: randomUUID(),
+    projectId,
+    provider,
+    windowId: 'secondary',
+    period: 'hour',
+    limitPercent: 0,
+  });
+}
+function notify(agentId: string, run: ReturnType<typeof store.run>, projectId: string) {
+  return coordinator.tool(
+    agentId,
+    randomUUID(),
+    'dock_quark_control',
+    { action: 'notify', projectId, reason: 'Spare Claude capacity.' },
+    run,
+  );
+}
+it('never wakes or notifies a finished zero-limit project for its own pending notices', async () => {
+  const s = await coordinator.start({ key: randomUUID() });
+  const p = store.register(join(root, 'Thermal'), 'Thermal', '', 'codex');
+  zeroRate(p.id, 'codex');
+  zeroRate(p.id, 'claude');
+  for (let i = 0; i < 3; i++)
+    store.enqueue(p.managerId, randomUUID(), 'QUARK scheduling update', 'report', s.agentId);
+  for (let i = 0; i < 4; i++) {
+    vi.advanceTimersByTime(31 * 60_000);
+    coordinator.tick();
+  }
+  expect(store.runs().filter((r) => r.agentId === s.agentId)).toHaveLength(0);
+  // Owner queue items are retained, never deleted or archived.
+  expect(store.runs(['queued']).filter((r) => r.agentId === p.managerId)).toHaveLength(3);
+  const { agent, run } = await active('report');
+  expect(() => notify(agent.id, run, p.id)).toThrow(/Only the owner/);
+});
+it('rejects a notice when the manager provider is owner-blocked even with other provider work', async () => {
+  const p = store.register(join(root, 'Mixed'), 'Mixed', '', 'codex');
+  zeroRate(p.id, 'codex');
+  const worker = store.addAgent({
+    projectId: p.id,
+    parentId: p.managerId,
+    taskId: null,
+    provider: 'claude',
+    role: 'researcher',
+    name: 'Worker',
+    cwd: root,
+  });
+  store.enqueue(worker.id, randomUUID(), 'Useful Claude work');
+  const { agent, run } = await active('report');
+  expect(() => notify(agent.id, run, p.id)).toThrow(/Only the owner/);
+  expect(store.runs(['queued']).filter((r) => r.agentId === p.managerId)).toHaveLength(0);
+});
+it('wakes on new material work only, coalesces pending notices and keeps owner notices', async () => {
+  const s = await coordinator.start({ key: randomUUID() });
+  const p = store.register(join(root, 'A'), 'A', '', 'codex');
+  store.enqueue(p.managerId, randomUUID(), 'Work');
+  vi.advanceTimersByTime(31_000);
+  coordinator.tick();
+  const wakes = () => store.runs().filter((r) => r.agentId === s.agentId);
+  expect(wakes()).toHaveLength(1);
+  expect(wakes()[0]!.text).toContain('Material change: 1 new unfinished work item');
+  store.updateRun(wakes()[0]!.id, { status: 'completed' });
+  store.updateAgent(s.agentId!, { status: 'idle' });
+  // Elapsed reset-clock buckets and changed live percentages are not material.
+  for (const used of [20, 35]) {
+    vi.advanceTimersByTime(31 * 60_000);
+    for (const provider of ['codex', 'claude'] as const)
+      store.setSetting(
+        `capacity:v1:${provider}`,
+        parseCapacity(
+          provider,
+          [
+            {
+              provider,
+              source: 'oauth',
+              usage: {
+                updatedAt: new Date().toISOString(),
+                secondary: {
+                  usedPercent: used,
+                  windowMinutes: 10080,
+                  resetsAt: new Date('2026-09-30T16:00:00Z').toISOString(),
+                },
+              },
+            },
+          ],
+          Date.now(),
+        ),
+      );
+    coordinator.tick();
+  }
+  expect(wakes()).toHaveLength(1);
+  const { agent, run } = await active('report');
+  notify(agent.id, run, p.id);
+  expect(() => notify(agent.id, run, p.id)).toThrow(/still waiting/);
+  store.updateRun(run.id, { status: 'completed' });
+  store.updateAgent(agent.id, { status: 'idle' });
+  vi.advanceTimersByTime(6 * 60_000);
+  coordinator.tick();
+  expect(wakes().filter((r) => r.kind === 'report' && r.status === 'queued')).toHaveLength(0);
+  const owner = await active('user');
+  expect(notify(owner.agent.id, owner.run, p.id)).toMatchObject({ saved: true });
+  expect(
+    store.runs(['queued']).filter((r) => r.agentId === p.managerId && r.kind === 'report'),
+  ).toHaveLength(2);
+});

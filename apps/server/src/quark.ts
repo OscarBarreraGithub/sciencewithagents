@@ -30,6 +30,7 @@ import { readCapacity, capacityMaxAge } from './capacity.js';
 import type { Pulsar } from './pulsar.js';
 import { currentRateSamples, rateHistory } from './quark-rates.js';
 import { managedChat, chatBypassRun, chatBypassAllowed } from './quark-chat.js';
+import { adaptivePace, materialDemand, projectWeight, reservedPercent } from './quark-demand.js';
 
 const unknown: TokenCounts = {
   totalTokens: null,
@@ -1464,11 +1465,14 @@ export class Quark {
       rates = [];
     const projects = this.store.projects(),
       budgets = this.budgets(),
-      pacing = this.utilization();
+      pacing = this.utilization(),
+      demand = materialDemand(this.store, this, now),
+      policy = this.pulsar.policy();
     const accounts = [];
     for (const provider of ['codex', 'claude'] as const) {
       const capacity = readCapacity(this.store, provider, now);
       for (const window of capacity.windows.filter((w) => w.scope !== 'other')) {
+        const reserved = reservedPercent(this, capacity, window, now);
         const historyRows = intervals.filter(
           (row) => row.provider === provider && row.windowId === window.id,
         );
@@ -1487,6 +1491,15 @@ export class Quark {
             .filter((item) => item.projectId === project.id)
             .reduce((sum, item) => sum + item.percent, 0);
           const history = rateHistory(historyRows, project.id, now, capacityMaxAge(provider));
+          const caps = budgets.filter(
+            (b) =>
+              b.projectId === project.id &&
+              !b.taskId &&
+              b.provider === provider &&
+              b.windowId === window.id &&
+              b.period === 'hour' &&
+              b.enabled,
+          );
           rates.push({
             projectId: project.id,
             provider,
@@ -1504,6 +1517,17 @@ export class Quark {
             stale: capacity.stale || capacity.state !== 'ready',
             history,
             historyCoverageMinutes: history.reduce((sum, point) => sum + point.coverageMinutes, 0),
+            adaptive: adaptivePace({
+              now,
+              capacity,
+              window,
+              policy,
+              reservedPercent: reserved,
+              projectId: project.id,
+              demand,
+              weight: (id) => projectWeight(this.store, id),
+              hourlyCapPercent: caps.length ? Math.min(...caps.map((b) => b.limitPercent)) : null,
+            }),
           });
         }
         const forecast = pacing.find(

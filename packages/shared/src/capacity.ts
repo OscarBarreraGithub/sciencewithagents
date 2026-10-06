@@ -73,6 +73,16 @@ export const projectRateHistorySchema = z.object({
   resetsAt: z.string().nullable(),
   resetBoundary: z.boolean(),
 });
+/** Advisory per-window project pace. Suggestion only; a saved explicit cap stays authoritative. */
+export const adaptivePaceSchema = z.object({
+  state: z.enum(['ready', 'idle', 'blocked', 'unknown']),
+  percentPerHour: z.number().nonnegative().nullable(),
+  reason: z.string(),
+  demandProjects: z.number().int().nonnegative(),
+  observedAt: z.string().datetime().nullable(),
+  resetsAt: z.string().nullable(),
+});
+export type AdaptivePace = z.infer<typeof adaptivePaceSchema>;
 export const accountRateForecastSchema = z.object({
   provider: capacityProviderSchema,
   windowId: z.string(),
@@ -108,6 +118,8 @@ export const projectRatesSchema = z.object({
       stale: z.boolean(),
       history: z.array(projectRateHistorySchema).max(24).default([]),
       historyCoverageMinutes: z.number().min(0).max(720).default(0),
+      /** Absent from older hosts. */
+      adaptive: adaptivePaceSchema.optional(),
     }),
   ),
   accounts: z.array(accountRateForecastSchema).default([]),

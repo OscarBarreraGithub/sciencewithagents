@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { NotebookDelegations } from './notebook-delegations.js';
 import { localAuthorization } from '@dock/shared/dist/local-authorization.js';
 import {
+  agentDetailQuerySchema,
   hostConnectionsSchema,
   clusterNotebookOpenSchema,
   chatImageBodyLimit,
@@ -437,10 +438,10 @@ export class Hosts {
 
 const uuid = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const getPaths = new RegExp(
-  `^/(?:owner-terminal/${uuid}|apps|publishing-accounts|chat-images/${uuid}|chat-files/${uuid}(?:/info|/preview)?|health|browser/setup|setup(?:/(?:sign-in|claude-sign-in))?|documents(?:/browse|/${uuid}(?:/pdf|/reading|/assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif))?)?|snapshot|attention|capacity|resources|cluster(?:/sign-in|/notebooks)?|pulsar(?:/jobs/${uuid})?|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|archive/editors|work-items|bug-reports|app-updates|conversations(?:/visibility|/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid}(?:/goal)?)?|vscode/deliveries/${uuid}|vscode/queued(?:/${uuid}(?:/receipts/${uuid})?)?|agents/${uuid}(?:/chat-quark|/mcp|/export|/recovery|/owner-requests|/usage|/receipts/${uuid}|/queued/${uuid}/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
+  `^/(?:owner-terminal/${uuid}|apps|publishing-accounts|chat-images/${uuid}|chat-files/${uuid}(?:/info|/preview)?|health|browser/setup|setup(?:/(?:sign-in|claude-sign-in))?|documents(?:/browse|/${uuid}(?:/pdf|/reading|/assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif))?)?|snapshot|attention|capacity|resources|cluster(?:/sign-in|/notebooks)?|pulsar(?:/jobs/${uuid})?|quark(?:/(?:coordinator|focus))?|local-jobs|scheduler|models|model-policy|providers(?:/(?:codex|claude)/maintenance)?|project-options|project-folders|project-rates|archive/editors|work-items|bug-reports|app-updates|conversations(?:/visibility|/search/${uuid})?|events|frontdesk|recovery-backups(?:/${uuid})?|vscode/windows(?:/${uuid}(?:/goal)?)?|vscode/deliveries/${uuid}|vscode/queued(?:/${uuid}(?:/receipts/${uuid})?)?|agents/${uuid}(?:/chat-quark|/goal|/mcp|/export|/recovery|/owner-requests|/usage|/receipts/${uuid}|/queued/${uuid}/receipts/${uuid}|/images/${uuid})?|projects/${uuid}/(?:sessions|workflow|quark|notes|backup/setup|worker-tools(?:/catalog)?)|tasks/${uuid}/(?:diff|integration)|workspace/${uuid}(?:/drafts/${uuid}(?:/history)?)?)$`,
 );
 const postPaths = new RegExp(
-  `^/(?:owner-terminal(?:/${uuid}/close)?|apps/${uuid}/remove|publishing-accounts/check|chat-images|chat-files|browser/(?:check|open-setup)|documents/(?:from-message|${uuid}/(?:open|build))|projects(?:/(?:connect-folder|track-folder))?|archive/(?:search|read)|work-items(?:/tickets)?|bug-reports|app-updates/(?:check|start)|conversations(?:/search|/visibility)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|cluster/(?:settings|refresh|sign-in(?:/(?:respond|cancel))?|notebooks/(?:close|launch|renew|revoke))|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control|goal)|vscode/queued/${uuid}|agents/${uuid}/(?:interviews|messages|queued/${uuid}|commands|settings|chat-quark|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
+  `^/(?:owner-terminal(?:/${uuid}/close)?|apps/${uuid}/remove|publishing-accounts/check|chat-images|chat-files|browser/(?:check|open-setup)|documents/(?:from-message|${uuid}/(?:open|build))|projects(?:/(?:connect-folder|track-folder))?|archive/(?:search|read)|work-items(?:/tickets)?|bug-reports|app-updates/(?:check|start)|conversations(?:/search|/visibility)?|setup/(?:check|sign-in(?:/cancel)?|claude-sign-in)|model-policy(?:/catalogs)?|quark/(?:budgets|settings|resume|focus(?:/release)?|coordinator/(?:start|settings))|local-jobs(?:/(?:control|read))?|providers/(?:check|update)|capacity/refresh|cluster/(?:settings|refresh|sign-in(?:/(?:respond|cancel))?|notebooks/(?:close|launch|renew|revoke))|resources/(?:ask|settings|stop)|pulsar/(?:policy|jobs)|scheduler/settings|frontdesk/(?:start|settings)|recovery-backups(?:/${uuid}/verify)?|vscode/windows/${uuid}/(?:send|control|goal)|vscode/queued/${uuid}|agents/${uuid}/(?:interviews|messages|goal|queued/${uuid}|commands|settings|chat-quark|usage/refresh|terminal/close)|approvals/${uuid}|projects/${uuid}/(?:managers|tasks|workflow|quark|notes|open-in-editor|sessions/import|backup/(?:retry|preview|connect)|history|history/read|catalog|worker-tools)|tasks/${uuid}/(?:integrate|reconcile|cancel)|workspace/clients|workspace/${uuid}(?:/restore|/drafts/${uuid})?)$`,
 );
 const terminalPath = new RegExp(`^/(?:agents/${uuid}/terminal|owner-terminal/${uuid}/socket)$`);
 
@@ -469,21 +470,23 @@ export function proxyPath(method: string, path: string, socket = false) {
     const queryName =
       pathname === '/events'
         ? 'after'
-        : new RegExp(`^/agents/${uuid}$`).test(pathname)
-          ? 'before'
-          : new RegExp(`^/projects/${uuid}/sessions$`).test(pathname)
-            ? 'cursor'
-            : new RegExp(`^/workspace/${uuid}/drafts/${uuid}/history$`).test(pathname)
-              ? 'before'
-              : pathname === '/work-items'
-                ? 'projectId'
-                : null;
+        : new RegExp(`^/projects/${uuid}/sessions$`).test(pathname)
+          ? 'cursor'
+          : new RegExp(`^/workspace/${uuid}/drafts/${uuid}/history$`).test(pathname)
+            ? 'before'
+            : pathname === '/work-items'
+              ? 'projectId'
+              : null;
     const params = new URLSearchParams(query);
     const mirrorQueue = pathname === '/vscode/queued';
     if (mirrorQueue && !mirrorQueueQuerySchema.safeParse(Object.fromEntries(params)).success)
       return null;
     const mirrorRead = new RegExp(`^/vscode/windows/${uuid}$`).test(pathname);
     const ownerRequests = new RegExp(`^/agents/${uuid}/owner-requests$`).test(pathname);
+    // The receiving detail route parses this same schema: optional opaque `before`, exact channel.
+    const agentDetail = new RegExp(`^/agents/${uuid}$`).test(pathname);
+    if (agentDetail && !agentDetailQuerySchema.safeParse(Object.fromEntries(params)).success)
+      return null;
     const visibility = pathname === '/conversations/visibility';
     const conversationList = pathname === '/conversations' || pathname === '/vscode/windows';
     if (
@@ -501,7 +504,14 @@ export function proxyPath(method: string, path: string, socket = false) {
     if (mirrorRead && !mirrorPageQuerySchema.safeParse(Object.fromEntries(params)).success)
       return null;
     for (const [name, value] of params) {
-      if (mirrorRead || mirrorQueue || ownerRequests || visibility || conversationList) {
+      if (
+        agentDetail ||
+        mirrorRead ||
+        mirrorQueue ||
+        ownerRequests ||
+        visibility ||
+        conversationList
+      ) {
         if (params.getAll(name).length !== 1 || /[\x00-\x1f]/.test(value)) return null;
         continue;
       }
