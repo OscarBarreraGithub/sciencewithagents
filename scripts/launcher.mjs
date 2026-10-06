@@ -66,6 +66,8 @@ async function configAt(path) {
   };
 }
 
+const transientProbeError = (error) => ['ECONNRESET', 'ETIMEDOUT', 'EPIPE'].includes(error.code);
+
 function probe(config) {
   return new Promise((done) => {
     let finished = false;
@@ -102,14 +104,25 @@ function probe(config) {
             finish('occupied');
           }
         });
-        response.on('error', () => finish('occupied'));
+        response.on('error', (error) =>
+          finish(transientProbeError(error) ? 'starting' : 'occupied'),
+        );
       },
     );
     req.setTimeout(800, () => {
-      finish('occupied');
+      // A slow response does not establish another installation's identity.
+      finish('starting');
       req.destroy();
     });
-    req.on('error', (error) => finish(error.code === 'ECONNREFUSED' ? 'absent' : 'occupied'));
+    req.on('error', (error) =>
+      finish(
+        error.code === 'ECONNREFUSED'
+          ? 'absent'
+          : transientProbeError(error)
+            ? 'starting'
+            : 'occupied',
+      ),
+    );
     req.end();
   });
 }

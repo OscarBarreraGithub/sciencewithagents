@@ -73,6 +73,7 @@ be described as a failed core installation. Browser-test downloads are developer
    apps are never overwritten; ask the setup agent to inspect an existing installation
    instead of deleting it. The launcher records this clone and its private data directory, captures stable native
    executable/tool paths for Finder, and checks installation identity before starting.
+   Slow or reset startup probes retry within a bounded wait; opening still requires a matching identity.
    Automatic Homebrew discovery keeps an equivalent stable `bin` or `opt` entry even when
    a versioned Cellar directory comes first on PATH; explicit absolute selections stay exact.
    It preserves unrelated listeners and keeps private failure logs. Install optional tools

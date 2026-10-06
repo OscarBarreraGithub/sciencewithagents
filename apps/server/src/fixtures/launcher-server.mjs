@@ -14,7 +14,18 @@ writeFileSync(
   }),
   { mode: 0o600 },
 );
+let firstProbe = true;
 const server = createServer((request, response) => {
+  const mode = process.env.DOCK_LAUNCHER_FIXTURE_PROBE;
+  if (firstProbe && ['delay', 'reset'].includes(mode)) {
+    firstProbe = false;
+    if (mode === 'reset') request.socket.destroy();
+    else setTimeout(() => reply(response), 1200);
+    return;
+  }
+  reply(response);
+});
+function reply(response) {
   response.setHeader('content-type', 'application/json');
   response.end(
     JSON.stringify({
@@ -22,7 +33,7 @@ const server = createServer((request, response) => {
       instanceId: createHash('sha256').update(resolve(dataDir)).digest('hex'),
     }),
   );
-});
+}
 server.listen(Number(process.env.DOCK_PORT), '127.0.0.1', () =>
   appendFileSync(join(dataDir, 'starts'), 'started\n'),
 );

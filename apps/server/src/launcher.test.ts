@@ -526,6 +526,55 @@ describe('manual app launcher ownership', () => {
     await eventually(() => absent(value.port));
   });
 
+  it.each(['delay', 'reset'] as const)(
+    'retries a %s during owned startup without spawning another server',
+    async (mode) => {
+      const value = await fixture();
+      expect(
+        await command(value, 'launch', {
+          ...process.env,
+          DOCK_LAUNCHER_FIXTURE_PROBE: mode,
+        }),
+      ).toBe('owned');
+      const state = JSON.parse(readFileSync(join(value.root, 'data/launcher/owner.json'), 'utf8'));
+      expect(state).toMatchObject({ status: 'running', parentPid: value.parent.pid });
+      expect(readFileSync(join(value.root, 'data/starts'), 'utf8')).toBe('started\n');
+      expect(await command(value, 'launch')).toBe('owned');
+      expect(await command(value, 'stop')).toBe('stopped');
+      expect(readFileSync(join(value.root, 'data/graceful-stop'), 'utf8')).toBe('yes');
+      await eventually(() => absent(value.port));
+    },
+  );
+
+  it.each([
+    ['delay', 'wrong identity'],
+    ['reset', 'wrong identity'],
+    ['delay', 'malformed body'],
+    ['reset', 'malformed body'],
+  ] as const)('still refuses %s followed by %s', async (mode, invalid) => {
+    const value = await fixture();
+    let first = true;
+    const body =
+      invalid === 'wrong identity'
+        ? JSON.stringify({ protocolVersion: 1, instanceId: 'another-installation' })
+        : 'Not a JSON identity';
+    value.server = createServer((request, response) => {
+      if (first) {
+        first = false;
+        if (mode === 'reset') request.socket.destroy();
+        else setTimeout(() => response.end(body), 1200);
+      } else response.end(body);
+    });
+    await new Promise<void>((done) => value.server!.listen(value.port, '127.0.0.1', done));
+    expect(await command(value, 'launch')).toContain(
+      'Another app or a different sciencewithagents',
+    );
+    expect(existsSync(join(value.root, 'data/starts'))).toBe(false);
+    expect(existsSync(join(value.root, 'data/launcher/owner.json'))).toBe(false);
+    expect(await command(value, 'stop')).toBe('stopped');
+    expect(await absent(value.port)).toBe(false);
+  });
+
   it('does not open or stop an unrelated service on the selected local port', async () => {
     const value = await fixture();
     value.server = createServer((_request, response) => response.end('Another local app'));
