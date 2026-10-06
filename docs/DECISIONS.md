@@ -89,6 +89,15 @@ Routine work uses shared headroom without a mandatory per-task budget ceremony. 
 counts (including cache reads) are estimates/accounting only, not admission limits. Explicit
 provider allowance caps, remaining reserves, resource guards and owner pauses still apply.
 
+## QUARK demand and window pace
+
+Automatic coordinator turns and notices need material, unfinished, authorized work that a
+model could affect. QUARK's own notices, owner-blocked work and clock time are not demand.
+Adaptive pace is per reported window, weighted by project, and gates admission only while
+that window runs fast. Idle projects can start one turn, so the pace cannot deadlock startup.
+It never writes caps, switches providers or creates work. Explicit owner caps remain
+authoritative. [QUARK](QUARK.md#adaptive-window-pace)
+
 ## Slurm clusters
 
 A connected cluster is observed, not governed. QUARK shares one cached reading of native

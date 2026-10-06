@@ -26,7 +26,9 @@ import { isQuarkReport, materialDemand, notifyRelevance, windowMatches } from '.
 const materialSchema = z.object({
   runs: z.array(z.string()),
   overruns: z.array(z.string()),
-  windows: z.array(z.object({ key: z.string(), state: z.string(), resetsAt: z.string().nullable() })),
+  windows: z.array(
+    z.object({ key: z.string(), state: z.string(), resetsAt: z.string().nullable() }),
+  ),
 });
 type Material = z.infer<typeof materialSchema>;
 
@@ -752,7 +754,8 @@ export class QuarkCoordinator {
             (x) => x.id === w.windowId,
           );
           return (
-            !!window && runs.some((r) => r.provider === w.provider && windowMatches(window, r.model))
+            !!window &&
+            runs.some((r) => r.provider === w.provider && windowMatches(window, r.model))
           );
         })
         .map((w) => ({ key: `${w.provider}:${w.windowId}`, state: w.state, resetsAt: w.resetsAt })),
@@ -778,10 +781,7 @@ export class QuarkCoordinator {
     // Removals, calmer windows and elapsed time alone never wake a model.
     if (!reasons.length) return;
     const hour = Math.floor(now / 3600_000);
-    if (
-      (prior && now - prior.at < 5 * 60_000) ||
-      (prior?.hour === hour && prior.count >= 4)
-    )
+    if ((prior && now - prior.at < 5 * 60_000) || (prior?.hour === hour && prior.count >= 4))
       return;
     const reason = `Material change: ${reasons.join('; ')}.`;
     this.store.transaction(() => {

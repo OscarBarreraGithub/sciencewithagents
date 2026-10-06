@@ -130,7 +130,11 @@ it('never suggests pace for idle, stale, expired, zero-limit or exhausted window
     }),
   ).toMatchObject({ state: 'unknown', percentPerHour: null });
   expect(
-    pace('claude', { ...session, resetsAt: new Date(now - 1000).toISOString() }, demand(1, 'claude')),
+    pace(
+      'claude',
+      { ...session, resetsAt: new Date(now - 1000).toISOString() },
+      demand(1, 'claude'),
+    ),
   ).toMatchObject({ state: 'unknown', percentPerHour: null });
   expect(pace('claude', session, demand(1, 'claude'), { hourlyCapPercent: 0 })).toMatchObject({
     state: 'blocked',

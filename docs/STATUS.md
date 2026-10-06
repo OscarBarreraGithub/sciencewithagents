@@ -83,7 +83,10 @@ current estimates, a bounded 12-hour history and account depletion forecasts. Ze
 pauses that provider's project work. New reserve settings default to 20% per provider; existing
 settings are retained. An optional timed release lowers a reserve to zero near each fresh,
 reported reset (suggested thresholds: Codex 12 hours, Claude 45 minutes). It is off by default;
-shared pacing must be enabled for reserves to apply. Forecasts include external account activity
+shared pacing must be enabled for reserves to apply. Source (not yet installed) adds per-window adaptive
+pace by project weight. It gates admission only while a window runs fast, never saves caps,
+and limits automatic coordinator wakes and notices to material unfinished work. Real-account
+pacing behavior is unvalidated. Forecasts include external account activity
 and leave gaps when readings cannot support an estimate.
 An opt-in Claude five-hour policy advances useful eligible background work within existing
 preferences and limits. Manager timing examples now favor comparable project/provider/model

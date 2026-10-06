@@ -343,3 +343,25 @@ existing bounded wake schedule. It can advise managers to advance suitable Claud
 Managers preserve project provider mixes, exact model choices, caps, available computer
 resources and owner pauses. No filler tasks, lowered reserves or forced provider switches
 are authorized by this signal. Forecasts include external account activity and are estimates.
+
+### Adaptive window pace
+
+Each actually reported general or model window gets its own pace: fresh headroom after the
+effective reserve and outstanding admission reservations, spread over the time to that
+window's reported reset (aiming about 15 minutes early, an estimate rather than a promise).
+The pace is split by project priority weight across projects with active or ready authorized
+work on that window. Weekly and five-hour percentages are never pooled or compared. Project
+rates show it as an optional `adaptive` suggestion per window: `ready`, `idle` (no work, no
+suggestion), `blocked` (pause, saved zero rate, exhausted grant or no headroom) or `unknown`
+(stale, missing or elapsed-reset reading).
+
+With shared pacing enabled, admission follows this share only while a window is projected to
+reach its reserve before its reset (`fast`). A queued job waits if its project's rolling-hour
+attributed use plus reservations, plus the job's estimate, exceeds its share. A project with
+no use or reservation in that hour can always start one turn, so a large estimate cannot
+deadlock startup. Explicit caps (including zero), reserves, stale/native-limit and manual gates
+are checked first. Running turns, direct owner messages and per-job owner overrides are not
+paced, and Maximize useful Claude work exempts the Claude five-hour window. On-track or
+underused windows are not paced. No cap is saved, no job is created, and nothing consumes
+allowance merely because it is available. Whole-percent readings and unvalidated attribution
+make shares approximate; the reason text states the reading uncertainty.

@@ -106,7 +106,8 @@ export function materialDemand(store: Store, quark: Quark, now: number) {
       if (run.queueEdit || store.getSetting(`pulsar:held:${run.id}`) === true) continue;
       if (quark.taskIds(run).some((id) => store.getSetting(`pulsar:held-task:${id}`) === true))
         continue;
-      const block = quark.block(run, true);
+      // Pace-only waits remain demand; they are what the pace shares.
+      const block = quark.block(run, true, false, false, true, false);
       if (block && ownerCauses.has(block.cause)) continue;
     }
     demand.runs.push({
@@ -120,7 +121,8 @@ export function materialDemand(store: Store, quark: Quark, now: number) {
 }
 
 export function projectWeight(store: Store, projectId: string) {
-  return quarkProjectPolicySchema.parse(store.getSetting(`quark:project:${projectId}`) ?? {}).weight;
+  return quarkProjectPolicySchema.parse(store.getSetting(`quark:project:${projectId}`) ?? {})
+    .weight;
 }
 /** Outstanding admission reservations, using the same retention rule as Pulsar admission. */
 export function reservedPercent(
@@ -157,7 +159,10 @@ export function notifyRelevance(demand: ProjectDemand | undefined, managerProvid
   return 'This project has no unfinished authorized work. Account-wide observations are not a reason to wake its manager.';
 }
 
-export function windowMatches(window: Pick<CapacityWindow, 'scope' | 'model'>, model: string | null) {
+export function windowMatches(
+  window: Pick<CapacityWindow, 'scope' | 'model'>,
+  model: string | null,
+) {
   return (
     window.scope === 'general' ||
     (window.scope === 'model' && !!window.model && !!model?.toLowerCase().includes(window.model))
@@ -181,6 +186,8 @@ export function adaptivePace(input: {
   demand: Map<string, ProjectDemand>;
   weight: (projectId: string) => number;
   hourlyCapPercent: number | null;
+  /** Admission currently follows this share (the window is projected to run fast). */
+  enforced?: boolean;
 }): AdaptivePace {
   const { now, capacity, window, demand, projectId } = input;
   const own = demand.get(projectId);
@@ -242,7 +249,8 @@ export function adaptivePace(input: {
   const target = Math.max(hours - 0.25, hours / 2);
   const total = sharing.reduce((sum, d) => sum + input.weight(d.projectId), 0);
   const share = input.weight(projectId) / total;
-  const percentPerHour = Math.round(((headroom / target) * share) / 0.01) * 0.01;
+  // Weekly shares can be small; keep three decimals rather than rounding them to zero.
+  const percentPerHour = Math.round((headroom / target) * share * 1000) / 1000;
   // Reported readings are whole percentages: ±1 point of headroom over the same horizon.
   const uncertainty = (share / target).toFixed(share / target < 0.1 ? 3 : 2);
   return {
@@ -252,9 +260,12 @@ export function adaptivePace(input: {
     reason:
       `${headroom.toFixed(1)}% of ${window.label} is above the ${reserve}% reserve and ${input.reservedPercent.toFixed(1)}% reservations, ` +
       `paced to about 15 minutes before its reported reset in ${hours.toFixed(1)} h and shared by weight across ${sharing.length} project${sharing.length === 1 ? '' : 's'} with ready work. ` +
-      `About ±${uncertainty}%/h from whole-percent readings; external use shares this headroom. Suggestion only` +
+      `About ±${uncertainty}%/h from whole-percent readings; external use shares this headroom. ` +
+      (input.enforced
+        ? 'The window is projected to reach its reserve before reset, so admission currently follows this share; a project idle for the past hour can still start one turn'
+        : 'Admission is not paced while the window is on track; this is a suggestion') +
       (input.hourlyCapPercent !== null
-        ? `; the saved ${input.hourlyCapPercent}%/hour cap stays authoritative.`
-        : '; no cap is saved or changed.'),
+        ? `. The saved ${input.hourlyCapPercent}%/hour cap stays authoritative.`
+        : '. No cap is saved or changed.'),
   };
 }

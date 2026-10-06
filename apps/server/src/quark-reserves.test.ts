@@ -196,3 +196,38 @@ it('preserves independent reserves during an unrelated legacy edit but applies a
   expect(pulsar.policy().providerReserves.codex.reservePercent).toBe(0);
   expect(pulsar.policy().providerReserves.claude.reservePercent).toBe(0);
 });
+
+it('resumes retained headroom-held progress once, only after a genuine reported reset', () => {
+  store.setSetting('pulsar:policy', { enabled: true, reservePercent: 5 });
+  const reset = start + 60 * 60_000;
+  usage('claude', 97, reset);
+  const r = run('claude');
+  const agentId = r.agentId;
+  store.updateRun(r.id, { status: 'running' });
+  quark.hold(store.run(r.id), 'Session reached the shared headroom limit.', false, 'headroom');
+  store.updateRun(r.id, { status: 'interrupted' });
+  store.updateAgent(agentId, { status: 'interrupted', turnId: null });
+  quark.acknowledgeStop(r.id);
+  const resumes = () =>
+    store.runs(['queued']).filter((x) => x.agentId === agentId && x.kind === 'resume');
+  // A fresh but still exhausted pre-reset report is not capacity.
+  vi.setSystemTime(start + 60_000);
+  usage('claude', 97, reset);
+  quark.recoverTransient(new Set());
+  expect(quark.holds()).toHaveLength(1);
+  // Elapsed reset time without a new report never assumes a refill.
+  vi.setSystemTime(reset + 60_000);
+  quark.recoverTransient(new Set());
+  usage('claude', 97, reset);
+  quark.recoverTransient(new Set());
+  expect(quark.holds()).toHaveLength(1);
+  expect(resumes()).toHaveLength(0);
+  // A genuine report of the new window resumes retained progress exactly once.
+  usage('claude', 2, Date.now() + 300 * 60_000);
+  quark.recoverTransient(new Set());
+  quark.recoverTransient(new Set());
+  expect(quark.holds()).toHaveLength(0);
+  expect(resumes()).toHaveLength(1);
+  expect(resumes()[0]!.text).toContain('Inspect retained progress');
+  expect(store.events().filter((e) => e.type === 'quark.resumed')).toHaveLength(1);
+});

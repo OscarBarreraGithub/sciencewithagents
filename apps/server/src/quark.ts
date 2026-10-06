@@ -1014,6 +1014,7 @@ export class Quark {
     ignoreHold = false,
     ignoreBudgetPause = ignoreHold,
     allowChatBypass = true,
+    paced = true,
   ): { cause: QuotaHold['cause']; reason: string; budgetTargetId?: string } | null {
     const a = this.store.agent(run.agentId),
       rootId = a.nativeRootId ?? a.id;
@@ -1133,6 +1134,101 @@ export class Quark {
               ? 'This turn would exceed the rolling hourly allowance limit and stopping buffer. Wait for room or refine its turn estimate.'
               : 'This turn would exceed the remaining allowance budget and stopping buffer.',
           budgetTargetId: b.taskId ?? a.projectId,
+        };
+    }
+    // Explicit caps, reserve, stale/native and manual gates above always win first.
+    if (admitting && paced && this.pulsar.policy().enabled)
+      return this.paceBlock(run, a, cap, windows);
+    return null;
+  }
+  /** Pace applies only while a window is projected to reach its reserve before its reported reset. */
+  private enforcesPace(
+    provider: 'codex' | 'claude',
+    window: { id: string; windowMinutes: number | null },
+    pacing = this.utilization(),
+  ) {
+    // Follow the owner's explicit five-hour utilization choice.
+    if (
+      provider === 'claude' &&
+      window.windowMinutes === 300 &&
+      this.pulsar.policy().maximizeClaudeFiveHour
+    )
+      return false;
+    return pacing.some(
+      (p) => p.provider === provider && p.windowId === window.id && p.state === 'fast',
+    );
+  }
+  /**
+   * Adaptive admission: while a reported window runs fast, each project with ready work gets
+   * its weighted share of the headroom left until that window's own reset. Rolling attributed
+   * use plus outstanding reservations must fit the share. A project with nothing in the last
+   * hour may always start one turn, so a large estimate cannot deadlock startup. Owner
+   * messages and explicit per-job overrides are not paced; no cap is saved.
+   */
+  private paceBlock(
+    run: PrivateRun,
+    a: ReturnType<Store['agent']>,
+    cap: ReturnType<typeof readCapacity>,
+    windows: ReturnType<typeof readCapacity>['windows'],
+  ): { cause: QuotaHold['cause']; reason: string } | null {
+    if (
+      run.kind === 'user' ||
+      this.store.run(run.id).status !== 'queued' ||
+      this.store.getSetting(`pulsar:override:${run.id}`) === true
+    )
+      return null;
+    const now = this.clock(),
+      pacing = this.utilization();
+    let demand: ReturnType<typeof materialDemand> | null = null;
+    for (const window of windows) {
+      if (!this.enforcesPace(a.provider, window, pacing)) continue;
+      demand ??= materialDemand(this.store, this, now);
+      const caps = this.budgets().filter(
+        (b) =>
+          b.projectId === a.projectId &&
+          !b.taskId &&
+          b.provider === a.provider &&
+          b.windowId === window.id &&
+          b.period === 'hour' &&
+          b.enabled,
+      );
+      const pace = adaptivePace({
+        now,
+        capacity: cap,
+        window,
+        policy: this.pulsar.policy(),
+        reservedPercent: reservedPercent(this, cap, window, now),
+        projectId: a.projectId,
+        demand,
+        weight: (id) => projectWeight(this.store, id),
+        hourlyCapPercent: caps.length ? Math.min(...caps.map((b) => b.limitPercent)) : null,
+      });
+      // Unknown/blocked readings are handled by the ordinary gates; never pace without a share.
+      if (pace.state !== 'ready' || pace.percentPerHour === null) continue;
+      // Reuse the rolling hourly attribution and reservation ledger for this project and window.
+      const recent = this.hourlyStatus(
+        {
+          id: a.projectId,
+          projectId: a.projectId,
+          taskId: null,
+          provider: a.provider,
+          windowId: window.id,
+          period: 'hour',
+          enabled: true,
+          limitPercent: pace.percentPerHour,
+          revision: 0,
+          createdAt: stamp(now),
+          startSequence: 0,
+          source: 'owner',
+        },
+        false,
+        run.id,
+      );
+      const used = recent.spentPercent + recent.reservedPercent;
+      if (used > 0 && used + this.pulsar.estimate(run).quotaPercent > pace.percentPerHour)
+        return {
+          cause: 'headroom',
+          reason: `Pacing ${window.label}: it is projected to reach its reserve before the reported reset, so ${pace.demandProjects} project${pace.demandProjects === 1 ? '' : 's'} with ready work share about ${pace.percentPerHour.toFixed(2)}%/hour here by weight. This project used about ${used.toFixed(1)}% in the rolling hour, including reservations. Waiting for earlier use to leave the hour${recent.nextEligibleAt ? ` (around ${recent.nextEligibleAt.slice(11, 16)} UTC)` : ''} or for a calmer reading. Estimate only; no cap was saved.`,
         };
     }
     return null;
@@ -1527,6 +1623,7 @@ export class Quark {
               demand,
               weight: (id) => projectWeight(this.store, id),
               hourlyCapPercent: caps.length ? Math.min(...caps.map((b) => b.limitPercent)) : null,
+              enforced: this.enforcesPace(provider, window, pacing),
             }),
           });
         }

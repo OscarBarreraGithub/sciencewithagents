@@ -416,3 +416,55 @@ it('lowering a rate keeps consumed usage and reservations; raising fromzero cann
   expect(quark.budgetStatus(total).cause).toBe('budget');
   expect(store.runs(['queued']).filter((r) => r.agentId === a.agent.id)).toHaveLength(0);
 });
+
+it('paces admission by weighted demand share only while a window runs fast, without startup deadlock', () => {
+  const p1 = project(),
+    a = work(p1);
+  launch(a);
+  for (let i = 1; i <= 10; i++) {
+    advance(60_000);
+    usage(10 + 0.2 * i);
+    quark.sync();
+  }
+  const b = work(p1);
+  // Pacing off keeps the existing queue behavior.
+  expect(quark.block(store.run(b.run.id), true)).toBeNull();
+  store.setSetting('pulsar:policy', { enabled: true, reservePercent: 5 });
+  expect(quark.utilization().find((w) => w.provider === 'claude')?.state).toBe('fast');
+  const share = (projectId: string) =>
+    quark.projectRates().rates.find((r) => r.projectId === projectId && r.provider === 'claude')!
+      .adaptive!;
+  const alone = share(p1.id);
+  expect(alone).toMatchObject({ state: 'ready', demandProjects: 1 });
+  expect(alone.reason).toContain('admission currently follows this share');
+  // About 2% of rolling attributed use exceeds a ~0.49%/hour share of the weekly headroom.
+  const paced = quark.block(store.run(b.run.id), true);
+  expect(paced).toMatchObject({ cause: 'headroom' });
+  expect(paced?.reason).toContain('Pacing');
+  expect(paced?.reason).toContain('no cap was saved');
+  expect(quark.budgets()).toHaveLength(0);
+  // Running work, owner messages and explicit per-job overrides are never paced.
+  expect(quark.block(store.run(a.run.id))).toBeNull();
+  const owner = store.enqueue(p1.managerId, randomUUID(), 'Owner question');
+  expect(quark.block(owner, true)?.cause).not.toBe('headroom');
+  store.setSetting(`pulsar:override:${b.run.id}`, true);
+  expect(quark.block(store.run(b.run.id), true)).toBeNull();
+  store.setSetting(`pulsar:override:${b.run.id}`, false);
+  // A second project with no recent use can start one turn although 1% exceeds its share.
+  const p2 = project(),
+    c = work(p2);
+  const shared = share(p1.id);
+  expect(shared.demandProjects).toBe(2);
+  expect(shared.percentPerHour!).toBeCloseTo(alone.percentPerHour! / 2, 2);
+  expect(share(p2.id).percentPerHour!).toBeLessThan(1);
+  expect(quark.block(store.run(c.run.id), true)).toBeNull();
+  // A calmer reading ends pacing; no timer or model call is involved.
+  finish(a);
+  for (let i = 1; i <= 61; i++) {
+    advance(60_000);
+    usage(12);
+    quark.sync();
+  }
+  expect(quark.utilization().find((w) => w.provider === 'claude')?.state).not.toBe('fast');
+  expect(quark.block(store.run(b.run.id), true)).toBeNull();
+});
