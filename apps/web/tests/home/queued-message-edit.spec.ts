@@ -41,6 +41,12 @@ test.afterEach(async ({ page, baseURL }) => {
   owned.delete(page);
 });
 
+/** The closed queue is one summary row; its items open in the full-height dialog. */
+async function openQueue(page: Page) {
+  await page.getByRole('button', { name: /Expand queue/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Queued messages', exact: true })).toBeVisible();
+}
+
 async function fixture(page: Page, origin: string) {
   const headers = { Origin: origin };
   expect(
@@ -94,11 +100,13 @@ test('queued notepad holds one item, keeps the composer, survives keyboard dismi
   await page.goto(`/#/chat/${saved.agentId}`);
   const composer = page.locator('.composer textarea');
   await composer.fill('Separate unsent composer draft');
+  const summary = page.getByRole('button', { name: /Expand queue/ });
+  await expect(summary).toContainText('2 queued messages');
   const list = page.getByRole('list', { name: 'Queued messages' });
-  await expect(list.getByRole('listitem')).toHaveCount(2);
-  await page.getByRole('button', { name: 'Expand queue', exact: true }).click();
+  await expect(list).toHaveCount(0);
+  await openQueue(page);
   const menu = page.getByRole('dialog', { name: 'Queued messages', exact: true });
-  await expect(menu).toBeVisible();
+  await expect(list.getByRole('listitem')).toHaveCount(2);
   const menuBox = (await menu.boundingBox())!;
   expect(menuBox.height).toBeGreaterThan(page.viewportSize()!.height * 0.8);
   await mkdir('../../data/queued-message-ui', { recursive: true });
@@ -136,9 +144,13 @@ test('queued notepad holds one item, keeps the composer, survives keyboard dismi
   await expect(menu).toBeVisible();
   await menu.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await expect(composer).toHaveValue('Separate unsent composer draft');
-  await expect(list).toContainText('Held for editing');
+  // Closing the queue keeps the item held; the summary says so.
+  await expect(summary).toContainText('1 held');
+  expect((await saved.read()).queueEdit?.state).toBe('editing');
   await page.reload();
   await expect(composer).toHaveValue('Separate unsent composer draft');
+  await openQueue(page);
+  await expect(list).toContainText('Held for editing');
   await list
     .getByRole('listitem')
     .filter({ hasText: 'Updated scientific question' })
@@ -175,7 +187,7 @@ test('editing queued wording retains its file attachment without exposing intern
   expect(response.ok()).toBe(true);
   const submitted = await response.json();
   await page.goto(`/#/chat/${saved.agentId}`);
-  await page.getByRole('button', { name: 'Expand queue', exact: true }).click();
+  await openQueue(page);
   const menu = page.getByRole('dialog', { name: 'Queued messages', exact: true });
   const row = menu.getByRole('listitem').filter({ hasText: 'Read this calibration' });
   await expect(row).not.toContainText('swa-file:');
@@ -207,6 +219,7 @@ test('reload reconciles an unknown Save and queue acknowledgement without a new 
     });
   });
   await page.goto(`/#/chat/${saved.agentId}`);
+  await openQueue(page);
   await page
     .getByRole('list', { name: 'Queued messages' })
     .getByRole('listitem')
@@ -275,6 +288,7 @@ test('reload retains uncertain queued steering for inspection without enabling a
   );
   await page.goto(`/#/chat/${saved.agentId}`);
   const list = page.getByRole('list', { name: 'Queued messages' });
+  await openQueue(page);
   await list
     .getByRole('listitem')
     .filter({ hasText: 'First queued scientific question' })
@@ -287,6 +301,13 @@ test('reload retains uncertain queued steering for inspection without enabling a
   ).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: 'Inspect queued action', exact: true }).click();
+  await expect(
+    page.getByText(
+      'Steering is uncertain. The message stays held; inspect the reply before removing it.',
+    ),
+  ).toBeVisible();
+  // The inspected outcome stays with the notice when it follows the opened queue.
+  await openQueue(page);
   await expect(
     page.getByText(
       'Steering is uncertain. The message stays held; inspect the reply before removing it.',
@@ -324,6 +345,7 @@ test('queued edits retain later typing on lost acknowledgements and require expl
   });
   await page.goto(`/#/chat/${saved.agentId}`);
   const list = page.getByRole('list', { name: 'Queued messages' });
+  await openQueue(page);
   await list
     .getByRole('listitem')
     .filter({ hasText: 'First queued scientific question' })
@@ -428,6 +450,8 @@ test('queued editing follows the pinned selected host and shows queue-only contr
   });
   await page.goto(`/#/chat/${saved.agentId}`);
   const list = page.getByRole('list', { name: 'Queued messages' });
+  await openQueue(page);
+  await expect(list.getByRole('listitem')).toHaveCount(2);
   await expect(list.getByRole('button', { name: /Steer now/ })).toHaveCount(0);
   await list
     .getByRole('listitem')
@@ -475,6 +499,7 @@ test('queued Steer now holds the selected item before a separate explicit Codex 
   });
   await page.goto(`/#/chat/${saved.agentId}`);
   const list = page.getByRole('list', { name: 'Queued messages' });
+  await openQueue(page);
   await list
     .getByRole('listitem')
     .filter({ hasText: 'First queued scientific question' })

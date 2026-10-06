@@ -73,7 +73,7 @@ async function fixture(page: Page, origin: string, provider: 'codex' | 'claude' 
     queuedMessages: [{ id: 'native-owned', text: 'Written directly in the editor' }],
   };
   const headers = { Origin: origin };
-  const socket = new WebSocket('ws://127.0.0.1:4339/api/vscode/bridge');
+  const socket = new WebSocket(origin.replace(/^http/, 'ws') + '/api/vscode/bridge');
   const commands: MirrorCommand[] = [];
   let uncertain = false;
   socket.on('message', (raw) => {
@@ -151,13 +151,23 @@ async function open(page: Page, saved: Fixture) {
     }),
   ).toBeVisible();
 }
+/** The closed queue is one summary row; its items open in the full-height dialog. */
+async function openQueue(page: Page) {
+  await page.getByRole('button', { name: /Expand queue/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Queued messages', exact: true });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
 async function queue(page: Page, saved: Fixture, text: string) {
   if (saved.state.provider === 'codex')
     await page.getByRole('combobox', { name: 'Send timing' }).selectOption('queue');
   await page.locator('.mirror-input-row textarea').fill(text);
   await page.getByRole('button', { name: 'Queue follow-up', exact: true }).click();
   await expect.poll(async () => (await saved.list()).length).toBe(1);
-  await expect(page.getByRole('list', { name: 'Queued messages' })).toContainText(text);
+  await expect(page.getByRole('list', { name: 'Queued messages' })).toHaveCount(0);
+  const dialog = await openQueue(page);
+  await expect(dialog.getByRole('list', { name: 'Queued messages' })).toContainText(text);
+  await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click();
   return (await saved.list())[0];
 }
 
@@ -170,14 +180,13 @@ test('app shared follow-ups hold, minimize, reload and explicitly requeue while 
   const item = await queue(page, saved, 'App-created follow-up');
   const composer = page.locator('.mirror-input-row textarea');
   await composer.fill('Separate unsent draft');
-  const native = page
+  const expanded = await openQueue(page);
+  const native = expanded
     .getByRole('list', { name: 'Queued messages', exact: true })
     .getByRole('listitem')
     .filter({ hasText: 'Written directly in the editor' });
   await expect(native).toContainText('Written directly in the editor');
   await expect(native.getByRole('button')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Expand queue', exact: true }).click();
-  const expanded = page.getByRole('dialog', { name: 'Queued messages', exact: true });
   await expanded.getByRole('button', { name: 'Edit', exact: true }).click();
   const pad = page.getByRole('dialog', { name: 'Edit queued message', exact: true });
   await expect.poll(async () => (await saved.read(item.id)).queueEdit?.state).toBe('editing');
@@ -194,8 +203,11 @@ test('app shared follow-ups hold, minimize, reload and explicitly requeue while 
   await pad.getByRole('button', { name: 'Minimize', exact: true }).click();
   await expanded.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await expect(composer).toHaveValue('Separate unsent draft');
+  await expect(page.getByRole('button', { name: /Expand queue/ })).toContainText('1 held');
+  expect((await saved.read(item.id)).queueEdit?.state).toBe('editing');
   await page.reload();
   const list = page.getByRole('list', { name: 'Queued messages' });
+  await openQueue(page);
   await list.getByRole('button', { name: 'Resume edit', exact: true }).click();
   await expect(pad.getByRole('textbox')).toHaveValue('Edited follow-up stays held\nSecond line');
   await pad.getByRole('button', { name: 'Save and queue', exact: true }).click();
@@ -258,6 +270,7 @@ test('lost queue and edit acknowledgements resolve the original keys, retain lat
     return route.fulfill({ response });
   });
   const list = page.getByRole('list', { name: 'Queued messages' });
+  await openQueue(page);
   await list.getByRole('button', { name: 'Edit', exact: true }).click();
   const pad = page.getByRole('dialog', { name: 'Edit queued message' });
   await pad.getByRole('textbox').fill('Saved edit before lost acknowledgement');
@@ -337,8 +350,17 @@ test('shared Claude held edits use the pinned host and offer queue-only controls
   });
   await open(page, saved);
   const item = await queue(page, saved, 'Claude app-owned follow-up');
-  await expect(page.getByRole('button', { name: /Steer now/ })).toHaveCount(0);
   const list = page.getByRole('list', { name: 'Queued messages' });
+  await openQueue(page);
+  // The app-owned follow-up and existing editor-owned item both remain visible.
+  await expect(list.getByRole('listitem')).toHaveCount(2);
+  await expect(
+    list
+      .getByRole('listitem')
+      .filter({ hasText: 'Written directly in the editor' })
+      .getByRole('button', { name: 'Edit', exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Steer now/ })).toHaveCount(0);
   await list.getByRole('button', { name: 'Edit', exact: true }).click();
   const pad = page.getByRole('dialog', { name: 'Edit queued message' });
   await pad.getByRole('textbox').fill('Claude revised queued question');
@@ -360,6 +382,7 @@ test('individual steering binds the current turn; unknown acknowledgement stays 
   const item = await queue(page, saved, 'Steer this individual follow-up');
   saved.uncertain();
   const list = page.getByRole('list', { name: 'Queued messages' });
+  await openQueue(page);
   await list.getByRole('button', { name: 'Steer now…', exact: true }).click();
   const pad = page.getByRole('dialog', { name: 'Edit queued message' });
   await pad.getByRole('button', { name: 'Steer now', exact: true }).click();
@@ -372,6 +395,7 @@ test('individual steering binds the current turn; unknown acknowledgement stays 
   await page.reload();
   const recovery = page.getByRole('button', { name: 'Inspect queued action', exact: true });
   if (await recovery.isVisible()) await recovery.click();
+  await openQueue(page);
   await list.getByRole('button', { name: 'Resume edit', exact: true }).click();
   await expect(pad.getByRole('textbox')).toHaveAttribute('readonly', '');
   await expect(pad.getByRole('button', { name: 'Save and queue', exact: true })).toBeDisabled();

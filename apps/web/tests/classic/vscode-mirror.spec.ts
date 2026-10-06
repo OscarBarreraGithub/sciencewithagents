@@ -39,7 +39,7 @@ test('native editor queued messages expand into a readable list without app edit
   );
   await page.goto('/');
   await chooseChat(page, 'Native queue fixture');
-  await page.getByRole('button', { name: 'Expand queue', exact: true }).click();
+  await page.getByRole('button', { name: /Expand queue/ }).click();
   const menu = page.getByRole('dialog', { name: 'Queued messages', exact: true });
   await expect(menu.getByRole('listitem')).toHaveCount(12);
   await expect(menu.getByRole('button', { name: /Edit|Steer/ })).toHaveCount(0);

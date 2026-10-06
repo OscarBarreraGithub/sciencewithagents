@@ -102,7 +102,8 @@ into QUARK or override provider limits. Older companions need a safe update befo
 controls are available. Claude and app-managed goal continuation are separate capabilities;
 the app does not substitute a new goal or an unsupervised loop when they are unavailable.
 
-**Expand queue** opens queued messages in a full-height list. App-managed messages and
+The compact **Queued messages** row opens a full-height list of short previews; **Read full
+text** expands a message. App-managed messages and
 follow-ups queued here for shared VS Code chats can be held and edited in the notepad
 before dispatch; minimizing, reloads or another message completing never
 release the edit hold. **Save and queue** releases it explicitly. Supported Codex sessions

@@ -45,8 +45,12 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   returns the full screen without reopening the app. Native pinch zoom stays available.
 - During a running Codex reply, the composer offers “Steer now” or “Queue next”; priority
   applies only to queued messages. The notepad uses the same choice. Claude follow-ups queue.
+  Timing is a small secondary control beside the other composer tools, not its own full-width
+  row. Explain attachment limits when needed rather than permanently beside the input.
   Sent steering appears as an ordinary user message, not a system notice.
-  Expand queue opens a full-height list. App-owned entries offer Edit: opening an individual
+  Keep the queue closed as one compact summary row; opening it shows a full-height list
+  of short previews, with full text available on demand and each item's actions reachable.
+  App-owned entries offer Edit: opening an individual
   item holds it before writing. Native editor queues expand under their provider ownership.
   Minimize keeps it held; Save and queue or Discard edits and queue original explicitly releases it.
   Saved edits survive refresh, and another browser must explicitly take over the held version.
@@ -57,11 +61,16 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   Failed or uncertain sends keep the draft and delivery receipt; do not show a blanket wait restriction.
 - Conversation Archive hides a chat only in this app. Archived lists and Restore retain drafts,
   history, files and running work; shared editor/provider conversations remain native.
+  Put Archive in one small three-dot conversation menu, without a duplicate chat-list button.
+  Undo must remain reachable on a phone after archiving.
   Manager removal remains a separate action that cancels its queued work. Home chat counts
   follow the visible list; active jobs and attention remain visible independently.
 - Project shortcuts open its folder, configuration, Notes and Subagents. A worker row shows
   assignment, activity, timing and token evidence. Completed workers offer a separate
   Ask about this work discussion without reopening the task/review.
+- Configure lays out readable controls according to its own panel width, including at larger
+  text and zoom. Keep useful model, reasoning, tool and permission choices; omit generic
+  adapter availability, routing and missing-delegation explanations from the default view.
 - Notes contains owner-written notes alongside separate human actions and internal work.
   Managers may read the notes but cannot edit them; their plans belong in internal work items
   and checkpoints. Referencing an item fills the composer without sending or marking it

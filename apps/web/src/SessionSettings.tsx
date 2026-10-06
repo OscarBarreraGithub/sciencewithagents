@@ -1,20 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { mcpCatalogSchema, effortLabel, type Model, type Agent } from '@dock/shared';
 import { api, models } from './api';
 import { useFormAction } from './useFormAction';
 import { ExecutionInfo } from './ExecutionInfo';
+import './SessionSettings.css';
 
 export function SessionSettings({
   agent,
   close,
   act,
   embedded = false,
+  titled = true,
 }: {
   agent: Agent;
   close: () => void;
   act: (fn: () => Promise<unknown>) => Promise<void>;
   embedded?: boolean;
+  /** A host panel that already names this form can omit its own title. */
+  titled?: boolean;
 }) {
   const [catalog, setCatalog] = useState<Model[]>([]);
   const [model, setModel] = useState(
@@ -32,6 +36,8 @@ export function SessionSettings({
   const [webSearch, setWebSearch] = useState(agent.webSearch);
   const [imageGeneration, setImageGeneration] = useState(agent.imageGeneration);
   const [mcpCatalog, setMcpCatalog] = useState<{ name: string }[]>([]);
+  const hint = useId();
+  const [saved, setSaved] = useState(false);
   const dirty = useRef(false);
   useEffect(() => {
     // Navigation can render a cached snapshot before its refreshed settings.
@@ -69,123 +75,122 @@ export function SessionSettings({
       className="settings-card"
       onChange={() => {
         dirty.current = true;
+        setSaved(false);
       }}
     >
-      <div className="settings-title">
-        {embedded ? <h2>Session settings</h2> : <strong>Session settings</strong>}
-        {!embedded && (
-          <button className="icon-button" aria-label="Close settings" onClick={close}>
-            <X size={16} />
-          </button>
-        )}
-      </div>
-      <p className="settings-help">
-        The defaults are ready to use. Change these only when you want to.
-      </p>
-      {agent.provider === 'claude' && (
-        <p className="settings-help">
-          Claude uses this computer’s signed-in subscription and native configuration. Stop,
-          Continue and New context are available here. Interactive terminal commands remain in
-          Claude Code or its shared editor chat. Native helpers share their parent’s stop control.
-        </p>
+      {(titled || !embedded) && (
+        <div className="settings-title">
+          {embedded ? <h2>Session settings</h2> : <strong>Session settings</strong>}
+          {!embedded && (
+            <button className="icon-button" aria-label="Close settings" onClick={close}>
+              <X size={16} />
+            </button>
+          )}
+        </div>
       )}
-      <div className="settings-fields">
+      {/* Fields wrap by the card's own width, so a narrow panel stacks them instead of clipping. */}
+      <div className="settings-fields session-fields">
         {!agent.interview && (
-          <label>
-            Tools and connections
-            <select
-              value={toolPolicy}
-              onChange={(event) => setToolPolicy(event.target.value as 'native' | 'restricted')}
-            >
-              <option value="native">
-                Use my native {agent.provider === 'codex' ? 'Codex' : 'Claude'} settings
-              </option>
-              <option value="restricted">Keep app restrictions</option>
-            </select>
-          </label>
+          <div className="session-field">
+            <label>
+              Tools and connections
+              <select
+                value={toolPolicy}
+                aria-describedby={`${hint}-tools`}
+                onChange={(event) => setToolPolicy(event.target.value as 'native' | 'restricted')}
+              >
+                <option value="native">
+                  Use my native {agent.provider === 'codex' ? 'Codex' : 'Claude'} settings
+                </option>
+                <option value="restricted">Keep app restrictions</option>
+              </select>
+            </label>
+            <small id={`${hint}-tools`}>
+              {toolPolicy === 'native'
+                ? 'Native tools, skills, hooks and permission rules stay on. QUARK can pause work.'
+                : 'Only the tools chosen in this app are available.'}
+            </small>
+          </div>
         )}
         {agent.provider === 'claude' && toolPolicy === 'native' && !agent.interview && (
+          <div className="session-field">
+            <label>
+              Chrome browser
+              <select
+                value={nativeChrome}
+                onChange={(event) => setNativeChrome(event.target.value as 'inherit' | 'enabled')}
+              >
+                <option value="inherit">Inherit my native setting</option>
+                <option value="enabled">Enable for this conversation</option>
+              </select>
+            </label>
+          </div>
+        )}
+        <div className="session-field">
           <label>
-            Chrome browser
+            Model
             <select
-              value={nativeChrome}
-              onChange={(event) => setNativeChrome(event.target.value as 'inherit' | 'enabled')}
+              value={model}
+              onChange={(event) => {
+                setModel(event.target.value);
+                const next = catalog.find((m) => m.id === event.target.value);
+                if (next && !next.efforts.includes(effort)) setEffort(next.efforts[0]);
+              }}
             >
-              <option value="inherit">Inherit my native setting</option>
-              <option value="enabled">Enable for this conversation</option>
+              <option value="">Follow central model default</option>
+              {model && !catalog.some((m) => m.id === model) && (
+                <option value={model}>{model} (saved choice; unavailable in this catalog)</option>
+              )}
+              {catalog.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
             </select>
           </label>
-        )}
-        <label>
-          Model
-          <select
-            value={model}
-            onChange={(event) => {
-              setModel(event.target.value);
-              const next = catalog.find((m) => m.id === event.target.value);
-              if (next && !next.efforts.includes(effort)) setEffort(next.efforts[0]);
-            }}
-          >
-            <option value="">Follow central model default</option>
-            {model && !catalog.some((m) => m.id === model) && (
-              <option value={model}>{model} (saved choice; unavailable in this catalog)</option>
-            )}
-            {catalog.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Reasoning
-          <select
-            value={effort}
-            disabled={!model}
-            onChange={(event) => setEffort(event.target.value)}
-          >
-            {(current?.efforts ?? [effort]).map((e) => (
-              <option key={e} value={e}>
-                {effortLabel(e)}
-              </option>
-            ))}
-          </select>
-        </label>
+        </div>
+        <div className="session-field">
+          <label>
+            Reasoning
+            <select
+              value={effort}
+              disabled={!model}
+              aria-describedby={model ? undefined : `${hint}-effort`}
+              onChange={(event) => setEffort(event.target.value)}
+            >
+              {(current?.efforts ?? [effort]).map((e) => (
+                <option key={e} value={e}>
+                  {effortLabel(e)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!model && (
+            <small id={`${hint}-effort`}>
+              Set by the central default. Choose a model to change it.
+            </small>
+          )}
+        </div>
         {(agent.role === 'implementer' ||
           (agent.role === 'manager' && agent.toolPolicy === 'native' && !agent.interview)) && (
-          <label>
-            Permissions
-            <select
-              value={permission}
-              onChange={(event) => setPermission(event.target.value as Agent['permission'])}
-            >
-              <option value="read-only">Read files only</option>
-              <option value="workspace-write">
-                {agent.role === 'manager'
-                  ? 'Edit files in this project folder'
-                  : 'Edit this task’s separate copy'}
-              </option>
-            </select>
-          </label>
+          <div className="session-field">
+            <label>
+              Permissions
+              <select
+                value={permission}
+                onChange={(event) => setPermission(event.target.value as Agent['permission'])}
+              >
+                <option value="read-only">Read files only</option>
+                <option value="workspace-write">
+                  {agent.role === 'manager'
+                    ? 'Edit files in this project folder'
+                    : 'Edit this task’s separate copy'}
+                </option>
+              </select>
+            </label>
+          </div>
         )}
       </div>
-      {toolPolicy === 'native' && (
-        <p className="settings-help">
-          Your native tools, skills, hooks and connections stay available with their own permission
-          rules. QUARK monitors the work and can pause it. This does not change saved model choices
-          or the task’s file permissions.
-        </p>
-      )}
-      <p className="settings-help">
-        Model chooses the AI. Reasoning sets how much thinking it can do; more can take longer.
-        Changing settings does not erase this conversation or start work.
-      </p>
-      {!embedded && (
-        <details>
-          <summary>Provider, usage and assignment</summary>
-          <ExecutionInfo agent={agent} />
-        </details>
-      )}
       {toolPolicy !== 'native' && agent.provider === 'codex' && agent.role !== 'manager' && (
         <fieldset className="mcp-settings">
           <legend>Web research</legend>
@@ -290,6 +295,9 @@ export function SessionSettings({
           Try loading models again
         </button>
       )}
+      <p className="settings-help session-save-note">
+        Saving keeps this conversation and its history, and starts no work.
+      </p>
       <button
         className="primary small-button"
         disabled={!catalog.length || action.pending}
@@ -306,12 +314,25 @@ export function SessionSettings({
               ...(webSearch !== agent.webSearch ? { webSearch } : {}),
               ...(imageGeneration !== agent.imageGeneration ? { imageGeneration } : {}),
             });
+            dirty.current = false;
+            setSaved(true);
             close();
           })
         }
       >
         Save settings
       </button>
+      {saved && !action.error && (
+        <p className="settings-help session-saved" role="status">
+          Settings saved.
+        </p>
+      )}
+      {!embedded && (
+        <details className="session-usage">
+          <summary>Provider, usage and assignment</summary>
+          <ExecutionInfo agent={agent} />
+        </details>
+      )}
     </div>
   );
 }

@@ -580,41 +580,49 @@
     font-size: var(--text-reading);
   }
 }
-@media (max-height: 500px) and (min-width: 700px) {
-  /* Keep timing beside the existing tools instead of consuming a history row. */
-  .mirror-composer {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    column-gap: 12px;
-    align-items: center;
+/* One tools row under the draft: timing, attachments, Notepad and Stop. Nothing above the
+   input grows with a running reply, and each control keeps a 44px target. */
+.mirror-compose-tools {
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  container-type: inline-size;
+}
+.mirror-compose-tools .mirror-send-timing {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 6px 30px 6px 10px;
+  background-position: right 8px center;
+  border-radius: 10px;
+  font-size: var(--text-small);
+}
+.mirror-compose-tools .mirror-notepad {
+  min-height: 44px;
+  margin: 0;
+}
+.mirror-compose-tools > .mirror-stop-row {
+  margin: 0 0 0 auto;
+}
+@container (max-width: 459px) {
+  .mirror-compose-tools .mirror-notepad > svg {
+    display: none;
   }
-  .mirror-composer > * {
-    grid-column: 1 / -1;
-    min-width: 0;
+  .mirror-compose-tools .mirror-send-timing {
+    padding: 5px 26px 5px 8px;
+    background-position: right 5px center;
+    font-size: var(--text-caption);
   }
-  .mirror-composer > .mirror-input-row {
-    grid-row: 3;
-    width: 100%;
+  .mirror-compose-tools .chat-image-button {
+    justify-content: center;
+    min-width: 44px;
+    padding: 5px;
   }
-  .mirror-composer > .mirror-send-timing {
-    grid-row: 4;
-    grid-column: 1;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0;
-  }
-  .mirror-send-timing select {
-    width: auto;
-    min-width: 150px;
-    min-height: 44px;
-    margin: 0;
-    padding: 8px 12px;
-  }
-  .mirror-composer > .mirror-compose-tools {
-    grid-row: 4;
-    grid-column: 2;
-    align-items: center;
+  /* Named by aria-label; the icon carries it on a narrow row. */
+  .mirror-compose-tools .chat-image-button > span {
+    display: none;
   }
 }
 .mirror-stop-row {

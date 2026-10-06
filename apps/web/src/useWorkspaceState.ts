@@ -3,6 +3,7 @@ import {
   workspaceDraftsSchema,
   workspaceDraftUpdateResultSchema,
   workspaceDraftUpdateSchema,
+  workspaceRegisterSchema,
   workspaceSnapshotSchema,
   workspaceRestoreResultsSchema,
   workspaceUpdateResultSchema,
@@ -22,6 +23,42 @@ const message = (error: unknown) =>
     ? error.message
     : 'The connection was interrupted. Your changes are retained here.';
 export const workspaceStorageKey = (part: string) => `dock:${apiScope()}:workspace:${part}`;
+
+// Chat and its queue can mount together before this browser has an identity.
+const registrations = new Map<string, Promise<WorkspaceSnapshot>>();
+function registerWorkspace(
+  identityKey: string,
+  registrationKey: string,
+  label: string,
+  request: (path: string, body?: unknown) => Promise<unknown>,
+) {
+  const existing = registrations.get(identityKey);
+  if (existing) return existing;
+  const registration = (async () => {
+    // Another hook may have finished while this caller was reading its old state.
+    const id = localStorage.getItem(identityKey);
+    if (id)
+      return workspaceSnapshotSchema.parse(await request(`/workspace/${encodeURIComponent(id)}`));
+    const saved = localStorage.getItem(registrationKey);
+    const legacy = workspaceRegisterSchema.shape.key.safeParse(saved);
+    const input = workspaceRegisterSchema.parse(
+      saved && !legacy.success
+        ? JSON.parse(saved)
+        : { key: legacy.success ? legacy.data : crypto.randomUUID(), label },
+    );
+    // Preserve the whole input: a lost response or a different mounted label
+    // must never turn the saved retry key into a different request.
+    localStorage.setItem(registrationKey, JSON.stringify(input));
+    const value = workspaceSnapshotSchema.parse(await request('/workspace/clients', input));
+    localStorage.setItem(identityKey, value.client.id);
+    localStorage.removeItem(registrationKey);
+    return value;
+  })().finally(() => {
+    registrations.delete(identityKey);
+  });
+  registrations.set(identityKey, registration);
+  return registration;
+}
 
 /** Metadata-only handoff. Neither mounting nor opening a saved view starts a model turn. */
 export function useWorkspaceState(label = 'This browser') {
@@ -101,14 +138,7 @@ export function useWorkspaceState(label = 'This browser') {
           }
         }
         if (!value) {
-          const registrationKey = keyFor('registration');
-          const key = localStorage.getItem(registrationKey) ?? crypto.randomUUID();
-          localStorage.setItem(registrationKey, key);
-          value = workspaceSnapshotSchema.parse(
-            await request('/workspace/clients', { key, label }),
-          );
-          localStorage.setItem(identityKey, value.client.id);
-          localStorage.removeItem(registrationKey);
+          value = await registerWorkspace(identityKey, keyFor('registration'), label, request);
         }
         if (cancelled) return;
         const saved = localStorage.getItem(keyFor('pending'));

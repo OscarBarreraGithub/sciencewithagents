@@ -64,6 +64,8 @@ export function EditableMessageQueue({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [recoveries, setRecoveries] = useState(() => operations.recoveries());
+  // Notices move into the open queue dialog, so an inspected outcome must outlive remounting.
+  const [outcomes, setOutcomes] = useState<Record<string, 'uncertain' | 'not_found'>>({});
   const [inspected, setInspected] = useState<Set<string>>(new Set());
   const shown = messages
     .map((run) => {
@@ -137,23 +139,46 @@ export function EditableMessageQueue({
       setBusy(false);
     }
   };
+  const held = shown.filter((run) => run.queueEdit?.state === 'editing').length;
+  const inspect = shown.filter(
+    (run) => run.queueEdit?.state === 'steering' || (run.status === 'uncertain' && !run.queueEdit),
+  ).length;
+  const failure = error || (!clientId && workspace.error);
   return (
     <>
-      {recoveries.map((saved) => (
-        <QueuedActionRecovery
-          key={`${saved.messageId}:${saved.input.key}`}
-          operations={operations}
-          saved={saved}
-          scope={scope}
-          resolved={(run) => {
-            if (run) changed(run);
-            setRecoveries(operations.recoveries());
-          }}
-        />
-      ))}
       <MessageQueue
         hasMore={hasMore}
         error={queueError}
+        detail={[held && `${held} held`, inspect && `${inspect} to inspect`]
+          .filter(Boolean)
+          .join(' · ')}
+        alert={
+          (recoveries.length > 0 || failure) && (
+            <>
+              {recoveries.map((saved) => (
+                <QueuedActionRecovery
+                  key={`${saved.messageId}:${saved.input.key}`}
+                  operations={operations}
+                  saved={saved}
+                  scope={scope}
+                  status={outcomes[saved.input.key] ?? null}
+                  setStatus={(status) =>
+                    setOutcomes((all) => ({ ...all, [saved.input.key]: status }))
+                  }
+                  resolved={(run) => {
+                    if (run) changed(run);
+                    setRecoveries(operations.recoveries());
+                  }}
+                />
+              ))}
+              {failure && (
+                <p className="message-queue-more" role="alert">
+                  {failure}
+                </p>
+              )}
+            </>
+          )
+        }
         messages={shown.map((run) => ({
           id: run.id,
           text: withoutChatAttachments(run.queueEdit?.text ?? run.text),
@@ -225,11 +250,6 @@ export function EditableMessageQueue({
           );
         }}
       />
-      {(error || (!clientId && workspace.error)) && (
-        <p className="message-queue-more" role="alert">
-          {error || workspace.error}
-        </p>
-      )}
       {selected && clientId && (
         <QueueEditor
           key={selected.id}
@@ -254,14 +274,17 @@ function QueuedActionRecovery({
   operations,
   saved,
   scope,
+  status,
+  setStatus,
   resolved,
 }: {
   operations: QueuedMessageOperations;
   saved: QueueRecovery;
   scope: string;
+  status: 'uncertain' | 'not_found' | null;
+  setStatus: (status: 'uncertain' | 'not_found') => void;
   resolved: (run?: EditableQueuedMessage) => void;
 }) {
-  const [status, setStatus] = useState<'uncertain' | 'not_found' | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const inspect = async () => {

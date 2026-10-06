@@ -28,6 +28,9 @@ After a crash, inspect interrupted tasks and their last results before continuin
 external side effect is not known to have failed. Retry with its original durable request key
 or reconcile status; do not replay model input, terminal bytes or approvals automatically.
 
+Chat and queue use the same browser workspace. A lost registration response retries the
+original request, retaining local drafts and the saved browser label.
+
 Provider identities, settings and visible transcripts remain saved. Reopen uses supported
 native continuation without sending a turn. If native resume is unavailable, offer an explicit
 new context with saved evidence; never silently pretend it is the original context. Retained

@@ -1,4 +1,6 @@
+import './Composer.css';
 import { AppMessageQueue } from './AppMessageQueue';
+import { ConversationStatus } from './ConversationStatus';
 import { ChatMarkdown } from './ChatMarkdown';
 import { ChatAttachmentPicker, useChatAttachmentUpload } from './ChatImages';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -425,18 +427,7 @@ export function Conversation({
           {approvals.map((approval) => (
             <ApprovalCard key={approval.id} approval={approval} act={act} />
           ))}
-          {['running', 'queued'].includes(agent.status) && (
-            <div className="thinking">
-              <span />
-              <span />
-              <span />
-              <p>
-                {agent.status === 'queued'
-                  ? 'Waiting for an available slot'
-                  : `${agent.name} is working`}
-              </p>
-            </div>
-          )}
+          <ConversationStatus agent={agent} />
           {['interrupted', 'failed'].includes(agent.status) && (
             <div className="recovery-note">
               <RefreshCw size={16} />
@@ -549,6 +540,23 @@ export function Composer({
   const canSteer = !specialized && agent.provider === 'codex' && agent.status === 'running';
   const [steerChoice, setSteer] = useState<boolean | null>(null);
   const steer = canSteer ? (steerChoice ?? true) : false;
+  const tools = useRef<HTMLDivElement>(null);
+  const [moreTools, setMoreTools] = useState(false);
+  useLayoutEffect(() => {
+    const element = tools.current;
+    if (!element) return;
+    const read = () =>
+      setMoreTools(element.scrollWidth - element.clientWidth - element.scrollLeft > 8);
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    for (const child of element.children) observer.observe(child);
+    element.addEventListener('scroll', read, { passive: true });
+    read();
+    return () => {
+      observer.disconnect();
+      element.removeEventListener('scroll', read);
+    };
+  }, [canSteer, specialized, steer]);
   const [priority, setPriority] = useState<JobEstimate['priority']>('interactive');
   const [unknownLegacyMode, setUnknownLegacyMode] = useState(false);
   type PendingMessage = {
@@ -1063,7 +1071,7 @@ export function Composer({
         </details>
       )}
       <div className="composer-toolbar">
-        <div>
+        <div ref={tools} role="group" aria-label="Message tools; scroll horizontally for more">
           {canSteer && <SendTiming steer={steer} disabled={sending} onChange={setSteer} />}
           <button
             className="composer-notepad"
@@ -1095,6 +1103,11 @@ export function Composer({
               <option value="normal">Normal</option>
               <option value="background">Background</option>
             </select>
+          )}
+          {moreTools && (
+            <span className="composer-tools-cue" aria-hidden="true">
+              <ChevronRight size={18} />
+            </span>
           )}
         </div>
         <div>

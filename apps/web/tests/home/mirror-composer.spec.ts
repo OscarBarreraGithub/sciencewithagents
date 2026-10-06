@@ -126,14 +126,19 @@ test('native queue is scrollable and sends the selected follow-up without steeri
     return route.fulfill({ json: { state: 'sent', message: 'Accepted into the native queue.' } });
   });
   await page.goto(`/#/chats/vscode/${encodeURIComponent(`codex:${state.threadId}`)}`);
-  const queue = page.getByRole('list', { name: 'Queued messages' });
-  await expect(queue).toBeVisible();
+  // Closed, the queue is one summary row; the full list opens on demand.
+  const summary = page.getByRole('button', { name: /Expand queue/ });
+  await expect(summary).toContainText('12+ queued messages');
+  await summary.click();
+  const dialog = page.getByRole('dialog', { name: 'Queued messages', exact: true });
+  const queue = dialog.getByRole('list', { name: 'Queued messages' });
   await expect(queue.getByRole('listitem')).toHaveCount(12);
   expect(await queue.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   await queue.focus();
   await page.keyboard.press('End');
   await expect.poll(() => queue.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   await expect(queue.getByText('External queued message 12', { exact: true })).toBeInViewport();
+  await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click();
   const field = page.getByRole('textbox', { name: 'Message Codex' });
   const beforeStatusChange = (await field.boundingBox())!.y;
   state.status = 'idle';
@@ -163,7 +168,9 @@ test('native queue is scrollable and sends the selected follow-up without steeri
   expect(checked).toHaveLength(1);
   expect(checked[0]).toContain(String(sent[0].key));
   expect(sent).toHaveLength(1);
-  await expect(page.getByRole('list', { name: 'Queued messages' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Expand queue/ })).toContainText(
+    '12+ queued messages',
+  );
 });
 
 test('unreadable queue is explicit while the chat and draft remain usable', async ({ page }) => {
@@ -190,8 +197,11 @@ test('unreadable queue is explicit while the chat and draft remain usable', asyn
   );
   await page.goto(`/#/chats/vscode/${encodeURIComponent(`codex:${state.threadId}`)}`);
   await expect(page.getByText('Queue unavailable', { exact: true })).toBeVisible();
-  await expect(page.getByText(/The queue may still contain messages/)).toBeVisible();
   await expect(page.getByRole('list', { name: 'Queued messages' })).toHaveCount(0);
+  await page.getByRole('button', { name: /Expand queue/ }).click();
+  const details = page.getByRole('dialog', { name: 'Queued messages', exact: true });
+  await expect(details.getByText(/The queue may still contain messages/)).toBeVisible();
+  await details.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await expect(page.getByText('Saved reply remains readable.', { exact: true })).toBeVisible();
   const field = page.getByRole('textbox', { name: 'Message Codex' });
   await expect(field).toBeEnabled();

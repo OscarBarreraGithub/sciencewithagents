@@ -571,6 +571,7 @@ export function ConfigPanel({
   act: (fn: () => Promise<unknown>) => Promise<void>;
 }) {
   const [rates, setRates] = useState<ProjectRate[] | null>(null);
+  const [usageOpen, setUsageOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeError, setRemoveError] = useState('');
@@ -612,50 +613,20 @@ export function ConfigPanel({
   const fresh = !!machine && Date.now() - Date.parse(machine.observedAt) < 60_000;
   return (
     <div className="chat-config">
-      {managerView && !agent.archivedAt && (
-        <section>
-          <h3>Manager</h3>
-          <div className="chat-remove-manager">
-            {removing ? (
-              <>
-                <p>
-                  Remove this manager from Chats? Queued work will be cancelled. Project files and
-                  saved conversation history will stay on this computer. Running work must be
-                  stopped first.
-                </p>
-                <div className="chat-links">
-                  <button
-                    className="chat-small-button"
-                    disabled={removeBusy}
-                    onClick={() => void remove()}
-                  >
-                    {removeBusy ? 'Removing…' : 'Confirm removal'}
-                  </button>
-                  <button
-                    className="chat-small-button"
-                    disabled={removeBusy}
-                    onClick={() => setRemoving(false)}
-                  >
-                    Keep manager
-                  </button>
-                </div>
-              </>
-            ) : (
-              <button className="chat-small-button" onClick={() => setRemoving(true)}>
-                Remove manager
-              </button>
-            )}
-            {removeError && (
-              <p className="chat-panel-error" role="alert">
-                {removeError}
-              </p>
-            )}
-          </div>
-        </section>
-      )}
+      <section>
+        {!(managerView && project) && <h3>Session settings</h3>}
+        {managerView && project ? (
+          <ProjectSettings project={project} manager={agent} act={act} />
+        ) : agent.nativeRootId || closed ? (
+          <p>
+            This saved record keeps its original model. Settings belong to its owning conversation.
+          </p>
+        ) : (
+          <SessionSettings agent={agent} close={() => {}} act={act} embedded titled={false} />
+        )}
+      </section>
       <section>
         <h3>Usage and resources</h3>
-        <ExecutionInfo agent={agent} />
         <dl className="chat-facts">
           <div>
             <dt>Conversation started</dt>
@@ -697,6 +668,14 @@ export function ConfigPanel({
             </ul>
           </div>
         )}
+        {/* Optional, read-only detail: mounted only when opened, and it never starts work. */}
+        <details
+          className="chat-usage-details"
+          onToggle={(event) => setUsageOpen(event.currentTarget.open)}
+        >
+          <summary>Reported usage and assignment</summary>
+          {usageOpen && <ExecutionInfo agent={agent} />}
+        </details>
       </section>
       <section>
         <h3>Scheduling</h3>
@@ -733,18 +712,6 @@ export function ConfigPanel({
         </a>
       </section>
       <section>
-        <h3>{managerView ? 'Project and manager settings' : 'Model and reasoning'}</h3>
-        {managerView && project ? (
-          <ProjectSettings project={project} manager={agent} act={act} />
-        ) : agent.nativeRootId || closed ? (
-          <p>
-            This saved record keeps its original model. Settings belong to its owning conversation.
-          </p>
-        ) : (
-          <SessionSettings agent={agent} close={() => {}} act={act} embedded />
-        )}
-      </section>
-      <section>
         <h3>More controls</h3>
         <div className="chat-links">
           {managerView && project && (
@@ -771,6 +738,47 @@ export function ConfigPanel({
           </a>
         </div>
       </section>
+      {managerView && !agent.archivedAt && (
+        <section>
+          <h3>Manager</h3>
+          <div className="chat-remove-manager">
+            {removing ? (
+              <>
+                <p>
+                  Remove this manager from Chats? Queued work will be cancelled. Project files and
+                  saved conversation history will stay on this computer. Running work must be
+                  stopped first.
+                </p>
+                <div className="chat-links">
+                  <button
+                    className="chat-small-button"
+                    disabled={removeBusy}
+                    onClick={() => void remove()}
+                  >
+                    {removeBusy ? 'Removing…' : 'Confirm removal'}
+                  </button>
+                  <button
+                    className="chat-small-button"
+                    disabled={removeBusy}
+                    onClick={() => setRemoving(false)}
+                  >
+                    Keep manager
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button className="chat-small-button" onClick={() => setRemoving(true)}>
+                Remove manager
+              </button>
+            )}
+            {removeError && (
+              <p className="chat-panel-error" role="alert">
+                {removeError}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

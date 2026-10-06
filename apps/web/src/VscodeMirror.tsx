@@ -885,31 +885,6 @@ export function VscodeMirror({
             nativeQueue={state}
           />
         )}
-        {state?.canSteer && state?.canQueue && (
-          <label className="mirror-send-timing">
-            Send timing{' '}
-            <select
-              aria-label="Send timing"
-              value={sendTiming}
-              disabled={busy || !!pending || !canSteer}
-              onChange={(event) =>
-                setSendTiming(event.target.value === 'queue' ? 'queue' : 'steer')
-              }
-            >
-              <option value="steer">Steer now</option>
-              <option value="queue">Queue next</option>
-            </select>
-          </label>
-        )}
-        {chat.threadId && (
-          <MirrorStopReply
-            windowId={chat.windowId}
-            threadId={chat.threadId}
-            provider={chat.provider ?? 'codex'}
-            token={status !== 'offline' ? state?.stopToken : undefined}
-            daemon={daemon}
-          />
-        )}
         <div className="mirror-input-row">
           <textarea
             ref={input}
@@ -960,7 +935,27 @@ export function VscodeMirror({
             {busy ? '…' : pending ? 'Check delivery' : <ArrowUp size={20} />}
           </button>
         </div>
+        {/* Timing and Stop share the tools row so the draft and history keep the height. */}
         <div className="mirror-compose-tools">
+          {state?.canSteer && state?.canQueue && (
+            <select
+              className="mirror-send-timing"
+              aria-label="Send timing"
+              title={
+                sendTiming === 'queue'
+                  ? 'Send a separate message after the current reply finishes.'
+                  : 'Guide the reply in progress.'
+              }
+              value={sendTiming}
+              disabled={busy || !!pending || !canSteer}
+              onChange={(event) =>
+                setSendTiming(event.target.value === 'queue' ? 'queue' : 'steer')
+              }
+            >
+              <option value="steer">Steer now</option>
+              <option value="queue">Queue next</option>
+            </select>
+          )}
           <ChatAttachmentPicker
             key={identity}
             text={text}
@@ -973,6 +968,7 @@ export function VscodeMirror({
           <button
             type="button"
             className="mirror-notepad"
+            aria-label="Open notepad"
             onClick={() => {
               if (input.current)
                 selection.current = {
@@ -982,8 +978,17 @@ export function VscodeMirror({
               setNotepadOpen(true);
             }}
           >
-            <NotebookPen size={16} /> Open notepad
+            <NotebookPen size={16} aria-hidden="true" /> <span>Notepad</span>
           </button>
+          {chat.threadId && (
+            <MirrorStopReply
+              windowId={chat.windowId}
+              threadId={chat.threadId}
+              provider={chat.provider ?? 'codex'}
+              token={status !== 'offline' ? state?.stopToken : undefined}
+              daemon={daemon}
+            />
+          )}
         </div>
         {(chat.canAttachImages === false || state?.canAttachImages === false) && (
           <p className="mirror-note">

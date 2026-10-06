@@ -72,23 +72,49 @@ test('running composer preserves steering, queuing and notepad choices without c
   await expect(page.getByText('Owner steering', { exact: true })).toHaveCount(0);
   await expect(page.locator('.system-entry')).toHaveCount(1);
   await expect(page.locator('.system-entry')).toContainText('Workspace restored');
-  const queue = page.getByRole('list', { name: 'Queued messages' });
-  await expect(queue).toBeVisible();
+  // Closed, the queue is one summary row; its list opens in the full-height dialog on demand.
+  const summary = page.getByRole('button', { name: /^12 queued messages/ });
+  await expect(summary).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Queued messages' })).toHaveCount(0);
+  const summaryBox = (await summary.boundingBox())!;
+  expect(summaryBox.height).toBeGreaterThanOrEqual(43);
+  expect(summaryBox.height).toBeLessThanOrEqual(56);
+  expect(summaryBox.x + summaryBox.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+  await summary.click();
+  const queueDialog = page.getByRole('dialog', { name: 'Queued messages', exact: true });
+  const queue = queueDialog.getByRole('list', { name: 'Queued messages' });
   await expect(queue.getByRole('listitem')).toHaveCount(12);
-  const queueBox = (await queue.boundingBox())!;
-  expect(queueBox.height).toBeLessThanOrEqual(141);
-  expect(queueBox.x + queueBox.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+  const firstItem = queue.getByRole('listitem').first();
+  const preview = firstItem.locator('p').first();
+  expect(
+    await preview.evaluate(
+      (element) => element.clientHeight <= parseFloat(getComputedStyle(element).lineHeight) * 3 + 1,
+    ),
+  ).toBe(true);
+  await firstItem.getByRole('button', { name: 'Read full text', exact: true }).click();
+  expect(
+    await preview.evaluate(
+      (element) => element.clientHeight > parseFloat(getComputedStyle(element).lineHeight) * 3,
+    ),
+  ).toBe(true);
+  await firstItem.getByRole('button', { name: 'Collapse text', exact: true }).click();
   expect(await queue.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   await queue.focus();
   await page.keyboard.press('End');
   await expect.poll(() => queue.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   await expect(queue.getByText(/Queued follow-up 12:/)).toBeInViewport();
+  await queueDialog.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await expect(queueDialog).toHaveCount(0);
   const composer = page.locator('.composer');
   const input = composer.getByRole('textbox');
   const timing = composer.getByRole('combobox', { name: 'Send timing' });
   const priority = composer.getByRole('combobox', { name: 'Message priority' });
   await expect(timing).toHaveValue('steer');
   await expect(priority).toHaveCount(0);
+  // Attachment limits are described, not permanent toolbar copy.
+  const attach = composer.getByRole('button', { name: 'Attach files', exact: true });
+  await expect(attach).toHaveAccessibleDescription('Up to four files per message, 8 MB each.');
+  await expect(composer.getByText(/8 MB each/)).toBeHidden();
   await expect(composer.locator('input[type=checkbox]')).toHaveCount(0);
   await input.fill('Focus on the smallest fix first.');
   await composer.getByRole('button', { name: 'Send message', exact: true }).click();
@@ -120,6 +146,7 @@ test('running composer preserves steering, queuing and notepad choices without c
     for (const control of [
       timing,
       composer.getByRole('button', { name: 'Open notepad' }),
+      attach,
       composer.getByRole('button', { name: 'Send message', exact: true }),
     ]) {
       await expect(control).toBeInViewport();
@@ -128,6 +155,13 @@ test('running composer preserves steering, queuing and notepad choices without c
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
     }
+    // Timing is a small tool beside Notepad, not a separate full-width row.
+    const timingBox = (await timing.boundingBox())!;
+    const notepadBox = (await composer
+      .getByRole('button', { name: 'Open notepad' })
+      .boundingBox())!;
+    expect(Math.abs(timingBox.y - notepadBox.y)).toBeLessThanOrEqual(2);
+    expect(timingBox.width).toBeLessThan(page.viewportSize()!.width / 2);
     // Native selects need room for both text and arrow; scrollWidth alone misses clipping.
     for (const select of await composer.locator('select').all()) {
       expect(

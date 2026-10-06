@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import {
@@ -62,8 +62,22 @@ async function fixture(page: Page, origin: string) {
   ).json();
   const read = async () =>
     await (await page.request.get(`/api/agents/${project.managerId}`)).json();
-  return { project, run, read };
+  return { project, run, read, managerName: (await read()).agent.name as string };
 }
+/** Archive and Restore live in one quiet options menu, never as direct buttons. */
+async function choose(page: Page, trigger: Locator, item: string) {
+  await trigger.click();
+  await page.getByRole('menuitem', { name: item, exact: true }).click();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+}
+async function offers(page: Page, trigger: Locator, item: string) {
+  await trigger.click();
+  await expect(page.getByRole('menuitem', { name: item, exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+}
+const directVisibilityButtons = /^(Archive|Restore)( |$)/;
 
 test('archive and restore keep queued work, history and the composer; retries retain one visibility action', async ({
   page,
@@ -85,24 +99,26 @@ test('archive and restore keep queued work, history and the composer; retries re
   });
   await page.goto(`/#/chat/${saved.project.managerId}`);
   const tools = page.getByRole('group', { name: 'Conversation tools' });
+  const options = tools.getByRole('button', { name: 'Conversation options', exact: true });
   const composer = page.locator('.composer textarea');
   await composer.fill('An unsent draft remains in this conversation.');
-  await tools.getByRole('button', { name: 'Archive conversation', exact: true }).click();
+  // The selected chat has no direct archive button beside Configure or in its list row.
+  await expect(page.getByRole('button', { name: directVisibilityButtons })).toHaveCount(0);
+  await choose(page, options, 'Archive conversation');
   const retry = page.getByRole('dialog', { name: 'Archive conversation', exact: true });
   await expect(retry.getByRole('alert')).toHaveText('Visibility saved; acknowledgement lost.');
   await retry.getByRole('button', { name: 'Retry same request' }).click();
   await expect(retry).toHaveCount(0);
   expect(attempts).toHaveLength(2);
   expect(attempts[0]).toEqual(attempts[1]);
-  await expect(
-    tools.getByRole('button', { name: 'Restore conversation', exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Undo:/ })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`#/chat/${saved.project.managerId}$`));
+  await expect(page.locator('.chat-pane-meta')).toContainText('· Archived');
+  await offers(page, options, 'Restore conversation');
   await expect(composer).toHaveValue('An unsent draft remains in this conversation.');
   await page.reload();
   await expect(composer).toHaveValue('An unsent draft remains in this conversation.');
-  await expect(
-    tools.getByRole('button', { name: 'Restore conversation', exact: true }),
-  ).toBeVisible();
+  await offers(page, options, 'Restore conversation');
   const after = await saved.read();
   expect(after.runs.find((run: { id: string }) => run.id === saved.run.id).status).toBe('queued');
   expect(after.agent.archivedAt).toBeUndefined();
@@ -135,13 +151,71 @@ test('archive and restore keep queued work, history and the composer; retries re
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
   ).toBe(true);
-  await list.getByRole('button', { name: new RegExp(`Restore ${saved.project.name}`) }).click();
+  const row = list.getByRole('button', {
+    name: `Options for ${saved.managerName}`,
+    exact: true,
+  });
+  await choose(page, row, `Restore ${saved.managerName}`);
   await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toHaveCount(0);
+  // The row left this view, so focus moves to the result, which offers one undo.
+  const status = page.getByRole('status').filter({ hasText: saved.project.name });
+  await expect(status.locator('p')).toBeFocused();
+  await expect(status).toContainText(`“${saved.managerName}” restored.`);
+  await status
+    .getByRole('button', { name: `Undo: Archive ${saved.managerName}`, exact: true })
+    .click();
+  await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toBeVisible();
+  await expect(status).toContainText(`“${saved.managerName}” archived.`);
+  await expect(status.getByRole('button', { name: /^Undo/ })).toHaveCount(0);
+  await choose(page, row, `Restore ${saved.managerName}`);
   await page.getByRole('button', { name: 'Archived', exact: true }).click();
   await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toBeVisible();
+  // Each choice was one app-visibility request; only the lost acknowledgement was repeated.
+  const mine = attempts.filter(
+    (attempt) =>
+      attempt.target.kind === 'agent' && attempt.target.agentId === saved.project.managerId,
+  );
+  expect(mine.map((attempt) => attempt.archived)).toEqual([true, true, false, true, false]);
+  expect(new Set(mine.map((attempt) => attempt.key)).size).toBe(4);
   await page.goto('/#/home');
   await expect(page.locator('.destination-chats')).toContainText(/project manager/);
   await expect(page.locator('.destination-quark')).toContainText(/queued/);
+});
+
+test('Escape dismisses a reopened options menu while its visibility request is pending', async ({
+  page,
+  baseURL,
+}) => {
+  const saved = await fixture(page, baseURL!);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/conversations/visibility', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    const response = await route.fetch();
+    await pending;
+    await route.fulfill({ response });
+  });
+  await page.goto(`/#/chat/${saved.project.managerId}`);
+  const trigger = page
+    .getByRole('group', { name: 'Conversation tools' })
+    .getByRole('button', { name: 'Conversation options', exact: true });
+  try {
+    await trigger.click();
+    await page.getByRole('menuitem', { name: 'Archive conversation', exact: true }).click();
+    await expect(trigger).toHaveAttribute('aria-busy', 'true');
+    await trigger.click();
+    await expect(page.getByRole('menuitem')).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  } finally {
+    release();
+  }
+  await expect(page.getByRole('button', { name: /^Undo:/ })).toBeVisible();
+  await page.getByRole('button', { name: /^Undo:/ }).click();
+  await offers(page, trigger, 'Archive conversation');
 });
 
 test('shared archive uses stable provider thread identity and stays restorable offline without native controls', async ({
@@ -199,14 +273,14 @@ test('shared archive uses stable provider thread identity and stays restorable o
   const list = page.getByRole('navigation', { name: 'Conversation list' });
   await list.getByRole('link', { name: /Shared chapter discussion/ }).click();
   await page.getByLabel('Message Claude Code').fill('Shared unsent draft remains native.');
-  await page.getByRole('button', { name: 'Archive conversation', exact: true }).click();
+  const header = page.locator('.mirror-header');
+  const options = header.getByRole('button', { name: 'Conversation options', exact: true });
+  await choose(page, options, 'Archive conversation');
   await expect(page.getByLabel('Message Claude Code')).toHaveValue(
     'Shared unsent draft remains native.',
   );
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
-  await expect(
-    page.getByRole('button', { name: 'Restore conversation', exact: true }),
-  ).toBeVisible();
+  await offers(page, options, 'Restore conversation');
   online = false;
   await page.evaluate(() => sessionStorage.removeItem('dock:mirror-chats:local:all'));
   await page.goto('/#/chats');
@@ -214,15 +288,19 @@ test('shared archive uses stable provider thread identity and stays restorable o
   await expect(list.getByRole('link', { name: /Shared chapter discussion/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Archived', exact: true }).click();
   await expect(list.getByRole('link', { name: /Shared chapter discussion/ })).toBeVisible();
-  await list
-    .getByRole('button', { name: 'Restore Shared chapter discussion', exact: true })
-    .click();
+  await choose(
+    page,
+    list.getByRole('button', { name: 'Options for Shared chapter discussion', exact: true }),
+    'Restore Shared chapter discussion',
+  );
   await page.getByRole('button', { name: 'Archived', exact: true }).click();
   await list.getByRole('link', { name: /Shared chapter discussion/ }).click();
   await expect(page.getByText(/This shared conversation is unavailable/)).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: 'Archive conversation', exact: true }),
-  ).toBeVisible();
+  await offers(
+    page,
+    page.locator('.chat-offline-tools').getByRole('button', { name: 'Conversation options' }),
+    'Archive conversation',
+  );
   await page.screenshot({
     path: `../../data/archive-ui/${info.project.name}-restored-shared-offline.png`,
   });
@@ -272,15 +350,14 @@ test('selected-host archive routes visibility only to the pinned computer', asyn
     return route.fulfill({ response });
   });
   await page.goto(`/#/chat/${saved.project.managerId}`);
-  const tools = page.getByRole('group', { name: 'Conversation tools' });
-  await tools.getByRole('button', { name: 'Archive conversation', exact: true }).click();
-  await expect(
-    tools.getByRole('button', { name: 'Restore conversation', exact: true }),
-  ).toBeVisible();
-  await tools.getByRole('button', { name: 'Restore conversation', exact: true }).click();
-  await expect(
-    tools.getByRole('button', { name: 'Archive conversation', exact: true }),
-  ).toBeVisible();
+  const options = page
+    .getByRole('group', { name: 'Conversation tools' })
+    .getByRole('button', { name: 'Conversation options', exact: true });
+  await choose(page, options, 'Archive conversation');
+  await expect(page.locator('.chat-pane-meta')).toContainText('· Archived');
+  await choose(page, options, 'Restore conversation');
+  await expect(page.locator('.chat-pane-meta')).not.toContainText('Archived');
+  await offers(page, options, 'Archive conversation');
   expect(writes).toHaveLength(2);
   expect(
     writes.every((url) => url.includes(`/api/hosts/${host}/proxy/conversations/visibility`)),
@@ -333,4 +410,76 @@ test('visibility filtering reads later metadata pages before showing saved conve
   await page.getByRole('button', { name: 'Archived', exact: true }).click();
   await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toBeVisible();
   expect(laterPages).toBeGreaterThan(0);
+});
+
+test('the chat options menu is keyboard operable, dismissible and unclipped in the scrolling list', async ({
+  page,
+  baseURL,
+}, info) => {
+  const saved = await fixture(page, baseURL!);
+  const writes: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/conversations/visibility'))
+      writes.push(request.url());
+  });
+  await page.goto('/#/chats');
+  const list = page.getByRole('navigation', { name: 'Conversation list' });
+  await expect(page.getByText('Reading conversations…', { exact: true })).toHaveCount(0);
+  await expect(list.getByRole('button', { name: directVisibilityButtons })).toHaveCount(0);
+  const trigger = list.getByRole('button', {
+    name: `Options for ${saved.managerName}`,
+    exact: true,
+  });
+  const menu = page.getByRole('menu', { name: `Options for ${saved.managerName}`, exact: true });
+  const archive = menu.getByRole('menuitem', {
+    name: `Archive ${saved.managerName}`,
+    exact: true,
+  });
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(archive).toBeFocused();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(archive).toHaveAccessibleDescription(/Hide it in this app only/);
+  await page.keyboard.press('ArrowDown');
+  await expect(archive).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await page.keyboard.press('ArrowDown');
+  await expect(archive).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(menu).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+  await trigger.click();
+  await expect(archive).toBeVisible();
+  await page.locator('.chat-list-title').click();
+  await expect(menu).toHaveCount(0);
+  // The last row of the scrolling list keeps its menu inside the visible viewport.
+  const last = list.locator('.conversation-visible-row').last();
+  await last.scrollIntoViewIfNeeded();
+  await last.getByRole('button', { name: /^Options for / }).click();
+  const open = page.getByRole('menu');
+  await expect(open).toBeVisible();
+  const view = page.viewportSize()!;
+  const box = (await open.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(view.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(view.height);
+  expect(
+    await open.evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return !!hit && node.contains(hit);
+    }),
+  ).toBe(true);
+  await mkdir('../../data/archive-ui', { recursive: true });
+  await page.screenshot({ path: `../../data/archive-ui/${info.project.name}-row-menu.png` });
+  await page.keyboard.press('Escape');
+  await expect(open).toHaveCount(0);
+  expect(writes).toEqual([]);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+  ).toBe(true);
 });

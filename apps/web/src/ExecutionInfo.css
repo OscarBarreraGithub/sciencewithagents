@@ -1,4 +1,5 @@
 .execution-info {
+  container-type: inline-size;
   min-width: 0;
   margin: 14px 0;
   padding: 12px;
@@ -59,27 +60,11 @@
 .execution-facts dd {
   margin: 0;
 }
-.execution-providers {
-  list-style: none;
-  padding: 0;
-  margin: 10px 0;
-}
-.execution-providers li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 5px 10px;
-  margin: 8px 0;
-}
-.execution-providers li p {
-  flex-basis: 100%;
-  margin: 0;
-}
-.execution-available {
-  color: #3b6534;
-}
-.execution-unavailable {
-  color: #786c45;
+@container (max-width: 17rem) {
+  .execution-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
 }
 .execution-muted,
 .execution-observed {

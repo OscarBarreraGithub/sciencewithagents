@@ -225,20 +225,20 @@ test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: 'wait' });
 });
 
-test('provider availability and unknown usage are read-only, with no automatic refresh', async ({
+test('unknown usage is read-only without provider boilerplate, with no automatic refresh', async ({
   page,
 }, info) => {
   await page.clock.install();
   const value = await fixture(page),
     section = value.section;
-  await expect(section.getByRole('list', { name: 'Provider availability' })).toContainText(
-    'CodexAvailable',
+  // Adapter availability, routing and feature lists are not repeated in session details.
+  await expect(section.getByRole('list', { name: 'Provider availability' })).toHaveCount(0);
+  await expect(section).not.toContainText('adapter verification required');
+  await expect(section).not.toContainText('Automatic routing');
+  await expect(section).not.toContainText('No original delegation choice');
+  await expect(section.getByText('Current model', { exact: true }).locator('..')).toContainText(
+    'demo',
   );
-  await expect(section.getByRole('list', { name: 'Provider availability' })).toContainText(
-    'Claude CodeNot enabled',
-  );
-  await expect(section).toContainText('Not enabled — adapter verification required.');
-  await expect(section).toContainText('Automatic routing: Off.');
   await expect(section).toContainText('This does not mean zero usage.');
   await expect(section).toContainText('Remaining allowance and reset time are unknown.');
   await expect(section.locator('input, select, textarea')).toHaveCount(0);
@@ -354,7 +354,7 @@ test('original assignment stays separate from current settings without invented 
   );
   await expect(section).toContainText('Manager selection');
   await expect(section).toContainText(value.agent.assignment!.reason);
-  await expect(section).toContainText('No automatic routing policy was used.');
+  await expect(section).not.toContainText('automatic routing');
   await expect(section.locator('input, select, textarea')).toHaveCount(0);
   await section.getByText('Why this agent was assigned', { exact: true }).scrollIntoViewIfNeeded();
   await page.locator('.settings-card').screenshot({
@@ -377,7 +377,9 @@ test('failed initial information reads have independent in-app retry controls', 
     .getByRole('button', { name: 'Try reading provider details again', exact: true })
     .click();
   await expect(section.getByRole('alert')).toHaveCount(1);
-  await expect(section).toContainText('Claude Code');
+  await expect(
+    section.getByRole('button', { name: 'Refresh reported limits', exact: true }),
+  ).toBeEnabled();
   await section.getByRole('button', { name: 'Try reading saved usage again', exact: true }).click();
   await expect(section.getByRole('alert')).toHaveCount(0);
   await expect(section).toContainText('Remaining allowance and reset time are unknown.');

@@ -1,41 +1,71 @@
+/* One closed summary row; the list itself lives in the full-height dialog. */
 .message-queue {
   flex: 0 0 auto;
   min-width: 0;
-  margin: 6px 0;
+  margin: 4px 0;
+  container-type: inline-size;
+  font-size: var(--text-small, 13px);
+}
+.message-queue-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 6px 4px 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  font-size: var(--text-small, 13px);
   background: var(--surface, transparent);
-}
-.message-queue summary {
+  color: inherit;
+  font: inherit;
+  text-align: start;
   cursor: pointer;
-  padding: 8px 12px;
 }
-.message-queue ol {
-  height: auto;
-  max-height: min(140px, 18dvh);
-  min-height: 0;
-  touch-action: pan-y;
-  -webkit-overflow-scrolling: touch;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  margin: 0;
-  padding: 0 12px 8px 34px;
+.message-queue-summary > svg {
+  flex: none;
 }
-.message-queue li {
-  padding: 5px 0;
+.message-queue-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
-.message-queue li + li {
-  border-top: 1px solid var(--line);
+.message-queue-open {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--accent, inherit);
 }
-.message-queue p {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.message-queue-summary:hover .message-queue-open {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+/* Narrow or zoomed rows keep the count; the action stays named for screen readers. */
+@container (max-width: 320px) {
+  .message-queue-open > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+/* Receipts and failures stay visible under the closed row. */
+.message-queue > :not(.message-queue-summary) {
+  margin-top: 4px;
+}
+.message-queue > [role='alert'] {
+  padding: 0 4px;
 }
 .message-queue-more {
+  margin: 0;
   padding: 0 12px 8px;
+  overflow-wrap: anywhere;
 }
 .message-queue-actions {
   display: flex;
@@ -50,19 +80,15 @@
   gap: 4px;
   min-height: 44px;
 }
-.message-queue-expand {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin: 0 12px 6px;
-}
 dialog.message-queue-dialog[open] {
   display: flex;
   flex-direction: column;
   width: min(760px, calc(100vw - 16px));
   position: fixed;
   top: calc(var(--modal-top, 0px) + 8px);
+  /* Native dialog centering otherwise uses the layout viewport below the keyboard. */
+  bottom: auto;
+  margin-block: 0;
   height: calc(var(--modal-height, 100dvh) - 16px);
   max-height: calc(var(--modal-height, 100dvh) - 16px);
   overflow: hidden;
@@ -84,6 +110,16 @@ dialog.message-queue-dialog[open] {
 .message-queue-dialog li p {
   margin: 0;
   white-space: pre-wrap;
+}
+.message-queue-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.message-queue-read {
+  min-height: 44px;
+  margin-top: 4px;
 }
 .queue-action-recovery {
   flex: 0 0 auto;

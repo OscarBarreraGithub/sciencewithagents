@@ -981,11 +981,17 @@ export async function createServer(
     if (options.demo) return runtime.capacity.status();
     return runtime.capacity.refresh(input.provider);
   });
-  app.get('/api/scheduler', async () => schedulerStatus(store, runtime.externalControl));
+  // Queued explanations reuse QUARK's actual refusal instead of generic slot text.
+  const readScheduler = () =>
+    schedulerStatus(store, runtime.externalControl, (run) => {
+      const decision = runtime.pulsar.decision(run);
+      return decision.eligible ? null : decision.reason;
+    });
+  app.get('/api/scheduler', async () => readScheduler());
   app.post('/api/scheduler/settings', async (request) => {
     saveSchedulerSettings(store, request.body);
     runtime.kick();
-    return schedulerStatus(store, runtime.externalControl);
+    return readScheduler();
   });
   app.post('/api/projects', async (request, reply) => {
     const input = projectCreateSchema.parse(request.body);

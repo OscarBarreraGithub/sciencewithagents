@@ -14,10 +14,12 @@ import {
   ShieldCheck,
   Terminal,
   Users,
+  X,
 } from 'lucide-react';
 import {
   conversationVisibilityIdentity,
   agentSchema,
+  type ConversationVisibility,
   type ConversationVisibilityTarget,
   type Agent,
   type AgentDetail,
@@ -53,7 +55,10 @@ import { ConfigPanel, NotesPanel, PanelFrame, SubagentsPanel, type ChatPanel } f
 import type { HomeData } from './useHomeData';
 import { chatAgentKind } from './conversation-list';
 import { useConversationVisibility } from './useConversationVisibility';
-import { ConversationVisibilityButton } from './ConversationVisibilityButton';
+import {
+  ConversationVisibilityButton,
+  ConversationVisibilityUndo,
+} from './ConversationVisibilityButton';
 import './workspace-flow.css';
 
 export const flowPages = new Set([
@@ -484,7 +489,9 @@ type PaneContext = {
   data: HomeData;
   /** Personal-assistant and resource projects: their chats are Misc, not project managers. */
   special: Set<string>;
+  /** One quiet options menu; Archive and Restore change app visibility only. */
   visibilityAction?: ReactNode;
+  archived?: boolean;
 };
 
 export function ChatPage({
@@ -650,10 +657,10 @@ export function ChatPage({
           {agent.model ??
             (agent.nativeRootId ? 'Native model not reported' : 'Central model default')}{' '}
           · {stateNames[agent.status]}
+          {pane.archived && ' · Archived'}
         </p>
       </div>
       <div className="chat-pane-tools" role="group" aria-label="Conversation tools">
-        {pane.visibilityAction}
         {agent.interview && (
           <a className="chat-tool" href={go('chat', agent.interview.sourceAgentId)}>
             <ArrowLeft size={17} />
@@ -697,6 +704,7 @@ export function ChatPage({
           <Settings2 size={17} />
           <span className="chat-tool-label">Configure</span>
         </button>
+        {pane.visibilityAction}
       </div>
     </header>
   );
@@ -1054,18 +1062,34 @@ function MainChat({
   const mirrors = useMirrorChats(true);
   const visibility = useConversationVisibility();
   const [archived, setArchived] = useState(false);
+  // The latest list change, so a chat that leaves the current view can be put back.
+  const [notice, setNotice] = useState<{
+    target: ConversationVisibilityTarget;
+    archived: boolean;
+    undone: boolean;
+  } | null>(null);
+  const noticeText = useRef<HTMLParagraphElement>(null);
   const records = new Map(
     (visibility.data ?? []).map((record) => [
       conversationVisibilityIdentity(record.target),
       record,
     ]),
   );
+  const changed = (undone: boolean) => (record: ConversationVisibility) => {
+    visibility.changed(record);
+    setNotice({ target: record.target, archived: record.archived, undone });
+  };
+  useEffect(() => {
+    // A changed row leaves this view; keep keyboard and screen-reader users at the result.
+    if (notice && (!document.activeElement || document.activeElement === document.body))
+      noticeText.current?.focus({ preventScroll: true });
+  }, [notice]);
   const visibilityAction = (target: ConversationVisibilityTarget, name?: string) => (
     <ConversationVisibilityButton
       key={conversationVisibilityIdentity(target)}
       target={target}
       record={records.get(conversationVisibilityIdentity(target))}
-      changed={visibility.changed}
+      changed={changed(false)}
       name={name}
     />
   );
@@ -1196,10 +1220,43 @@ function MainChat({
           (!term || `${row.name} ${row.caption} ${row.tag ?? ''}`.toLowerCase().includes(term)),
       )
     : [];
+  const noticeIdentity = notice && conversationVisibilityIdentity(notice.target);
+  const noticeRecord = noticeIdentity ? records.get(noticeIdentity) : undefined;
+  const noticeName =
+    rows.find((row) => conversationVisibilityIdentity(row.target) === noticeIdentity)?.name ??
+    'Conversation';
   const editor = mirrors.chats.find((chat) => mirrorKey(chat) === editorKey);
   const editorTarget = rows.find((row) => row.kind === 'vscode' && row.key === editorKey)?.target;
   const selected = !!agentId || !!editorKey;
   const ListTitle = selected ? 'h2' : 'h1';
+  const visibilityNotice = (
+    <div className="chat-visibility-status" role="status">
+      {notice && (
+        <>
+          <p ref={noticeText} tabIndex={-1}>
+            “{noticeName}” {(noticeRecord?.archived ?? notice.archived) ? 'archived' : 'restored'}.
+          </p>
+          {!notice.undone && noticeRecord?.archived === notice.archived && (
+            <ConversationVisibilityUndo
+              key={`${noticeIdentity}:${noticeRecord.revision}`}
+              target={notice.target}
+              record={noticeRecord}
+              changed={changed(true)}
+              name={noticeName}
+            />
+          )}
+          <button
+            type="button"
+            className="chat-icon-button"
+            aria-label="Dismiss"
+            onClick={() => setNotice(null)}
+          >
+            <X size={17} />
+          </button>
+        </>
+      )}
+    </div>
+  );
   return (
     <section className={`flow-page main-chat${selected ? ' has-selection' : ''}`}>
       <aside className="chat-list" aria-label="Conversations">
@@ -1265,6 +1322,7 @@ function MainChat({
             </button>
           </p>
         )}
+        {!selected && visibilityNotice}
         <nav className="chat-list-scroll" aria-label="Conversation list">
           {shown.slice(0, rowLimit).map((row) => (
             <div className="conversation-visible-row" key={`${row.kind}:${row.key}`}>
@@ -1297,7 +1355,7 @@ function MainChat({
                   </span>
                 </span>
               </a>
-              {visibilityAction(row.target, row.name)}
+              {!row.selected && visibilityAction(row.target, row.name)}
             </div>
           ))}
           {!shown.length && (
@@ -1328,6 +1386,7 @@ function MainChat({
         </nav>
       </aside>
       <div className="chat-pane">
+        {selected && visibilityNotice}
         {agentId ? (
           <ChatPage
             key={agentId}
@@ -1345,6 +1404,8 @@ function MainChat({
               visibilityAction: state.agents.some((agent) => agent.id === agentId)
                 ? visibilityAction({ kind: 'agent', agentId })
                 : undefined,
+              archived: !!records.get(conversationVisibilityIdentity({ kind: 'agent', agentId }))
+                ?.archived,
             }}
           />
         ) : editorKey ? (

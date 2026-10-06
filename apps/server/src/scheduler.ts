@@ -3,7 +3,7 @@ import {
   schedulerStatusSchema,
   schedulerUpdateSchema,
 } from '@dock/shared';
-import { Store } from './store.js';
+import { Store, type PrivateRun } from './store.js';
 
 export function schedulerSettings(store: Store) {
   return schedulerSettingsSchema.parse(
@@ -22,7 +22,12 @@ export function saveSchedulerSettings(store: Store, raw: unknown) {
     },
   );
 }
-export function schedulerStatus(store: Store, externalControl: ReadonlySet<string>) {
+// `hold` returns an existing authoritative QUARK refusal for a queued run, if any.
+export function schedulerStatus(
+  store: Store,
+  externalControl: ReadonlySet<string>,
+  hold: (run: PrivateRun) => string | null = () => null,
+) {
   const settings = schedulerSettings(store);
   const agents = new Map(store.agents().map((agent) => [agent.id, agent]));
   const projects = new Map(store.projects().map((project) => [project.id, project]));
@@ -48,9 +53,10 @@ export function schedulerStatus(store: Store, externalControl: ReadonlySet<strin
               ? 'New queued work is paused.'
               : external
                 ? 'A native terminal controls this agent or task. Return it to chat to release queued work.'
-                : ['interrupted', 'failed', 'waiting'].includes(agent.status)
-                  ? 'Inspect this agent’s pending request or stopped work before continuing.'
-                  : 'Waiting for an available slot and this agent’s earlier work. Task workspace ownership still applies.';
+                : (hold(run) ??
+                  (['interrupted', 'failed', 'waiting'].includes(agent.status)
+                    ? 'Inspect this agent’s pending request or stopped work before continuing.'
+                    : 'Waiting for an available slot and this agent’s earlier work. Task workspace ownership still applies.'));
       return [
         {
           id: run.id,

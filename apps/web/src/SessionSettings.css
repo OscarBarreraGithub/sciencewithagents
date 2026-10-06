@@ -1,0 +1,50 @@
+/* Session fields follow the card's own width (popover, side panel or full page), so a narrow
+   panel or 200% text stacks them with visible labels instead of squeezing them into columns. */
+.settings-card .settings-fields.session-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  align-items: start;
+  gap: 14px 16px;
+  margin: 10px 0 14px;
+}
+.settings-card .session-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.settings-card .session-fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-small);
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.settings-card .session-fields select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  text-overflow: ellipsis;
+}
+.settings-card .session-field small {
+  font-size: var(--text-caption);
+  line-height: 1.4;
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+.settings-card .session-save-note {
+  margin: 12px 0 8px;
+}
+.settings-card .session-saved {
+  margin: 8px 0 0;
+}
+.settings-card .session-usage {
+  margin-top: 14px;
+}
+.settings-card .session-usage > summary {
+  padding: 12px 0;
+  cursor: pointer;
+}

@@ -1,0 +1,73 @@
+/* The draft keeps the height. Send timing is one small tool beside Notepad and attachments,
+   never a separate full-width row; every control keeps a 44px target and readable text. */
+.composer > .composer-toolbar .composer-timing,
+.composer > .composer-toolbar .composer-priority {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 6px 30px 6px 10px;
+  background-position: right 8px center;
+}
+@container (max-width: 499px) {
+  .composer > .composer-toolbar .composer-timing,
+  .composer > .composer-toolbar .composer-priority {
+    padding: 5px 26px 5px 8px;
+    background-position: right 5px center;
+    font-size: var(--text-caption);
+  }
+  .composer > .composer-toolbar .chat-image-button {
+    justify-content: center;
+    min-width: 44px;
+    padding: 5px;
+  }
+  /* The button keeps its accessible name; the icon carries it on narrow toolbars. */
+  .composer > .composer-toolbar .chat-image-button > span {
+    display: none;
+  }
+}
+/* Secondary tools use a bounded side-scroll strip when they cannot fit. Keep Send
+   beside the draft and Stop visible; attachment previews/errors retain their own space. */
+.composer:not([data-fit]) > .composer-toolbar:not(:has(.chat-image-previews, .chat-image-error)) {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.composer:not([data-fit])
+  > .composer-toolbar:not(:has(.chat-image-previews, .chat-image-error))
+  > div:first-child {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 4px;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+}
+.composer:not([data-fit])
+  > .composer-toolbar:not(:has(.chat-image-previews, .chat-image-error))
+  > div:first-child
+  > * {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+}
+.composer:not([data-fit])
+  > .composer-toolbar:not(:has(.chat-image-previews, .chat-image-error))
+  > div:last-child {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.composer-tools-cue {
+  position: sticky;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: stretch;
+  flex: 0 0 24px;
+  margin-left: -24px;
+  color: var(--accent);
+  background: linear-gradient(to right, transparent, var(--surface, #fff) 45%);
+  pointer-events: none;
+}

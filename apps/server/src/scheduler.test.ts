@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { Store } from './store.js';
 import { Runtime } from './runtime.js';
 import { DemoProvider } from './demo.js';
+import { parseCapacity } from './capacity.js';
+import type { PrivateRun } from './store.js';
 import { saveSchedulerSettings, schedulerSettings, schedulerStatus } from './scheduler.js';
 
 let root: string, store: Store, runtime: Runtime, manager: string;
@@ -149,5 +151,71 @@ describe('bounded deterministic queue controls', () => {
     expect(schedulerStatus(store, runtime.externalControl).items[0].explanation).toContain(
       'pending request',
     );
+  });
+  it('explains an actual paused allowance grant instead of a slot wait when slots are free', () => {
+    const now = Date.now();
+    store.setSetting(
+      'capacity:v1:codex',
+      parseCapacity(
+        'codex',
+        [
+          {
+            provider: 'codex',
+            source: 'oauth',
+            usage: {
+              updatedAt: new Date(now).toISOString(),
+              primary: {
+                usedPercent: 10,
+                windowMinutes: 300,
+                resetsAt: new Date(now + 3600000).toISOString(),
+              },
+            },
+          },
+        ],
+        now,
+      ),
+    );
+    const budget = runtime.quark.saveBudget({
+      key: randomUUID(),
+      projectId: store.agent(manager).projectId,
+      taskId: null,
+      provider: 'codex',
+      windowId: 'primary',
+      limitPercent: 50,
+    });
+    store.setSetting(`quark:budget-paused:${budget.id}`, {
+      at: new Date(now).toISOString(),
+      runId: randomUUID(),
+    });
+    settings(false, 4);
+    const run = store.enqueue(manager, randomUUID(), 'Saved news run');
+    // Same authority as the server route: QUARK's existing admission decision.
+    const hold = (queued: PrivateRun) => {
+      const decision = runtime.pulsar.decision(queued);
+      return decision.eligible ? null : decision.reason;
+    };
+    const explanation = () =>
+      schedulerStatus(store, runtime.externalControl, hold).items[0].explanation;
+    expect(store.runs(['running'])).toHaveLength(0);
+    expect(explanation()).toBe(
+      'This allowance grant is paused. The owner must explicitly continue saved work.',
+    );
+    store.updateAgent(manager, { status: 'interrupted' });
+    expect(explanation()).toContain('allowance grant is paused');
+    expect(schedulerStatus(store, runtime.externalControl).items[0].explanation).toContain(
+      'pending request',
+    );
+    store.updateAgent(manager, { status: 'idle' });
+    runtime.externalControl.add(manager);
+    expect(explanation()).toContain('native terminal');
+    runtime.externalControl.delete(manager);
+    settings(true, 4);
+    expect(explanation()).toBe('New queued work is paused.');
+    store.updateRun(run.id, {
+      queueEdit: { clientId: randomUUID(), text: 'Revision', state: 'editing' },
+    });
+    expect(explanation()).toContain('Held for editing');
+    store.updateRun(run.id, { queueEdit: null, status: 'running' });
+    expect(explanation()).toBe('Already started; queue settings do not interrupt it.');
   });
 });

@@ -7,6 +7,7 @@ Use the current app and [setup guide](CONTRIBUTOR_SETUP.md) for new installation
 The backend records and permission boundaries are shared with the normal interface.
 Opening classic does not bypass phone authentication, quota holds, saved restrictions or
 review/application policy. Preserve existing tasks, contexts, receipts and native input ownership.
+Its queue list shows QUARK's actual hold, such as a paused allowance grant, instead of a slot wait.
 
 Older screen-by-screen instructions are in Git history; they are not current product guidance.
 Use [Operations](OPERATIONS.md), [worker tools](WORKER_TOOLS.md), [managed Claude](MANAGED_CLAUDE.md)

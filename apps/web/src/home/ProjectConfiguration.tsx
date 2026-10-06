@@ -479,11 +479,8 @@ export function ProjectSettings({
     <div className="project-config embedded">
       <section className="config-section">
         <h3>Manager</h3>
-        <p className="config-help">
-          {providerNames[manager.provider]} · this conversation keeps its provider and history.
-          Model and reasoning changes apply from the manager’s next turn.
-        </p>
-        <SessionSettings agent={manager} close={() => {}} act={act} embedded />
+        <p className="config-help">Model and reasoning changes apply from the next turn.</p>
+        <SessionSettings agent={manager} close={() => {}} act={act} embedded titled={false} />
       </section>
       {draft ? (
         <>

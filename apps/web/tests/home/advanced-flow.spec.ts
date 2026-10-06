@@ -77,9 +77,9 @@ test('advanced controls read metadata, retry a model failure and save an explici
   await expect(page.getByRole('combobox', { name: 'Tools and connections' })).toHaveValue(
     'restricted',
   );
-  await expect(page.getByRole('region', { name: 'Provider and usage', exact: true })).toContainText(
-    'Automatic routing: On.',
-  );
+  const usage = page.getByRole('region', { name: 'Provider and usage', exact: true });
+  await expect(usage).toContainText('Current model');
+  await expect(usage).not.toContainText('Automatic routing');
 });
 
 test('slash shortcuts open the matching confirmation and a lost context-command receipt survives reload', async ({

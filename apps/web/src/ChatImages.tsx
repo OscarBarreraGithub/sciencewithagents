@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { FileUp, FileText, RefreshCw, X } from 'lucide-react';
 import {
   chatAttachmentCount,
@@ -284,8 +284,10 @@ export function ChatAttachmentPicker({
   uploader: UploadState;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const limitId = useId();
   const files = chatFileIds(text),
     images = chatImageIds(text);
+  const attached = files.length + images.length;
   const remove = (id: string) => {
     const current = currentText();
     const refs = [
@@ -304,13 +306,9 @@ export function ChatAttachmentPicker({
         type="button"
         className="chat-image-button"
         aria-label="Attach files"
+        aria-describedby={limitId}
         title="Up to four files, 8 MB each"
-        disabled={
-          disabled ||
-          uploadDisabled ||
-          uploader.busy ||
-          files.length + images.length >= chatAttachmentLimit
-        }
+        disabled={disabled || uploadDisabled || uploader.busy || attached >= chatAttachmentLimit}
         onClick={() => input.current?.click()}
       >
         {uploader.busy ? (
@@ -320,11 +318,15 @@ export function ChatAttachmentPicker({
         )}
         <span>Attach files</span>
       </button>
-      <small className="chat-upload-limit">4 files · 8 MB each</small>
+      {/* Read with the button and chooser; shown beside attached files instead of always. */}
+      <span id={limitId} hidden>
+        Up to four files per message, 8 MB each.
+      </span>
       <input
         ref={input}
         type="file"
         aria-label="Choose files"
+        aria-describedby={limitId}
         hidden
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -332,8 +334,11 @@ export function ChatAttachmentPicker({
           if (file && !disabled && !uploadDisabled) void uploader.upload(file);
         }}
       />
-      {!!(files.length + images.length) && (
+      {!!attached && (
         <div className="chat-image-previews" aria-label="Attached files" tabIndex={0}>
+          <small className="chat-upload-limit">
+            {attached} of {chatAttachmentLimit} files · 8 MB each
+          </small>
           {files.map((id) => (
             <ChatFileCard
               key={id}

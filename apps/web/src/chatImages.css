@@ -93,7 +93,7 @@
   padding: 4px;
 }
 .chat-upload-limit {
-  align-self: center;
+  flex-basis: 100%;
 }
 .notepad-attachments {
   display: flex;

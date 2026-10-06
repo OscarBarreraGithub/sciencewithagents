@@ -169,6 +169,9 @@ Usage is visible as soon as the app opens, including on the phone. Open it for a
 windows, Fable, reset times, freshness and computer capacity. Both providers’ managers read
 this same cache; no per-manager monitoring terminal is needed. See [usage setup](USAGE_COLLECTOR.md).
 
+Queued app conversations show the current queue explanation, including allowance holds.
+If the queue cannot be read, the chat says so and keeps the message saved.
+
 Open **Work queue → QUARK** to enable pacing, inspect waiting reasons, choose shared
 headroom and worker limits, or pause/release queued work. The message composer defaults to
 **Do this soon — I’m waiting**. Task creation and **Change priority or budget** expose

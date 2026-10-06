@@ -24,12 +24,6 @@ const date = (value: string | number | null) => {
 const old = (at: string) => Date.now() - new Date(at).getTime() > 5 * 60_000;
 const message = (error: unknown, fallback: string) =>
   error instanceof Error && error.name !== 'TypeError' ? error.message : fallback;
-const capabilities = {
-  managed_chat: 'Conversation chat',
-  native_terminal: 'Native terminal',
-  coordination_tools: 'Manager coordination',
-  reported_usage: 'Reported usage',
-};
 
 export function ExecutionInfo({ agent }: { agent: Agent }) {
   // A late response for a previous agent/computer must not replace this view's information.
@@ -150,47 +144,14 @@ function ExecutionDetails({ agent }: { agent: Agent }) {
         </div>
         <div>
           <dt>Current model</dt>
-          <dd>{agent.model ?? 'Provider default'}</dd>
+          <dd>{agent.model ?? (agent.nativeRootId ? 'Not reported' : 'Central model default')}</dd>
         </div>
         <div>
           <dt>Current reasoning</dt>
           <dd>{effortLabel(agent.effort)}</dd>
         </div>
       </dl>
-      {catalog ? (
-        <>
-          <ul className="execution-providers" aria-label="Provider availability">
-            {catalog.providers.map((item) => (
-              <li key={item.id}>
-                <span>{item.label}</span>
-                <span className={item.enabled ? 'execution-available' : 'execution-unavailable'}>
-                  {item.enabled ? 'Available' : 'Not enabled'}
-                </span>
-                {!item.enabled && <p>{item.message}</p>}
-              </li>
-            ))}
-          </ul>
-          <p>
-            Availability here describes supported provider adapters. It does not verify this
-            computer’s sign-in or model access.
-          </p>
-          <p>
-            <strong>Automatic routing: {catalog.automaticRouting.enabled ? 'On' : 'Off'}.</strong>{' '}
-            {catalog.automaticRouting.message}
-          </p>
-          <details>
-            <summary>Available provider features</summary>
-            <p>
-              {provider?.enabled
-                ? provider.capabilities.map((item) => capabilities[item]).join(' · ') ||
-                  'No features reported.'
-                : 'This provider is not enabled. No work can run through it here.'}
-            </p>
-          </details>
-        </>
-      ) : (
-        !catalogError && <p role="status">Checking provider availability…</p>
-      )}
+      {/* Provider details only gate the limit refresh; availability lists are not repeated here. */}
       {catalogError && (
         <div className="execution-error">
           <p role="alert">{catalogError}</p>
@@ -244,17 +205,14 @@ function ExecutionDetails({ agent }: { agent: Agent }) {
             </div>
           </dl>
           <p className="execution-reason">{assignment.reason || 'No reason was recorded.'}</p>
-          <p>
-            {assignment.policyRevision === null
-              ? 'No automatic routing policy was used.'
-              : `Policy revision ${assignment.policyRevision} · ${assignment.tier ?? 'Custom'} · ${assignment.taskClass ?? 'Assigned work'}. Previous resolutions remain in recorded events.`}
-          </p>
+          {assignment.policyRevision !== null && (
+            <p>
+              Policy revision {assignment.policyRevision} · {assignment.tier ?? 'Custom'} ·{' '}
+              {assignment.taskClass ?? 'Assigned work'}.
+            </p>
+          )}
         </details>
-      ) : (
-        <p className="execution-muted">
-          No original delegation choice was recorded for this agent.
-        </p>
-      )}
+      ) : null}
 
       <section aria-label="Recorded usage">
         <h4>Recorded usage</h4>
