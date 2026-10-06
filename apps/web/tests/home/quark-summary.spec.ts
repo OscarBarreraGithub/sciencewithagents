@@ -255,24 +255,33 @@ test('an unavailable provider keeps long errors in details and suppresses curren
   const message = `Usage could not refresh because ${'a detailed connection failure '.repeat(12)}. Check connection.`;
   const starts = await serve(
     page,
-    [provider('claude', {
-      state: 'error',
-      stale: false,
-      message,
-      windows: [window('five_hour', 'Session', 40, 300)],
-    })],
+    [
+      provider('claude', {
+        state: 'error',
+        stale: false,
+        message,
+        windows: [window('five_hour', 'Session', 40, 300)],
+      }),
+    ],
     [pacing('claude', 'five_hour')],
   );
   await page.goto('/#/work');
   const card = page.locator('.quark-account');
-  await expect(card.getByText('Usage reading needs attention. Check connection.', { exact: true })).toBeVisible();
+  await expect(
+    card.getByText('Usage reading needs attention. Check connection.', { exact: true }),
+  ).toBeVisible();
   await expect(card.getByText(message, { exact: true })).toBeHidden();
   await expect(card.getByText('60% left · old', { exact: true })).toBeVisible();
   await bounded(page, info, 'long-error');
   await card.getByText('Details & actions').click();
   await expect(card.getByText(message, { exact: true })).toBeVisible();
   await expect(card).toContainText('Last observed account rate');
-  for (const text of ['queued work fits', 'Usage is ahead of pace.', 'Reserve projected', 'Zero projected'])
+  for (const text of [
+    'queued work fits',
+    'Usage is ahead of pace.',
+    'Reserve projected',
+    'Zero projected',
+  ])
     await expect(card).not.toContainText(text, { useInnerText: true });
   expect(starts()).toBe(0);
 });
@@ -284,7 +293,10 @@ test('scheduled checks do not invent expiry and reset-expired windows have no cu
   const starts = await serve(
     page,
     [
-      provider('claude', { nextRefreshAt: at(-10), windows: [window('five_hour', 'Session', 40, 300)] }),
+      provider('claude', {
+        nextRefreshAt: at(-10),
+        windows: [window('five_hour', 'Session', 40, 300)],
+      }),
       provider('codex', { windows: [expired] }),
     ],
     [pacing('claude', 'five_hour'), pacing('codex', 'primary')],

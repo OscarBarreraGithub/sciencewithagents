@@ -68,6 +68,9 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 - Project shortcuts open its folder, configuration, Notes and Subagents. A worker row shows
   assignment, activity, timing and token evidence. Completed workers offer a separate
   Ask about this work discussion without reopening the task/review.
+  Internal team and QUARK coordination, including routine manager acknowledgments, belongs
+  in Subagents instead of the main conversation. Use saved provenance, preserve the full
+  history, and keep owner messages, steering and requests for human input visible.
 - Configure lays out readable controls according to its own panel width, including at larger
   text and zoom. Keep useful model, reasoning, tool and permission choices; omit generic
   adapter availability, routing and missing-delegation explanations from the default view.
