@@ -19,7 +19,10 @@ There is no separate editor credential or login.
 `agentDockMirror.remoteSocketPath` is a machine-scoped opt-in. Remote extension hosts never
 fall back to cluster loopback. Before every connection, the companion checks a same-owner
 mode-0600 socket in an unlinked canonical mode-0700 directory. The WebSocket connection uses
-its fixed gateway path/Host with a Unix `createConnection` hook, no browser Origin or redirects.
+the supported `ws+unix` URL to set HTTP `socketPath`, with its fixed gateway path and explicit
+loopback Host, no browser Origin or redirects. VS Code's HTTP proxy wrapper passes that Unix
+request through. Socket names must survive URL parsing exactly; names altered or split by URL parsing
+fail visibly before connecting.
 The owner manages the existing native SSH forward; the companion reconnects every four seconds,
 reports its failure in connection setup/status, and closes only its own sockets/timers on stop
 or setting changes. It never replays pending sends. The [remote setup guide](../apps/vscode-mirror/README.md#remote-ssh-workspaces)
@@ -30,13 +33,13 @@ refuses; remote provider structure and exact backup/restore checks remain unchan
 An exact recognized hook can be verified without a currently live forward, so an enabled
 remote editor can start its normal socket retry loop. New hook preparation requires the socket.
 
-Actual private forwarding to a disposable loopback HTTP fixture was checked on FASRC, including
-0700/0600 permissions and exact cleanup. Disposable local Unix/WebSocket fixtures cover first-run
-failure/retry, permissions, reconnect and stop. A real Remote SSH editor reached the cluster,
-but native Codex startup failed while its state database was on NFS. A supported, isolated
-node-local database override initialized successfully while preserving native history and
-credentials. Remote conversation history, send, steering and Stop remain unverified. Published transport
-support does not certify remote provider builds or site policy.
+An owned FASRC Remote SSH Codex fixture exercised native sharing, app follow-up, guarded
+steering/Stop and same-thread/history reconnection with exact cleanup. Native state startup
+on NFS failed; a separate node-local runtime index allowed startup without changing the
+original native configuration. Default cluster startup and same-browser visual reconnection
+remain open. Disposable Unix/WebSocket fixtures cover first-run failure/retry, extension-host
+proxy handling, permissions, reconnect and stop. This preview does not certify other provider
+builds or site policy.
 
 Codex uses observed native thread/turn identities for history, text sends, steering and Stop.
 Claude uses the selected loaded channel and its native input/interrupt lifecycle. Provider

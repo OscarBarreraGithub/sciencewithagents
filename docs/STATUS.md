@@ -122,11 +122,12 @@ and model choices remain. Active work is never discarded by an inactivity timer.
   does not automatically create DNS or publish a notebook port. Live hosting and physical-phone
   acceptance must be verified for the installation. See [Slurm cluster](CLUSTER.md).
 
-- **Remote editor:** the published private Unix transport and actual SSH connection have
-  been checked. The native Codex database on NFS failed to finish startup; a supported,
-  isolated node-local database override initialized successfully without moving native
-  history or credentials. Remote history, send, steering and Stop remain unverified.
-  See [shared native conversations](VSCODE_MIRROR.md).
+- **Remote editor:** an owned FASRC Remote SSH Codex fixture passed native sharing, an app
+  follow-up, steering/Stop and same-thread/history reconnection. Companion 0.2.12 corrects
+  VS Code proxy handling of the private Unix connection. The fixture required an isolated
+  node-local native database override; default cluster startup on NFS and same-browser
+  visual reconnection remain unqualified. Native configuration and pre-existing history
+  were preserved. See [shared native conversations](VSCODE_MIRROR.md).
 
 - **Apps:** LaTeX/PDF reading and manager-owned project-app registration are connected.
   Local app ports and optional published HTTPS links are recorded; registration does not

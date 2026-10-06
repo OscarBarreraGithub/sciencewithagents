@@ -1,6 +1,5 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
-import { createConnection } from 'node:net';
 import WebSocket from 'ws';
 
 export type BridgeTarget = { port: number; socketPath?: string };
@@ -25,6 +24,18 @@ export function bridgeTarget(port: number, socketPath: string, remoteName?: stri
   )
     throw new Error(
       'Use a canonical absolute Unix socket path under 100 bytes in a private directory.',
+    );
+  // ws splits its IPC pathname on ':' and does not decode URL escapes. Require
+  // the configured filename to survive URL parsing exactly before using ws+unix.
+  const url = new URL(`ws+unix://${socketPath}:/api/vscode/bridge`);
+  if (
+    socketPath.includes(':') ||
+    url.pathname !== `${socketPath}:/api/vscode/bridge` ||
+    url.search ||
+    url.hash
+  )
+    throw new Error(
+      'Use a Unix socket path without spaces, non-ASCII characters, colons or URL-special characters.',
     );
   return { port, socketPath };
 }
@@ -108,16 +119,17 @@ export class MirrorTransport {
       this.again();
       return;
     }
-    const socket = new WebSocket(`ws://127.0.0.1:${target.port}/api/vscode/bridge`, {
+    const address = target.socketPath
+      ? `ws+unix://${target.socketPath}:/api/vscode/bridge`
+      : `ws://127.0.0.1:${target.port}/api/vscode/bridge`;
+    const socket = new WebSocket(address, {
       perMessageDeflate: false,
       maxPayload: 128 * 1024,
       handshakeTimeout: 5000,
       followRedirects: false,
-      // ws overwrites a direct socketPath option. Its documented createConnection
-      // hook keeps the request path/Host fixed while connecting only to this Unix socket.
-      ...(target.socketPath
-        ? { createConnection: () => createConnection({ path: target.socketPath! }) }
-        : {}),
+      // ws+unix sets the HTTP socketPath, which VS Code's proxy patch passes
+      // through. Keep the gateway Host fixed rather than deriving it from IPC.
+      ...(target.socketPath ? { headers: { Host: `127.0.0.1:${target.port}` } } : {}),
     });
     this.socket = socket;
     this.issue = '';

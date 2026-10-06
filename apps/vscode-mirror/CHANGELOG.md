@@ -1,5 +1,11 @@
 # Changes
 
+## 0.2.12
+
+Keep private Remote SSH connections working with VS Code's default HTTP proxy handling.
+Use the configured Unix socket and exact app Host; refuse socket names that URL parsing
+would change. Install the updated VSIX and reload only when the editor's running work is safe.
+
 ## 0.2.11
 
 Prepare structurally compatible provider hooks in Remote SSH Unix hosts only after the

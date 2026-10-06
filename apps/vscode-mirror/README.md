@@ -63,6 +63,9 @@ ls -l /tmp/swa-vscode.PRINTED_DIRECTORY/bridge.sock
 
 The directory must be owned by your remote account with mode **0700**, the socket with mode
 **0600**. Use a canonical absolute path under 100 bytes with no linked directory or socket.
+Avoid spaces, non-ASCII characters, colons and URL-special characters in that path;
+the generated example above is safe. Version 0.2.12 supports VS Code's default HTTP proxy
+handling for this Unix connection. Update the VSIX and reload only when running work is safe.
 In VS Code **Remote settings**, set `agentDockMirror.remoteSocketPath` to that socket and
 `agentDockMirror.port` to the app's port. Workspace files cannot opt into the connection.
 Select the native conversation with the usual share action. The status bar reports connected
@@ -88,10 +91,11 @@ and empty generated directory on the remote host. Clear `remoteSocketPath` when 
 using this connection. A restart may require restoring the forward and reopening/re-sharing
 the native chat. The app computer and remote host must both stay reachable.
 
-Private Unix reverse forwarding has been exercised on FASRC. Disposable transport fixtures
-cover local/Unix connections, first setup, permission refusal, reconnect and stop. Installation
-and native controls in an actual remote VS Code workspace remain unverified; local provider
-qualification does not certify remote provider builds or cluster policies.
+An owned FASRC Remote SSH Codex fixture exercised native sharing, an app follow-up, steering,
+Stop and same-thread/history reconnection. It used a separate node-local native runtime index;
+the cluster's default native startup remains unqualified. Same-browser visual reconnection
+remains open. Disposable transport fixtures cover first setup, proxy handling, permission
+refusal, reconnect and stop; these checks do not certify other provider builds or cluster policies.
 
 ## Reading and replying
 
