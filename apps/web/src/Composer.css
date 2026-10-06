@@ -71,3 +71,19 @@
   background: linear-gradient(to right, transparent, var(--surface, #fff) 45%);
   pointer-events: none;
 }
+.session-command-list {
+  display: grid;
+  gap: 8px;
+}
+.session-command-list button {
+  min-height: 44px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  text-align: left;
+}
+.icon-button.session-command-trigger {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}

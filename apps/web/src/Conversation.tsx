@@ -1,4 +1,5 @@
 import './Composer.css';
+import { flushSync } from 'react-dom';
 import { AppMessageQueue } from './AppMessageQueue';
 import { ConversationStatus } from './ConversationStatus';
 import { ChatMarkdown } from './ChatMarkdown';
@@ -42,6 +43,7 @@ import { McpFormFields } from './McpFormFields';
 import { McpUrlLink } from './McpUrlLink';
 import { Notepad, type DraftSelection } from './Notepad';
 import { useScrollHints } from './home/useScrollHints';
+import { ChatCommands } from './ChatCommands';
 
 function SendTiming({
   steer,
@@ -530,6 +532,8 @@ export function Composer({
   onCommand,
   onStop,
   onHelp,
+  onGoal,
+  onCommandBack,
   notepad,
   reference,
   onNotepadClose,
@@ -555,6 +559,9 @@ export function Composer({
   onCommand: (command: 'new' | 'compact' | 'resume' | 'interrupt') => void;
   onStop: () => void;
   onHelp: () => void;
+  /** Opens this conversation's existing goal dialog without sending or replacing a draft. */
+  onGoal?: () => void;
+  onCommandBack?: (close: (() => void) | null) => void;
   /** Open the full-page notepad on mount, e.g. for a new project's first brief. */
   notepad?: 'brief';
   /** Quote an exact note or to-do at the caret. Referencing never sends. */
@@ -742,12 +749,15 @@ export function Composer({
   /** Resolves true only after the manager accepted the message. */
   const submit = async (asText = false): Promise<boolean> => {
     const value = draft.currentText().trim();
+    const commandText = withoutChatAttachments(value).trim();
+    const goalCommand =
+      !specialized && !retry.current && !asText && /^\/goal(?:\s|$)/.test(commandText);
     const sentRevision = draftRevision.current;
     if (
       (!value && !retry.current) ||
       sendingRef.current ||
       uploading ||
-      (disabled && !(specialized && retry.current?.text === value)) ||
+      (disabled && !goalCommand && !(specialized && retry.current?.text === value)) ||
       !draft.ready ||
       draft.conflict ||
       unknownLegacyMode
@@ -755,6 +765,20 @@ export function Composer({
       return false;
     if (apiScope() !== scope) return false;
     setNotice('');
+    // Keep the draft and attachments; /goal never becomes a model message.
+    if (goalCommand) {
+      setLiteralSlash(false);
+      if (commandText !== '/goal') {
+        fail('Use /goal by itself to open goal controls. Your draft is retained.');
+      } else if (!onGoal) {
+        fail('Goals are not available for this conversation. Your draft is retained.');
+      } else {
+        if (expanded) flushSync(closeNotepad);
+        textarea.current?.focus({ preventScroll: true });
+        onGoal();
+      }
+      return false;
+    }
     if (!retry.current && !specialized && value.startsWith('/') && !asText) {
       const match = {
         '/new': 'new',
@@ -766,7 +790,7 @@ export function Composer({
       if (match) {
         if (agent.provider === 'claude' && match === 'compact') {
           fail(
-            'Claude manages compaction itself. Your draft is retained. Use New context only when you want a fresh conversation.',
+            'Manual Claude compaction is not connected here. Your draft is retained. Use /compact in Claude Code, or choose New context for a fresh conversation.',
           );
           return false;
         }
@@ -878,7 +902,11 @@ export function Composer({
     }
   };
   const canSend =
-    (!disabled || (specialized && retry.current?.text === text.trim())) &&
+    (!disabled ||
+      (!specialized &&
+        !retry.current &&
+        /^\/goal(?:\s|$)/.test(withoutChatAttachments(text).trim())) ||
+      (specialized && retry.current?.text === text.trim())) &&
     !sending &&
     !uploading &&
     draft.ready &&
@@ -1185,14 +1213,22 @@ export function Composer({
         </div>
         <div>
           {!specialized && (
-            <button
-              className="icon-button"
-              title="Session commands"
-              aria-label="Show commands"
-              onClick={onHelp}
-            >
-              <span className="slash-icon">/</span>
-            </button>
+            <ChatCommands
+              onGoal={
+                onGoal ??
+                (() =>
+                  fail('Goals are not available for this conversation. Your draft is retained.'))
+              }
+              onCommand={(command) => {
+                if (command === 'compact' && agent.provider === 'claude') {
+                  fail(
+                    'Manual Claude compaction is not connected here. Your draft is retained. Use /compact in Claude Code, or choose New context for a fresh conversation.',
+                  );
+                } else onCommand(command);
+              }}
+              onAdvanced={onHelp}
+              onBack={onCommandBack}
+            />
           )}
           {!specialized && ['running', 'queued', 'waiting'].includes(agent.status) && (
             <button

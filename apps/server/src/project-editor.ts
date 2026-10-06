@@ -9,12 +9,12 @@ export const openProjectEditor: ProjectEditorOpener = async (registeredRoot) => 
     const executable = process.platform === 'darwin' ? '/usr/bin/open' : 'code';
     const args =
       process.platform === 'darwin'
-        ? ['-b', 'com.microsoft.VSCode', registeredRoot]
-        : ['--reuse-window', registeredRoot];
+        ? ['-n', '-b', 'com.microsoft.VSCode', '--args', '--new-window', registeredRoot]
+        : ['--new-window', registeredRoot];
     await promisify(execFile)(executable, args, { timeout: 10_000, maxBuffer: 16_384 });
   } catch {
     throw new Conflict(
-      'VS Code could not open on this project’s computer. Check that VS Code is installed there, then try Open in VS Code again. Your project is unchanged.',
+      'VS Code could not open on this project’s computer. Check that VS Code is installed there. Your project is unchanged.',
     );
   }
 };

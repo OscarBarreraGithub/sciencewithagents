@@ -109,7 +109,13 @@ async function sharedChat(page: Page, provider: 'codex' | 'claude' = 'codex', ho
   await expect(page.getByText('Ready when you are.')).toBeVisible();
   return fixture;
 }
-const goalButton = (page: Page) => page.getByRole('button', { name: /^Goal/ });
+async function openGoal(page: Page) {
+  await page.getByRole('button', { name: 'Show commands' }).click();
+  await page
+    .getByRole('dialog', { name: 'Session commands' })
+    .getByRole('button', { name: '/goal Goal', exact: true })
+    .click();
+}
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Conversation goal' });
 const goal = (threadId: string, patch: Partial<NativeGoal> = {}): NativeGoal => ({
   threadId,
@@ -129,7 +135,7 @@ test('a selected computer and reconnect keep the same thread receipt without sen
   const host = randomUUID();
   const chat = await sharedChat(page, 'codex', host);
   chat.post = () => 'lost';
-  await goalButton(page).click();
+  await openGoal(page);
   await dialog(page)
     .getByLabel('What should Codex accomplish?')
     .fill('Check the selected computer’s data.');
@@ -137,7 +143,7 @@ test('a selected computer and reconnect keep the same thread receipt without sen
   await expect(dialog(page).getByRole('button', { name: 'Check status' })).toBeEnabled();
   chat.state.windowId = randomUUID();
   await page.reload();
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(dialog(page).getByLabel('What should Codex accomplish?')).toHaveValue(
     'Check the selected computer’s data.',
   );
@@ -173,7 +179,7 @@ test('a goal is created once; a definite refusal keeps the objective for an expl
   const composer = page.getByRole('textbox', { name: 'Message Codex' });
   await composer.fill('Unsent message draft');
   chat.post = () => ({ state: 'not_sent', message: 'Codex did not accept the goal.' });
-  await goalButton(page).click();
+  await openGoal(page);
   const objective = dialog(page).getByLabel('What should Codex accomplish?');
   await objective.fill('Write the methods section with citations.');
   const reads = chat.reads;
@@ -209,7 +215,6 @@ test('a goal is created once; a definite refusal keeps the objective for an expl
   await expect(dialog(page).getByText('1,200')).toBeVisible();
   await expect(dialog(page).getByText('Native token budget')).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await expect(goalButton(page)).toHaveAccessibleName('Goal: Active');
   await expect(composer).toHaveValue('Unsent message draft');
 });
 
@@ -218,7 +223,7 @@ test('an unconfirmed goal survives reload and is only inspected, never posted ag
 }) => {
   const chat = await sharedChat(page);
   chat.post = () => 'lost';
-  await goalButton(page).click();
+  await openGoal(page);
   const objective = dialog(page).getByLabel('What should Codex accomplish?');
   await objective.fill('Draft the discussion.');
   await dialog(page).getByRole('button', { name: 'Set goal' }).click();
@@ -229,8 +234,7 @@ test('an unconfirmed goal survives reload and is only inspected, never posted ag
   ).toHaveCount(0);
   await expect(dialog(page).getByRole('button', { name: 'Set goal' })).toHaveCount(0);
   await page.reload();
-  await expect(goalButton(page)).toHaveAccessibleName('Goal: Unconfirmed');
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(dialog(page).getByLabel(/Objective awaiting|What should Codex/)).toHaveValue(
     'Draft the discussion.',
   );
@@ -251,7 +255,7 @@ test('an unconfirmed goal survives reload and is only inspected, never posted ag
   expect(chat.posts).toHaveLength(1);
   expect(chat.deliveries).toEqual([chat.posts[0].key, chat.posts[0].key]);
   await page.reload();
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(dialog(page).getByText('Draft the discussion.')).toBeVisible();
   expect(chat.posts).toHaveLength(1);
 });
@@ -262,9 +266,10 @@ test('pause and resume use the displayed native token; progress and terminal sta
   const chat = await sharedChat(page);
   chat.view = { ...chat.view, goal: goal(chat.state.threadId), token: tokenA };
   await page.reload();
-  await expect(goalButton(page)).toHaveAccessibleName('Goal: Active');
-  const entry = await goalButton(page).boundingBox();
-  await expect(goalButton(page).getByText('Goal', { exact: true })).toBeVisible();
+  const entry = await page.getByRole('button', { name: 'Show commands' }).boundingBox();
+  await expect(page.locator('.mirror-header').getByRole('button', { name: /^Goal/ })).toHaveCount(
+    0,
+  );
   expect(entry!.height).toBeGreaterThanOrEqual(44);
   expect(entry!.width).toBeGreaterThanOrEqual(44);
   await expect(page.getByRole('textbox', { name: 'Message Codex' })).toBeInViewport();
@@ -273,7 +278,7 @@ test('pause and resume use the displayed native token; progress and terminal sta
   expect(title!.width).toBeGreaterThanOrEqual(90);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('goal-entry.png') });
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(dialog(page).getByRole('button', { name: 'Clear goal' })).toHaveCount(0);
   // Native progress does not change the lifecycle token used for pause.
   chat.view = {
@@ -345,7 +350,7 @@ test('a delayed older reading or another conversation never replaces the native 
   page,
 }) => {
   const chat = await sharedChat(page);
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(dialog(page).getByRole('button', { name: 'Set goal' })).toBeVisible();
   let release!: () => void;
   const held = new Promise<void>((resolve) => (release = resolve));
@@ -381,7 +386,8 @@ test('Claude Code conversations have no unsupported goal control or goal request
   page,
 }) => {
   const chat = await sharedChat(page, 'claude');
-  await expect(goalButton(page)).toHaveCount(0);
+  await openGoal(page);
+  await expect(dialog(page)).toContainText('Claude Code does not offer native goals');
   expect(chat.reads).toBe(0);
   expect(chat.posts).toHaveLength(0);
 });
@@ -390,23 +396,23 @@ test('the objective survives closing, navigating, reloading and recovery without
   page,
 }) => {
   const chat = await sharedChat(page);
-  await goalButton(page).click();
+  await openGoal(page);
   const text = 'Finish the derivation.\nKeep the boundary conditions explicit.';
   await dialog(page).getByLabel('What should Codex accomplish?').fill(text);
   await page.keyboard.press('Escape');
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(dialog(page).getByLabel('What should Codex accomplish?')).toHaveValue(text);
   await page.goto('/#/chats');
   await page.goto(`/#/chats/vscode/${encodeURIComponent(`codex:${chat.state.threadId}`)}`);
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(dialog(page).getByLabel('What should Codex accomplish?')).toHaveValue(text);
   await page.reload();
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(dialog(page).getByLabel('What should Codex accomplish?')).toHaveValue(text);
   const key = `dock:native-goal:local:codex:${chat.state.threadId}`;
   await page.evaluate((key) => sessionStorage.removeItem(key), key);
   await page.reload();
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(dialog(page).getByLabel('What should Codex accomplish?')).toHaveValue(text);
   expect(chat.posts).toHaveLength(0);
 });
@@ -437,7 +443,7 @@ test('clearing a completed native goal explicitly permits a new goal without del
     };
   };
   await page.reload();
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(dialog(page).getByRole('button', { name: 'Resume goal' })).toHaveCount(0);
   page.once('dialog', (confirmation) => confirmation.accept());
   await dialog(page).getByRole('button', { name: 'Clear goal' }).click();
@@ -471,7 +477,7 @@ test('goal creation fits above the phone keyboard with one form scroller', async
     });
   });
   const chat = await sharedChat(page);
-  await goalButton(page).click();
+  await openGoal(page);
   const objective = dialog(page).getByLabel('What should Codex accomplish?');
   const text = 'Preserve the original evidence while checking the derivation.\n'.repeat(50);
   await objective.fill(text);
@@ -495,10 +501,140 @@ test('goal creation fits above the phone keyboard with one form scroller', async
   expect(closing!.y + closing!.height).toBeLessThanOrEqual(441);
   await page.screenshot({ path: info.outputPath('phone-goal-keyboard.png') });
   await close.click();
-  await goalButton(page).click();
+  await openGoal(page);
   await expect(objective).toHaveValue(text);
   await form.evaluate((el) => (el.scrollTop = el.scrollHeight));
   await set.click();
   await expect.poll(() => chat.posts.length).toBe(1);
   expect(chat.posts[0].action === 'create' && chat.posts[0].objective).toBe(text.trim());
+});
+
+test('typed /goal and the command menu read locally, retaining the shared draft through unsupported and offline states', async ({
+  page,
+}) => {
+  const chat = await sharedChat(page);
+  const calls: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/vscode/'))
+      calls.push(request.url());
+  });
+  const composer = page.getByRole('textbox', { name: 'Message Codex' });
+  await composer.fill('Unsent shared notes');
+  await openGoal(page);
+  await expect(dialog(page)).toBeVisible();
+  await dialog(page).getByRole('button', { name: 'Close dialog' }).click();
+  await expect(composer).toHaveValue('Unsent shared notes');
+  await composer.fill('/goal');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(dialog(page)).toBeVisible();
+  expect(chat.posts).toEqual([]);
+  expect(calls).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(composer).toHaveValue('/goal');
+  chat.view = { ...chat.view, supported: false, message: 'This companion needs a safe update.' };
+  await page.reload();
+  await openGoal(page);
+  await expect(dialog(page)).toContainText('This companion needs a safe update.');
+  await page.keyboard.press('Escape');
+  await expect(composer).toHaveValue('/goal');
+  chat.state.status = 'offline';
+  await page.reload();
+  await expect(composer).toHaveValue('/goal');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(dialog(page)).toContainText('Reconnect this conversation to change its goal.');
+  expect(calls).toEqual([]);
+});
+
+test('shared /goal arguments retain text and unknown slash messages keep their existing literal behavior', async ({
+  page,
+}) => {
+  const chat = await sharedChat(page);
+  const messages: unknown[] = [];
+  await page.route('**/api/vscode/windows/*/send', (route) => {
+    messages.push(route.request().postDataJSON());
+    return route.fulfill({ json: { state: 'sent', message: 'Fixture message sent.' } });
+  });
+  const composer = page.getByRole('textbox', { name: 'Message Codex' });
+  await composer.fill('/goal preserve these words');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.locator('.mirror-delivery-status summary')).toHaveText(
+    'Use /goal by itself to open goal controls. Your draft is retained.',
+  );
+  await expect(composer).toHaveValue('/goal preserve these words');
+  expect(messages).toEqual([]);
+  expect(chat.posts).toEqual([]);
+  await composer.fill('/native-unknown');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(composer).toHaveValue('');
+  expect(messages).toEqual([
+    expect.objectContaining({ threadId: chat.state.threadId, text: '/native-unknown' }),
+  ]);
+});
+
+test('an older host without a goal endpoint explains capability and keeps the objective draft', async ({
+  page,
+}) => {
+  const chat = await sharedChat(page);
+  await openGoal(page);
+  const objective = 'Keep this native objective draft';
+  await dialog(page).getByLabel('What should Codex accomplish?').fill(objective);
+  await page.keyboard.press('Escape');
+  await page.route('**/api/vscode/windows/*/goal', (route) =>
+    route.fulfill({ status: 404, json: { error: 'No goal endpoint' } }),
+  );
+  await page.reload();
+  await openGoal(page);
+  await expect(dialog(page)).toContainText('Native goals are not connected here.');
+  await expect(dialog(page).getByRole('button', { name: 'Set goal' })).toHaveCount(0);
+  expect(chat.posts).toEqual([]);
+  const saved = await page.evaluate(
+    (thread) =>
+      JSON.parse(
+        localStorage.getItem(`dock:native-goal:local:codex:${thread}:objective`) ?? 'null',
+      ),
+    chat.state.threadId,
+  );
+  expect(saved).toBe(objective);
+  await page.goto('/#/chats');
+  await expect(dialog(page)).toHaveCount(0);
+});
+
+test('shared goal Back keeps the thread and expanded offline /goal restores composer focus', async ({
+  page,
+}) => {
+  const chat = await sharedChat(page);
+  const messages: unknown[] = [];
+  await page.route('**/api/vscode/windows/*/send', (route) => {
+    messages.push(route.request().postDataJSON());
+    return route.fulfill({ json: { state: 'sent', message: 'Unexpected message' } });
+  });
+  const here = page.url();
+  const composer = page.getByRole('textbox', { name: 'Message Codex' });
+  await composer.fill('Keep this shared draft');
+  await openGoal(page);
+  await expect(dialog(page)).toBeVisible();
+  // Native goal owns the local Back step while its modal makes the page inert.
+  await page.locator('a.home-back').evaluate((node) => (node as HTMLElement).click());
+  await expect(dialog(page)).toHaveCount(0);
+  await expect(page).toHaveURL(here);
+  await expect(composer).toHaveValue('Keep this shared draft');
+  await expect(composer).toBeFocused();
+
+  chat.state.status = 'offline';
+  await page.reload();
+  await expect(composer).toBeVisible();
+  await page.getByRole('button', { name: 'Open notepad', exact: true }).click();
+  const notepad = page.getByRole('dialog', { name: 'Write at length' });
+  await notepad.getByRole('textbox').fill('/goal');
+  const send = notepad.getByRole('button', { name: 'Send', exact: true });
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(notepad).toHaveCount(0);
+  await expect(dialog(page)).toContainText('Reconnect this conversation to change its goal.');
+  await page.keyboard.press('Escape');
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue('/goal');
+  await expect(page).toHaveURL(here);
+  expect(chat.posts).toEqual([]);
+  expect(messages).toEqual([]);
 });

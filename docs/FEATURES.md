@@ -99,15 +99,24 @@ Untracked processes remain distinguishable from app-owned work. See [resource mo
 
 ## Native capabilities and saved evidence
 
-Supported shared Codex chats expose their native **Goal** in the app: the objective,
+The composer’s **/** menu and **/goal** open goal controls without sending a model message
+or replacing an unsent draft or its attachments. Supported shared Codex chats expose their native **Goal**: the objective,
 status, elapsed work and token accounting, with controls to set, pause and resume it.
 These operate on the same conversation as VS Code. A goal does not move the conversation
 into QUARK or override provider limits. Older companions need a safe update before their
 controls are available. Claude and app-managed goal continuation are separate capabilities;
 the app does not substitute a new goal or an unsupervised loop when they are unavailable.
 
-App-owned Codex and Claude project managers offer a separate, explicit opt-in **Goal**.
-Its objective and progress persist through reloads and restarts. First and follow-up turns
+App-owned Codex and Claude project managers offer a separate, explicit opt-in **Goal**
+through **/goal** or the composer’s **/** menu. The compact **VS Code** action in a manager’s
+header opens its registered project folder on that computer in a new editor window.
+An unconfirmed launch keeps its receipt; **Open again** deliberately starts a new request
+and may open another window.
+Unsupported goal connections explain their capability and keep drafts. The command menu
+also exposes the currently connected session controls; other native commands still need
+the original provider session. Manual Claude compaction is not connected to the app yet.
+
+The manager goal’s objective and progress persist through reloads and restarts. First and follow-up turns
 use the manager's ordinary model and QUARK admission, including existing reserves and
 hourly/window limits; native automatic goals are not used to bypass admission. Reading the
 goal starts no model turn, and unchanged progress does not generate polling turns.

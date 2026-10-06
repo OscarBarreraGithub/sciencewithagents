@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom';
 import { MirrorMessageQueue } from './MirrorMessageQueue';
 import { ChatMarkdown } from './ChatMarkdown';
 import { ChatAttachmentPicker, useChatAttachmentUpload } from './ChatImages';
@@ -41,6 +42,7 @@ import {
 import './VscodeMirror.css';
 import { MirrorStopReply } from './MirrorStopReply';
 import { NativeGoalCard } from './NativeGoalCard';
+import { ChatCommands } from './ChatCommands';
 import { Notepad, type DraftSelection } from './Notepad';
 import { useBrowserNotepad } from './useBrowserNotepad';
 
@@ -413,6 +415,7 @@ export function VscodeMirror({
   const draftKey = `dock:mirror:${apiScope()}:${chat.provider === 'claude' ? 'claude:' : ''}${chat.threadId}`;
   const [state, setState] = useState<MirrorState | null>(null);
   const [text, setText] = useState('');
+  const [goalOpen, setGoalOpen] = useState<string | null>(null);
   const resizeInput = () => {
     const element = input.current;
     if (!element) return;
@@ -622,7 +625,28 @@ export function VscodeMirror({
   const canQueue = status === 'busy' && !!state?.canQueue;
   const queueSelected = canQueue && (!canSteer || sendTiming === 'queue');
   const canSend = status === 'idle' || canSteer || canQueue;
+  const localGoal = !pending && /^\/goal(?:\s|$)/.test(withoutChatAttachments(text).trim());
+  const openGoal = () => {
+    if (!chat.threadId) {
+      setReceipt(
+        'This connection has no selected conversation for a goal. Your draft is retained.',
+      );
+      return;
+    }
+    if (notepadOpen) flushSync(() => setNotepadOpen(false));
+    input.current?.focus({ preventScroll: true });
+    setGoalOpen(`${apiScope()}:${identity}`);
+  };
   async function send() {
+    const commandText = withoutChatAttachments(browserNotepad.draft.currentText()).trim();
+    if (!pending && !busyRef.current && !uploading && /^\/goal(?:\s|$)/.test(commandText)) {
+      if (commandText !== '/goal') {
+        setReceipt('Use /goal by itself to open goal controls. Your draft is retained.');
+      } else {
+        openGoal();
+      }
+      return;
+    }
     if (busyRef.current || uploading || !chat.threadId || (!pending && !canSend)) return;
     const input = pending ?? {
       key: crypto.randomUUID(),
@@ -698,6 +722,18 @@ export function VscodeMirror({
   }
   return (
     <section className="mirror-conversation" aria-label={`${provider} chat`}>
+      {chat.threadId && (
+        <NativeGoalCard
+          key={`${apiScope()}:${identity}`}
+          goalPath={`/vscode/windows/${chat.windowId}/goal`}
+          threadId={chat.threadId}
+          provider={chat.provider ?? 'codex'}
+          online={status !== 'offline'}
+          place={daemon ? 'on your computer' : 'in VS Code'}
+          open={goalOpen === `${apiScope()}:${identity}`}
+          onClose={() => setGoalOpen(null)}
+        />
+      )}
       <header className="mirror-header">
         <span className={`mirror-avatar ${chat.provider ?? 'codex'}`}>
           <MessageSquare size={21} />
@@ -710,16 +746,6 @@ export function VscodeMirror({
             {daemon ? chat.label : `${provider} in ${chat.label}`}
           </p>
         </div>
-        {chat.threadId && (chat.provider ?? 'codex') === 'codex' && (
-          <NativeGoalCard
-            key={identity}
-            goalPath={`/vscode/windows/${chat.windowId}/goal`}
-            threadId={chat.threadId}
-            provider={chat.provider ?? 'codex'}
-            online={status !== 'offline'}
-            place={daemon ? 'on your computer' : 'in VS Code'}
-          />
-        )}
         {headerAction}
         <details className="mirror-controls">
           <summary aria-label="Chat information">
@@ -734,9 +760,9 @@ export function VscodeMirror({
               </p>
               <p>
                 Messages typed on the computer and here at the same time can join the same reply.
-                Approvals, permissions, models and slash commands stay in the original session on
-                your computer. Stop reply is available here when supported. No new agent is started
-                here.
+                Use /goal here for native goal controls. Other slash commands, approvals,
+                permissions and models stay in the original session on your computer. Stop reply is
+                available here when supported. No new agent is started here.
               </p>
             </div>
           ) : (
@@ -744,9 +770,10 @@ export function VscodeMirror({
               <strong>Same chat, different screen</strong>
               <p>Sent messages sync both ways. Unsent drafts stay separate.</p>
               <p>
-                Use VS Code for permissions, models and slash commands. Screenshots can be attached
-                here. Stop reply is available here when the connected provider supports it. No new
-                agent is started here. After an editor crash, reopen VS Code and the original chat.
+                Use /goal here for supported goal controls. Use VS Code for permissions, models and
+                other slash commands. Screenshots can be attached here. Stop reply is available here
+                when the connected provider supports it. No new agent is started here. After an
+                editor crash, reopen VS Code and the original chat.
               </p>
             </div>
           )}
@@ -930,13 +957,20 @@ export function VscodeMirror({
                     ? 'Queue follow-up'
                     : 'Send'
             }
-            disabled={busy || uploading || (!pending && (!text.trim() || !canSend))}
+            disabled={
+              busy ||
+              uploading ||
+              (!pending &&
+                (!text.trim() ||
+                  (!canSend && !/^\/goal(?:\s|$)/.test(withoutChatAttachments(text).trim()))))
+            }
           >
             {busy ? '…' : pending ? 'Check delivery' : <ArrowUp size={20} />}
           </button>
         </div>
         {/* Timing and Stop share the tools row so the draft and history keep the height. */}
         <div className="mirror-compose-tools">
+          <ChatCommands onGoal={openGoal} />
           {state?.canSteer && state?.canQueue && (
             <select
               className="mirror-send-timing"
@@ -1010,7 +1044,9 @@ export function VscodeMirror({
             localOnly
             localHistory={browserNotepad.history}
             maxLength={32000}
-            canSend={!busy && !uploading && (!!pending || (!!text.trim() && canSend))}
+            canSend={
+              !busy && !uploading && (!!pending || (!!text.trim() && (canSend || localGoal)))
+            }
             sending={busy}
             notice={receipt}
             onMinimize={() => {

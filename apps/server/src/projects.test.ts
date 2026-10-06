@@ -12,7 +12,7 @@ import {
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { Store } from './store.js';
+import { Conflict, Store } from './store.js';
 import { Runtime } from './runtime.js';
 import { createServer } from './server.js';
 import { DemoProvider } from './demo.js';
@@ -112,6 +112,45 @@ it('opens only a registered project in the editor once per receipt and retains p
     ambiguity: 'continue',
   });
 });
+it.each([409, 500])(
+  'keeps a failed editor receipt (%s) uncertain until a deliberate new request opens the registered folder',
+  async (status) => {
+    const project = (await post(input())).json();
+    const url = `/api/projects/${project.id}/open-in-editor`;
+    const payload = { key: randomUUID() };
+    openEditor.mockRejectedValueOnce(
+      status === 409
+        ? new Conflict(
+            'VS Code could not open on this project’s computer. Check that VS Code is installed there.',
+          )
+        : new Error('VS Code could not open the folder.'),
+    );
+    const failed = await app.inject({ method: 'POST', url, headers, payload });
+    expect(failed.statusCode).toBe(status);
+    expect(openEditor).toHaveBeenCalledExactlyOnceWith(store.project(project.id).root);
+    // The receipt survives a restart; checking it never silently launches again.
+    await app.close();
+    await open();
+    const check = await app.inject({ method: 'POST', url, headers, payload });
+    expect(check.statusCode).toBe(409);
+    expect(check.json().error).toContain('uncertain or failed outcome');
+    expect(openEditor).toHaveBeenCalledTimes(1);
+    const deliberate = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { key: randomUUID() },
+    });
+    expect(deliberate.statusCode).toBe(200);
+    expect(deliberate.json().opened).toBe(true);
+    expect(openEditor).toHaveBeenCalledTimes(2);
+    expect(openEditor).toHaveBeenLastCalledWith(store.project(project.id).root);
+    expect(store.events().filter((event) => event.type === 'project.editor_opened')).toHaveLength(
+      1,
+    );
+  },
+);
+
 afterEach(async () => {
   await app.close();
   rmSync(root, { recursive: true, force: true });

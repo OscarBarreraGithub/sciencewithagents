@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Target } from 'lucide-react';
 import {
   managedGoalActionSchema,
   managedGoalViewSchema,
@@ -68,13 +67,14 @@ const rejected = (error: unknown) =>
 export function ManagedGoalCard({
   agentId,
   activity,
-  onBack,
+  open,
+  onClose,
 }: {
   agentId: string;
   /** The manager's status; a change (from app events) prompts a fresh reading. */
   activity?: string;
-  /** Registers the open dialog's close as the chat's Back step; null when closed. */
-  onBack?: (close: (() => void) | null) => void;
+  open: boolean;
+  onClose: () => void;
 }) {
   const storageKey = `dock:managed-goal:${apiScope()}:${agentId}`;
   const path = `/agents/${encodeURIComponent(agentId)}/goal`;
@@ -100,7 +100,6 @@ export function ManagedGoalCard({
   const [message, setMessage] = useState('');
   const [attention, setAttention] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
   const objectiveId = useId();
   const notice = useRef<HTMLDivElement>(null);
@@ -167,10 +166,8 @@ export function ManagedGoalCard({
     };
   }, [open]);
   useEffect(() => {
-    if (!open || !onBack) return;
-    onBack(() => setOpen(false));
-    return () => onBack(null);
-  }, [open, onBack]);
+    if (open) void read();
+  }, [open]);
   const unconfirmed = !!pending && !busy;
   useEffect(() => {
     // A small landscape dialog may be scrolled to the objective; show the new outcome.
@@ -247,7 +244,7 @@ export function ManagedGoalCard({
     }
   }
   function start(kind: ManagedGoalAction['action']) {
-    if (busyRef.current || pending || !view?.supported) return;
+    if (busyRef.current || pending || missing || !view?.supported) return;
     const goal = view.goal;
     const key = crypto.randomUUID();
     const objective = (draft ?? '').trim();
@@ -275,38 +272,16 @@ export function ManagedGoalCard({
   }
 
   const goal = view?.supported ? view.goal : null;
-  // The server decides eligibility; a missing route or unsupported chat shows no Goal button.
-  if (!pending && draft === null && (missing || view?.supported === false)) return null;
-  const actionable = !!view?.supported && !busy && !pending;
+  const actionable = !!view?.supported && !missing && !busy && !pending;
   const editing = goal ? draft !== null : true;
-  const chip = pending ? 'Unconfirmed' : goal ? statusLabel[goal.status] : null;
   const continuation = view?.continuation;
   const long = goal && (goal.objective.length > short || goal.progress.summary.length > short);
   const clip = (text: string) =>
     text.length > short ? `${text.slice(0, short).trimEnd()}…` : text;
   return (
     <>
-      <button
-        type="button"
-        className="chat-tool managed-goal-entry"
-        aria-haspopup="dialog"
-        aria-label={chip ? `Goal: ${chip}` : 'Goal'}
-        onClick={() => {
-          setOpen(true);
-          void read();
-        }}
-      >
-        <Target size={17} aria-hidden="true" />
-        <span className="chat-tool-label">Goal</span>
-        {chip && (
-          <span
-            className={`managed-goal-dot ${pending ? 'pending' : goal!.status}`}
-            aria-hidden="true"
-          />
-        )}
-      </button>
       {open && (
-        <Modal title="Manager goal" close={() => setOpen(false)} className="managed-goal-dialog">
+        <Modal title="Manager goal" close={onClose} className="managed-goal-dialog">
           <form
             className="managed-goal"
             onSubmit={(event) => {
@@ -314,7 +289,12 @@ export function ManagedGoalCard({
               start(goal ? 'replace' : 'create');
             }}
           >
-            {!view && !readError && <p role="status">Reading the goal…</p>}
+            {missing && (
+              <p role="status">
+                Goals are unavailable for this conversation. Your drafts are kept.
+              </p>
+            )}
+            {!view && !readError && !missing && <p role="status">Reading the goal…</p>}
             {readError && (
               <p className="managed-goal-notice" role="status">
                 {readError}

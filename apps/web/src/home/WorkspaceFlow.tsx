@@ -28,7 +28,7 @@ import {
   type Snapshot,
   type Task,
 } from '@dock/shared';
-import { api, apiUrl, detail } from '../api';
+import { api, apiScope, apiUrl, ApiError, detail } from '../api';
 import { Conversation, Composer } from '../Conversation';
 import { TaskModal, ManagerModal } from '../ProjectActions';
 import { ProjectTools } from './ProjectTools';
@@ -58,7 +58,7 @@ import { surfaceOf } from './chat-contracts';
 import { ConfigPanel, NotesPanel, PanelFrame, SubagentsPanel, type ChatPanel } from './ChatPanels';
 import type { HomeData } from './useHomeData';
 import { chatAgentKind } from './conversation-list';
-import { useConversationVisibility } from './useConversationVisibility';
+import { archiveUnavailable, useConversationVisibility } from './useConversationVisibility';
 import {
   ConversationVisibilityButton,
   ConversationVisibilityUndo,
@@ -619,14 +619,27 @@ export function ChatPage({
     }
   };
   const managerView = !!pane && !!agent && managesProject(agent, pane.special);
+  const task = state.tasks.find((t) => t.id === agent?.taskId);
+  const readOnly =
+    !!agent && (!!agent.archivedAt || (!agent.interview && (closed(task) || !!agent.nativeRootId)));
+  const goalEligible = managerView && !readOnly && !pane?.archived;
+  const goalKey = `${apiScope()}:${id}`;
   const panel = pane?.panel && (pane.panel === 'config' || managerView) ? pane.panel : null;
+  const [goalOpen, setGoalOpen] = useState<string | null>(null);
+  const closeGoal = useCallback(() => setGoalOpen(null), []);
+  const goalVisible = goalEligible && goalOpen === goalKey;
+  useEffect(() => {
+    if (goalOpen && (!goalEligible || goalOpen !== goalKey)) closeGoal();
+  }, [goalOpen, goalEligible, goalKey, closeGoal]);
   // One Back step: an open Goal dialog closes first, then the open panel behind it.
-  const [goalBack, setGoalBack] = useState<(() => void) | null>(null);
-  const registerGoalBack = useCallback(
-    (close: (() => void) | null) => setGoalBack(() => close),
+  const [commandBack, setCommandBack] = useState<(() => void) | null>(null);
+  const registerCommandBack = useCallback(
+    (close: (() => void) | null) => setCommandBack(() => close),
     [],
   );
-  useBackStep(goalBack ?? (panel ? () => pane?.setPanel(null) : null));
+  useBackStep(
+    goalVisible ? closeGoal : (commandBack ?? (panel ? () => pane?.setPanel(null) : null)),
+  );
   if (!agent)
     return (
       <FlowEmpty title="Opening the conversation…">
@@ -637,9 +650,6 @@ export function ChatPage({
         <a href="#/chats">All conversations</a>
       </FlowEmpty>
     );
-  const task = state.tasks.find((t) => t.id === agent.taskId);
-  const readOnly =
-    !!agent.archivedAt || (!agent.interview && (closed(task) || !!agent.nativeRootId));
   const approvals = state.approvals.filter((a) => a.agentId === id && a.status === 'pending');
   const project = state.projects.find((p) => p.id === agent.projectId);
   const surface = surfaceOf(agent);
@@ -657,12 +667,9 @@ export function ChatPage({
       <div className="chat-pane-title">
         <p className="chat-pane-project">
           {managerView && project ? (
-            <>
-              <OpenInEditor projectId={project.id} />
-              <a className="chat-project-link" href={go('project', project.id)}>
-                {project.name}
-              </a>
-            </>
+            <a className="chat-project-link" href={go('project', project.id)}>
+              {project.name}
+            </a>
           ) : (
             <span>
               {personal
@@ -700,14 +707,8 @@ export function ChatPage({
             <span className="chat-tool-label">Assistant privacy</span>
           </a>
         )}
-        {managerView && !readOnly && !pane.archived && (
-          // Opt-in only: the server's `supported` answer decides whether Goal is offered.
-          <ManagedGoalCard
-            key={agent.id}
-            agentId={agent.id}
-            activity={agent.status}
-            onBack={registerGoalBack}
-          />
+        {managerView && project && (
+          <OpenInEditor key={`${apiScope()}:${project.id}`} projectId={project.id} />
         )}
         {managerView && (
           <>
@@ -785,6 +786,15 @@ export function ChatPage({
     );
   return (
     <section className={pane ? 'chat-pane-inner flow-chat' : 'flow-page flow-chat'}>
+      {goalEligible && (
+        <ManagedGoalCard
+          key={`${apiScope()}:${agent.id}`}
+          agentId={agent.id}
+          activity={agent.status}
+          open={goalVisible}
+          onClose={closeGoal}
+        />
+      )}
       {pane
         ? paneHeader
         : !embedded && (
@@ -989,6 +999,8 @@ export function ChatPage({
               onHelp={() => {
                 location.hash = go('advanced', agent.id);
               }}
+              onGoal={goalEligible ? () => setGoalOpen(goalKey) : undefined}
+              onCommandBack={registerCommandBack}
               notepad={pane?.brief ? 'brief' : undefined}
               reference={reference}
               onNotepadClose={() => {
@@ -1161,6 +1173,7 @@ function MainChat({
       record={records.get(conversationVisibilityIdentity(target))}
       changed={changed(false)}
       name={name}
+      unavailable={visibility.unavailable}
     />
   );
   useEffect(() => {
@@ -1313,6 +1326,7 @@ function MainChat({
               record={noticeRecord}
               changed={changed(true)}
               name={noticeName}
+              unavailable={visibility.unavailable}
             />
           )}
           <button
@@ -1367,6 +1381,10 @@ function MainChat({
             className={`chat-small-button${archived ? ' primary' : ''}`}
             type="button"
             aria-pressed={archived}
+            disabled={
+              visibility.unsupported && ![...records.values()].some((record) => record.archived)
+            }
+            title={visibility.unsupported ? archiveUnavailable : undefined}
             onClick={() => setArchived((value) => !value)}
           >
             Archived
@@ -1390,6 +1408,11 @@ function MainChat({
             <button type="button" className="flow-button" onClick={visibility.retry}>
               Retry visibility
             </button>
+          </p>
+        )}
+        {visibility.unsupported && (
+          <p className="chat-list-empty" role="status">
+            {archiveUnavailable}
           </p>
         )}
         {!selected && visibilityNotice}
@@ -1520,50 +1543,80 @@ function MainChat({
 /** Keyed "open once" request; a retry after a lost reply reuses its receipt. */
 function OpenInEditor({ projectId }: { projectId: string }) {
   const key = useRef<string | null>(null);
+  const busyRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [unconfirmed, setUnconfirmed] = useState(false);
   useEffect(() => {
-    if (!message) return;
+    if (!message || unconfirmed) return;
     const timer = window.setTimeout(() => setMessage(''), 8000);
     return () => window.clearTimeout(timer);
-  }, [message]);
+  }, [message, unconfirmed]);
+  const launch = (again = false) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    if (again) key.current = null;
+    key.current ??= crypto.randomUUID();
+    setBusy(true);
+    setMessage('');
+    void api<{ message?: string }>(`/projects/${encodeURIComponent(projectId)}/open-in-editor`, {
+      key: key.current,
+    })
+      .then((result) => {
+        key.current = null;
+        setUnconfirmed(false);
+        setMessage(result.message ?? 'Opened in VS Code on this project’s computer.');
+      })
+      .catch((reason: unknown) => {
+        setUnconfirmed(true);
+        setMessage(
+          reason instanceof ApiError &&
+            reason.status === 409 &&
+            reason.message.startsWith('This command has an uncertain or failed outcome.')
+            ? ''
+            : reason instanceof Error
+              ? reason.message
+              : 'VS Code could not be opened.',
+        );
+      })
+      .finally(() => {
+        busyRef.current = false;
+        setBusy(false);
+      });
+  };
   return (
-    <>
+    <div className="chat-editor-action">
       <button
         type="button"
-        className="chat-folder"
+        className="chat-tool chat-editor-button"
         aria-label="Open project in VS Code"
-        title="Open project in VS Code"
+        title={unconfirmed ? 'Check the previous VS Code request' : 'Open project in VS Code'}
         disabled={busy}
-        onClick={() => {
-          key.current ??= crypto.randomUUID();
-          setBusy(true);
-          setMessage('');
-          void api<{ message?: string }>(`/projects/${projectId}/open-in-editor`, {
-            key: key.current,
-          })
-            .then((result) => {
-              key.current = null;
-              setMessage(result.message ?? 'Opened in VS Code on this project’s computer.');
-            })
-            .catch((reason: unknown) =>
-              setMessage(
-                reason instanceof Error
-                  ? `${reason.message} Try again; the same request will not open it twice.`
-                  : 'VS Code could not be opened. Try again.',
-              ),
-            )
-            .finally(() => setBusy(false));
-        }}
+        onClick={() => launch()}
       >
         <FolderOpen size={17} />
+        <span>VS Code</span>
       </button>
-      {message && (
+      {(message || unconfirmed) && !busy && (
         <span className="chat-editor-status" role="status">
           {message}
+          {unconfirmed && (
+            <>
+              {' '}
+              Opening wasn’t confirmed. Check VS Code first. Open again may open another window.
+              <button
+                type="button"
+                className="chat-small-button"
+                disabled={busy}
+                onClick={() => launch(true)}
+              >
+                Open again
+              </button>
+            </>
+          )}
         </span>
       )}
-    </>
+    </div>
   );
 }
 

@@ -26,18 +26,19 @@ type VisibilityProps = {
   record?: ConversationVisibility;
   changed: (record: ConversationVisibility) => void;
   name?: string;
+  unavailable?: string;
 };
 
 /** App visibility only: never provider archiving, manager removal or queue cancellation.
  *  One request is retained until it is confirmed, so a retry repeats it exactly. */
-function useVisibilityChange({ target, record, changed, name }: VisibilityProps) {
+function useVisibilityChange({ target, record, changed, name, unavailable }: VisibilityProps) {
   const attempt = useRef<ConversationVisibilityUpdate | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const restoring = attempt.current ? !attempt.current.archived : !!record?.archived;
   const label = `${restoring ? 'Restore' : 'Archive'} ${name ?? 'conversation'}`;
   const submit = async () => {
-    if (busy) return;
+    if (busy || unavailable) return;
     attempt.current ??= {
       key: crypto.randomUUID(),
       target,
@@ -66,7 +67,13 @@ function useVisibilityChange({ target, record, changed, name }: VisibilityProps)
   const dialog = error && (
     <Modal title={label} close={() => setError('')}>
       <p role="alert">{error}</p>
-      <button className="flow-button" type="button" disabled={busy} onClick={() => void submit()}>
+      {unavailable && <p role="status">{unavailable}</p>}
+      <button
+        className="flow-button"
+        type="button"
+        disabled={busy || !!unavailable}
+        onClick={() => void submit()}
+      >
         Retry same request
       </button>
       <button
@@ -127,7 +134,7 @@ export function ConversationVisibilityButton(props: VisibilityProps) {
             role="menuitem"
             aria-label={change.label}
             aria-describedby={hintId}
-            disabled={change.busy}
+            disabled={change.busy || !!props.unavailable}
             onClick={() => {
               close(true);
               void change.submit();
@@ -137,9 +144,10 @@ export function ConversationVisibilityButton(props: VisibilityProps) {
             <span>
               <strong>{change.restoring ? 'Restore' : 'Archive'}</strong>
               <small id={hintId}>
-                {change.restoring
-                  ? 'Show it in Chats again.'
-                  : 'Hide it in this app only. Work, drafts and history stay.'}
+                {props.unavailable ??
+                  (change.restoring
+                    ? 'Show it in Chats again.'
+                    : 'Hide it in this app only. Work, drafts and history stay.')}
               </small>
             </span>
           </button>
@@ -159,7 +167,8 @@ export function ConversationVisibilityUndo(props: VisibilityProps & { name: stri
         className="chat-small-button"
         type="button"
         aria-label={`Undo: ${change.label}`}
-        disabled={change.busy}
+        disabled={change.busy || !!props.unavailable}
+        title={props.unavailable}
         onClick={() => void change.submit()}
       >
         Undo

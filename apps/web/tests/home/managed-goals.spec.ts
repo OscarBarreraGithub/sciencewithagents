@@ -183,6 +183,13 @@ function watchModelCalls(page: Page, agentId: string) {
 }
 
 const tools = (page: Page) => page.getByRole('group', { name: 'Conversation tools' });
+async function openGoal(page: Page) {
+  await page.getByRole('button', { name: 'Show commands' }).click();
+  await page
+    .getByRole('dialog', { name: 'Session commands' })
+    .getByRole('button', { name: '/goal Goal', exact: true })
+    .click();
+}
 const stored = (page: Page, agentId: string) =>
   page.evaluate(
     (key) => JSON.parse(localStorage.getItem(key) ?? '{}'),
@@ -228,10 +235,11 @@ for (const provider of ['codex', 'claude'] as const)
     await expect(page.locator('.chat-pane-meta')).toContainText(
       provider === 'codex' ? 'Codex' : 'Claude',
     );
-    const entry = tools(page).getByRole('button', { name: /^Goal/ });
-    await expect(entry).toHaveAccessibleName('Goal');
-    expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-    await entry.click();
+    await expect(tools(page).getByRole('button', { name: /^Goal/ })).toHaveCount(0);
+    expect(
+      (await page.getByRole('button', { name: 'Show commands' }).boundingBox())!.height,
+    ).toBeGreaterThanOrEqual(44);
+    await openGoal(page);
     const dialog = page.getByRole('dialog', { name: 'Manager goal' });
     await expect(dialog.getByText('No goal is set.')).toBeVisible();
     // Opening reads only: no enrollment and no lifecycle or model request.
@@ -247,7 +255,6 @@ for (const provider of ['codex', 'claude'] as const)
     await expect(dialog.locator('.managed-goal-queue')).toHaveText(
       'Next goal turn: Waiting in QUARK · Waiting for this project’s hourly share',
     );
-    await expect(entry).toHaveAccessibleName('Goal: Active');
     expect(fixture.posts).toEqual([
       { key: fixture.posts[0].key, action: 'create', expectedRevision: null, objective },
     ]);
@@ -256,8 +263,7 @@ for (const provider of ['codex', 'claude'] as const)
     await page.screenshot({ path: `${shots}/${info.project.name}-${provider}-page.png` });
 
     await page.reload();
-    await expect(entry).toHaveAccessibleName('Goal: Active');
-    await entry.click();
+    await openGoal(page);
     await expect(dialog.getByText(objective)).toBeVisible();
     expect(fixture.posts).toHaveLength(1);
 
@@ -279,7 +285,6 @@ for (const provider of ['codex', 'claude'] as const)
     await expect(dialog.getByText('Stopped', { exact: true })).toBeVisible();
     await expect(dialog).toContainText('the goal was not completed');
     await expect(dialog.getByText('Completed', { exact: true })).toHaveCount(0);
-    await expect(entry).toHaveAccessibleName('Goal: Stopped');
     await expect(dialog.getByRole('button', { name: 'New objective' })).toBeVisible();
 
     expect(fixture.posts.map((p) => [p.action, p.expectedRevision])).toEqual([
@@ -330,7 +335,7 @@ test('ended goals retain their receipt without presenting another goal turn', as
   fixture.view.continuation!.status = 'completed';
   const modelCalls = watchModelCalls(page, id);
   await page.goto(`/#/chat/${id}`);
-  await tools(page).getByRole('button', { name: /^Goal/ }).click();
+  await openGoal(page);
   const dialog = page.getByRole('dialog', { name: 'Manager goal' });
   const queue = dialog.locator('.managed-goal-queue');
   await expect(dialog.locator('.managed-goal-state strong')).toHaveText('Completed');
@@ -373,8 +378,7 @@ test('Claude manager keeps the exact unconfirmed goal change across reload and r
   const { fixture } = await goalEndpoint(page, id);
   fixture.answer = () => (fixture.posts.length === 1 ? 'lost' : 'apply');
   await page.goto(`/#/chat/${id}`);
-  const entry = tools(page).getByRole('button', { name: /^Goal/ });
-  await entry.click();
+  await openGoal(page);
   const dialog = page.getByRole('dialog', { name: 'Manager goal' });
   const objective = 'Draft the methods section from the saved notes.';
   await dialog.getByLabel('What should this manager accomplish?').fill(objective);
@@ -390,8 +394,7 @@ test('Claude manager keeps the exact unconfirmed goal change across reload and r
 
   // The server applied it; a matching reading still never closes the receipt by itself.
   await page.reload();
-  await expect(entry).toHaveAccessibleName('Goal: Unconfirmed');
-  await entry.click();
+  await openGoal(page);
   await expect(dialog.getByLabel('Objective awaiting confirmation')).toHaveValue(objective);
   await expect(dialog.getByText('Active', { exact: true })).toBeVisible();
   const retry = dialog.getByRole('button', { name: 'Retry same change' });
@@ -401,10 +404,9 @@ test('Claude manager keeps the exact unconfirmed goal change across reload and r
 
   await retry.click();
   await expect(retry).toBeHidden();
-  await expect(entry).toHaveAccessibleName('Goal: Active');
   expect(fixture.posts).toEqual([sent, sent]);
   expect(fixture.view.goal!.revision).toBe(1);
-  expect(await stored(page, id)).toEqual({ draft: null, pending: null });
+  await expect.poll(() => stored(page, id)).toEqual({ draft: null, pending: null });
 });
 
 test('Codex manager keeps a replacement draft through a revision conflict and ignores late answers after switching', async ({
@@ -429,9 +431,7 @@ test('Codex manager keeps a replacement draft through a revision conflict and ig
   const a = await goalEndpoint(page, first, saved);
   const b = await goalEndpoint(page, second);
   await page.goto(`/#/chat/${first}`);
-  const entry = tools(page).getByRole('button', { name: /^Goal/ });
-  await expect(entry).toHaveAccessibleName('Goal: Waiting');
-  await entry.click();
+  await openGoal(page);
   const dialog = page.getByRole('dialog', { name: 'Manager goal' });
   await expect(dialog).toContainText('Review dataset three.');
   await dialog.getByRole('button', { name: 'Change objective' }).click();
@@ -454,7 +454,7 @@ test('Codex manager keeps a replacement draft through a revision conflict and ig
   await dialog.screenshot({ path: `${shots}/${info.project.name}-codex-conflict.png` });
 
   await page.reload();
-  await entry.click();
+  await openGoal(page);
   await expect(dialog.getByLabel('Replacement objective')).toHaveValue(replacement);
   await dialog.getByRole('button', { name: 'Save objective' }).click();
   await expect(dialog.getByText(replacement)).toBeVisible();
@@ -485,7 +485,7 @@ test('Codex manager keeps a replacement draft through a revision conflict and ig
   // The held reading captured the new goal's revision 1; a later one reports revision 4.
   await expect(dialog.getByRole('button', { name: 'Refreshing…' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
-  await entry.click();
+  await openGoal(page);
   await expect(dialog.getByText('Blocked', { exact: true })).toBeVisible();
   late.release();
   // Every reading has answered once Refresh is offered again; the late one changed nothing.
@@ -524,7 +524,6 @@ test('Codex manager keeps a replacement draft through a revision conflict and ig
   await expect(dialog).toContainText('Checked dataset four.');
   slow.release();
   await expect.poll(() => stored(page, first)).toEqual({ draft: null, pending: null });
-  await expect(entry).toHaveAccessibleName('Goal: Paused');
   await expect(dialog).toContainText('Checked dataset four.');
   await expect(dialog.locator('.managed-goal-queue')).toHaveText(
     'Next goal turn: Waiting in QUARK · Goal paused. Resume keeps this same queued continuation.',
@@ -536,10 +535,9 @@ test('Codex manager keeps a replacement draft through a revision conflict and ig
   await dialog.getByRole('button', { name: 'Resume goal' }).click();
   await resume.reached;
   await page.evaluate((target) => (location.hash = `#/chat/${target}`), second);
-  await expect(entry).toHaveAccessibleName('Goal');
   resume.release();
   await expect.poll(() => a.fixture.view.goal?.status).toBe('active');
-  await entry.click();
+  await openGoal(page);
   await expect(dialog.getByText('No goal is set.')).toBeVisible();
   await expect(dialog.getByText(replacement)).toHaveCount(0);
   expect(b.fixture.posts).toEqual([]);
@@ -561,7 +559,15 @@ test('Back closes the Goal dialog first, then the open panel, staying in the sam
   });
   await notes.click();
   await expect(notes).toHaveAttribute('aria-pressed', 'true');
-  await tools(page).getByRole('button', { name: /^Goal/ }).click();
+  // The narrow Notes panel covers the composer. Invoke its scoped command directly
+  // to exercise Back with an underlying panel, just as the inert Back link below.
+  await page
+    .getByRole('button', { name: 'Show commands' })
+    .evaluate((node) => (node as HTMLElement).click());
+  await page
+    .getByRole('dialog', { name: 'Session commands' })
+    .getByRole('button', { name: '/goal Goal', exact: true })
+    .click();
   const dialog = page.getByRole('dialog', { name: 'Manager goal' });
   await expect(dialog).toBeVisible();
   const link = page.locator('a.home-back');
@@ -581,6 +587,66 @@ test('Back closes the Goal dialog first, then the open panel, staying in the sam
   else await swipe(page);
   await expect(notes).toHaveAttribute('aria-pressed', 'false');
   await expect(page).toHaveURL(here);
+});
+
+test('desktop reachable command menu Back closes the menu before Notes', async ({
+  page,
+  baseURL,
+}, info) => {
+  test.skip(info.project.name !== 'desktop', 'Notes covers the composer on narrow layouts.');
+  const id = await manager(page, baseURL!, 'codex');
+  await goalEndpoint(page, id);
+  await page.goto(`/#/chat/${id}`);
+  const notes = page.locator('button.chat-tool', {
+    has: page.locator('.chat-tool-label', { hasText: /^Notes$/ }),
+  });
+  await notes.click();
+  await page.getByRole('button', { name: 'Show commands' }).click();
+  const menu = page.getByRole('dialog', { name: 'Session commands' });
+  await expect(menu).toBeVisible();
+  // Modal inertness prevents clicking controls behind it; invoke the app Back handler.
+  const back = page.locator('a.home-back');
+  await back.evaluate((node) => (node as HTMLElement).click());
+  await expect(menu).toBeHidden();
+  await expect(notes).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(new RegExp(`#/chat/${id}$`));
+  await back.click();
+  await expect(notes).toHaveAttribute('aria-pressed', 'false');
+  await expect(page).toHaveURL(new RegExp(`#/chat/${id}$`));
+});
+
+test('a manager becoming read-only removes its goal and stale Back step', async ({
+  page,
+  baseURL,
+}, info) => {
+  test.skip(info.project.name !== 'desktop', 'Keep the Notes composer actually reachable.');
+  const id = await manager(page, baseURL!, 'codex');
+  await goalEndpoint(page, id);
+  let archived = false;
+  await page.route(new RegExp(`/api/agents/${id}(?:\\?.*)?$`), async (route) => {
+    const value = await (await route.fetch()).json();
+    if (archived) value.agent.archivedAt = new Date().toISOString();
+    return route.fulfill({ json: value });
+  });
+  await page.goto(`/#/chat/${id}`);
+  const notes = page.locator('button.chat-tool', {
+    has: page.locator('.chat-tool-label', { hasText: /^Notes$/ }),
+  });
+  await notes.click();
+  await openGoal(page);
+  const goal = page.getByRole('dialog', { name: 'Manager goal' });
+  await expect(goal).toBeVisible();
+  archived = true;
+  await expect(goal).toHaveCount(0, { timeout: 12_000 });
+  // The next Back closes the actual panel, not a goal that is no longer mounted.
+  await page.locator('a.home-back').click();
+  await expect(notes).toHaveAttribute('aria-pressed', 'false');
+  await expect(page).toHaveURL(new RegExp(`#/chat/${id}$`));
+  archived = false;
+  await expect(page.getByRole('button', { name: 'Show commands' })).toBeVisible({
+    timeout: 12_000,
+  });
+  await expect(goal).toHaveCount(0);
 });
 
 /** The phone's Back swipe, as dispatched by the existing navigation tests. */
@@ -617,7 +683,7 @@ test('the objective, Start goal and Close stay reachable above a 297px keyboard 
   const id = await manager(page, baseURL!, 'claude');
   await goalEndpoint(page, id);
   await page.goto(`/#/chat/${id}`);
-  await tools(page).getByRole('button', { name: /^Goal/ }).click();
+  await openGoal(page);
   const dialog = page.getByRole('dialog', { name: 'Manager goal' });
   await dialog
     .getByLabel('What should this manager accomplish?')
@@ -637,4 +703,149 @@ test('the objective, Start goal and Close stay reachable above a 297px keyboard 
     path: `${shots}/${info.project.name}-keyboard-297.png`,
     clip: { x: 0, y: 0, width, height: 297 },
   });
+});
+
+test('/goal opens only the scoped manager dialog and preserves draft, attachments and unknown slash handling', async ({
+  page,
+  baseURL,
+}) => {
+  const id = await manager(page, baseURL!, 'codex');
+  const other = await manager(page, baseURL!, 'codex');
+  const { fixture } = await goalEndpoint(page, id);
+  await goalEndpoint(page, other);
+  const modelCalls = watchModelCalls(page, id);
+  await page.goto(`/#/chat/${id}`);
+  const composer = page.locator('.composer > textarea');
+  await expect(composer).toBeVisible();
+  await composer.fill('Unsent working notes');
+  // Attach through the normal picker, preserving the actual shared draft machinery.
+  await page.getByLabel('Choose files').setInputFiles({
+    name: 'draft.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Draft attachment'),
+  });
+  await expect(page.getByText('draft.txt', { exact: true }).first()).toBeVisible();
+  await openGoal(page);
+  const dialog = page.getByRole('dialog', { name: 'Manager goal' });
+  await expect(dialog).toBeVisible();
+  expect(fixture.posts).toHaveLength(0);
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(composer).toHaveValue('Unsent working notes');
+  await expect(page.getByText('draft.txt', { exact: true }).first()).toBeVisible();
+  await composer.fill('/goal');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(dialog).toBeVisible();
+  expect(fixture.posts).toHaveLength(0);
+  expect(modelCalls).toEqual([]);
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(composer).toBeFocused();
+  await page.getByRole('button', { name: 'Open notepad', exact: true }).click();
+  const notepad = page.getByRole('dialog', { name: 'Write at length' });
+  await notepad.getByRole('textbox').fill('/goal');
+  await notepad.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(notepad).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue('/goal');
+  expect(modelCalls).toEqual([]);
+  await page.goto(`/#/chat/${other}`);
+  await expect(dialog).toHaveCount(0);
+  await page.goto(`/#/chat/${id}`);
+  await expect(composer).toHaveValue('/goal');
+  await expect(page.getByText('draft.txt', { exact: true }).first()).toBeVisible();
+  await composer.fill('/goal extra text');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(
+    page.getByText('Use /goal by itself to open goal controls. Your draft is retained.').first(),
+  ).toBeVisible();
+  await expect(composer).toHaveValue('/goal extra text');
+  await composer.fill('/unknown');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Send as text' })).toBeVisible();
+  await expect(composer).toHaveValue('/unknown');
+  expect(modelCalls).toEqual([]);
+});
+
+test('compact VS Code action uses the registered project and one safe retry without header overflow', async ({
+  page,
+  baseURL,
+}, info) => {
+  const id = await manager(page, baseURL!, 'codex');
+  const detail = (await (await page.request.get(`/api/agents/${id}`)).json()) as {
+    agent: { projectId: string };
+  };
+  await goalEndpoint(page, id);
+  const calls: { url: string; key: string }[] = [];
+  await page.route('**/api/projects/*/open-in-editor', async (route) => {
+    calls.push({
+      url: new URL(route.request().url()).pathname,
+      key: route.request().postDataJSON().key,
+    });
+    return calls.length === 1
+      ? route.fulfill({ status: 502, json: { error: 'Lost editor acknowledgement.' } })
+      : route.fulfill({ json: { message: 'Opened in VS Code on this project’s computer.' } });
+  });
+  await page.goto(`/#/chat/${id}`);
+  const button = tools(page).getByRole('button', { name: 'Open project in VS Code' });
+  await expect(button).toHaveText('VS Code');
+  await expect(page.locator('.chat-pane-project button')).toHaveCount(0);
+  await expect(tools(page).getByRole('button', { name: /^Goal/ })).toHaveCount(0);
+  await button.dblclick();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Lost editor acknowledgement.' }),
+  ).toBeVisible();
+  expect(calls).toHaveLength(1);
+  await button.click();
+  await expect(page.getByRole('status').filter({ hasText: 'Opened in VS Code' })).toBeVisible();
+  expect(calls).toEqual([
+    { url: `/api/projects/${detail.agent.projectId}/open-in-editor`, key: calls[0].key },
+    { url: `/api/projects/${detail.agent.projectId}/open-in-editor`, key: calls[0].key },
+  ]);
+  const fits = async () =>
+    expect(
+      await page.locator('.chat-pane-head').evaluate((el) => {
+        const rect = el.getBoundingClientRect();
+        return (
+          el.scrollWidth <= el.clientWidth + 1 && rect.right <= innerWidth + 1 && rect.left >= 0
+        );
+      }),
+    ).toBe(true);
+  await fits();
+  expect(
+    await page.locator('.chat-editor-status').evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.left >= 0 && rect.right <= innerWidth + 1 && el.scrollWidth <= el.clientWidth + 1;
+    }),
+  ).toBe(true);
+  await page.screenshot({ path: info.outputPath('vscode-header.png') });
+  if (info.project.name === 'desktop') {
+    await page.setViewportSize({ width: 720, height: 500 });
+    await fits();
+  }
+});
+
+test('a missing manager goal endpoint retains the objective and explains capability without changing work', async ({
+  page,
+  baseURL,
+}) => {
+  const id = await manager(page, baseURL!, 'codex');
+  const { fixture } = await goalEndpoint(page, id);
+  await page.goto(`/#/chat/${id}`);
+  await openGoal(page);
+  const dialog = page.getByRole('dialog', { name: 'Manager goal' });
+  await dialog
+    .getByLabel('What should this manager accomplish?')
+    .fill('Retain the manager objective');
+  await page.keyboard.press('Escape');
+  await page.route(`**/api/agents/${id}/goal`, (route) =>
+    route.fulfill({ status: 404, json: { error: 'No goal endpoint' } }),
+  );
+  await openGoal(page);
+  await expect(dialog).toContainText(
+    'Goals are unavailable for this conversation. Your drafts are kept.',
+  );
+  await expect(dialog.getByRole('button', { name: 'Start goal' })).toBeDisabled();
+  expect(await stored(page, id)).toEqual({ draft: 'Retain the manager objective', pending: null });
+  expect(fixture.posts).toEqual([]);
 });

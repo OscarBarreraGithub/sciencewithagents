@@ -483,3 +483,268 @@ test('the chat options menu is keyboard operable, dismissible and unclipped in t
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
   ).toBe(true);
 });
+
+for (const status of [404, 501]) {
+  test(`an older host missing optional archive metadata (${status}) keeps Chats and Home readable`, async ({
+    page,
+    baseURL,
+  }, info) => {
+    const saved = await fixture(page, baseURL!);
+    const writes: string[] = [];
+    let missing = true;
+    await page.route('**/api/conversations/visibility', async (route) => {
+      if (!missing) return route.fulfill({ response: await route.fetch() });
+      if (route.request().method() === 'POST') writes.push(route.request().url());
+      return route.fulfill({ status, json: { error: 'Archive metadata is not implemented.' } });
+    });
+    await page.goto('/#/chats');
+    const list = page.getByRole('navigation', { name: 'Conversation list' });
+    await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toBeVisible();
+    await expect(
+      page
+        .getByRole('status')
+        .filter({ hasText: 'Archiving is not available on this computer yet.' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Archived', exact: true })).toBeDisabled();
+    await list
+      .getByRole('button', { name: `Options for ${saved.managerName}`, exact: true })
+      .click();
+    await expect(
+      page.getByRole('menuitem', { name: `Archive ${saved.managerName}`, exact: true }),
+    ).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await list.getByRole('link', { name: new RegExp(saved.project.name) }).click();
+    const composer = page.locator('.composer textarea');
+    await composer.fill('Unsent draft on an older computer');
+    await expect(composer).toHaveValue('Unsent draft on an older computer');
+    await page.evaluate(() => {
+      location.hash = '#/home';
+    });
+    await expect(page.locator('.destination-chats small')).toHaveText(/project manager/);
+    await page.evaluate(() => {
+      location.hash = '#/chats';
+    });
+    await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toBeVisible();
+    expect(writes).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true,
+    );
+    await page.screenshot({ path: info.outputPath(`legacy-archive-${status}.png`) });
+    missing = false;
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(page.getByRole('button', { name: 'Archived', exact: true })).toBeEnabled();
+    await list
+      .getByRole('button', { name: `Options for ${saved.managerName}`, exact: true })
+      .click();
+    await expect(
+      page.getByRole('menuitem', { name: `Archive ${saved.managerName}`, exact: true }),
+    ).toBeEnabled();
+    await page.keyboard.press('Escape');
+  });
+}
+
+for (const failure of [
+  '403',
+  '500',
+  '502',
+  'network',
+  'html404',
+  'malformed',
+  'later404',
+] as const) {
+  test(`archive metadata ${failure} retains a real error and never claims an unsupported capability`, async ({
+    page,
+    baseURL,
+  }) => {
+    const saved = await fixture(page, baseURL!);
+    const cursor = randomUUID();
+    await page.route(/\/api\/conversations\/visibility(?:\?.*)?$/, (route) => {
+      if (failure === 'network') return route.abort('failed');
+      if (failure === 'html404')
+        return route.fulfill({
+          status: 404,
+          contentType: 'text/html',
+          body: '<p>Tunnel unavailable</p>',
+        });
+      if (failure === 'malformed')
+        return route.fulfill({ json: { records: 'invalid', nextCursor: null } });
+      if (failure === 'later404' && !new URL(route.request().url()).searchParams.has('cursor'))
+        return route.fulfill({ json: { records: [], nextCursor: cursor } });
+      return route.fulfill({
+        status: failure === 'later404' ? 404 : Number(failure),
+        json: { error: 'Visibility fixture failed.' },
+      });
+    });
+    await page.goto('/#/chats');
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'Could not read archived conversations.' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry visibility' })).toBeVisible();
+    await expect(
+      page.getByText(
+        'Archiving is not available on this computer yet. Chats and drafts are still available.',
+        { exact: true },
+      ),
+    ).toHaveCount(0);
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Conversation list' })
+        .getByRole('link', { name: new RegExp(saved.project.name) }),
+    ).toHaveCount(0);
+  });
+}
+
+test('known archives survive an optional-route loss across Home/Chats and remain scoped to one computer', async ({
+  page,
+  baseURL,
+}) => {
+  const saved = await fixture(page, baseURL!);
+  await page.goto('/#/chats');
+  const list = page.getByRole('navigation', { name: 'Conversation list' });
+  await choose(
+    page,
+    list.getByRole('button', { name: `Options for ${saved.managerName}`, exact: true }),
+    `Archive ${saved.managerName}`,
+  );
+  await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toHaveCount(0);
+  await page.evaluate(() => {
+    location.hash = '#/home';
+  });
+  const count = page.locator('.destination-chats small');
+  await expect(count).toHaveText(/project manager/);
+  const before = await count.textContent();
+  await page.route('**/api/conversations/visibility', (route) =>
+    route.fulfill({ status: 404, json: { error: 'Optional route absent' } }),
+  );
+  await page.evaluate(() => {
+    location.hash = '#/chats';
+  });
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: 'Archiving is not available on this computer yet.' }),
+  ).toBeVisible();
+  await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Archived', exact: true }).click();
+  await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toBeVisible();
+  await list.getByRole('button', { name: `Options for ${saved.managerName}`, exact: true }).click();
+  await expect(
+    page.getByRole('menuitem', { name: `Restore ${saved.managerName}`, exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    location.hash = '#/home';
+  });
+  await expect(count).toHaveText(before!);
+
+  const host = randomUUID();
+  const prefix = `/api/hosts/${host}/proxy`;
+  await page.route('**/api/hosts', (route) =>
+    route.fulfill({
+      json: {
+        local: { id: 'local', label: 'Entry fixture' },
+        setupError: null,
+        hosts: [
+          {
+            id: host,
+            label: 'Older fixture',
+            accountLabel: 'Fixture owner',
+            status: 'connected',
+            error: null,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route(`**${prefix}/**`, async (route) => {
+    const url = route.request().url().replace(prefix, '/api');
+    if (new URL(url).pathname === '/api/events')
+      return route.fulfill({ contentType: 'text/event-stream', body: ': fixture\n\n' });
+    if (new URL(url).pathname === '/api/conversations/visibility')
+      return route.fulfill({ status: 501, json: { error: 'Older host has no archives' } });
+    return route.fulfill({ response: await route.fetch({ url }) });
+  });
+  await page.evaluate((id) => {
+    localStorage.setItem('dock:host', id);
+    location.hash = '#/chats';
+  }, host);
+  await page.reload();
+  await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toBeVisible();
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: 'Archiving is not available on this computer yet.' }),
+  ).toBeVisible();
+});
+
+test('an older host retains early typing through workspace registration and draft hydration', async ({
+  page,
+  baseURL,
+}) => {
+  const saved = await fixture(page, baseURL!);
+  await page.route('**/api/conversations/visibility', (route) =>
+    route.fulfill({ status: 501, json: { error: 'Optional archive route absent' } }),
+  );
+  let releaseRegistration!: () => void;
+  const registrationHeld = new Promise<void>((resolve) => (releaseRegistration = resolve));
+  let registrationReached!: () => void;
+  const registrationArrived = new Promise<void>((resolve) => (registrationReached = resolve));
+  let releaseDraft!: () => void;
+  const draftHeld = new Promise<void>((resolve) => (releaseDraft = resolve));
+  let draftReached!: () => void;
+  const draftArrived = new Promise<void>((resolve) => (draftReached = resolve));
+  await page.route('**/api/workspace/clients', async (route) => {
+    const response = await route.fetch();
+    registrationReached();
+    await registrationHeld;
+    await route.fulfill({ response });
+  });
+  await page.route(`**/api/workspace/*/drafts/${saved.project.managerId}`, async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const response = await route.fetch();
+    draftReached();
+    await draftHeld;
+    await route.fulfill({ response });
+  });
+  const messages: string[] = [];
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      /\/agents\/[^/]+\/(messages|steer|turns)$/.test(new URL(request.url()).pathname)
+    )
+      messages.push(request.url());
+  });
+  try {
+    await page.goto(`/#/chat/${saved.project.managerId}`);
+    await registrationArrived;
+    const composer = page.locator('.composer > textarea');
+    await expect(page.locator('[data-draft="connecting"]')).toBeVisible();
+    const original = await composer.elementHandle();
+    // Typing is accepted while workspace=null, before either hydration response.
+    await composer.fill('Early typing remains on this older computer');
+    await expect(composer).toHaveValue('Early typing remains on this older computer');
+    const local = () =>
+      page.evaluate(
+        (id) => JSON.parse(localStorage.getItem(`dock:local:workspace:draft:${id}`) ?? '{}').text,
+        saved.project.managerId,
+      );
+    expect(await local()).toBe('Early typing remains on this older computer');
+    releaseRegistration();
+    await draftArrived;
+    await expect(composer).toHaveValue('Early typing remains on this older computer');
+    expect(
+      await original!.evaluate((node) => node === document.querySelector('.composer > textarea')),
+    ).toBe(true);
+    releaseDraft();
+    await expect(page.locator('[data-draft="connecting"]')).toHaveCount(0);
+    await expect(composer).toHaveValue('Early typing remains on this older computer');
+    expect(
+      await original!.evaluate((node) => node === document.querySelector('.composer > textarea')),
+    ).toBe(true);
+    expect(await local()).toBe('Early typing remains on this older computer');
+    expect(messages).toEqual([]);
+  } finally {
+    releaseRegistration();
+    releaseDraft();
+  }
+});

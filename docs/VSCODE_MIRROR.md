@@ -107,7 +107,10 @@ Automatic VS Code crash restoration is not promised: reopen the editor/chat and 
 
 ## Native goals
 
-The app's Goal control reads the selected Codex thread's native objective, status and
+The composer’s **/** menu or typed **/goal** opens the existing goal controls locally,
+keeping the unsent message and its attachments. Typed **/goal** also works from the expanded
+notepad while ordinary sending is unavailable; closing its controls returns focus to the composer.
+It reads the selected Codex thread's native objective, status and
 accounting. Set, Pause and Resume use the native goal lifecycle, preserving its model,
 permissions and existing budget. Resume does not raise an exhausted goal budget or alter
 QUARK limits. Shared editor goals remain native work, outside QUARK's managed queue.

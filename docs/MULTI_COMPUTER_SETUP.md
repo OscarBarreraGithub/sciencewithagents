@@ -45,6 +45,12 @@ selecting projects shares only those on that computer. Merely switching between 
 school and family computers never shares their conversations with another account's model.
 Cross-account assistant memory/routing is intentionally not automatic.
 
+If an older connected computer lacks optional archive controls, ordinary Chats and Home
+remain readable; Archive and Restore explain that they are unavailable. Previously read
+archive visibility is retained in the open app page. Reloading requires the computer to
+serve that metadata again. Link verification checks host identity and the connection protocol;
+it does not certify every feature across different app releases.
+
 ## Bounded setup
 
 1. Follow CONTRIBUTOR_SETUP.md independently on each intended computer. Preserve its

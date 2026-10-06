@@ -4,24 +4,37 @@ import {
   conversationVisibilityPageSchema,
   type ConversationVisibility,
 } from '@dock/shared';
-import { api } from '../api';
+import { api, apiScope, ApiError } from '../api';
 import { trackRefresh } from './refreshHome';
+
+// Retain confirmed metadata across Home/Chats mounts in this document, scoped to its host.
+const known = new Map<string, ConversationVisibility[]>();
+export const archiveUnavailable =
+  'Archiving is not available on this computer yet. Chats and drafts are still available.';
 
 /** Read the complete typed index before replacing list visibility or Home counts. */
 export function useConversationVisibility() {
-  const [data, setData] = useState<ConversationVisibility[] | null>(null);
+  const scope = apiScope();
+  const [data, setData] = useState<ConversationVisibility[] | null>(() => known.get(scope) ?? null);
   const [error, setError] = useState('');
+  const [unsupported, setUnsupported] = useState(false);
+  const [available, setAvailable] = useState(false);
   const retry = useRef<() => void>(() => {});
   const merge = (records: ConversationVisibility[]) =>
     setData((previous) => {
       const next = new Map(
-        (previous ?? []).map((record) => [conversationVisibilityIdentity(record.target), record]),
+        (known.get(scope) ?? previous ?? []).map((record) => [
+          conversationVisibilityIdentity(record.target),
+          record,
+        ]),
       );
       for (const record of records) {
         const identity = conversationVisibilityIdentity(record.target);
         if (record.revision >= (next.get(identity)?.revision ?? 0)) next.set(identity, record);
       }
-      return [...next.values()];
+      const saved = [...next.values()];
+      known.set(scope, saved);
+      return saved;
     });
   useEffect(() => {
     let alive = true;
@@ -32,6 +45,7 @@ export function useConversationVisibility() {
       controller = new AbortController();
       const signal = controller.signal;
       pending = (async () => {
+        let pages = 0;
         try {
           const records: ConversationVisibility[] = [];
           const cursors = new Set<string>();
@@ -46,6 +60,7 @@ export function useConversationVisibility() {
                 ),
               );
             records.push(...page.records);
+            pages++;
             cursor = page.nextCursor;
             if (cursor && (cursors.has(cursor) || cursors.size >= 1000))
               throw new Error('The archived conversation index could not be read completely.');
@@ -54,13 +69,29 @@ export function useConversationVisibility() {
           if (alive) {
             merge(records);
             setError('');
+            setUnsupported(false);
+            setAvailable(true);
           }
           return true;
-        } catch {
-          if (alive)
-            setError(
-              'Could not read archived conversations. Your saved visibility has not changed.',
-            );
+        } catch (reason) {
+          if (alive) {
+            setAvailable(false);
+            // Only an explicit JSON refusal of the first page proves this optional route
+            // absent. A tunnel's HTML 404, auth error or failed later page proves nothing.
+            const absent =
+              pages === 0 &&
+              reason instanceof ApiError &&
+              [404, 501].includes(reason.status) &&
+              reason.code !== 'INTERRUPTED';
+            setUnsupported(absent);
+            if (absent) {
+              setData((previous) => previous ?? known.get(scope) ?? []);
+              setError('');
+            } else
+              setError(
+                'Could not read archived conversations. Your saved visibility has not changed.',
+              );
+          }
           return false;
         } finally {
           pending = null;
@@ -88,6 +119,12 @@ export function useConversationVisibility() {
   return {
     data,
     error,
+    unsupported,
+    unavailable: available
+      ? undefined
+      : unsupported
+        ? archiveUnavailable
+        : 'Read conversation visibility before changing its archive status.',
     retry: () => retry.current(),
     changed: (record: ConversationVisibility) => merge([record]),
   };

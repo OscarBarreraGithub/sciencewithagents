@@ -297,7 +297,9 @@ test('Claude settings use its installed model scope, explain native-only control
   const composer = page.getByRole('textbox', { name: `Message ${agent.name}`, exact: true });
   await composer.fill('/compact');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Claude manages compaction itself');
+  await expect(page.getByRole('alert')).toContainText(
+    'Manual Claude compaction is not connected here',
+  );
   await expect(composer).toHaveValue('/compact');
   expect(forbiddenRequests).toBe(0);
 });

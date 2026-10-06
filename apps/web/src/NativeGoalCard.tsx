@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Target } from 'lucide-react';
 import {
   mirrorResultSchema,
   nativeGoalActionSchema,
@@ -8,8 +7,9 @@ import {
   type NativeGoalAction,
   type NativeGoalView,
 } from '@dock/shared';
-import { api, apiScope } from './api';
+import { api, apiScope, ApiError } from './api';
 import { Modal } from './Modal';
+import { useBackStep } from './home/Navigation';
 import './NativeGoalCard.css';
 
 type Result = ReturnType<typeof mirrorResultSchema.parse>;
@@ -53,6 +53,8 @@ export function NativeGoalCard({
   provider,
   online,
   place,
+  open,
+  onClose,
 }: {
   /** GET returns the native view; POST sends one recorded action. */
   goalPath: string;
@@ -62,6 +64,8 @@ export function NativeGoalCard({
   online: boolean;
   /** Where the person can inspect the native conversation, e.g. "in VS Code". */
   place: string;
+  open: boolean;
+  onClose: () => void;
 }) {
   const storageKey = `dock:native-goal:${apiScope()}:${provider}:${threadId}`;
   const objectiveKey = `${storageKey}:objective`;
@@ -99,7 +103,7 @@ export function NativeGoalCard({
   const [readError, setReadError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
+  useBackStep(open ? onClose : null);
   const objectiveId = useId();
   const pendingRef = useRef(initial.pending);
   const busyRef = useRef(false);
@@ -134,8 +138,15 @@ export function NativeGoalCard({
       setView(value);
       setFresh(true);
       setReadError('');
-    } catch {
-      if (current()) setReadError('Could not read the native goal. Retrying automatically.');
+    } catch (error) {
+      if (!current()) return;
+      if (error instanceof ApiError && error.status === 404) {
+        setView(null);
+        setFresh(false);
+        setReadError(
+          'Native goals are not connected here. A compatible host or companion is required. Your objective draft is kept.',
+        );
+      } else setReadError('Could not read the native goal. Retrying automatically.');
     }
   }
   useEffect(() => {
@@ -266,28 +277,10 @@ export function NativeGoalCard({
   const goal = view?.supported ? view.goal : null;
   const actionable = !!view && fresh && online && !busy && !pending;
   const showCreate = supported && view?.supported && (!goal || pending?.action === 'create');
-  const chip = pending ? 'Unconfirmed' : goal ? statusLabel[goal.status] : null;
   return (
     <>
-      <button
-        type="button"
-        className="secondary native-goal-entry"
-        aria-haspopup="dialog"
-        aria-label={chip ? `Goal: ${chip}` : 'Goal'}
-        onClick={() => setOpen(true)}
-      >
-        <Target size={16} aria-hidden="true" />
-        <span>Goal</span>
-        {chip && (
-          <span className={`native-goal-chip ${pending ? 'pending' : goal!.status}`}>{chip}</span>
-        )}
-      </button>
       {open && (
-        <Modal
-          title="Conversation goal"
-          close={() => setOpen(false)}
-          className="native-goal-dialog"
-        >
+        <Modal title="Conversation goal" close={onClose} className="native-goal-dialog">
           <form
             className="native-goal"
             onSubmit={(event) => {

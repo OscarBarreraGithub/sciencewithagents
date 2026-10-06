@@ -1367,3 +1367,29 @@ test('expired diagnosis acknowledges once, retains later typing through draft re
     path: `../../data/resource-history-ui-checks/${info.project.name}-history.png`,
   });
 });
+
+test('the specialized resource composer sends /goal text literally', async ({ page }) => {
+  const status = reading();
+  const { conversations } = await fixture(page, status);
+  const questions: string[] = [];
+  await page.route('**/api/resources/ask', (route) => {
+    const payload = route.request().postDataJSON();
+    questions.push(payload.question);
+    const check = diagnosis(Date.now(), 'Read-only fixture reply.');
+    status.checks = [check];
+    conversations.set(check.agentId, conversation(check, payload.question));
+    return route.fulfill({ json: status });
+  });
+  await page.goto('/#/resources');
+  await page.getByRole('button', { name: 'Open Resource assistant' }).click();
+  const assistant = page.getByRole('region', { name: 'Resource assistant', exact: true });
+  await assistant
+    .getByRole('textbox', { name: 'Message Resource assistant' })
+    .fill('/goal disk usage');
+  await assistant.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect.poll(() => questions).toEqual(['/goal disk usage']);
+  await expect(
+    page.getByText('Use /goal by itself to open goal controls. Your draft is retained.'),
+  ).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Manager goal' })).toHaveCount(0);
+});
