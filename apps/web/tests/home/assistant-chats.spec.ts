@@ -33,7 +33,7 @@ test('QUARK opens the normal full-screen chat, retains its model controls and re
   });
   expect(created.ok()).toBe(true);
   const project = await created.json();
-  await page.route(`**/api/agents/${project.managerId}`, async (route) => {
+  await page.route(new RegExp(`/api/agents/${project.managerId}(?:\\?.*)?$`), async (route) => {
     const response = await route.fetch();
     const detail = await response.json();
     detail.entries = [

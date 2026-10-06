@@ -128,7 +128,11 @@ turns; Claude reconnects its saved session at the next turn if its charter/tools
 Native tool catalogs may still retain old tool names, which the backend rejects explicitly.
 
 Stored app conversations and worker records remain searchable in project history even when
-the screen pages old messages. Managed chats show up to 200 entries per page; **Latest messages**
+the screen pages old messages. Manager chats keep internal team/QUARK exchanges and routine
+replies in **Subagents → Team activity**. Owner messages, replies to owner-steered turns,
+approvals and human action items remain in the main conversation. The saved history is retained;
+the two views page their own entries using recorded run provenance.
+Managed chats show up to 200 entries per page; **Latest messages**
 returns to current replies without changing the draft. The Chats finder excludes background
 helpers and resource checks using saved identities before candidate limits; a matching title never
 hides a personal chat. Assisted model coverage remains partial: up to 20 recent projects,

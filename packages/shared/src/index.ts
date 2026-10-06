@@ -317,6 +317,11 @@ export const entrySchema = z.object({
     .object({ delivery: z.enum(['submitted', 'uncertain']) })
     .strict()
     .optional(),
+  // Derived from the retained run when reading app history, never from message wording.
+  coordination: z
+    .object({ kind: z.enum(['message', 'report']), sourceId: id.nullable() })
+    .strict()
+    .optional(),
 });
 export const runSchema = z.object({
   id,
@@ -405,6 +410,14 @@ export const snapshotSchema = z.object({
   provider: z.object({ ready: z.boolean(), version: z.string(), message: z.string() }),
   schedulingError: z.string().nullable().optional(),
 });
+export const agentDetailChannelSchema = z.enum(['all', 'conversation', 'coordination']);
+export type AgentDetailChannel = z.infer<typeof agentDetailChannelSchema>;
+export const agentDetailQuerySchema = z
+  .object({
+    before: z.string().min(1).max(120).optional(),
+    channel: agentDetailChannelSchema.default('all'),
+  })
+  .strict();
 export const detailSchema = z.object({
   agent: agentSchema,
   entries: z.array(entrySchema),

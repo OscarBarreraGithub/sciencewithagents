@@ -15,6 +15,7 @@ import {
 } from './chat-contracts';
 import { ProjectSettings } from './ProjectConfiguration';
 import { ProjectFocus } from './ProjectFocus';
+import { TeamActivity } from './TeamActivity';
 import type { HomeData } from './useHomeData';
 
 export type ChatPanel = 'notes' | 'subagents' | 'config';
@@ -493,64 +494,74 @@ export function SubagentsPanel({ state, manager }: { state: Snapshot; manager: A
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
     <div className="chat-subagents">
-      {tokenError && <p className="chat-panel-error">Token readings are unavailable right now.</p>}
-      <ul className="chat-item-list">
-        {team.slice(0, limit).map((agent) => {
-          const task = state.tasks.find((t) => t.id === agent.taskId);
-          const closed =
-            !!task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status);
-          const reading = tokens.get(agent.id);
-          const summary =
-            task?.title ??
-            (agent.scope ||
-              agent.checkpoint.split('\n')[0]?.slice(0, 200) ||
-              'No assignment summary');
-          return (
-            <li key={agent.id} className="chat-item">
-              <div className="chat-item-text">
-                <strong>{agent.name}</strong>
-                <p>{summary}</p>
-                <small>
-                  Spawned {when(agent.createdAt)} ·{' '}
-                  {agent.model ?? agent.assignment?.model ?? 'model not reported'} ·{' '}
-                  {reading?.total != null
-                    ? `${reading.total.toLocaleString()} tokens${reading.partial ? ' (partial)' : ''}`
-                    : 'tokens not reported'}
-                  {agent.nativeRootId ? ' · native helper' : ''}
-                </small>
-              </div>
-              <div className="chat-item-actions">
-                <a className="chat-small-button" href={`#/chat/${agent.id}`}>
-                  {closed ? 'Ask about this work' : 'Open activity'} <ArrowUpRight size={15} />
-                </a>
-                {task && (
-                  <a className="chat-small-button" href={`#/task/${task.id}`}>
-                    Task record
+      <section aria-label="Workers">
+        <div className="chat-side-section">
+          <h3>Workers</h3>
+          <span>{team.length}</span>
+        </div>
+        {tokenError && (
+          <p className="chat-panel-error">Token readings are unavailable right now.</p>
+        )}
+        <ul className="chat-item-list">
+          {team.slice(0, limit).map((agent) => {
+            const task = state.tasks.find((t) => t.id === agent.taskId);
+            const closed =
+              !!task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status);
+            const reading = tokens.get(agent.id);
+            const summary =
+              task?.title ??
+              (agent.scope ||
+                agent.checkpoint.split('\n')[0]?.slice(0, 200) ||
+                'No assignment summary');
+            return (
+              <li key={agent.id} className="chat-item">
+                <div className="chat-item-text">
+                  <strong>{agent.name}</strong>
+                  <p>{summary}</p>
+                  <small>
+                    Spawned {when(agent.createdAt)} ·{' '}
+                    {agent.model ?? agent.assignment?.model ?? 'model not reported'} ·{' '}
+                    {reading?.total != null
+                      ? `${reading.total.toLocaleString()} tokens${reading.partial ? ' (partial)' : ''}`
+                      : 'tokens not reported'}
+                    {agent.nativeRootId ? ' · native helper' : ''}
+                  </small>
+                </div>
+                <div className="chat-item-actions">
+                  <a className="chat-small-button" href={`#/chat/${agent.id}`}>
+                    {closed ? 'Ask about this work' : 'Open activity'} <ArrowUpRight size={15} />
                   </a>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      {!team.length && (
-        <p className="chat-side-empty">
-          No subagents yet. The manager brings in workers once there is work to delegate.
+                  {task && (
+                    <a className="chat-small-button" href={`#/task/${task.id}`}>
+                      Task record
+                    </a>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        {!team.length && (
+          <p className="chat-side-empty">
+            No subagents yet. The manager brings in workers once there is work to delegate.
+          </p>
+        )}
+        {team.length > limit && (
+          <button
+            type="button"
+            className="chat-small-button"
+            onClick={() => setLimit((value) => value + listLimit)}
+          >
+            Show more ({team.length - limit} left)
+          </button>
+        )}
+        <p className="chat-side-note">
+          Token counts are provider-reported QUARK measurements; missing values are unknown, not
+          zero. Finished workers open their saved record, where a separate read-only discussion can
+          start.
         </p>
-      )}
-      {team.length > limit && (
-        <button
-          type="button"
-          className="chat-small-button"
-          onClick={() => setLimit((value) => value + listLimit)}
-        >
-          Show more ({team.length - limit} left)
-        </button>
-      )}
-      <p className="chat-side-note">
-        Token counts are provider-reported QUARK measurements; missing values are unknown, not zero.
-        Finished workers open their saved record, where a separate read-only discussion can start.
-      </p>
+      </section>
+      <TeamActivity key={manager.id} manager={manager} state={state} />
     </div>
   );
 }

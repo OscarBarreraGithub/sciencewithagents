@@ -40,7 +40,7 @@ test('running composer preserves steering, queuing and notepad choices without c
   snapshot.agents.find((agent: { id: string }) => agent.id === project.managerId).status =
     'running';
   await page.route('**/api/snapshot', (route) => route.fulfill({ json: snapshot }));
-  await page.route(`**/api/agents/${project.managerId}`, (route) =>
+  await page.route(new RegExp(`/api/agents/${project.managerId}(?:\\?.*)?$`), (route) =>
     route.fulfill({ json: detail }),
   );
   const sent: { key: string; text: string; steer: boolean; scheduling?: { priority: string } }[] =

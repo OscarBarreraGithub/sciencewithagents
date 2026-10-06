@@ -36,6 +36,7 @@ import {
   commandSchema,
   decisionSchema,
   detailSchema,
+  agentDetailQuerySchema,
   id,
   modelSchema,
   mcpCatalogSchema,
@@ -64,6 +65,7 @@ import {
   quotaResumeSchema,
 } from '@dock/shared';
 import { Conflict, Missing, Store, publicTask } from './store.js';
+import { conversationEntries } from './conversation-entries.js';
 import { Runtime } from './runtime.js';
 import { Terminals } from './terminal.js';
 import { OwnerTerminals } from './owner-terminal.js';
@@ -1082,8 +1084,8 @@ export async function createServer(
   });
   app.get('/api/agents/:id', async (request) => {
     const target = agentId(request.params);
-    const { before } = z.object({ before: z.string().max(120).optional() }).parse(request.query);
-    const entries = store.entries(target, before, 200);
+    const { before, channel } = agentDetailQuerySchema.parse(request.query);
+    const page = conversationEntries(store, target, before, channel);
     const agent = store.agent(target);
     return detailSchema.parse({
       agent: agentSchema.parse(agent),
@@ -1096,9 +1098,9 @@ export async function createServer(
           : nativeDiscussionBoundary(store, agent)
             ? 'available'
             : undefined,
-      entries,
+      entries: page.entries,
       runs: store.runsForAgent(target).map((r) => runSchema.parse(r)),
-      hasMore: entries.length === 200,
+      hasMore: page.hasMore,
     });
   });
   app.get('/api/models', async (request) => {

@@ -43,7 +43,7 @@ async function fixture(page: Page, text: string) {
   expect(created.ok()).toBe(true);
   const project = await created.json();
   let current = text;
-  await page.route(`**/api/agents/${project.managerId}`, async (route) => {
+  await page.route(new RegExp(`/api/agents/${project.managerId}(?:\\?.*)?$`), async (route) => {
     const response = await route.fetch();
     const detail = await response.json();
     detail.entries = [
@@ -210,7 +210,9 @@ test('shared editor chats render math even in paged messages and preserve raw to
       { id: 'tool', role: 'activity', text: String.raw`commandExecution\n$raw_tool$` },
     ],
   };
-  const socket = new WebSocket('ws://127.0.0.1:4339/api/vscode/bridge');
+  const bridgeUrl = new URL('/api/vscode/bridge', test.info().project.use.baseURL);
+  bridgeUrl.protocol = bridgeUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+  const socket = new WebSocket(bridgeUrl);
   socket.on('message', (raw) => {
     const command = JSON.parse(raw.toString()) as MirrorCommand;
     const value = JSON.stringify(

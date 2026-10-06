@@ -40,7 +40,7 @@ async function claudeManager(page: Page, origin: string) {
     );
     await route.fulfill({ json: value });
   });
-  await page.route(`**/api/agents/${project.managerId}`, async (route) => {
+  await page.route(new RegExp(`/api/agents/${project.managerId}(?:\\?.*)?$`), async (route) => {
     const value = await (await route.fetch()).json();
     value.agent = { ...value.agent, ...override };
     await route.fulfill({ json: value });

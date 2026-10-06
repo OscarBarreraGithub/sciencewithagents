@@ -1,4 +1,4 @@
-import { detailSchema, snapshotSchema, modelSchema } from '@dock/shared';
+import { detailSchema, snapshotSchema, modelSchema, type AgentDetailChannel } from '@dock/shared';
 // The selector is local UI state. Server-side host configuration remains the authority.
 function storedScope() {
   const selected = localStorage.getItem('dock:host');
@@ -99,10 +99,13 @@ export async function api<T = unknown>(
   }
 }
 export const snapshot = async () => snapshotSchema.parse(await api('/snapshot'));
-export const detail = async (id: string, before?: string) =>
-  detailSchema.parse(
-    await api(`/agents/${id}${before ? `?before=${encodeURIComponent(before)}` : ''}`),
-  );
+/** The server derives each channel; omitted means every saved entry. */
+export const detail = async (id: string, before?: string, channel?: AgentDetailChannel) => {
+  const query = new URLSearchParams();
+  if (before) query.set('before', before);
+  if (channel && channel !== 'all') query.set('channel', channel);
+  return detailSchema.parse(await api(`/agents/${id}${query.size ? `?${query}` : ''}`));
+};
 export const models = async (agentId?: string, provider?: 'codex' | 'claude') => {
   const query = new URLSearchParams();
   if (agentId) query.set('agentId', agentId);

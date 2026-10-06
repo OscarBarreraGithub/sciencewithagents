@@ -59,6 +59,15 @@ Existing project history/read APIs and saved IDs remain unchanged. Manager tools
 to their own project, and owner-request source links stay with the receiving manager. The
 owner archive routes use the app's existing local/paired and selected-computer boundaries.
 
+Manager chat separates internal team/QUARK inputs and replies using their retained `message`
+or `report` run, including older replies. Subagents keeps that coordination available; search
+still examines the complete history. Owner inputs, system notices, approvals and human work
+items remain in the main view. A turn with owner steering conservatively keeps its whole
+assistant/tool reply in the main view because a streamed item can span the steering boundary.
+`GET /api/agents/:id` accepts `channel=conversation|coordination|all` (default `all`); each
+channel filters before paging with the existing `before` entry ID. This changes presentation,
+not stored entries or native history.
+
 Managers receive pending owner requests at turn start and coalesced tool boundaries. Steering
 and compaction preserve the work list. Before reporting completion, they must reconcile both
 the pending prompt pages and the full open work list, including older triaged requests. This is

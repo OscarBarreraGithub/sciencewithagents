@@ -1,0 +1,128 @@
+.chat-subagents > section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.chat-subagents h3 {
+  margin: 0;
+  font-size: var(--text-body);
+}
+.team-activity > .chat-small-button {
+  justify-self: start;
+}
+.team-activity-message {
+  border-left: 3px solid #7d8be0;
+}
+.team-activity-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.team-activity-toggle:focus-visible {
+  outline: 2px solid var(--home-blue);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+.team-activity-summary {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.team-activity-summary strong {
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
+.team-activity-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--text-small);
+  color: #4d5566;
+  overflow-wrap: anywhere;
+}
+.team-activity-summary small {
+  font-size: var(--text-caption);
+  color: var(--home-muted);
+  overflow-wrap: anywhere;
+}
+.team-activity-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  font-size: var(--text-small);
+  font-weight: 650;
+  color: #3246b8;
+}
+.team-activity-toggle[aria-expanded='true'] .team-activity-action svg {
+  transform: rotate(180deg);
+}
+.team-activity-full {
+  min-width: 0;
+  overflow-x: auto;
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
+.team-activity-tools {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.team-activity-tools summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: var(--text-small);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.team-activity-tools summary small {
+  color: var(--home-muted);
+}
+.team-activity-tools pre {
+  max-height: 50vh;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #f4f4f0;
+  font-size: var(--text-caption);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.team-activity-image {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.team-activity-image img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+.team-activity-image figcaption {
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.team-activity-error {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}

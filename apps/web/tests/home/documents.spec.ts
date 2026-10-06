@@ -206,7 +206,7 @@ test('manager PDF links retain the mounted chat, its draft and exact scroll posi
     resolvedLocalLink = true;
     return route.fulfill({ json: data.doc });
   });
-  await page.route(`**/api/agents/${project.managerId}`, async (route) => {
+  await page.route(new RegExp(`/api/agents/${project.managerId}(?:\\?.*)?$`), async (route) => {
     const response = await route.fetch();
     const detail = await response.json();
     detail.entries = Array.from({ length: 24 }, (_, index) => ({

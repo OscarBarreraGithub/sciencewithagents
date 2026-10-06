@@ -26,6 +26,7 @@ import {
   jobEstimateSchema,
   type Agent,
   type AgentDetail,
+  type AgentDetailChannel,
   type Approval,
   type Entry,
   type Task,
@@ -207,6 +208,7 @@ export function Conversation({
   personal = false,
   intro,
   formatEntry,
+  channel,
 }: {
   agent: Agent;
   detail: AgentDetail | null;
@@ -215,6 +217,8 @@ export function Conversation({
   personal?: boolean;
   intro?: { title: string; description: string; note: string };
   formatEntry?: (entry: Entry) => Entry;
+  /** Earlier pages come from the same server channel as `detail`. */
+  channel?: AgentDetailChannel;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const scrollHint = useScrollHints(scroll, agent.id);
@@ -268,7 +272,7 @@ export function Conversation({
     const request = ++historyRequest.current;
     setLoadingHistory(true);
     try {
-      const result = await detail(agent.id, entries[0]?.id);
+      const result = await detail(agent.id, entries[0]?.id, channel);
       if (request === historyRequest.current) setOlder(result);
     } finally {
       if (request === historyRequest.current) setLoadingHistory(false);

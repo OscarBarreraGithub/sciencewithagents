@@ -14,7 +14,7 @@ async function fixture(page: Page) {
     agent.status = status;
     return route.fulfill({ json: snapshot });
   });
-  await page.route(`**/api/agents/${agent.id}`, (route) =>
+  await page.route(new RegExp(`/api/agents/${agent.id}(?:\\?.*)?$`), (route) =>
     route.fulfill({ json: { ...detail, agent: { ...agent, status }, runs: [] } }),
   );
   const item = (explanation: string, createdAt: string) => ({

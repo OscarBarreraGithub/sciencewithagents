@@ -264,7 +264,7 @@ test('reload retains uncertain queued steering for inspection without enabling a
       : held;
   };
   // Native acknowledgement/receipt are simulated, matching the durable backend uncertainty test.
-  await page.route(`**/api/agents/${saved.agentId}`, async (route) => {
+  await page.route(new RegExp(`/api/agents/${saved.agentId}(?:\\?.*)?$`), async (route) => {
     const body = await (await route.fetch()).json();
     body.agent.status = 'running';
     if (steering)
@@ -475,7 +475,7 @@ test('queued Steer now holds the selected item before a separate explicit Codex 
   baseURL,
 }) => {
   const saved = await fixture(page, baseURL!);
-  await page.route(`**/api/agents/${saved.agentId}`, async (route) => {
+  await page.route(new RegExp(`/api/agents/${saved.agentId}(?:\\?.*)?$`), async (route) => {
     const response = await route.fetch();
     const body = await response.json();
     body.agent.status = 'running';

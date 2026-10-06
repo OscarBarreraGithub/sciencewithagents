@@ -442,7 +442,7 @@ test('managed phone chat resizes its message pane for the keyboard and retains a
     createdAt: new Date().toISOString(),
   }));
   detail.hasMore = false;
-  await page.route(`**/api/agents/${project.managerId}`, (route) =>
+  await page.route(new RegExp(`/api/agents/${project.managerId}(?:\\?.*)?$`), (route) =>
     route.fulfill({ json: detail }),
   );
   const messages: string[] = [];

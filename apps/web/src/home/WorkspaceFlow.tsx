@@ -22,6 +22,7 @@ import {
   type ConversationVisibility,
   type ConversationVisibilityTarget,
   type Agent,
+  type AgentDetailChannel,
   type AgentDetail,
   type Snapshot,
   type Task,
@@ -86,6 +87,12 @@ export const stateNames: Record<string, string> = {
   split: 'Split into smaller tasks',
   cancelled: 'Closed',
 };
+/** A project's own manager chat: the only chat offering Notes and Subagents panels. */
+const managesProject = (agent: Agent, special: Set<string>) =>
+  agent.role === 'manager' &&
+  !agent.interview &&
+  !surfaceOf(agent) &&
+  !special.has(agent.projectId);
 const closed = (task?: Task) =>
   !!task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status);
 const go = (page: string, id?: string) => `#/${page}${id ? `/${encodeURIComponent(id)}` : ''}`;
@@ -514,7 +521,10 @@ export function ChatPage({
   const workspace = useWorkspaceState(
     window.matchMedia('(pointer: coarse)').matches ? 'Phone browser' : 'Computer browser',
   );
-  const [conversation, setConversation] = useState<AgentDetail | null>(null);
+  const [conversation, setConversation] = useState<{
+    detail: AgentDetail;
+    channel?: AgentDetailChannel;
+  } | null>(null);
   const [readError, setReadError] = useState('');
   const [error, setError] = useState('');
   const [connectedId, setConnectedId] = useState<string | null>(null);
@@ -526,12 +536,19 @@ export function ChatPage({
   const currentId = useRef(id);
   currentId.current = id;
   const readSequence = useRef(0);
+  // Routine team coordination moves to the Subagents panel, so only chats offering that
+  // panel read the server's conversation channel. Every other chat keeps all entries.
+  const known =
+    state.agents.find((a) => a.id === id) ??
+    (conversation?.detail.agent.id === id ? conversation.detail.agent : undefined);
+  const channel: AgentDetailChannel | undefined =
+    pane && known && managesProject(known, pane.special) ? 'conversation' : undefined;
   const read = useCallback(async () => {
     const sequence = ++readSequence.current;
     try {
-      const value = await detail(id);
+      const value = await detail(id, undefined, channel);
       if (alive.current && currentId.current === id && sequence === readSequence.current) {
-        setConversation(value);
+        setConversation({ detail: value, channel });
         setConnectedId(id);
         setReadError('');
       }
@@ -545,7 +562,7 @@ export function ChatPage({
         );
       }
     }
-  }, [id]);
+  }, [id, channel]);
   useEffect(() => {
     alive.current = true;
     setReadError('');
@@ -572,7 +589,10 @@ export function ChatPage({
       window.clearInterval(timer);
     };
   }, [id, read]);
-  const currentConversation = conversation?.agent.id === id ? conversation : null;
+  const currentConversation =
+    conversation?.detail.agent.id === id && conversation.channel === channel
+      ? conversation.detail
+      : null;
   const agent = currentConversation?.agent ?? state.agents.find((a) => a.id === id);
   const canForkDiscussion = currentConversation?.nativeDiscussion === 'available';
   useEffect(() => {
@@ -609,12 +629,7 @@ export function ChatPage({
   const approvals = state.approvals.filter((a) => a.agentId === id && a.status === 'pending');
   const project = state.projects.find((p) => p.id === agent.projectId);
   const surface = surfaceOf(agent);
-  const managerView =
-    !!pane &&
-    agent.role === 'manager' &&
-    !agent.interview &&
-    !surface &&
-    !pane.special.has(agent.projectId);
+  const managerView = !!pane && managesProject(agent, pane.special);
   const panel = pane?.panel && (pane.panel === 'config' || managerView) ? pane.panel : null;
   const togglePanel = (next: ChatPanel) => pane?.setPanel(panel === next ? null : next);
   const onReference = (text: string) => {
@@ -808,7 +823,8 @@ export function ChatPage({
       >
         <div className="flow-chat-main">
           <Conversation
-            key={`conversation:${id}`}
+            key={`conversation:${id}:${channel ?? 'all'}`}
+            channel={channel}
             personal={personal}
             intro={
               embedded
