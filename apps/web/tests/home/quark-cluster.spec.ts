@@ -311,12 +311,22 @@ test('Home asks for a cluster sign-in only while it is needed', async ({ page })
   let state: 'connected' | 'sign-in-needed' = 'sign-in-needed';
   await page.route('**/api/cluster', (route) => route.fulfill({ json: reading(state) }));
   await page.goto('/');
-  const need = page.getByRole('link', { name: /Lab cluster: sign in again/ });
+  const attention = page.getByRole('region', { name: 'For your attention', exact: true });
+  const requests = attention.getByRole('button', {
+    name: '1 request for Computer and other requests',
+    exact: true,
+  });
+  const need = attention.getByRole('link', { name: /Lab cluster: sign in again/ });
+  await expect(requests).toHaveAttribute('aria-expanded', 'false');
+  await expect(need).toHaveCount(0);
+  await requests.click();
+  await expect(requests).toHaveAttribute('aria-expanded', 'true');
   await expect(need).toBeVisible();
   await expect(need).toHaveAttribute('href', '#/work');
   state = 'connected';
   await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
   await expect(need).toHaveCount(0);
+  await expect(requests).toHaveCount(0);
 });
 
 test('cluster sign-in sends each answer once and keeps it out of browser storage', async ({
