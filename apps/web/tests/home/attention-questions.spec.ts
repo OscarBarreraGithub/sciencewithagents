@@ -1,6 +1,14 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { snapshotSchema, type WorkItem } from '@dock/shared';
+
+/** Requests sit under their project's count; open every collapsed project row. */
+async function openRequests(panel: Locator) {
+  const counts = panel.locator('button.attention-project-count');
+  await expect(counts.first()).toBeVisible();
+  for (const count of await counts.all())
+    if ((await count.getAttribute('aria-expanded')) === 'false') await count.click();
+}
 
 test('unanswered human requests stay visible regardless of open progress status', async ({
   page,
@@ -40,6 +48,7 @@ test('unanswered human requests stay visible regardless of open progress status'
   );
   await page.goto('/#/home');
   const panel = page.getByRole('region', { name: 'For your attention', exact: true });
+  await openRequests(panel);
   for (const status of ['open', 'in_progress', 'waiting']) {
     const item = items.find((item) => item.status === status && !item.humanReply)!;
     await expect(
@@ -58,6 +67,7 @@ test('unanswered human requests stay visible regardless of open progress status'
   await expect(panel).not.toContainText('Nothing needs you');
   failed = false;
   await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
+  await openRequests(panel);
   await expect(panel.getByRole('link', { name: /Human question open/ })).toBeVisible();
 });
 
@@ -94,7 +104,8 @@ test('running project shows its request and opens the exact answer form without 
   await page.route('**/api/snapshot', (route) => route.fulfill({ json: snapshot }));
   const queue = await (await page.request.get('/api/pulsar')).json();
   await page.route('**/api/pulsar', (route) => route.fulfill({ json: { ...queue, jobs: [] } }));
-  await page.route('**/api/local-jobs', (route) => route.fulfill({ json: { jobs: [] } }));
+  const local = await (await page.request.get('/api/local-jobs')).json();
+  await page.route('**/api/local-jobs', (route) => route.fulfill({ json: { ...local, jobs: [] } }));
   const writes: unknown[] = [];
   await page.route('**/api/work-items*', (route) => {
     if (route.request().method() === 'POST') {
@@ -113,21 +124,24 @@ test('running project shows its request and opens the exact answer form without 
       starts.push(request.url());
   });
   await page.goto('/#/home');
-  const running = page.getByRole('region', { name: '% usage / hour', exact: true });
-  const row = running.getByRole('row').filter({ hasText: project.name });
+  const running = page.getByRole('region', { name: 'For your attention', exact: true });
+  const row = running.locator('.attention-project').filter({ hasText: project.name });
+  // The running project lists only a count until opened; its requests then open in place.
+  const count = row.getByRole('button', { name: `3 requests for ${project.name}`, exact: true });
+  await expect(count).toHaveText('3');
+  await expect(row.getByRole('link', { name: /Which source accounts/ })).toHaveCount(0);
+  await count.click();
   const request = row.getByRole('link', { name: /Question Which source accounts/ });
   await expect(request).toHaveAttribute(
     'href',
     `#/chat/${project.managerId}/answer/${items[0]!.id}`,
   );
   await expect(row).not.toContainText('Yes ·');
-  await row.getByText('2 more requests', { exact: true }).click();
   await expect(row.getByRole('link', { name: /Another question 2/ })).toBeVisible();
-  await row.getByText('2 more requests', { exact: true }).click();
   await running.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath('request-in-running-project.png'), scale: 'css' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await row.getByRole('link', { name: /^Open request for/ }).click();
+  await request.click();
   const selected = page.getByRole('region', { name: 'Selected request' });
   await expect(selected).toContainText(items[0]!.title);
   await expect(selected).toContainText(items[0]!.detail);

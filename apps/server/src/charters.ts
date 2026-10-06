@@ -133,13 +133,13 @@ const definitions = [
   ],
   [
     'dock_schedule',
-    'Set priority and crude resource/time/allowance estimates for your existing task. Tokens are accounting only; legacy tokenBudget does not gate work. Explicit provider allowance caps remain enforced.',
+    'Set priority and crude resource/time/allowance estimates for your existing task. Omit legacy tokenBudget: tokens are accounting only and it never gates work. For a spending limit, use the provider allowance cap the owner requested; those caps remain enforced.',
     taskScheduleSchema,
     ['manager'],
   ],
   [
     'dock_task_create',
-    'Create one atomic task with a goal and acceptance criteria.',
+    'Create one atomic task with a goal and acceptance criteria. In scheduling, omit legacy tokenBudget; it is never a per-task cap. Spending limits come only from provider allowance caps the owner requested.',
     taskCreateSchema,
     ['manager'],
   ],
@@ -157,7 +157,7 @@ const definitions = [
   ],
   [
     'dock_inspect',
-    'Read current project state, a task, or recent agent evidence. Use workItems with cursor/limit to page unresolved asks; includeDone also reads completed items. Use catalog and its nextCursor to find older agents/tasks omitted from the bounded overview. For older evidence use history with query/agentId/taskId and nextCursor; use read with a result source/id and nextOffset for its full text. cluster:true reads the shared cached Slurm queue, pending reasons, fairshare, native limits and recent job accounting without contacting the cluster. IDs come from retained evidence, never invent them.',
+    'Read current project state, a task, or recent agent evidence. Use workItems with cursor/limit to page unresolved asks; includeDone also reads completed items. Use catalog and its nextCursor to find older agents/tasks omitted from the bounded overview. For older evidence use history with query/agentId/taskId and nextCursor; use read with a result source/id and nextOffset for its full text. cluster:true reads the shared cached Slurm queue, pending reasons, fairshare, native limits and recent job accounting without contacting the cluster. Choose one target per call ({} is the project overview; changes:true goes with taskId and provider with models:true); read workItems and ownerRequests in separate calls. IDs come from retained evidence, never invent them.',
     inspectSchema,
     ['manager', 'planner', 'implementer', 'reviewer', 'researcher'],
   ],

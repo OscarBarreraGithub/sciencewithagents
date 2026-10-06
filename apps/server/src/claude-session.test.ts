@@ -1400,3 +1400,111 @@ it('owned supervisor records fixed auth diagnostics with process/session identit
   expect(JSON.stringify(diagnostics)).not.toMatch(/fixture-secret|@|https:|private/);
   await session.close();
 }, 10_000);
+
+describe('native rate-limit evidence', () => {
+  const frame = (info: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    type: 'rate_limit_event',
+    uuid: randomUUID(),
+    session_id: randomUUID(),
+    rate_limit_info: info,
+    ...extra,
+  });
+  const reset = Math.floor(Date.parse('2026-10-06T12:30:00Z') / 1000);
+  it('ignores the actual allowed primary window with rejected overage', () => {
+    const actual = {
+      status: 'allowed',
+      rateLimitType: 'five_hour',
+      resetsAt: reset,
+      overageStatus: 'rejected',
+      overageDisabledReason: 'org_level_disabled',
+      isUsingOverage: false,
+    };
+    expect(normalizeClaudeEvent(frame(actual), randomUUID())).toEqual([]);
+    expect(
+      normalizeClaudeEvent(frame({ ...actual, status: 'allowed_warning' }), randomUUID()),
+    ).toEqual([]);
+  });
+  it('emits only a typed primary rejection for a supported window and current delivery', () => {
+    const delivery = randomUUID();
+    const value = frame({ status: 'rejected', rateLimitType: 'five_hour', resetsAt: reset });
+    expect(normalizeClaudeEvent(value, delivery)).toEqual([
+      {
+        type: 'rate_limit',
+        id: value.uuid,
+        sessionId: value.session_id,
+        deliveryId: delivery,
+        rateLimitType: 'five_hour',
+        resetsAtSeconds: reset,
+      },
+    ]);
+    for (const bad of [
+      frame({ status: 'rejected', rateLimitType: 'overage', resetsAt: reset }),
+      frame({ status: 'rejected', rateLimitType: 'five_hour', resetsAt: 'soon' }),
+      frame({ status: 'rejected', rateLimitType: 'five_hour', resetsAt: reset + 0.5 }),
+      frame({ status: 'rejected', rateLimitType: 'five_hour' }),
+      frame(
+        { status: 'rejected', rateLimitType: 'five_hour', resetsAt: reset },
+        { session_id: 'x' },
+      ),
+      frame(
+        { status: 'rejected', rateLimitType: 'five_hour', resetsAt: reset },
+        { parent_tool_use_id: 'helper' },
+      ),
+      { type: 'assistant_error', error: 'rate_limit', message: 'usage limit reached (429)' },
+    ])
+      expect(normalizeClaudeEvent(bad, delivery)).toEqual([]);
+    expect(normalizeClaudeEvent(value, null)).toEqual([]);
+  });
+  it('requires an optional supplied origin to name the current delivery', () => {
+    const delivery = randomUUID();
+    const value = frame({ status: 'rejected', rateLimitType: 'five_hour', resetsAt: reset });
+    for (const origin of [randomUUID(), 'not-a-delivery', 7])
+      expect(normalizeClaudeEvent({ ...value, user_message_uuid: origin }, delivery)).toEqual([]);
+    expect(normalizeClaudeEvent({ ...value, user_message_uuid: delivery }, delivery)).toMatchObject(
+      [{ type: 'rate_limit', deliveryId: delivery }],
+    );
+    expect(normalizeClaudeEvent(value, delivery)).toMatchObject([{ deliveryId: delivery }]);
+  });
+  it('never lets a replayed or late rejection inherit a newer owned turn', async () => {
+    const f = fixture();
+    const first = randomUUID(),
+      second = randomUUID();
+    const rejection = (extra: Record<string, unknown> = {}) => ({
+      ...frame({ status: 'rejected', rateLimitType: 'five_hour', resetsAt: reset }),
+      session_id: f.config.sessionId,
+      ...extra,
+    });
+    const rejections = () => f.events.filter((event) => event.type === 'rate_limit');
+    const result = { type: 'result', session_id: f.config.sessionId, subtype: 'success' };
+    await f.session.submit({ deliveryId: first, text: 'First turn' });
+    const old = rejection();
+    f.emit(old);
+    f.emit({ ...result, uuid: randomUUID(), is_error: true });
+    const late = rejection();
+    f.emit(late); // Not busy: dropped, but its identity is retained.
+    await f.session.submit({ deliveryId: second, text: 'Second turn' });
+    f.emit(old);
+    f.emit(late);
+    f.emit(rejection({ user_message_uuid: first }));
+    f.emit(rejection({ parent_tool_use_id: 'helper' }));
+    f.emit({
+      ...rejection(),
+      rate_limit_info: {
+        status: 'allowed',
+        rateLimitType: 'five_hour',
+        resetsAt: reset,
+        overageStatus: 'rejected',
+        overageDisabledReason: 'org_level_disabled',
+      },
+    });
+    await tick();
+    expect(rejections()).toEqual([expect.objectContaining({ id: old.uuid, deliveryId: first })]);
+    const current = rejection();
+    f.emit(current);
+    await tick();
+    expect(rejections()).toEqual([
+      expect.objectContaining({ id: old.uuid, deliveryId: first }),
+      expect.objectContaining({ id: current.uuid, deliveryId: second }),
+    ]);
+  });
+});

@@ -18,6 +18,11 @@ import { QuarkFocus, registerQuarkFocusRoutes } from './quark-focus.js';
 import { registerConversationSearchRoutes } from './conversation-search.js';
 import { Archive, registerArchiveRoutes } from './archive.js';
 import { registerProjectWorkflowRoutes } from './project-workflow.js';
+import {
+  escalationItems,
+  registerNotificationRoutes,
+  type PushNotifications,
+} from './push-notifications.js';
 import { openProjectEditor, type ProjectEditorOpener } from './project-editor.js';
 import { providerMaintenanceRequestSchema, providerIdSchema } from '@dock/shared';
 import Fastify from 'fastify';
@@ -137,6 +142,8 @@ export async function createServer(
     publishing?: PublishingAccounts;
     /** Main owns startup/shutdown admission; embedded servers are ready by default. */
     ready?: () => boolean;
+    /** One shared notifier; only the local entry watches events so nothing is sent twice. */
+    notifications?: PushNotifications;
   },
 ) {
   const app = Fastify({
@@ -799,6 +806,38 @@ export async function createServer(
     return latestRecovery(store, agent.projectId, agent.id);
   });
   app.get('/api/attention', async () => attention(readSnapshot()));
+  const notificationProjects = () => {
+    const internal = runtime.internalProjectIds();
+    return store
+      .projects()
+      .filter((project) => !runtime.isInternalProject(project.id, internal))
+      .map((project) => ({ id: project.id, name: project.name }));
+  };
+  registerNotificationRoutes(app, options.notifications, {
+    owner: (request) => {
+      const session = phoneSessions.get(request);
+      return session ? `device:${session.deviceId}` : 'local';
+    },
+    projects: notificationProjects,
+  });
+  // An owner's own Stop or command on a chat must not come back as a phone notification.
+  app.addHook('onResponse', async (request, reply) => {
+    const target = /^\/api\/agents\/([0-9a-f-]{36})\//i.exec(request.url)?.[1];
+    if (!options.notifications || request.method !== 'POST' || !target || reply.statusCode >= 400)
+      return;
+    try {
+      const agent = store.agent(target);
+      options.notifications.ownerActed(agent.id, agent.nativeRootId);
+    } catch {
+      // Unknown agents have nothing to suppress.
+    }
+  });
+  const stopNotifications =
+    options.notifications && !options.remote
+      ? options.notifications.watch(store, () =>
+          escalationItems(attention(readSnapshot()).items, runtime.quark.holds(), store),
+        )
+      : null;
   app.get('/api/project-rates', async () => runtime.quark.projectRates());
   app.get('/api/capacity', async () => runtime.capacity.status());
   app.get('/api/cluster', async () => runtime.cluster.status());
@@ -1867,6 +1906,7 @@ export async function createServer(
     // Otherwise an open browser prevents a normal service restart forever.
     for (const stream of streams) stream.end();
     streams.clear();
+    stopNotifications?.();
     if (options.ownsRuntime !== false) terminals.close();
     if (!options.ownerTerminals) ownerTerminals.close();
     folders.close();

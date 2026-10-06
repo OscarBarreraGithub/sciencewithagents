@@ -132,11 +132,55 @@ export function Markdown({ children }: { children: string }) {
 
 // Consecutive tool calls become one activity row, so messages stay the timeline.
 type TimelineRow = Entry | Entry[];
-function timeline(entries: Entry[]): TimelineRow[] {
+const ownerInput = (entry: Entry) =>
+  entry.kind === 'user' || (entry.kind === 'system' && entry.title === 'Owner steering');
+/**
+ * An explicit provider phase wins: commentary joins the activity row and final stays in the
+ * timeline. Without a phase (unknown), only earlier replies of a completed run that were
+ * followed, in that same run and page, by tool activity and a later reply join the row,
+ * labelled as earlier replies. Imports (no run), running or stopped turns, anything split by
+ * owner input and replies after owner steering stay in the timeline. Nothing is removed.
+ */
+function foldedReplies(entries: Entry[], runs: AgentDetail['runs']) {
+  const completed = new Set(runs.filter((run) => run.status === 'completed').map((run) => run.id));
+  // A reply after mid-turn owner steering may answer it; keep that part of the run as is.
+  const steered = new Set<string>();
+  const afterSteering = new Set<string>();
+  for (const entry of entries) {
+    if (entry.runId && steered.has(entry.runId)) afterSteering.add(entry.id);
+    if (entry.runId && entry.kind === 'system' && entry.title === 'Owner steering')
+      steered.add(entry.runId);
+  }
+  const folded = new Map<string, 'commentary' | 'earlier'>();
+  // Per run, walking backwards: has a later reply been seen, and a tool since then?
+  const later = new Map<string, { reply: boolean; toolBeforeReply: boolean }>();
+  for (let index = entries.length - 1; index >= 0; index--) {
+    const entry = entries[index]!;
+    if (ownerInput(entry)) {
+      later.clear();
+      continue;
+    }
+    if (entry.kind === 'assistant' && !entry.image && entry.phase === 'commentary') {
+      folded.set(entry.id, 'commentary');
+      continue;
+    }
+    if (!entry.runId || !completed.has(entry.runId) || entry.image) continue;
+    const seen = later.get(entry.runId) ?? { reply: false, toolBeforeReply: false };
+    if (entry.kind === 'tool' && seen.reply) seen.toolBeforeReply = true;
+    else if (entry.kind === 'assistant') {
+      if (entry.phase !== 'final' && seen.toolBeforeReply && !afterSteering.has(entry.id))
+        folded.set(entry.id, 'earlier');
+      else seen.reply = true;
+    }
+    later.set(entry.runId, seen);
+  }
+  return folded;
+}
+function timeline(entries: Entry[], folded: Map<string, unknown>): TimelineRow[] {
   const rows: TimelineRow[] = [];
   for (const entry of entries) {
     const last = rows[rows.length - 1];
-    if (entry.kind === 'tool' && !entry.image) {
+    if ((entry.kind === 'tool' && !entry.image) || folded.has(entry.id)) {
       if (Array.isArray(last)) last.push(entry);
       else rows.push([entry]);
     } else rows.push(entry);
@@ -145,13 +189,27 @@ function timeline(entries: Entry[]): TimelineRow[] {
 }
 const failedTool = (status: string) => /fail|error|declin|cancel/i.test(status);
 const groupLimit = 100;
+const firstLine = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 240);
 
 /** Collapsed activity; bodies render only when opened. */
-function ToolGroup({ entries, working }: { entries: Entry[]; working: boolean }) {
+function ToolGroup({
+  entries,
+  working,
+  folded,
+}: {
+  entries: Entry[];
+  working: boolean;
+  folded: Map<string, 'commentary' | 'earlier'>;
+}) {
   const [open, setOpen] = useState(false);
   const [limit, setLimit] = useState(groupLimit);
-  const last = entries[entries.length - 1]!;
-  const problems = entries.filter((entry) => failedTool(entry.status)).length;
+  const tools = entries.filter((entry) => entry.kind === 'tool');
+  const notes = entries.length - tools.length;
+  const earlier = entries.filter((entry) => folded.get(entry.id) === 'earlier').length;
+  const updates = notes - earlier;
+  const problems = tools.filter((entry) => failedTool(entry.status)).length;
+  // The agent's own latest progress note describes the work; raw commands stay inside.
+  const latestNote = [...entries].reverse().find((entry) => entry.kind !== 'tool');
   const shown = entries.slice(-limit);
   return (
     <details className="tool-group" onToggle={(event) => setOpen(event.currentTarget.open)}>
@@ -159,10 +217,12 @@ function ToolGroup({ entries, working }: { entries: Entry[]; working: boolean })
         <ChevronRight size={14} aria-hidden="true" />
         <span className="tool-group-count">
           {working ? 'Working · ' : ''}
-          {entries.length.toLocaleString()} {entries.length === 1 ? 'action' : 'actions'}
+          {tools.length.toLocaleString()} {tools.length === 1 ? 'action' : 'actions'}
+          {updates ? ` · ${updates} ${updates === 1 ? 'update' : 'updates'}` : ''}
+          {earlier ? ` · ${earlier} earlier ${earlier === 1 ? 'reply' : 'replies'}` : ''}
           {problems ? ` · ${problems} failed` : ''}
         </span>
-        <span className="tool-group-current">{last.title}</span>
+        {latestNote && <span className="tool-group-current">{firstLine(latestNote.text)}</span>}
       </summary>
       {open && (
         <div className="tool-group-body">
@@ -175,9 +235,18 @@ function ToolGroup({ entries, working }: { entries: Entry[]; working: boolean })
               Show {Math.min(groupLimit, entries.length - shown.length)} earlier actions
             </button>
           )}
-          {shown.map((entry) => (
-            <ToolEntry key={entry.id} entry={entry} />
-          ))}
+          {shown.map((entry) =>
+            entry.kind === 'tool' ? (
+              <ToolEntry key={entry.id} entry={entry} />
+            ) : (
+              <div className="tool-note" key={entry.id}>
+                <small>{folded.get(entry.id) === 'earlier' ? 'Earlier reply' : 'Update'}</small>
+                <div className="markdown">
+                  <ChatMarkdown entry={entry}>{entry.text}</ChatMarkdown>
+                </div>
+              </div>
+            ),
+          )}
         </div>
       )}
     </details>
@@ -267,6 +336,10 @@ export function Conversation({
   const entries = (older?.entries ?? data?.entries ?? [])
     .map((e) => (formatEntry ? formatEntry(e) : e))
     .filter((e, i, all) => all.findIndex((v) => v.id === e.id) === i);
+  const shown = entries.filter(
+    (entry) => !(entry.kind === 'system' && entry.title === 'Original queued message'),
+  );
+  const folded = foldedReplies(shown, (older ?? data)?.runs ?? []);
   const load = async () => {
     if (loadingHistory) return;
     const request = ++historyRequest.current;
@@ -345,16 +418,13 @@ export function Conversation({
               </div>
             </div>
           )}
-          {timeline(
-            entries.filter(
-              (entry) => !(entry.kind === 'system' && entry.title === 'Original queued message'),
-            ),
-          ).map((row, index, rows) => {
+          {timeline(shown, folded).map((row, index, rows) => {
             if (Array.isArray(row))
               return (
                 <ToolGroup
                   key={row[0]!.id}
                   entries={row}
+                  folded={folded}
                   working={!older && agent.status === 'running' && index === rows.length - 1}
                 />
               );
@@ -933,14 +1003,13 @@ export function Composer({
       area.setSelectionRange(caret, caret);
     });
   }, [reference?.nonce]);
-  // Only the ordinary saved state is shortened on phones; progress, receipts and errors stay full.
+  // Routine autosave is shortened on phones and must not toggle while typing or saving;
+  // connecting, receipts, errors and conflicts stay full.
   const draftSteady =
     draft.ready &&
-    !draft.saving &&
-    !draft.unsaved &&
     !draft.error &&
     !draft.conflict &&
-    !draft.state?.own.submitted;
+    !(draft.state?.own.submitted && !draft.unsaved && !draft.saving);
   return (
     <div className={`composer${draftSteady ? ' draft-steady' : ''}`}>
       <textarea

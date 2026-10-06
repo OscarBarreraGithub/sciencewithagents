@@ -115,6 +115,8 @@ export function OwnerWorkBoard({
   const boardDraftKey = `${prefix}:board-draft`;
   const [initial] = useState(() => readBoardDraft(boardDraftKey, projectId));
   const [text, setText] = useState(() => storageRead(draftKey) ?? '');
+  const titleKey = `${prefix}:title-draft`;
+  const [newTitle, setNewTitle] = useState(() => storageRead(titleKey) ?? '');
   const [view, setView] = useState(initial.view);
   const [selected, setSelected] = useState(initial.selected);
   const [packaging, setPackaging] = useState(initial.packaging);
@@ -185,6 +187,11 @@ export function OwnerWorkBoard({
     setText(value);
     storageWrite(draftKey, value || null);
   };
+  const updateTitle = (value: string) => {
+    const line = value.replace(/[\r\n]+/g, ' ');
+    setNewTitle(line);
+    storageWrite(titleKey, line || null);
+  };
   const refresh = () => {
     reading.retry();
     window.dispatchEvent(new Event('swa:refresh-home'));
@@ -228,17 +235,22 @@ export function OwnerWorkBoard({
   const add = (event: FormEvent) => {
     event.preventDefault();
     const note = text.trim();
-    if (!note || view === 'done') return;
-    const itemTitle = note.split(/\r?\n/, 1)[0].slice(0, 240);
+    const heading = newTitle.trim();
+    if ((!note && !heading) || view === 'done') return;
+    // A typed title wins; otherwise the first line of the notes becomes the title.
+    const itemTitle = (heading || note.split(/\r?\n/, 1)[0]).slice(0, 240);
+    const detail = heading ? note : note.slice(itemTitle.length).trim();
     void run('add', async () => {
       await save('add', {
         kind: view,
         ...(projectId ? { projectId } : {}),
         title: itemTitle,
-        detail: note.slice(itemTitle.length).trim(),
+        detail,
       });
       setText((current) => (current === text ? '' : current));
+      setNewTitle((current) => (current === newTitle ? '' : current));
       if (storageRead(draftKey) === text) storageWrite(draftKey, null);
+      if (storageRead(titleKey) === newTitle) storageWrite(titleKey, null);
     });
   };
   const all = reading.data?.items.filter((item) => ['general', 'idea'].includes(item.kind)) ?? [];
@@ -377,6 +389,19 @@ export function OwnerWorkBoard({
         </div>
         {view !== 'done' && (
           <form className="todo-add" onSubmit={add}>
+            <label className="home-sr-only" htmlFor={`${id}-title`}>
+              {view === 'idea' ? 'Idea title (optional)' : 'To-do title (optional)'}
+            </label>
+            <input
+              id={`${id}-title`}
+              className="todo-title-input"
+              value={newTitle}
+              maxLength={240}
+              autoComplete="off"
+              placeholder={view === 'idea' ? 'Idea title (optional)' : 'Title (optional)'}
+              disabled={unavailable || busy === 'add'}
+              onChange={(event) => updateTitle(event.target.value)}
+            />
             <label className="home-sr-only" htmlFor={`${id}-new`}>
               {view === 'idea' ? 'New idea' : 'New to-do'}
             </label>
@@ -387,11 +412,17 @@ export function OwnerWorkBoard({
               rows={2}
               maxLength={8000}
               autoComplete="off"
-              placeholder={view === 'idea' ? 'Keep an idea for later…' : 'Write a to-do…'}
+              placeholder={
+                newTitle.trim()
+                  ? 'Notes, steps or links…'
+                  : view === 'idea'
+                    ? 'Keep an idea for later…'
+                    : 'Write a to-do…'
+              }
               disabled={unavailable || busy === 'add'}
               onChange={(event) => updateText(event.target.value)}
             />
-            {text.trim() && (
+            {(text.trim() || newTitle.trim()) && (
               <button type="submit" disabled={locked || unavailable}>
                 <Plus size={17} />
                 {busy === 'add' ? 'Adding…' : 'Add'}

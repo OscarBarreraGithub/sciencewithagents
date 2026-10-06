@@ -224,3 +224,57 @@
     padding: 12px;
   }
 }
+/* Entry reads like a small notepad: an optional one-line title above ruled notes. */
+.owner-work-board .todo-add {
+  padding: 8px;
+  border: 1px solid #e4dccd;
+  border-radius: 12px;
+  background: #fdfbf6;
+}
+.owner-work-board .todo-title-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid #e4dccd;
+  border-radius: 0;
+  background: transparent;
+  color: var(--home-ink);
+  font-weight: 650;
+}
+.owner-work-board .todo-title-input:focus-visible {
+  outline: 3px solid var(--home-blue);
+  outline-offset: 1px;
+}
+.owner-work-board .todo-add textarea {
+  border: 0;
+  background: repeating-linear-gradient(
+    transparent,
+    transparent calc(1.65em - 1px),
+    #efe7d8 calc(1.65em - 1px),
+    #efe7d8 1.65em
+  );
+  background-attachment: local;
+}
+/* Each saved item is its own card so neighbouring to-dos are easy to tell apart. */
+.owner-work-board .todo-list {
+  display: grid;
+  gap: 8px;
+}
+.owner-work-board .todo-list > li {
+  padding: 6px 8px;
+  border: 1px solid var(--home-line);
+  border-left: 3px solid #c9b48f;
+  border-radius: 10px;
+  background: var(--home-white);
+}
+.owner-work-board .todo-list > li:last-child {
+  border-bottom: 1px solid var(--home-line);
+}
+.owner-work-board .todo-text strong {
+  font-weight: 700;
+}
+.owner-work-board .todo-detail {
+  color: #4f4a42;
+  font-size: var(--text-small);
+}

@@ -315,6 +315,14 @@ export class Store extends EventEmitter {
       .get(agentId, excludeRunId ?? '', agentId, excludeRunId ?? '');
     return typeof row?.latest === 'string' ? row.latest : null;
   }
+  latestAttentionRun(agentId: string): PrivateRun | null {
+    const row = this.db
+      .prepare(
+        "SELECT body FROM runs WHERE agent_id=? AND status NOT IN ('queued','cancelled') ORDER BY rowid DESC LIMIT 1",
+      )
+      .get(agentId);
+    return row ? queuedRun(JSON.parse(String(row.body)) as PrivateRun) : null;
+  }
   runsForAgent(agentId: string, limit = 50) {
     return this.db
       .prepare(

@@ -71,7 +71,8 @@ export function ProjectHourlyBudget({
     setErrorValue(message);
   };
   const [, render] = useState(0);
-  const value = draft.current ?? latest?.limitPercent ?? 5;
+  // A saved owner cap (including 0) is authoritative; without one there is no invented value.
+  const value: number | null = draft.current ?? latest?.limitPercent ?? null;
   const selectedWindow = windows.find((w) => w.id === windowId);
   const selectedLabel = selectedWindow ? allowanceWindowLabel(selectedWindow) : 'Saved allowance';
   const limited = draft.current !== null || latest?.enabled;
@@ -82,6 +83,18 @@ export function ProjectHourlyBudget({
     rate?.estimatedPercentPerHour === null || rate?.estimatedPercentPerHour === undefined
       ? 'Waiting for enough readings'
       : `≈${Number(rate.estimatedPercentPerHour.toFixed(1))}% / hour${rate.stale ? ' · old reading' : ''}`;
+  // Advisory only: a ready reading may prefill an unsaved field; it is never saved on its own.
+  const advice = rate?.adaptive;
+  const advised =
+    advice?.state === 'ready' && advice.percentPerHour !== null
+      ? Math.round(advice.percentPerHour * 10) / 10
+      : null;
+  const suggestion = advised !== null && validRate(advised) && !latest ? advised : null;
+  const adviceText = !advice
+    ? 'No suggested pace from this computer; set a rate manually or keep the shared pace.'
+    : advice.state === 'ready' && advised !== null
+      ? `Suggested ${advised}% / hour for this window · not saved${advice.reason ? ` · ${advice.reason}` : ''}`
+      : `No suggestion (${advice.state})${advice.reason ? `: ${advice.reason}` : ''}`;
   async function save(enabled = true) {
     if (busy.current) {
       followup.current = true;
@@ -104,8 +117,12 @@ export function ProjectHourlyBudget({
       windowId,
       period: 'hour',
       enabled,
-      limitPercent: draft.current ?? base?.limitPercent ?? 5,
+      limitPercent: draft.current ?? base?.limitPercent,
     };
+    if (pending.current.limitPercent === undefined) {
+      pending.current = null;
+      return;
+    }
     const request = pending.current;
     busy.current = true;
     setError('');
@@ -166,7 +183,11 @@ export function ProjectHourlyBudget({
           <div className="quark-rate-label">
             <label htmlFor={rangeId}>Saved rate · {selectedLabel}</label>
             <strong>
-              {limited ? (validRate(value) ? `${value}% / hour` : 'Unsaved rate') : 'Shared pace'}
+              {limited
+                ? value !== null && validRate(value)
+                  ? `${value}% / hour`
+                  : 'Unsaved rate'
+                : 'Shared pace'}
             </strong>
             <label className="quark-rate-exact">
               Rate value
@@ -175,7 +196,11 @@ export function ProjectHourlyBudget({
                 min="0"
                 max="100"
                 step="0.1"
-                value={numericText.current ?? (finiteRate(value) ? value : '')}
+                value={
+                  numericText.current ??
+                  (value !== null && finiteRate(value) ? value : (suggestion ?? ''))
+                }
+                placeholder="Manual"
                 aria-label={`${provider.label} rate value (% per hour)`}
                 aria-disabled={error ? true : undefined}
                 onChange={(event) => {
@@ -193,6 +218,8 @@ export function ProjectHourlyBudget({
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     event.preventDefault();
+                    // Enter on a shown suggestion is the owner's explicit choice to save it.
+                    if (draft.current === null && suggestion !== null) draft.current = suggestion;
                     release();
                   }
                 }}
@@ -207,11 +234,11 @@ export function ProjectHourlyBudget({
               min="0"
               max="100"
               step="0.1"
-              value={validRate(value) ? value : (latest?.limitPercent ?? 5)}
+              value={value !== null && validRate(value) ? value : (suggestion ?? 0)}
               aria-label={`${provider.label} project rate limit`}
               aria-valuetext={
                 limited
-                  ? `${validRate(value) ? value : (latest?.limitPercent ?? 5)}% per hour${value === 0 ? ', provider paused' : ''}`
+                  ? `${value !== null && validRate(value) ? value : (latest?.limitPercent ?? 'unsaved')}% per hour${value === 0 ? ', provider paused' : ''}`
                   : 'No project rate limit; move to set one'
               }
               aria-disabled={error ? true : undefined}
@@ -249,6 +276,17 @@ export function ProjectHourlyBudget({
           {!limited && (
             <small>
               No project rate limit. Moving the slider sets one; 0 pauses this provider.
+            </small>
+          )}
+          <small className="quark-rate-advice">{adviceText}</small>
+          {advice?.resetsAt && (
+            <small>
+              Reported window resets{' '}
+              {new Date(advice.resetsAt).toLocaleString([], {
+                weekday: 'short',
+                hour: 'numeric',
+                minute: '2-digit',
+              })}
             </small>
           )}
           {latest?.enabled && (

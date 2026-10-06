@@ -53,14 +53,16 @@ it('keeps repeated queue reads and events bounded as completed history grows', (
     String(store.db.prepare('SELECT body FROM pulsar_leases WHERE run_id=?').get(old.run.id)!.body),
   );
   const ids: string[] = [];
-  for (let i = 0; i < 1000; i++) {
-    const run = store.enqueue(old.worker.id, randomUUID(), `Historic ${i}`);
-    store.updateRun(run.id, { status: 'completed' });
-    store.db
-      .prepare('INSERT INTO pulsar_leases(run_id,body) VALUES(?,?)')
-      .run(run.id, JSON.stringify({ ...template, runId: run.id, tokenBasis: 'measured' }));
-    ids.push(run.id);
-  }
+  store.transaction(() => {
+    for (let i = 0; i < 1000; i++) {
+      const run = store.enqueue(old.worker.id, randomUUID(), `Historic ${i}`);
+      store.updateRun(run.id, { status: 'completed' });
+      store.db
+        .prepare('INSERT INTO pulsar_leases(run_id,body) VALUES(?,?)')
+        .run(run.id, JSON.stringify({ ...template, runId: run.id, tokenBasis: 'measured' }));
+      ids.push(run.id);
+    }
+  });
   const estimate = vi.spyOn(pulsar, 'estimate');
   expect(pulsar.wantsForeground(new Set())).toBe(false);
   expect(estimate).not.toHaveBeenCalled();

@@ -185,6 +185,14 @@ conversation bill or cross-provider token sum. The separate shared usage collect
 subscription readings; QUARK estimates project shares and enforces saved budgets. See
 [accounting limits](QUARK_ACCOUNTING.md). No validated 2–3 percentage-point accuracy is claimed.
 
+Native `rate_limit_event` frames are observed as typed status only. A turn becomes a
+recoverable QUARK hold only when the primary status is `rejected` for a supported
+`five_hour`, `seven_day`, `seven_day_opus` or `seven_day_sonnet` window with a future,
+plausible reset, from the owning session and current delivery. `overageStatus: rejected`
+with an allowed primary status is ordinary disabled overage, not exhaustion. Helper, late,
+malformed, overage and generic 429/auth/assistant-text failures stay ordinary failures.
+This path is covered by synthetic typed fixtures; no real exhaustion has been induced.
+
 ## Evidence and implementation map
 
 Native transport, restart and mixed-provider work have isolated live evidence in Git history.

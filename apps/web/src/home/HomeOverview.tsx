@@ -1,9 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Aperture,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   ArrowUpRight,
   ChevronRight,
   Layers3,
@@ -289,19 +286,6 @@ function ResourcePanel({ data, now }: { data: HomeData; now: number }) {
   );
 }
 
-type SortKey = string; // 'name' | 'attention' | `rate:${provider}`
-type Sort = { key: SortKey; dir: 'asc' | 'desc' };
-const sortStorage = 'swa:home-running-sort';
-function savedSort(): Sort {
-  try {
-    const value = JSON.parse(localStorage.getItem(sortStorage) ?? 'null') as Sort | null;
-    if (value && typeof value.key === 'string' && ['asc', 'desc'].includes(value.dir)) return value;
-  } catch {
-    // An unreadable saved sort falls back to the default order.
-  }
-  return { key: 'attention', dir: 'desc' };
-}
-
 function RateCell({
   rates,
   reading,
@@ -309,7 +293,8 @@ function RateCell({
   rates: ProjectRate[];
   reading: ReturnType<typeof useRates>;
 }) {
-  if (!reading.data) return <span className="rate-unknown">—</span>;
+  if (!reading.data)
+    return <span className="rate-unknown">{reading.error ? 'Unavailable' : '—'}</span>;
   if (!rates.length) return <span className="rate-unknown">No use seen</span>;
   return (
     <span className="rate-list">
@@ -331,36 +316,66 @@ function RateCell({
 }
 const useRates = () => useReading('/project-rates', parseProjectRates);
 
-function RunningPanel({
+/** Specific retained evidence only: running task titles, then open task work, then the turn. */
+function currentWork(projectId: string, data: HomeData) {
+  const state = data.snapshot.data;
+  if (!state) return '';
+  const tasks = new Map(state.tasks.map((task) => [task.id, task]));
+  const agents = state.agents.filter((agent) => agent.projectId === projectId && !agent.archivedAt);
+  const running = agents.filter((agent) => ['running', 'waiting'].includes(agent.status));
+  const titles = [
+    ...new Set(
+      running.flatMap((agent) => {
+        const task = agent.taskId ? tasks.get(agent.taskId) : undefined;
+        return task ? [task.title] : [];
+      }),
+    ),
+  ];
+  if (titles.length)
+    return `Working on ${titles[0]!.slice(0, 160)}${titles.length > 1 ? ` (+${titles.length - 1} more)` : ''}`;
+  const reviewing = state.tasks.find(
+    (task) => task.projectId === projectId && task.status === 'review',
+  );
+  const manager = running.find((agent) => agent.role === 'manager');
+  if (manager?.status === 'waiting') return 'Manager is waiting for your input';
+  // Without a task, the manager's saved checkpoint is the most specific retained record.
+  // It is labelled as a checkpoint, never presented as the work happening now.
+  const checkpoint = agents
+    .find((agent) => agent.role === 'manager' && !agent.parentId)
+    ?.checkpoint.replace(/\s+/g, ' ')
+    .trim();
+  const lastCheckpoint = checkpoint ? `Last checkpoint: ${checkpoint.slice(0, 160)}` : '';
+  if (manager) return lastCheckpoint || 'Manager is replying in its chat';
+  const queued = (data.work.data?.jobs ?? []).find(
+    (job) => job.status === 'queued' && agents.some((agent) => agent.id === job.agentId),
+  );
+  if (queued)
+    return `Queued: ${(queued.taskId && tasks.get(queued.taskId)?.title) || queued.agentName}`;
+  if (reviewing) return `In review: ${reviewing.title}`;
+  return lastCheckpoint ? `Idle · ${lastCheckpoint}` : 'Idle';
+}
+
+function ProjectAttention({
   data,
   needs,
   known,
+  error,
 }: {
   data: HomeData;
-  needs: Map<string, Need[]>;
+  needs: Need[];
   known: boolean;
+  error: boolean;
 }) {
   const state = data.snapshot.data;
   const rates = useRates();
-  const [sort, setSort] = useState(savedSort);
-  const choose = (next: Sort) => {
-    setSort(next);
-    localStorage.setItem(sortStorage, JSON.stringify(next));
-  };
-  const toggle = (key: SortKey) =>
-    choose(
-      sort.key === key
-        ? { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
-        : { key, dir: key === 'name' ? 'asc' : 'desc' },
-    );
-  const providers = [
-    ...new Set([
-      ...(data.capacity.data?.providers.map((p) => p.provider) ?? []),
-      ...(rates.data?.map((r) => r.provider) ?? []),
-    ]),
-  ];
-  const agentProject = new Map(state?.agents.map((a) => [a.id, a.projectId]));
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const providers = ['codex', 'claude'].filter(
+    (provider) =>
+      data.capacity.data?.providers.some((p) => p.provider === provider) ||
+      rates.data?.some((r) => r.provider === provider),
+  );
   const active = new Set<string>();
+  const agentProject = new Map(state?.agents.map((a) => [a.id, a.projectId]));
   for (const agent of state?.agents ?? [])
     if (agent.status === 'running' || agent.status === 'waiting') active.add(agent.projectId);
   for (const job of data.work.data?.jobs ?? []) {
@@ -369,13 +384,15 @@ function RunningPanel({
   }
   for (const job of data.local.data?.jobs ?? [])
     if (job.status === 'running' && job.projectId) active.add(job.projectId);
-  const peak = (list: ProjectRate[]) =>
-    list.reduce((max, r) => Math.max(max, r.percentPerHour ?? -1), -1);
-  const rows = ownerProjects(data)
-    .filter((p) => active.has(p.id))
+  const projects = ownerProjects(data);
+  const listed = new Set(projects.map((p) => p.id));
+  const rows = projects
     .map((p) => ({
-      ...p,
-      needs: needs.get(p.id) ?? [],
+      key: p.id,
+      name: p.name,
+      href: chat(p.managerId),
+      work: currentWork(p.id, data),
+      needs: needs.filter((need) => need.projectId === p.id),
       rates: new Map(
         providers.map((provider) => [
           provider,
@@ -383,173 +400,143 @@ function RunningPanel({
         ]),
       ),
     }))
-    .sort((a, b) => {
-      const order =
-        sort.key === 'name'
-          ? a.name.localeCompare(b.name)
-          : sort.key === 'attention'
-            ? a.needs.length - b.needs.length
-            : peak(a.rates.get(sort.key.slice(5)) ?? []) -
-              peak(b.rates.get(sort.key.slice(5)) ?? []);
-      return (
-        (sort.dir === 'asc' ? order : -order) ||
+    .filter((row) => active.has(row.key) || row.needs.length)
+    .sort(
+      (a, b) =>
+        b.needs.length - a.needs.length ||
         a.name.localeCompare(b.name) ||
-        a.id.localeCompare(b.id)
-      );
+        a.key.localeCompare(b.key),
+    );
+  // Computer, cluster and unassigned requests keep their own row.
+  const other = needs.filter((need) => !need.projectId || !listed.has(need.projectId));
+  if (other.length)
+    rows.push({
+      key: 'other',
+      name: 'Computer and other requests',
+      href: other[0]!.href,
+      work: '',
+      needs: other,
+      rates: new Map(),
     });
-  const header = (key: SortKey, label: ReactNode, className = '') => (
-    <th
-      scope="col"
-      className={className}
-      aria-sort={sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-    >
-      <button type="button" onClick={() => toggle(key)}>
-        {label}
-        {sort.key !== key ? (
-          <ArrowUpDown size={14} aria-hidden="true" />
-        ) : sort.dir === 'asc' ? (
-          <ArrowUp size={14} aria-hidden="true" />
-        ) : (
-          <ArrowDown size={14} aria-hidden="true" />
-        )}
-      </button>
-    </th>
-  );
+  const toggle = (key: string) =>
+    setOpen((old) => {
+      const next = new Set(old);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
   return (
-    <section className="overview-panel overview-running" aria-labelledby="running-heading">
+    <section
+      className="overview-panel overview-attention"
+      aria-labelledby="attention-heading"
+      style={{ '--rate-columns': providers.length } as CSSProperties}
+    >
       <div className="overview-panel-head">
-        <h2 id="running-heading">% usage / hour</h2>
-        <label className="running-sort">
-          <span>Sort</span>
-          <select
-            value={`${sort.key}:${sort.dir}`}
-            onChange={(event) => {
-              const value = event.target.value;
-              const cut = value.lastIndexOf(':');
-              choose({ key: value.slice(0, cut), dir: value.slice(cut + 1) as Sort['dir'] });
-            }}
-          >
-            <option value="attention:desc">Needs attention first</option>
-            <option value="name:asc">Project name A–Z</option>
-            <option value="name:desc">Project name Z–A</option>
-            {providers.map((p) => (
-              <option key={p} value={`rate:${p}:desc`}>
-                Highest {providerName(p)} rate
-              </option>
-            ))}
-            {sort.key === 'attention' && sort.dir === 'asc' && (
-              <option value="attention:asc">Needs attention last</option>
-            )}
-            {sort.key.startsWith('rate:') && sort.dir === 'asc' && (
-              <option value={`${sort.key}:asc`}>
-                Lowest {providerName(sort.key.slice(5))} rate
-              </option>
-            )}
-          </select>
-        </label>
+        <h2 id="attention-heading">For your attention</h2>
+        <span className={`overview-count ${needs.length ? 'is-active' : ''}`}>
+          {known ? needs.length : '—'}
+        </span>
       </div>
       {!state ? (
         <p className="overview-empty">
-          {data.snapshot.error ? 'Reconnect to see running work.' : 'Reading running work…'}
+          {data.snapshot.error ? 'Reconnect to see projects.' : 'Reading projects…'}
         </p>
-      ) : rows.length ? (
-        <div className="running-scroll">
-          <table className="running-table">
-            <thead>
-              <tr>
-                {header('name', 'Project')}
-                {providers.map((p) =>
-                  header(
-                    `rate:${p}`,
-                    <>
-                      <ProviderMark provider={p} />
-                      <span>{providerName(p)} %/h</span>
-                    </>,
-                    'running-rate-col',
-                  ),
-                )}
-                {header('attention', 'Needs your attention')}
-                <th scope="col">
-                  <span className="home-sr-only">Open request or manager chat</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <th scope="row">
-                    <span className="running-name">{row.name}</span>
-                    <span className="running-inline-rates">
-                      {providers.map((p) => (
-                        <span key={p}>
-                          <ProviderMark provider={p} />
+      ) : (
+        <>
+          {rows.length > 0 && (
+            <div className="attention-columns" aria-hidden="true">
+              <span>Project</span>
+              {providers.map((p) => (
+                <span key={p}>
+                  <ProviderMark provider={p} /> {providerName(p)} %/h
+                </span>
+              ))}
+              <span />
+            </div>
+          )}
+          <ul className="attention-projects" aria-label="Projects and requests">
+            {rows.map((row) => {
+              const expanded = open.has(row.key) && row.needs.length > 0;
+              return (
+                <li key={row.key} className={`attention-project${expanded ? ' is-open' : ''}`}>
+                  <div className="attention-project-row">
+                    <a className="attention-project-name" href={row.href}>
+                      <strong>{row.name}</strong>
+                      {row.work && <small>{row.work}</small>}
+                    </a>
+                    {providers.map((p) =>
+                      row.key === 'other' ? (
+                        <span key={p} className="attention-project-rate is-none" />
+                      ) : (
+                        <span key={p} className="attention-project-rate">
+                          {/* Visible when narrow rows stack rates under the name; the
+                              column header labels them on wider frames. */}
+                          <span className="attention-rate-label">
+                            <ProviderMark provider={p} /> {providerName(p)} %/h
+                          </span>
                           <RateCell rates={row.rates.get(p) ?? []} reading={rates} />
                         </span>
-                      ))}
-                    </span>
-                  </th>
-                  {providers.map((p) => (
-                    <td key={p} className="running-rate-col">
-                      <RateCell rates={row.rates.get(p) ?? []} reading={rates} />
-                    </td>
-                  ))}
-                  <td>
-                    {row.needs.length ? (
-                      <div className="running-needs">
-                        <RunningNeed need={row.needs[0]!} />
-                        {row.needs.length > 1 && (
-                          <details>
-                            <summary>
-                              {row.needs.length - 1} more{' '}
-                              {row.needs.length === 2 ? 'request' : 'requests'}
-                            </summary>
-                            {row.needs.slice(1).map((need) => (
-                              <RunningNeed key={need.key} need={need} />
-                            ))}
-                          </details>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="running-no">{known ? 'None' : 'Checking requests…'}</span>
+                      ),
                     )}
-                  </td>
-                  <td className="running-open-cell">
-                    <a
-                      className="running-open"
-                      href={row.needs[0]?.href ?? chat(row.managerId)}
-                      aria-label={
-                        row.needs.length
-                          ? `Open request for ${row.name}: ${row.needs[0]!.title}`
-                          : `Open the ${row.name} manager chat`
-                      }
-                    >
-                      <ChevronRight size={19} />
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="overview-empty">No project is running work right now.</p>
+                    {row.needs.length ? (
+                      <button
+                        type="button"
+                        className="attention-project-count"
+                        aria-expanded={expanded}
+                        aria-label={`${row.needs.length} ${row.needs.length === 1 ? 'request' : 'requests'} for ${row.name}`}
+                        onClick={() => toggle(row.key)}
+                      >
+                        {row.needs.length}
+                        <ChevronRight size={15} aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <span className="attention-project-count is-empty" />
+                    )}
+                  </div>
+                  {expanded && (
+                    <ul className="overview-attention-list">
+                      {row.needs.map((need) => (
+                        <li key={need.key}>
+                          <a href={need.href} className="attention-item">
+                            <span className="attention-meta">
+                              <span>{need.label}</span>
+                              {row.key === 'other' && <span>{need.project}</span>}
+                            </span>
+                            <strong>{need.title}</strong>
+                            <span className="attention-detail">{need.detail}</span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {!rows.length && (
+            <p className="overview-empty">
+              {!known
+                ? error
+                  ? 'Requests will appear when the computer reconnects.'
+                  : 'Checking for requests…'
+                : 'Nothing needs you and no project is running work.'}
+            </p>
+          )}
+          {known || !rows.length ? null : (
+            <p className="overview-note">
+              {error
+                ? 'Some requests could not be read. Showing saved items.'
+                : 'Checking for requests…'}
+            </p>
+          )}
+          {rates.error && (
+            <p className="overview-note">Allowance rates per project are not available yet.</p>
+          )}
+          <a href="#/work" className="home-text-link">
+            Queued and paused work is in QUARK <ArrowUpRight size={15} />
+          </a>
+        </>
       )}
-      <div className="running-notes">
-        {rates.error && <p>Allowance rates per project are not available on this computer yet.</p>}
-        <a href="#/work" className="home-text-link">
-          Queued and paused work is in QUARK <ArrowUpRight size={15} />
-        </a>
-      </div>
     </section>
-  );
-}
-
-function RunningNeed({ need }: { need: Need }) {
-  return (
-    <a className="running-need" href={need.href} title={need.detail}>
-      <span className="running-flag">{need.label}</span>
-      <strong>{need.title}</strong>
-    </a>
   );
 }
 
@@ -705,58 +692,6 @@ function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Ne
   ];
 }
 
-function AttentionPanel({
-  needs,
-  known,
-  error,
-}: {
-  needs: Need[];
-  known: boolean;
-  error: boolean;
-}) {
-  return (
-    <section className="overview-attention" aria-labelledby="attention-heading">
-      <div className="overview-panel-head">
-        <h2 id="attention-heading">For your attention</h2>
-        <span className={`overview-count ${needs.length ? 'is-active' : ''}`}>
-          {known ? needs.length : '—'}
-        </span>
-      </div>
-      <div
-        className="overview-section-body"
-        role="region"
-        aria-label="Attention items"
-        tabIndex={0}
-      >
-        {!known && !needs.length ? (
-          <p className="overview-empty">
-            {error
-              ? 'Requests will appear when the computer reconnects.'
-              : 'Checking for requests…'}
-          </p>
-        ) : needs.length ? (
-          <ul className="overview-attention-list">
-            {needs.map((need) => (
-              <li key={need.key}>
-                <a href={need.href} className="attention-item">
-                  <span className="attention-meta">
-                    <span>{need.project}</span>
-                    <span>{need.label}</span>
-                  </span>
-                  <strong>{need.title}</strong>
-                  <span className="attention-detail">{need.detail}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="overview-empty">Nothing needs you right now.</p>
-        )}
-      </div>
-    </section>
-  );
-}
-
 const useWorkItems = () => useReading('/work-items', workItemsSchema.parse);
 
 export function HomeOverview({
@@ -771,13 +706,6 @@ export function HomeOverview({
   const state = data.snapshot.data;
   const workItems = useWorkItems();
   const needs = needsFor(state, workItems.data?.items ?? [], data);
-  const needsByProject = new Map<string, Need[]>();
-  for (const need of needs) {
-    if (!need.projectId) continue;
-    const list = needsByProject.get(need.projectId) ?? [];
-    list.push(need);
-    needsByProject.set(need.projectId, list);
-  }
   const attentionError =
     data.snapshot.error || workItems.error || data.local.error || data.work.error;
   const known =
@@ -801,18 +729,19 @@ export function HomeOverview({
         <div className="home-demo">Demonstration workspace · example data, no model calls</div>
       )}
       <div className="overview-grid">
-        <Destinations data={data} />
-        <aside className="overview-panel overview-side" aria-label="Requests and to-dos">
-          <AttentionPanel needs={needs} known={known} error={attentionError} />
-          <OwnerWorkBoard
-            projects={ownerProjects(data)}
-            tasks={state?.tasks ?? []}
-            reading={workItems}
-            onSeedProject={onSeedProject}
-          />
-        </aside>
-        <RunningPanel data={data} needs={needsByProject} known={known} />
-        <ResourcePanel data={data} now={now} />
+        <div className="overview-main">
+          <Destinations data={data} />
+          <div className="overview-panel overview-todo-slot">
+            <OwnerWorkBoard
+              projects={ownerProjects(data)}
+              tasks={state?.tasks ?? []}
+              reading={workItems}
+              onSeedProject={onSeedProject}
+            />
+          </div>
+          <ResourcePanel data={data} now={now} />
+        </div>
+        <ProjectAttention data={data} needs={needs} known={known} error={!!attentionError} />
       </div>
     </div>
   );

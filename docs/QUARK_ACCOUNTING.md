@@ -15,7 +15,7 @@ do not manage those leases; the host enforces their budgets independently of man
 Routine tasks do not require an invented per-task cap. QUARK admits them using shared
 allowance headroom and machine capacity. Managers use `dock_budget` for an owner-requested
 allowance allocation, using each provider's actual reported window. Raw token counts remain
-accounting evidence; the legacy `tokenBudget` field is no longer an admission gate. Cached
+accounting evidence; the legacy `tokenBudget` field (0 accepted) is no longer an admission gate. Cached
 context rereads must not produce requests to approve millions of tokens.
 Existing task caps appear on task cards; cumulative project caps appear under **Total allowance
 caps** on project cards in **QUARK**.
@@ -101,6 +101,12 @@ needs inspection. Queue pause, another hold, native-terminal ownership, complete
 ownership and automatic-turn limits prevent unattended continuation. A timed-out cache
 refresh releases its own temporary hold after confirmed stopping, without queuing another
 refresh or generating an extra task continuation. Old untyped holds remain explicit.
+A typed native Claude primary-window rejection keeps its window, reported reset, session
+and run as immutable evidence. It resumes once only after the confirmed stop and a later
+fresh reading in which that exact window reports a reset beyond the rejected one, plus normal
+headroom/reserve and cap checks. Elapsed time, a low same-window reading or a missing window
+keeps the hold. Model weekly rejections need that model's exact reported window. Owner,
+project, budget and lease holds are not replaced.
 
 If fresh capacity reveals that a cap was exhausted while work was stopping, QUARK changes
 that temporary hold to a budget hold. It preserves the original pause and stop acknowledgement,

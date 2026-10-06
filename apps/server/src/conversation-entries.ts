@@ -35,7 +35,13 @@ export function conversationEntries(
       AND json_extract(r.body,'$.sourceId')=e.agent_id
       AND json_type(g.value)='text'
       AND r.key LIKE 'goal:'||json_extract(g.value,'$')||':after:%'
-    WHERE e.agent_id=?${before ? ' AND e.rowid<(SELECT rowid FROM entries WHERE id=? AND agent_id=?)' : ''}
+    WHERE e.agent_id=?${before ? ' AND e.rowid<(SELECT rowid FROM entries WHERE id=? AND agent_id=?)' : ''}${
+      // Admission inputs are host-generated receipts, not a second owner message.
+      // Keep them in all/raw history and filter before the conversation page limit.
+      channel === 'conversation'
+        ? " AND NOT COALESCE(e.id=r.id AND r.key LIKE 'native-admission:%' AND json_extract(r.body,'$.kind')='user' AND json_extract(e.body,'$.kind')='user',0)"
+        : ''
+    }
   ) SELECT body, coordination_kind, source_id FROM classified
     ${channel === 'all' ? '' : `WHERE coordination_kind IS ${channel === 'conversation' ? '' : 'NOT '}NULL`}
     ORDER BY ordinal DESC LIMIT 201`;

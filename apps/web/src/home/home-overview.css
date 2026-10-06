@@ -1,5 +1,5 @@
-/* Home follows the owner's drawing: three destinations in the centre, then the
-   resource snapshot, running projects and the attention/to-do column. */
+/* Home follows the owner's drawing: three destinations in the centre, the resource
+   snapshot and to-dos below, and one project/attention frame at the upper right. */
 .overview {
   display: flex;
   flex-direction: column;
@@ -9,13 +9,23 @@
 .overview-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 2.15fr) minmax(0, 1.1fr);
+  grid-template-areas: 'main side';
+  gap: 20px 22px;
+  align-items: start;
+}
+/* The right frame grows with expanded requests and the page scrolls; it never resizes
+   the destinations, resources or to-dos beside it. */
+.overview-main {
+  grid-area: main;
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr);
   grid-template-rows: minmax(min-content, 1.75fr) minmax(min-content, 1fr);
   grid-template-areas:
-    '. nav side'
-    'resources running side';
+    '. nav'
+    'resources todo';
   gap: 20px 22px;
-  align-items: stretch;
+  min-height: max(560px, calc(100svh - 136px));
 }
 .overview-destinations {
   grid-area: nav;
@@ -23,14 +33,17 @@
   grid-template-rows: repeat(3, minmax(120px, 1fr));
   gap: 12px;
 }
-.overview-side {
+.overview-attention {
   grid-area: side;
 }
-.overview-running {
-  grid-area: running;
+.overview-todo-slot {
+  grid-area: todo;
+  padding: 0;
 }
 .overview-resources {
   grid-area: resources;
+  /* A long to-do list beside it must not stretch the snapshot into an empty card. */
+  align-self: start;
 }
 .destination {
   --tone: var(--home-blue);
@@ -199,82 +212,6 @@
   font-weight: 700;
 }
 
-/* Currently running */
-.running-sort {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  max-width: 100%;
-  font-size: var(--text-small);
-  color: var(--home-muted);
-}
-.running-sort select {
-  min-height: 44px;
-  max-width: 190px;
-  padding: 0 8px;
-  border: 1px solid var(--home-line);
-  border-radius: 10px;
-  background: var(--home-paper);
-  color: var(--home-ink);
-  font: inherit;
-  font-size: var(--text-small);
-}
-.running-scroll {
-  flex: 1;
-  min-height: 120px;
-  max-height: 360px;
-  overflow: auto;
-  margin: 0 -6px;
-}
-.running-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-small);
-}
-.running-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 0;
-  background: var(--home-white);
-  border-bottom: 1px solid var(--home-line);
-  color: var(--home-muted);
-  font-size: var(--text-small);
-  font-weight: 650;
-  text-align: left;
-  white-space: nowrap;
-}
-.running-table thead th button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 44px;
-  padding: 0 6px;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.running-table thead th[aria-sort='ascending'] button,
-.running-table thead th[aria-sort='descending'] button {
-  color: var(--home-ink);
-}
-.running-table tbody th,
-.running-table tbody td {
-  padding: 8px 6px;
-  border-bottom: 1px solid #efebe3;
-  text-align: left;
-  vertical-align: middle;
-}
-.running-table tbody th {
-  font-weight: 680;
-  overflow-wrap: anywhere;
-}
-.running-inline-rates {
-  display: none;
-}
 .rate-list {
   display: grid;
   gap: 3px;
@@ -295,74 +232,6 @@
   color: var(--home-muted);
   font-weight: 500;
 }
-.running-needs {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  max-width: 24rem;
-}
-.running-need {
-  display: grid;
-  justify-items: start;
-  gap: 4px;
-  min-height: 44px;
-  padding-block: 4px;
-  color: var(--home-ink);
-  text-decoration: none;
-  overflow-wrap: anywhere;
-}
-.running-need strong {
-  font-weight: 550;
-  line-height: 1.4;
-}
-.running-need:hover strong {
-  text-decoration: underline;
-}
-.running-needs summary {
-  padding-block: 8px;
-  cursor: pointer;
-  color: var(--home-blue);
-}
-.running-flag {
-  display: inline-block;
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: #fbe8d8;
-  color: #7c3710;
-  font-size: var(--text-small);
-  font-weight: 750;
-  white-space: normal;
-}
-.running-no {
-  color: var(--home-muted);
-}
-.running-open-cell {
-  width: 52px;
-}
-.running-open {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--home-line);
-  border-radius: 11px;
-  color: var(--home-blue);
-}
-.running-open:hover {
-  border-color: var(--home-blue);
-  background: #eef1fd;
-}
-.running-notes {
-  display: grid;
-  gap: 2px;
-  padding-top: 8px;
-  font-size: var(--text-small);
-  color: var(--home-muted);
-}
-.running-notes .home-text-link {
-  color: var(--home-ink);
-}
-
 /* Provider marks match the header allowance chips. */
 .provider-mark {
   display: inline-grid;
@@ -379,43 +248,28 @@
   color: #1f2430;
 }
 
-/* For your attention + to-do */
-.overview-side {
-  padding: 0;
-  align-self: start;
-  /* Keep content geometry independent of the keyboard. Only the outer scrolling
-     viewport shrinks, otherwise focusing the to-do moves the field under Safari. */
-  --overview-side-max: max(200px, calc(100svh - 136px));
-  max-height: var(--overview-side-max);
-  overflow: hidden;
+/* For your attention: one row per project with its rates and a request count */
+.overview-attention {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  container: attention / inline-size;
 }
-.overview-attention,
 .overview-todo {
   display: flex;
   flex-direction: column;
-  flex: 0 1 auto;
   min-height: 84px;
   padding: 10px 14px;
 }
-.overview-todo {
-  border-top: 1px solid var(--home-line);
-}
-.overview-side .overview-panel-head {
+.overview-todo .overview-panel-head,
+.overview-attention .overview-panel-head {
   flex-shrink: 0;
   min-height: 36px;
   margin-bottom: 4px;
 }
-.overview-side .overview-empty {
-  padding: 4px 0;
-}
+/* No inner scrolling: long lists extend the page, which keeps one scroll gesture. */
 .overview-section-body {
   min-height: 0;
-  /* Flex shrinks by content size, so cap each list near two-thirds of the
-     column: two long lists split it evenly and a short one stays compact. */
-  max-height: max(84px, calc((var(--overview-side-max) - 112px) * 0.65));
-  overflow: auto;
-  overscroll-behavior-y: contain;
-  scrollbar-gutter: stable;
   padding: 3px;
   margin: 0 -3px;
 }
@@ -423,6 +277,148 @@
   outline: 2px solid var(--home-blue);
   outline-offset: -2px;
   border-radius: 6px;
+}
+.attention-columns,
+.attention-project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(var(--rate-columns, 2), minmax(0, 8rem)) 52px;
+  align-items: center;
+  gap: 8px;
+}
+.attention-columns {
+  padding: 0 0 4px;
+  border-bottom: 1px solid var(--home-line);
+  color: var(--home-muted);
+  font-size: var(--text-small);
+  font-weight: 650;
+}
+.attention-columns > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.attention-projects {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.attention-project {
+  border-bottom: 1px solid #efebe3;
+}
+.attention-project-row {
+  min-height: 52px;
+  padding: 6px 0;
+}
+.attention-project-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: var(--home-ink);
+  text-decoration: none;
+}
+.attention-project-name strong {
+  font-weight: 680;
+  overflow-wrap: anywhere;
+}
+.attention-project-name small {
+  color: var(--home-muted);
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
+.attention-project-name:hover strong {
+  text-decoration: underline;
+}
+.attention-project-rate {
+  min-width: 0;
+  font-size: var(--text-small);
+}
+.attention-rate-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* A narrow frame (phones, laptops and most desktops): name and count share the first row and each
+   provider's rate sits below it with its own visible label. */
+@container attention (max-width: 36rem) {
+  .attention-columns {
+    display: none;
+  }
+  .attention-project-row {
+    grid-template-columns: minmax(0, 1fr) 52px;
+    grid-template-areas: 'name count';
+    row-gap: 6px;
+  }
+  .attention-project-name {
+    grid-area: name;
+  }
+  .attention-project-count {
+    grid-area: count;
+  }
+  .attention-project-rate {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 8.5rem minmax(0, 1fr);
+    align-items: start;
+    gap: 6px;
+  }
+  .attention-project-rate.is-none {
+    display: none;
+  }
+  .attention-rate-label {
+    position: static;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    color: var(--home-muted);
+    font-weight: 650;
+  }
+}
+.attention-project-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 52px;
+  height: 44px;
+  border: 1px solid #e3b48d;
+  border-radius: 11px;
+  background: #fbe8d8;
+  color: #7c3710;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+.attention-project-count svg {
+  transition: transform 0.15s;
+}
+.attention-project-count[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+.attention-project-count.is-empty {
+  border: 0;
+  background: none;
+  cursor: default;
+}
+.attention-project.is-open {
+  padding-bottom: 8px;
+}
+.overview-note {
+  margin: 4px 0 0;
+  font-size: var(--text-small);
+  color: var(--home-muted);
+}
+.overview-attention > .home-text-link {
+  margin-top: 6px;
+  font-size: var(--text-small);
+  color: var(--home-ink);
 }
 .overview-attention-list,
 .todo-list {
@@ -457,7 +453,7 @@
 }
 .attention-meta span:first-child {
   font-weight: 750;
-  color: var(--home-ink);
+  color: #7c3710;
 }
 .attention-item strong {
   font-size: var(--text-body);
@@ -504,8 +500,7 @@
   overflow-y: hidden;
 }
 .todo-add textarea:focus-visible,
-.todo-send select:focus-visible,
-.running-sort select:focus-visible {
+.todo-send select:focus-visible {
   outline: 3px solid var(--home-blue);
   outline-offset: 1px;
 }
@@ -666,12 +661,14 @@
 @media (max-width: 1099px) {
   .overview-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: auto 1fr 1fr;
     grid-template-areas:
       'nav nav'
-      'side running'
+      'side todo'
       'side resources';
     gap: 16px;
+  }
+  .overview-main {
+    display: contents;
   }
   .overview-destinations {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -700,7 +697,7 @@
   .overview-grid {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto;
-    grid-template-areas: 'nav' 'side' 'running' 'resources';
+    grid-template-areas: 'nav' 'side' 'todo' 'resources';
     gap: 14px;
   }
   .overview-destinations {
@@ -724,41 +721,11 @@
   .destination > svg {
     display: block;
   }
-  .overview-side {
-    --overview-side-max: max(200px, calc(100svh - 64px));
-  }
   .overview-panel {
     padding: 12px 14px 10px;
   }
-  .overview-side {
+  .overview-todo-slot {
     padding: 0;
-  }
-  .running-sort {
-    display: flex;
-  }
-  .running-rate-col {
-    display: none;
-  }
-  .running-table th:first-child {
-    min-width: 6em;
-  }
-  .running-table thead th:nth-last-child(2) {
-    white-space: normal;
-  }
-  .running-inline-rates {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    margin-top: 4px;
-    font-weight: 500;
-  }
-  .running-inline-rates > span {
-    display: inline-flex;
-    align-items: flex-start;
-    gap: 5px;
-  }
-  .running-scroll {
-    max-height: 320px;
   }
   .todo-send {
     margin-left: 0;
@@ -774,9 +741,6 @@
 @media (max-width: 380px) {
   .resource-stats dd {
     font-size: var(--text-lead);
-  }
-  .running-sort > span {
-    display: none;
   }
 }
 
@@ -801,9 +765,6 @@
   }
 }
 @media (min-width: 701px) and (max-width: 1099px) and (max-height: 500px) {
-  .overview-side {
-    --overview-side-max: max(240px, calc(100svh - 64px));
-  }
   .overview-destinations {
     height: 42svh;
     min-height: 0;

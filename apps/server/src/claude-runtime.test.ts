@@ -832,35 +832,59 @@ describe('Claude uses the shared runtime without Codex protocol substitution', (
     expect(store.getSetting(`quark:manager-lease:${run.id}`)).toBeNull();
     expect(store.entries(manager).some((e) => e.id.endsWith(':late-tool'))).toBe(false);
   });
-  it('checks the manager lease again at the final Claude write boundary', async () => {
-    let write!: () => void;
-    let sent = false;
-    configureSession = (session) => {
-      session.submit.mockImplementation(
-        (input) =>
-          new Promise<void>((resolve, reject) => {
-            write = () => {
-              try {
-                session.options.beforeWrite?.(input.deliveryId);
-                sent = true;
-                resolve();
-              } catch (error) {
-                reject(error);
-              }
-            };
-          }),
-      );
-    };
-    const { run, session } = await start(manager, 'Delayed native input');
-    store.setSetting(`quark:manager-lease:${run.id}`, null);
-    write();
-    await vi.waitFor(() => expect(store.run(run.id).status).toBe('interrupted'));
-    expect(sent).toBe(false);
-    expect(store.getSetting(`claude:attempted:${session.options.sessionId}`)).toBeNull();
-    expect(runtime.quark.holds().find((h) => h.runId === run.id)?.reason).toContain(
-      'signed a lease',
-    );
-  });
+  it.each([
+    {
+      name: 'a missing lease',
+      cause: 'lease',
+      reason: 'signed a lease',
+      change: (runId: string) => store.setSetting(`quark:manager-lease:${runId}`, null),
+    },
+    {
+      name: 'a budget hold on a valid lease',
+      cause: 'budget',
+      reason: 'Owner cap reached',
+      change: (runId: string) =>
+        runtime.quark.hold(store.run(runId), 'Owner cap reached', false, 'budget'),
+    },
+    {
+      name: 'a manual hold on a valid lease',
+      cause: 'manual',
+      reason: 'Owner paused',
+      change: (runId: string) => runtime.quark.hold(store.run(runId), 'Owner paused'),
+    },
+  ])(
+    'checks the manager lease again at the final Claude write boundary: $name',
+    async (fixture) => {
+      let write!: () => void;
+      let sent = false;
+      configureSession = (session) => {
+        session.submit.mockImplementation(
+          (input) =>
+            new Promise<void>((resolve, reject) => {
+              write = () => {
+                try {
+                  session.options.beforeWrite?.(input.deliveryId);
+                  sent = true;
+                  resolve();
+                } catch (error) {
+                  reject(error);
+                }
+              };
+            }),
+        );
+      };
+      const { run, session } = await start(manager, 'Delayed native input');
+      fixture.change(run.id);
+      write();
+      await vi.waitFor(() => expect(store.run(run.id).status).toBe('interrupted'));
+      expect(sent).toBe(false);
+      expect(store.getSetting(`claude:attempted:${session.options.sessionId}`)).toBeNull();
+      // A typed owner/allowance hold keeps its cause; only real lease failure is labelled lease.
+      const holds = runtime.quark.holds().filter((h) => h.runId === run.id);
+      expect(holds).toEqual([expect.objectContaining({ cause: fixture.cause })]);
+      expect(holds[0]!.reason).toContain(fixture.reason);
+    },
+  );
   it('starts one native run with durable UUID/receipt before submission, retaining visible evidence', async () => {
     const { session, run } = await start();
     expect(codexFactory).not.toHaveBeenCalled();
@@ -1359,5 +1383,62 @@ describe('Claude uses the shared runtime without Codex protocol substitution', (
     finish(session, run.id, 'interrupted');
     await vi.waitFor(() => expect(store.run(run.id).status).toBe('interrupted'));
     expect(store.agent(child.id).status).toBe('idle');
+  });
+});
+
+describe('native primary-window rejection', () => {
+  const rejected = (session: FixtureSession, deliveryId: string, sessionId?: string) =>
+    session.send({
+      type: 'rate_limit',
+      id: randomUUID(),
+      sessionId: sessionId ?? session.options.sessionId,
+      deliveryId,
+      rateLimitType: 'five_hour',
+      resetsAtSeconds: Math.floor(Date.now() / 1000) + 3600,
+    });
+  it('keeps a typed rejected turn recoverable behind a confirmed native stop', async () => {
+    const { session, run } = await start();
+    rejected(session, run.id);
+    await vi.waitFor(() => expect(runtime.quark.holds()).toHaveLength(1));
+    finish(session, run.id, 'failed');
+    await vi.waitFor(() => expect(store.run(run.id).status).toBe('interrupted'));
+    expect(session.close).toHaveBeenCalled();
+    expect(runtime.quark.holds()[0]).toMatchObject({
+      runId: run.id,
+      cause: 'reset',
+      stopAcknowledgedAt: expect.any(String),
+      nativeExhaustion: { windowId: 'primary', rateLimitType: 'five_hour', runId: run.id },
+    });
+    expect(store.runs(['queued']).filter((r) => r.kind === 'resume')).toHaveLength(0);
+  });
+  it('stops a rejected turn without a terminal result through existing enforcement', async () => {
+    const { session, run } = await start();
+    rejected(session, run.id);
+    await vi.waitFor(() => expect(session.interrupt).toHaveBeenCalledTimes(1));
+    const hold = runtime.quark.holds()[0]!;
+    expect(hold).toMatchObject({ cause: 'reset', lastAttemptAt: expect.any(String) });
+    // An unconfirmed stop escalates to closing the owned group, keeping the evidence.
+    store.setSetting(`quark:hold:${run.id}`, {
+      ...hold,
+      createdAt: new Date(Date.now() - 40_000).toISOString(),
+      lastAttemptAt: new Date(Date.now() - 15_000).toISOString(),
+    });
+    await vi.waitFor(() => expect(session.close).toHaveBeenCalled());
+    await vi.waitFor(() => expect(store.run(run.id).status).toBe('interrupted'));
+    expect(runtime.quark.holds()).toEqual([
+      expect.objectContaining({
+        stopAcknowledgedAt: expect.any(String),
+        nativeExhaustion: hold.nativeExhaustion,
+      }),
+    ]);
+    expect(store.runs(['queued']).filter((r) => r.kind === 'resume')).toHaveLength(0);
+  });
+  it('leaves foreign-session and other-turn rejections as ordinary failures', async () => {
+    const { session, run } = await start();
+    rejected(session, run.id, randomUUID());
+    rejected(session, randomUUID());
+    finish(session, run.id, 'failed');
+    await vi.waitFor(() => expect(store.run(run.id).status).toBe('failed'));
+    expect(runtime.quark.holds()).toHaveLength(0);
   });
 });

@@ -40,9 +40,11 @@ const requestCursor = z
   .strict();
 // Native owner steering used a system entry before structured provenance existed.
 // It was written only after confirmation. Queued/cancelled runs remain visibly distinct.
+// Native-admission run entries are generated turn/compaction placeholders; the owner's
+// captured native input is its own entry on that run.
 const ownerSourceSql = `e.agent_id=? AND (
   (json_extract(e.body,'$.kind')='user' AND (json_extract(e.body,'$.ownerInput') IS NOT NULL OR
-    r.id IS NULL OR (json_extract(r.body,'$.sourceId') IS NULL AND json_extract(r.body,'$.kind')='user' AND (e.id!=r.id OR r.key NOT LIKE 'native:%'))))
+    r.id IS NULL OR (json_extract(r.body,'$.sourceId') IS NULL AND json_extract(r.body,'$.kind')='user' AND (e.id!=r.id OR (r.key NOT LIKE 'native:%' AND r.key NOT LIKE 'native-admission:%')))))
   OR (json_extract(e.body,'$.kind')='system' AND json_extract(e.body,'$.title')='Owner steering')
 )`;
 

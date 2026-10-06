@@ -144,6 +144,57 @@ it('filters before keyset pagination and classifies old replies absent from the 
   expect((await page()).runs.some((run) => run.id === coordinationIds[0])).toBe(false);
 });
 
+it('omits only proven native admission placeholders from main pages while retaining owner input and raw history', async () => {
+  const ownerIds: string[] = [];
+  const rawIds: string[] = [];
+  for (let index = 0; index < 205; index++) {
+    const run = store.enqueue(
+      manager,
+      `native-admission:${randomUUID()}`,
+      'Generated receipt',
+      'user',
+    );
+    store.updateRun(run.id, { status: 'completed' });
+    const owner: Entry = {
+      id: `native-input:${run.id}`,
+      agentId: manager,
+      runId: run.id,
+      kind: 'user',
+      title: 'You',
+      text: `Exact native owner input ${index}`,
+      status: 'complete',
+      createdAt: new Date().toISOString(),
+      ownerInput: { delivery: 'submitted' },
+    };
+    store.entry(owner);
+    ownerIds.push(owner.id);
+    rawIds.push(run.id, owner.id);
+  }
+  // The same text on an unlinked entry is never enough to suppress an owner message.
+  const unknown = append(null, 'user', 'Generated receipt');
+  ownerIds.push(unknown.id);
+  rawIds.push(unknown.id);
+  const savedBodies = store.db.prepare('SELECT id,body FROM entries ORDER BY rowid').all();
+  const collect = async (channel: string) => {
+    const ids: string[] = [];
+    let before: string | undefined;
+    let pages = 0;
+    for (;;) {
+      const current = await page(channel, before);
+      ids.unshift(...current.entries.map((entry) => entry.id));
+      pages++;
+      if (!current.hasMore) return { ids, pages };
+      expect(current.entries).toHaveLength(200);
+      before = current.entries[0]!.id;
+      expect(pages).toBeLessThan(5);
+    }
+  };
+  expect(await collect('conversation')).toEqual({ ids: ownerIds, pages: 2 });
+  expect(await collect('all')).toEqual({ ids: rawIds, pages: 3 });
+  expect((await page('coordination')).entries).toEqual([]);
+  expect(store.db.prepare('SELECT id,body FROM entries ORDER BY rowid').all()).toEqual(savedBodies);
+});
+
 it('keeps an already-streaming reply and following output in main after owner steering, including reopen', async () => {
   const pure = queue('report');
   const pureReply = append(pure.id, 'assistant', 'Previous internal turn');

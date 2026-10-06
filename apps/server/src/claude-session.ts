@@ -7,7 +7,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { effortSchema, providerDefaultEffort } from '@dock/shared';
+import { effortSchema, nativeRateLimitTypes, providerDefaultEffort } from '@dock/shared';
 import {
   claudeAuthDiagnosticReader,
   type ClaudeAuthDiagnostic,
@@ -238,6 +238,15 @@ export type ClaudeEvent =
       usage: ClaudeUsage | null;
       modelUsage?: Record<string, ClaudeUsage>;
       helpersPending?: boolean;
+    }
+  | {
+      // Typed primary-window rejection only; never raw payload, overage or wording.
+      type: 'rate_limit';
+      id: string;
+      sessionId: string;
+      deliveryId: string;
+      rateLimitType: (typeof nativeRateLimitTypes)[number];
+      resetsAtSeconds: number;
     }
   | { type: 'unavailable'; message: string };
 export type ClaudeUsage = {
@@ -634,6 +643,7 @@ export class ClaudeSession extends EventEmitter {
   private seenRequestIds = new Set<string>();
   private seenDeliveries = new Set<string>();
   private seenResults = new Set<string>();
+  private seenRejections = new Set<string>();
   private decoder = new StringDecoder('utf8');
   private buffered = '';
   private models: ClaudeModel[] = [];
@@ -1018,6 +1028,19 @@ export class ClaudeSession extends EventEmitter {
       if (this.seenResults.size >= 20_000) throw new Error('Claude result limit reached.');
       this.seenResults.add(resultId);
     }
+    if (frame.type === 'rate_limit_event') {
+      // The SDK omits the turn origin, so the exact native event ID is replay
+      // evidence: a rejection seen once, even late, never attaches to a newer turn.
+      const info = jsonObject.safeParse(frame.rate_limit_info);
+      const eventId = id.safeParse(frame.uuid);
+      if (info.success && info.data.status === 'rejected' && eventId.success) {
+        if (this.seenRejections.has(eventId.data)) return;
+        if (this.seenRejections.size >= 20_000) throw new Error('Claude rejection limit reached.');
+        this.seenRejections.add(eventId.data);
+      }
+      // A rejection outside the current owned turn is late evidence, not a hold.
+      if (!this.busy || !this.deliveryId) return;
+    }
     for (const event of normalizeClaudeEvent(frame, this.deliveryId)) {
       // The advertised catalog is observation, not a permission grant. A native
       // tool added by a provider update must not terminate this conversation.
@@ -1155,6 +1178,34 @@ export function normalizeClaudeEvent(
   deliveryId: string | null = null,
 ): ClaudeEvent[] {
   const frame = jsonObject.parse(value);
+  if (frame.type === 'rate_limit_event') {
+    // Act only on the primary status. `overageStatus: rejected` accompanies
+    // allowed work when overage is disabled and must never pause a turn.
+    const parsed = z
+      .object({
+        uuid: id,
+        session_id: uuid,
+        rate_limit_info: z.object({
+          status: z.literal('rejected'),
+          rateLimitType: z.enum(nativeRateLimitTypes),
+          resetsAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+        }),
+      })
+      .safeParse(frame);
+    if (!parsed.success || frame.parent_tool_use_id != null || !deliveryId) return [];
+    // Optional provider origin must name the current delivery; never restamp it.
+    if (frame.user_message_uuid != null && frame.user_message_uuid !== deliveryId) return [];
+    return [
+      {
+        type: 'rate_limit',
+        id: parsed.data.uuid,
+        sessionId: parsed.data.session_id,
+        deliveryId,
+        rateLimitType: parsed.data.rate_limit_info.rateLimitType,
+        resetsAtSeconds: parsed.data.rate_limit_info.resetsAt,
+      },
+    ];
+  }
   if (frame.type === 'system' && frame.subtype === 'init')
     return [
       {

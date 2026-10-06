@@ -111,6 +111,13 @@ export const allowanceSchema = allowanceFieldsSchema
     source: z.enum(['owner', 'manager', 'agent-client']),
   })
   .refine(validAllowance);
+/** Native Claude rate-limit windows QUARK can match to a reported capacity window. */
+export const nativeRateLimitTypes = [
+  'five_hour',
+  'seven_day',
+  'seven_day_opus',
+  'seven_day_sonnet',
+] as const;
 export const quotaHoldSchema = z.object({
   runId: id,
   agentId: id,
@@ -135,6 +142,20 @@ export const quotaHoldSchema = z.object({
   releasedAt: z.string().datetime().nullable(),
   lastAttemptAt: z.string().datetime().nullable(),
   error: z.string().nullable(),
+  // Immutable typed native rejection evidence. Automatic recovery requires a fresh
+  // reading in which this exact window reports a reset beyond `resetsAt`.
+  nativeExhaustion: z
+    .object({
+      source: z.literal('claude-rate-limit-event'),
+      sessionId: id,
+      runId: id,
+      rateLimitType: z.enum(nativeRateLimitTypes),
+      windowId: z.string().min(1).max(160),
+      resetsAt: z.string().datetime(),
+      observedAt: z.string().datetime(),
+    })
+    .strict()
+    .optional(),
 });
 export const quarkRunSchema = z.object({
   runId: id,

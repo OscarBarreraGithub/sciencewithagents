@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { snapshotSchema } from '@dock/shared';
 
-test('attention and to-dos grow from compact panels to independently scrolling sections', async ({
+test('attention and to-dos grow from compact panels into one natural page scroll', async ({
   page,
 }, info) => {
   let questionCount = 0,
@@ -79,59 +79,64 @@ test('attention and to-dos grow from compact panels to independently scrolling s
     });
   });
   await page.goto('/#/home');
-  const panel = page.locator('.overview-side');
   const attention = page.locator('.overview-attention');
   const todos = page.locator('.overview-todo');
-  await expect(attention).toContainText('Nothing needs you right now.');
+  const resources = page.locator('.overview-resources');
+  await expect(attention).toContainText('Nothing needs you');
   await expect(todos.locator('.overview-count')).toHaveText('0');
-  const emptyHeight = (await panel.boundingBox())!.height;
+  const emptyHeight = (await attention.boundingBox())!.height;
   expect(emptyHeight).toBeLessThan(320);
   const editor = todos.getByRole('textbox', { name: 'New to-do' });
   expect((await editor.boundingBox())!.height).toBeLessThan(100);
-  await panel.scrollIntoViewIfNeeded();
+  const resourcesBefore = (await resources.boundingBox())!;
+  await attention.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath('compact-empty.png') });
 
   questionCount = 4;
   await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
+  const count = attention.locator('button.attention-project-count');
+  // Four questions plus one stopped-work item for the same project; routine checks stay out.
+  await expect(count).toHaveText('5');
+  await count.click();
   await expect(attention.locator('.attention-item')).toHaveCount(5);
-  expect((await panel.boundingBox())!.height).toBeGreaterThan(emptyHeight);
+  expect((await attention.boundingBox())!.height).toBeGreaterThan(emptyHeight);
   await expect(attention).not.toContainText('Routine check');
   // A question opens its own answer form in the manager's conversation.
   const question = attention.getByRole('link', { name: /Question 1/ });
   await expect(question).toHaveAttribute('href', new RegExp(`^#/chat/${managerId}/answer/`));
   const answerId = (await question.getAttribute('href'))!.split('/answer/')[1]!;
   expect(questionIds.has(answerId)).toBe(true);
-  await expect(attention.locator('a[href="#/work"]')).toHaveCount(1);
+  await expect(attention.locator('a[href="#/work"]')).toHaveCount(2);
 
   questionCount = 30;
   todoCount = 30;
   await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
   await expect(attention.locator('.attention-item')).toHaveCount(31);
   await expect(todos.locator('.todo-list > li')).toHaveCount(30);
-  const visibleHeight = await page.evaluate(() => window.visualViewport!.height);
-  expect((await panel.boundingBox())!.height).toBeLessThan(visibleHeight);
-  await panel.scrollIntoViewIfNeeded();
-  const panes = panel.locator('.overview-section-body');
-  for (const pane of await panes.all()) {
-    expect(await pane.evaluate((e) => e.scrollHeight > e.clientHeight + 40)).toBe(true);
-    // A section must show a complete question/to-do row, not just a scrollable sliver.
-    expect((await pane.boundingBox())!.height).toBeGreaterThan(96);
-    await pane.evaluate((e) => e.scrollTo(0, 0));
+  // Long lists grow the page instead of becoming separate scroll traps.
+  for (const section of [attention, todos]) {
+    expect(
+      await section.evaluate((root) =>
+        [root, ...root.querySelectorAll('*')].some((node) => {
+          const style = getComputedStyle(node);
+          return /(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1;
+        }),
+      ),
+    ).toBe(false);
   }
-  const mainScroll = await page.locator('.home-content').evaluate((e) => e.scrollTop);
-  await panes.nth(0).evaluate((e) => e.scrollTo(0, e.scrollHeight));
-  expect(await panes.nth(0).evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
-  expect(await panes.nth(1).evaluate((e) => e.scrollTop)).toBe(0);
-  const attentionScroll = await panes.nth(0).evaluate((e) => e.scrollTop);
-  await panes.nth(1).evaluate((e) => e.scrollTo(0, e.scrollHeight));
-  expect(await panes.nth(1).evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
-  expect(await panes.nth(0).evaluate((e) => e.scrollTop)).toBe(attentionScroll);
-  expect(await page.locator('.home-content').evaluate((e) => e.scrollTop)).toBe(mainScroll);
-  // A large-text row can exceed the short landscape pane. Its title must remain
-  // reachable by scrolling that pane, not necessarily visible at its bottom edge.
+  const main = page.locator('.home-content');
+  expect(await main.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true);
+  const lastQuestion = attention.getByText('Question 30', { exact: true });
+  await lastQuestion.scrollIntoViewIfNeeded();
+  await expect(lastQuestion).toBeInViewport();
   await todos.getByText('Saved to-do 30', { exact: true }).scrollIntoViewIfNeeded();
   await expect(todos.getByText('Saved to-do 30', { exact: true })).toBeInViewport();
-  await page.screenshot({ path: info.outputPath('full-independent-scroll.png') });
+  expect(await main.evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
+  // Expanding requests never resizes the resource panel beside or below it.
+  const resourcesAfter = (await resources.boundingBox())!;
+  expect(Math.abs(resourcesAfter.height - resourcesBefore.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(resourcesAfter.width - resourcesBefore.width)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath('full-page-scroll.png') });
 
   questionCount = 0;
   todoCount = 0;
@@ -139,7 +144,7 @@ test('attention and to-dos grow from compact panels to independently scrolling s
   await expect(attention.locator('.attention-item')).toHaveCount(0);
   await expect(todos.locator('.todo-list > li')).toHaveCount(0);
   await expect
-    .poll(async () => (await panel.boundingBox())!.height)
+    .poll(async () => (await attention.boundingBox())!.height)
     .toBeLessThanOrEqual(emptyHeight + 1);
 });
 

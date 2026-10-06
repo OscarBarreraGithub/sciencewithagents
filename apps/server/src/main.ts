@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { Store } from './store.js';
 import { Runtime } from './runtime.js';
 import { createServer } from './server.js';
+import { localEntryOptions, phoneEntryOptions, type SharedEntryServices } from './entry-options.js';
 import { binary, dataDir, port, repoRoot } from './paths.js';
 import { DemoProvider, seedDemo } from './demo.js';
 import { PhoneAccess, readPhoneConfig } from './phone-access.js';
@@ -16,6 +17,7 @@ import { PublishingAccounts } from './publishing-accounts.js';
 import { PhoneTunnel } from './phone-tunnel.js';
 import { PhoneSetup } from './phone-setup.js';
 import { Hosts } from './hosts.js';
+import { PushNotifications, phoneDeviceState } from './push-notifications.js';
 import { VscodeMirrors } from './vscode-mirror.js';
 import { CodexDaemonChats } from './codex-daemon-chats.js';
 import { prepareAgentClient } from './agent-client.js';
@@ -66,6 +68,7 @@ let ownerTerminals: OwnerTerminals | undefined;
 let backups: SourceBackups | undefined;
 let hosts: Hosts | undefined;
 let notebookGateway: NotebookGateway | undefined;
+let notifications: PushNotifications | undefined;
 let app: Awaited<ReturnType<typeof createServer>> | undefined;
 let remote: Awaited<ReturnType<typeof createServer>> | undefined;
 let phoneStarting: Promise<void> | undefined;
@@ -104,6 +107,7 @@ function stop() {
     await close(() => ownerTerminals?.close());
     await Promise.all([close(() => remote?.close()), close(() => app?.close())]);
     await close(() => hosts?.close());
+    await close(() => notifications?.close());
     await runtimeClosing;
     await close(() => store?.close());
     if (process.env.DOCK_LAUNCHER_LIFETIME === '1') {
@@ -181,6 +185,13 @@ startup = (async () => {
       : undefined,
   );
   const phone = new PhoneAccess(store, phoneConfig, undefined, phoneIssue);
+  if (!demo)
+    try {
+      notifications = new PushNotifications(root, { deviceState: phoneDeviceState(phone) });
+    } catch {
+      // Optional: the app runs without push if its private key storage cannot open.
+      notifications = undefined;
+    }
   let notebookConfig: ReturnType<typeof readNotebookConfig> = null;
   let notebookIssue: string | undefined;
   if (!demo) {
@@ -242,6 +253,18 @@ startup = (async () => {
     }
   }
   checkStopping();
+  const shared: SharedEntryServices = {
+    phone,
+    notebookGateway,
+    terminals,
+    ownerTerminals,
+    mirrors,
+    backups,
+    hosts,
+    publishing,
+    notifications,
+    ready,
+  };
   const activatePhone = () => {
     if (phoneStarting) return phoneStarting;
     phoneStarting = (async () => {
@@ -249,21 +272,14 @@ startup = (async () => {
       if (remote) return;
       if (!phone.config) throw new Error('Phone setup is incomplete.');
       try {
-        remote = await createServer(store!, runtime!, {
-          port: phone.config.port,
-          webDir: join(repoRoot, 'apps/web/dist'),
-          phone,
-          notebookGateway,
-          terminals,
-          ownerTerminals,
-          mirrors,
-          backups,
-          hosts,
-          publishing,
-          remote: true,
-          ownsRuntime: false,
-          ready,
-        });
+        remote = await createServer(
+          store!,
+          runtime!,
+          phoneEntryOptions(shared, {
+            port: phone.config.port,
+            webDir: join(repoRoot, 'apps/web/dist'),
+          }),
+        );
         checkStopping();
         await remote.listen({ host: '127.0.0.1', port: phone.config.port });
         checkStopping();
@@ -285,27 +301,21 @@ startup = (async () => {
   const phoneSetup = demo
     ? undefined
     : new PhoneSetup(phone, root, port, activatePhone, undefined, () => !stopping);
-  app = await createServer(store, runtime, {
-    port,
-    webDir: join(repoRoot, 'apps/web/dist'),
-    agentClient: prepareAgentClient(root, port),
-    localAccess: demo ? undefined : new LocalAccess(prepareLocalAccess(root, port)),
-    devPort: process.env.DOCK_DEV === '1' ? 5178 : undefined,
-    demo,
-    phone,
-    notebookGateway,
-    tunnel,
-    phoneSetup,
-    repairPhoneListener: activatePhone,
-    mirrors,
-    terminals,
-    ownerTerminals,
-    backups,
-    hosts,
-    publishing,
-    ownsRuntime: false,
-    ready,
-  });
+  app = await createServer(
+    store,
+    runtime,
+    localEntryOptions(shared, {
+      port,
+      webDir: join(repoRoot, 'apps/web/dist'),
+      agentClient: prepareAgentClient(root, port),
+      localAccess: demo ? undefined : new LocalAccess(prepareLocalAccess(root, port)),
+      devPort: process.env.DOCK_DEV === '1' ? 5178 : undefined,
+      demo,
+      tunnel,
+      phoneSetup,
+      repairPhoneListener: activatePhone,
+    }),
+  );
   checkStopping();
   await app.listen({ host: '127.0.0.1', port });
   checkStopping();

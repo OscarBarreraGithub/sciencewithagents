@@ -9,7 +9,7 @@ export const jobEstimateSchema = z
     tokenBudget: z
       .number()
       .int()
-      .min(100)
+      .min(0)
       .max(100_000_000)
       .default(500_000)
       .describe(

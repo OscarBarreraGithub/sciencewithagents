@@ -44,6 +44,7 @@ export * from './phone.js';
 export * from './backups.js';
 export * from './recovery-backups.js';
 export * from './attention.js';
+export * from './notifications.js';
 export * from './scheduler.js';
 export * from './history.js';
 export * from './workspace-state.js';
@@ -530,6 +531,9 @@ export const reviewSchema = z
     evidence: z.string().min(1).max(5000),
   })
   .strict();
+// z.toJSONSchema cannot express the refinement below, so advertise it as text.
+const inspectTargetRule =
+  'Choose one inspection target per call: agentId, taskId, history, read, catalog, workItems, ownerRequests, goal, models, capacity, resources, scheduling, accounting or cluster. {} reads the project overview; changes:true requires taskId and provider applies only with models:true.';
 export const inspectSchema = z
   .object({
     agentId: id.optional(),
@@ -565,6 +569,7 @@ export const inspectSchema = z
         value.catalog,
         value.workItems,
         value.ownerRequests,
+        value.goal,
         value.models,
         value.capacity,
         value.resources,
@@ -572,8 +577,9 @@ export const inspectSchema = z
         value.accounting,
         value.cluster,
       ].filter(Boolean).length <= 1,
-    'Choose one inspection target.',
-  );
+    `${inspectTargetRule} Make separate dock_inspect calls, for example {workItems:{...}} and then {ownerRequests:{...}}.`,
+  )
+  .describe(inspectTargetRule);
 export const checkpointSchema = z.object({ summary: z.string().min(1).max(8000) }).strict();
 export const commandSchema = z
   .object({ key: id, command: z.enum(['compact', 'new', 'resume', 'interrupt']) })

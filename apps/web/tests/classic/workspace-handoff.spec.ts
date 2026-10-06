@@ -1,7 +1,7 @@
 import { test, expect, type Page } from './fixture';
 import { randomUUID } from 'node:crypto';
 
-const origin = 'http://127.0.0.1:4339';
+const origin = process.env.DOCK_E2E_ORIGIN ?? 'http://127.0.0.1:4339';
 async function project(page: Page) {
   const response = await page.request.post('/api/projects', {
     headers: { Origin: origin },
@@ -27,7 +27,7 @@ async function selectProject(page: Page, name: string) {
   await expect(
     page.getByRole('heading', { name: `${name} manager`, exact: true, level: 1 }),
   ).toBeVisible();
-  await expect(page.getByText('Draft saved', { exact: true })).toBeVisible();
+  await expect(page.locator('.draft-handoff [data-draft="saved"]')).toBeVisible();
 }
 async function renameBrowser(page: Page, name: string) {
   await openSidebar(page);
@@ -62,14 +62,14 @@ test('different devices keep separate drafts and one copied draft has one delive
     const secondInput = second.getByRole('textbox', { name: `Message ${fixture.name} manager` });
     const text = `One shared delivery ${randomUUID()}`;
     await firstInput.fill(text);
-    await expect(page.getByText('Draft saved', { exact: true })).toBeVisible();
+    await expect(page.locator('.draft-handoff [data-draft="saved"]')).toBeVisible();
     await secondInput.fill('Separate phone typing');
-    await expect(second.getByText('Draft saved', { exact: true })).toBeVisible();
+    await expect(second.locator('.draft-handoff [data-draft="saved"]')).toBeVisible();
     await page.reload();
     await expect(firstInput).toHaveValue(text);
     await expect(secondInput).toHaveValue('Separate phone typing');
     await secondInput.fill('');
-    await expect(second.getByText('Draft saved', { exact: true })).toBeVisible();
+    await expect(second.locator('.draft-handoff [data-draft="saved"]')).toBeVisible();
     await second.reload();
     await second.getByText(/^Drafts from other browsers/).click();
     await second.getByRole('button', { name: 'Copy draft here from First browser' }).click();
@@ -179,9 +179,9 @@ test('stale tabs retain both versions and require an explicit draft choice', asy
     await other.goto(origin);
     const firstInput = page.getByRole('textbox', { name: `Message ${fixture.name} manager` });
     const otherInput = other.getByRole('textbox', { name: `Message ${fixture.name} manager` });
-    await expect(other.getByText('Draft saved', { exact: true })).toBeVisible();
+    await expect(other.locator('.draft-handoff [data-draft="saved"]')).toBeVisible();
     await firstInput.fill('First tab saved this version');
-    await expect(page.getByText('Draft saved', { exact: true })).toBeVisible();
+    await expect(page.locator('.draft-handoff [data-draft="saved"]')).toBeVisible();
     await otherInput.fill('Second tab still has its own typing');
     await expect(other.getByRole('button', { name: 'Keep my text', exact: true })).toBeVisible();
     await expect(otherInput).toHaveValue('Second tab still has its own typing');
@@ -194,7 +194,7 @@ test('stale tabs retain both versions and require an explicit draft choice', asy
     expect(before.own.text).toBe('First tab saved this version');
     await other.getByRole('button', { name: 'Keep my text', exact: true }).click();
     await expect(other.getByRole('button', { name: 'Keep my text', exact: true })).toHaveCount(0);
-    await expect(other.getByText('Draft saved', { exact: true })).toBeVisible();
+    await expect(other.locator('.draft-handoff [data-draft="saved"]')).toBeVisible();
     const after = await (
       await page.request.get(`/api/workspace/${clientId}/drafts/${fixture.managerId}`)
     ).json();

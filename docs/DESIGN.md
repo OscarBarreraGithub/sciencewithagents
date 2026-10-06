@@ -10,16 +10,22 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   Use the available desktop width and height; avoid a narrow, left-aligned working area.
 - Show remaining allowance, reset/freshness detail and the selected computer. On mobile,
   allowance scrolls away instead of consuming space throughout the page.
-- Keep For your attention and General to-do compact when empty, growing with content up to
-  a bounded height. Their lists then scroll independently. To-do entry is multiline.
-  Opening the phone keyboard must not shrink the cards above it or change those list caps;
-  keep their content sizes stable while the outer viewport makes room for typing.
+- For your attention is one upper-right frame with a row per running or needy project:
+  name, specific current work from retained task/queue evidence (else a labelled
+  “Last checkpoint” from the manager, never presented as present work), Codex and Claude %/h for
+  each actual reported window (stale/unknown labelled), and a request count only when nonzero.
+  The count expands that project's requests in place; computer/cluster requests get their own
+  row. On narrow frames (phones and most desktops) the name and count share the first line and
+  each provider's rate sits below with its own label; work previews wrap rather than truncate.
+  Lists never scroll inside the page and expanding never resizes neighbouring panels.
+- Project hourly rates may show an adaptive suggestion only from a ready reading; it fills an
+  unsaved field and saves only on the owner's explicit choice. Saved caps (including 0) win;
+  other readings show their reason with a blank manual field or shared pace.
+- To-dos have their own panel: an optional one-line title above notepad-style notes, and
+  each saved item is a distinct card. Opening the phone keyboard must not resize the cards above.
 - Human items have a short explanation, project context and a direct route to answer.
-  The running-project table shows the actual request; both its link and arrow open that item.
   Human questions open their answer form in Notes, with the request above the other notes.
   Internal manager work is separate. Display unresolved questions, not a wall of status boxes.
-- Running projects show usage-rate estimates, activity and manager links, with sortable
-  columns. Use readable precision and the title “% usage / hour”; avoid a redundant rate legend.
 - Keep a small, low-compute interactive orb beside the computer/allowance area. Tap selects
   varied shapes at random, with no pointer outline. Idle behavior should be quiet and respect
   reduced motion; do not trade phone responsiveness for decoration.

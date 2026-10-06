@@ -79,6 +79,30 @@ Verify the new icon opens the same paired workspace without another verification
 erase working browser data as a first repair. An installed icon does not add an offline
 command queue, guarantee storage survival or make the host available while it is off.
 
+## Notifications
+
+**Settings → Notifications** is off until the owner presses **Turn on notifications on this
+device** (the browser permission prompt only follows that button) and checks individual
+projects. iPhone/iPad need iOS 16.4+ and the Home Screen app; Safari tabs cannot subscribe.
+[WebKit's web push boundary](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)
+
+Only new attention items that stop work without the owner notify: pending approvals, tasks
+needing a decision, and failed or interrupted runs. Ready-to-apply changes, backups, items
+already present when notifications were enabled, stops caused by the owner's own chat action
+(such as **Stop**) and blockers resolved within 45 seconds stay silent. So does an interrupted
+run held by a typed QUARK pause cause (manager/owner, project schedule, budget cap) or an
+allowance wait QUARK resumes itself; lost-acknowledgement holds, unheld interruptions and
+failures still notify. Each project sends at most one combined message per 10 minutes; one
+item notifies at most once per 6 hours. Messages name the project and kind of stop only. A tap
+opens a new window on the entry computer (`?computer=entry`). That window keeps the entry
+computer across reloads until a computer is chosen in it; other tabs, their drafts and the
+saved computer selection are untouched. An invalid `vapid.json` keeps
+notifications off and is never replaced automatically. The push ledger, keys and subscriptions stay in
+`data/push/` (owner-only); delivery uses the browser's standard push service with VAPID.
+A subscription belongs to the paired device or local owner that created it. Revoking a device
+deletes its subscription; turning phone access off pauses delivery. Gone endpoints and
+repeated failures are pruned. Notifications cover the entry computer's projects only.
+
 ## Preserve these behaviors in every redesign
 
 - [ ] QR handoff removes its secret fragment before React/API startup; code remains in page

@@ -1,0 +1,56 @@
+.notification-settings {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.notification-settings h4 {
+  margin: 8px 0 0;
+}
+.notification-settings p {
+  margin: 0;
+}
+.notification-settings-note {
+  color: var(--muted, #6b6a66);
+  font-size: 0.92em;
+}
+.notification-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.notification-settings .notification-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 0;
+  font-size: inherit;
+  font-weight: 400;
+  color: var(--ink, inherit);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.notification-settings .notification-toggle input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+.notification-projects,
+.notification-devices {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.notification-devices li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+}

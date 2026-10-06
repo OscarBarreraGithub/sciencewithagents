@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { Home } from './home/Home';
 import { PhoneGate } from './PhoneAccess';
 import './styles.css';
-import { apiScope } from './api';
+import { apiScope, selectComputer } from './api';
 import { readPairingCode } from './pairing-link';
 
 // Keep scan input only in this document. StrictMode may initialize components twice;
@@ -35,9 +35,8 @@ function WorkspaceApp() {
       <ClassicApp
         key={apiScope()}
         onHostChange={(id) => {
-          localStorage.setItem('dock:host', id);
           setSwitching(true);
-          window.location.reload();
+          selectComputer(id);
         }}
       />
     </Suspense>

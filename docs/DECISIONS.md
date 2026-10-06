@@ -75,8 +75,8 @@ for Claude. It lowers each actual reported window's effective reserve to zero on
 window's fresh future reset interval; it never invents a refill or weekly meter. New empty
 installations enable shared protection with 20% reserves. Existing saved settings and off
 choices are preserved; an owner explicitly enables protection when it is off.
-Adaptive spending to finish about 15 minutes before reset remains
-TODO, beyond this deterministic rule.
+Spending toward a reset uses the bounded fast-window admission
+[pace](QUARK.md#adaptive-window-pace), not a separate finish-before-reset controller.
 
 Detailed accounting remains queryable by agents. QUARK forecasts five-hour capacity and sends
 advisory coordinator wakeups; using spare allowance stays agent-led, without guaranteed window

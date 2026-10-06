@@ -15,6 +15,9 @@ Spawn creates a fresh manager even for a previously connected folder. Chat confi
 remove a stopped manager, cancelling queued work while retaining files and saved history.
 Computer health links selected process/script identities to QUARK jobs and wakes bounded
 diagnostics for sustained resource changes, with cooldowns and a daily attempt limit.
+Opt-in push notifications (source, 2026-10-06) reach both the local and paired-phone entries;
+fixtures and emulated browsers cover routes, typed quiet pauses and entry-scoped taps.
+Physical iPhone delivery and tap acceptance are pending.
 
 The October follow-up source adds an immediate first-project notepad, general file uploads,
 held queued-message editing, Ideas/To-dos with completion recovery, direct owner-authored
@@ -83,8 +86,8 @@ current estimates, a bounded 12-hour history and account depletion forecasts. Ze
 pauses that provider's project work. New reserve settings default to 20% per provider; existing
 settings are retained. An optional timed release lowers a reserve to zero near each fresh,
 reported reset (suggested thresholds: Codex 12 hours, Claude 45 minutes). It is off by default;
-shared pacing must be enabled for reserves to apply. Source (not yet installed) adds per-window adaptive
-pace by project weight. It gates admission only while a window runs fast, never saves caps,
+shared pacing must be enabled for reserves to apply. Adaptive pace follows each reported
+window and weights eligible projects. It gates admission only while a window runs fast, never saves caps,
 and limits automatic coordinator wakes and notices to material unfinished work. Real-account
 pacing behavior is unvalidated. Forecasts include external account activity
 and leave gaps when readings cannot support an estimate.

@@ -32,6 +32,21 @@ import { currentRateSamples, rateHistory } from './quark-rates.js';
 import { managedChat, chatBypassRun, chatBypassAllowed } from './quark-chat.js';
 import { adaptivePace, materialDemand, projectWeight, reservedPercent } from './quark-demand.js';
 
+const transientCauses: QuotaHold['cause'][] = [
+  'hourly',
+  'monitoring',
+  'reset',
+  'headroom',
+  'cache',
+];
+/** Native rate-limit types matched to the exact capacity window QUARK reads. */
+const nativeWindows = {
+  five_hour: { id: 'primary', label: 'five-hour', minutes: 300 },
+  seven_day: { id: 'secondary', label: 'weekly', minutes: 10080 },
+  seven_day_opus: { id: 'extra:seven_day_opus', label: 'Opus weekly', minutes: 10080 },
+  seven_day_sonnet: { id: 'extra:seven_day_sonnet', label: 'Sonnet weekly', minutes: 10080 },
+} as const;
+
 const unknown: TokenCounts = {
   totalTokens: null,
   inputTokens: null,
@@ -1288,6 +1303,49 @@ export class Quark {
     };
     return withinTransaction ? save() : this.store.transaction(save);
   }
+  /**
+   * Typed native primary-window rejection for the current owned turn. Existing
+   * explicit holds win; evidence is written once and never refreshed by later frames.
+   */
+  nativeExhaustion(
+    run: PrivateRun,
+    event: {
+      sessionId: string;
+      rateLimitType: NonNullable<QuotaHold['nativeExhaustion']>['rateLimitType'];
+      resetsAtSeconds: number;
+    },
+  ) {
+    const window = nativeWindows[event.rateLimitType];
+    const resetsAt = event.resetsAtSeconds * 1000;
+    if (
+      run.status !== 'running' ||
+      resetsAt <= this.clock() ||
+      resetsAt > this.clock() + (window.minutes + 10) * 60_000
+    )
+      return null;
+    return this.store.transaction(() => {
+      const old = this.holds().find((h) => h.runId === run.id);
+      if (old && (old.nativeExhaustion || !transientCauses.includes(old.cause))) return old;
+      const reason = `Claude reported its ${window.label} allowance exhausted until ${new Date(resetsAt).toISOString().slice(0, 16).replace('T', ' ')} UTC. QUARK resumes once after a fresh reading shows that window reset.`;
+      const hold = this.hold(run, reason, true, 'reset');
+      const value = quotaHoldSchema.parse({
+        ...hold,
+        cause: 'reset',
+        reason,
+        nativeExhaustion: {
+          source: 'claude-rate-limit-event',
+          sessionId: event.sessionId,
+          runId: run.id,
+          rateLimitType: event.rateLimitType,
+          windowId: window.id,
+          resetsAt: new Date(resetsAt).toISOString(),
+          observedAt: stamp(this.clock()),
+        },
+      });
+      this.store.setSetting(`quark:hold:${run.id}`, value);
+      return value;
+    });
+  }
   recordStop(runId: string, error: string | null) {
     const value = this.holds().find((h) => h.runId === runId);
     if (value)
@@ -1308,11 +1366,7 @@ export class Quark {
   }
   recoverTransient(excluded: ReadonlySet<string>) {
     for (const h of this.holds()) {
-      if (
-        !['hourly', 'monitoring', 'reset', 'headroom', 'cache'].includes(h.cause) ||
-        !h.stopAcknowledgedAt ||
-        excluded.has(h.agentId)
-      )
+      if (!transientCauses.includes(h.cause) || !h.stopAcknowledgedAt || excluded.has(h.agentId))
         continue;
       const run = this.store.run(h.runId);
       if (!['interrupted', 'completed'].includes(run.status)) continue;
@@ -1324,6 +1378,19 @@ export class Quark {
         (cap.stale || !cap.observedAt || Date.parse(cap.observedAt) <= Date.parse(h.createdAt))
       )
         continue;
+      const native = h.nativeExhaustion;
+      if (native) {
+        // Elapsed time or a low same-window reading is not a reset. Only the
+        // exact rejected window reporting a later reset proves rollover.
+        const w = cap.windows.find((w) => w.id === native.windowId);
+        if (
+          Date.parse(cap.observedAt!) <= Date.parse(native.observedAt) ||
+          !w?.resetsAt ||
+          Date.parse(w.resetsAt) <= Date.parse(native.resetsAt) ||
+          sameAllowanceReset(w.resetsAt, native.resetsAt)
+        )
+          continue;
+      }
       const block = this.block(run, true, true, false);
       if (block?.cause === 'budget') {
         // A recovered reading can reveal spending that arrived after the outage.

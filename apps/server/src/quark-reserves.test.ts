@@ -231,3 +231,93 @@ it('resumes retained headroom-held progress once, only after a genuine reported 
   expect(resumes()[0]!.text).toContain('Inspect retained progress');
   expect(store.events().filter((e) => e.type === 'quark.resumed')).toHaveLength(1);
 });
+
+it('resumes a native primary-window rejection once, only after that exact window rolls over', () => {
+  store.setSetting('pulsar:policy', { enabled: true, reservePercent: 5 });
+  const reset = start + 60 * 60_000;
+  usage('claude', 40, reset);
+  const r = run('claude');
+  const agentId = r.agentId;
+  store.updateRun(r.id, { status: 'running' });
+  const evidence = (at: number, type: 'five_hour' | 'seven_day_opus' = 'five_hour') => ({
+    sessionId: randomUUID(),
+    rateLimitType: type,
+    resetsAtSeconds: Math.floor(at / 1000),
+  });
+  // Expired and implausibly distant resets never create a hold.
+  expect(quark.nativeExhaustion(store.run(r.id), evidence(start - 1000))).toBeNull();
+  expect(quark.nativeExhaustion(store.run(r.id), evidence(start + 6 * 3600_000))).toBeNull();
+  const hold = quark.nativeExhaustion(store.run(r.id), evidence(reset))!;
+  expect(hold.nativeExhaustion).toMatchObject({ windowId: 'primary', runId: r.id });
+  // Later frames never rewrite the immutable evidence.
+  quark.nativeExhaustion(store.run(r.id), evidence(reset + 30 * 60_000));
+  expect(quark.holds()[0]!.nativeExhaustion).toEqual(hold.nativeExhaustion);
+  const resumes = () =>
+    store.runs(['queued']).filter((x) => x.agentId === agentId && x.kind === 'resume');
+  // A genuine rollover cannot resume before the native stop is confirmed.
+  vi.setSystemTime(reset + 60_000);
+  usage('claude', 1, Date.now() + 300 * 60_000);
+  quark.recoverTransient(new Set());
+  expect(resumes()).toHaveLength(0);
+  vi.setSystemTime(start + 60_000);
+  store.updateRun(r.id, { status: 'interrupted' });
+  store.updateAgent(agentId, { status: 'interrupted', turnId: null });
+  quark.acknowledgeStop(r.id);
+  // A fresh but low same-window reading is not a reset.
+  vi.setSystemTime(start + 120_000);
+  usage('claude', 3, reset);
+  quark.recoverTransient(new Set());
+  // Elapsed reset time without a new report is not a reset either.
+  vi.setSystemTime(reset + 60_000);
+  quark.recoverTransient(new Set());
+  expect(resumes()).toHaveLength(0);
+  // Queue holds and automatic-turn caps still protect the work after rollover.
+  usage('claude', 2, Date.now() + 300 * 60_000);
+  store.setSetting(`pulsar:held:${r.id}`, true);
+  quark.recoverTransient(new Set());
+  store.setSetting(`pulsar:held:${r.id}`, false);
+  store.updateAgent(agentId, { autoTurns: 1000 });
+  quark.recoverTransient(new Set());
+  expect(resumes()).toHaveLength(0);
+  store.updateAgent(agentId, { autoTurns: 0 });
+  quark.recoverTransient(new Set());
+  quark.recoverTransient(new Set());
+  expect(quark.holds()).toHaveLength(0);
+  expect(resumes()).toHaveLength(1);
+  expect(store.events().filter((e) => e.type === 'quark.resumed')).toHaveLength(1);
+});
+
+it('keeps explicit holds and requires the exact native weekly window to be reported', () => {
+  store.setSetting('pulsar:policy', { enabled: true, reservePercent: 5 });
+  usage('claude', 40, start + 60 * 60_000);
+  const manual = run('claude');
+  store.updateRun(manual.id, { status: 'running' });
+  quark.hold(store.run(manual.id), 'Owner paused this work.');
+  const kept = quark.nativeExhaustion(store.run(manual.id), {
+    sessionId: randomUUID(),
+    rateLimitType: 'five_hour',
+    resetsAtSeconds: Math.floor((start + 3600_000) / 1000),
+  })!;
+  expect(kept).toMatchObject({ cause: 'manual', reason: 'Owner paused this work.' });
+  expect(kept.nativeExhaustion).toBeUndefined();
+  const weekly = run('claude');
+  store.updateRun(weekly.id, { status: 'running' });
+  quark.nativeExhaustion(store.run(weekly.id), {
+    sessionId: randomUUID(),
+    rateLimitType: 'seven_day_opus',
+    resetsAtSeconds: Math.floor((start + 2 * 86400_000) / 1000),
+  });
+  store.updateRun(weekly.id, { status: 'interrupted' });
+  store.updateAgent(weekly.agentId, { status: 'interrupted', turnId: null });
+  quark.acknowledgeStop(weekly.id);
+  // A fresh primary rollover without the Opus weekly window never resumes it.
+  vi.setSystemTime(start + 3 * 86400_000);
+  usage('claude', 1, Date.now() + 300 * 60_000);
+  quark.recoverTransient(new Set());
+  expect(
+    quark
+      .holds()
+      .map((h) => h.runId)
+      .sort(),
+  ).toEqual([manual.id, weekly.id].sort());
+});

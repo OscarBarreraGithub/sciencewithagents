@@ -1,5 +1,13 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { snapshotSchema, pulsarStatusSchema, jobEstimateSchema } from '@dock/shared';
+
+/** Requests sit under their project's count; open every collapsed project row. */
+async function openRequests(panel: Locator) {
+  const counts = panel.locator('button.attention-project-count');
+  await expect(counts.first()).toBeVisible();
+  for (const count of await counts.all())
+    if ((await count.getAttribute('aria-expanded')) === 'false') await count.click();
+}
 
 async function fixture(page: Page) {
   const snapshot = snapshotSchema.parse(await (await page.request.get('/api/snapshot')).json());
@@ -76,6 +84,7 @@ test('queued budgets need attention with an idle manager and jump to the QUARK c
   });
   await page.goto('/#/home');
   const panel = page.getByRole('region', { name: 'For your attention', exact: true });
+  await openRequests(panel);
   const link = panel.getByRole('link', { name: /Budget needs attention/ });
   await expect(link).toHaveAttribute('href', `#/work/${job.budgetBlock!.targetId}`);
   await expect(panel).not.toContainText('Nothing needs you');
@@ -116,6 +125,7 @@ test('only typed budget refusals appear; failed queue reads cannot say nothing n
   });
   await page.goto('/#/home');
   const panel = page.getByRole('region', { name: 'For your attention', exact: true });
+  await openRequests(panel);
   await expect(panel.getByRole('link', { name: /Budget needs attention/ })).toHaveCount(1);
   for (const next of ['waiting', 'manual', 'recovered'] as const) {
     mode = next;
@@ -129,6 +139,7 @@ test('only typed budget refusals appear; failed queue reads cannot say nothing n
   await expect(panel).toContainText('Requests will appear when the computer reconnects.');
   mode = 'budget';
   await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
+  await openRequests(panel);
   await expect(panel.getByRole('link', { name: /Budget needs attention/ })).toHaveCount(1);
 });
 
@@ -144,9 +155,9 @@ test('a project budget refusal jumps to its project cap card', async ({ page }) 
   );
   await page.route('**/api/quark/coordinator', (route) => route.fulfill({ json: coordinator }));
   await page.goto('/#/home');
-  const link = page
-    .getByRole('region', { name: 'For your attention', exact: true })
-    .getByRole('link', { name: /Budget needs attention/ });
+  const panel = page.getByRole('region', { name: 'For your attention', exact: true });
+  await openRequests(panel);
+  const link = panel.getByRole('link', { name: /Budget needs attention/ });
   await expect(link).toHaveAttribute('href', `#/work/${project.id}`);
   await link.click();
   const windowLabel =

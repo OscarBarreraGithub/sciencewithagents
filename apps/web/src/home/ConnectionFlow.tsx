@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { AppUpdates } from './AppUpdates';
 import {
   ArrowUpRight,
+  Bell,
   DatabaseBackup,
   Laptop,
   Settings2,
@@ -12,11 +13,12 @@ import {
   TerminalSquare,
 } from 'lucide-react';
 import { frontdeskStatusSchema } from '@dock/shared';
-import { api, apiScope } from '../api';
+import { api, apiScope, selectComputer } from '../api';
 import { FrontdeskSettings } from '../FrontdeskSettings';
 import { RecoveryBackups } from '../RecoveryBackups';
 import { RetainedBrowserDrafts } from '../RetainedBrowserDrafts';
 import { PhoneSettings } from '../PhoneAccess';
+import { NotificationSettings } from '../NotificationSettings';
 import { HostSelector } from '../HostSelector';
 import { HistoryBrowser } from '../HistoryBrowser';
 import { WorkspacePanel } from '../WorkspacePanel';
@@ -36,6 +38,7 @@ export const connectionPages = new Set([
   'workspace',
   'computers',
   'phone',
+  'notifications',
   'recovery',
   'updates',
 ]);
@@ -97,6 +100,9 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
           <SettingsCard to="phone" title="Phone access" icon={<Smartphone />}>
             Pair a phone, manage its access and add the app to your home screen.
           </SettingsCard>
+          <SettingsCard to="notifications" title="Notifications" icon={<Bell />}>
+            Choose which projects may notify your phone or browser when work stops and needs you.
+          </SettingsCard>
           <SettingsCard to="recovery" title="Recovery copies" icon={<DatabaseBackup />}>
             Keep private copies of your records.
           </SettingsCard>
@@ -116,11 +122,7 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
         <div className="flow-form-panel">
           <HostSelector
             selected={apiScope()}
-            onChange={(id) => {
-              localStorage.setItem('dock:host', id);
-              location.replace(`${location.pathname}${location.search}#/computers`);
-              location.reload();
-            }}
+            onChange={(id) => selectComputer(id, '#/computers')}
           />
         </div>
         <div className="activity-shortcuts">
@@ -147,6 +149,15 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
         </FlowHeading>
         <RecoveryBackups embedded close={() => navigate('settings')} />
         <RetainedBrowserDrafts />
+      </section>
+    );
+  if (page === 'notifications')
+    return (
+      <section className="flow-page connection-page">
+        <FlowHeading label="NOTIFICATIONS" title="Notifications">
+          Off until you turn them on for a device and choose projects.
+        </FlowHeading>
+        <NotificationSettings />
       </section>
     );
   if (page === 'phone')

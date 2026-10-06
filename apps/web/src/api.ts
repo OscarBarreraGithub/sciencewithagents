@@ -1,6 +1,12 @@
 import { detailSchema, snapshotSchema, modelSchema, type AgentDetailChannel } from '@dock/shared';
+// A notification tap opens a new document with `?computer=entry`: its subscription belongs to
+// this entry computer. The marker stays in this document's address, so reloads and in-app
+// routes keep that computer; only an explicit choice here (selectComputer) removes it. The
+// saved selection, other tabs and their drafts are unchanged.
+const entryPinned = new URLSearchParams(location.search).get('computer') === 'entry';
 // The selector is local UI state. Server-side host configuration remains the authority.
 function storedScope() {
+  if (entryPinned) return 'local';
   const selected = localStorage.getItem('dock:host');
   return selected && /^[0-9a-f-]{36}$/i.test(selected) ? selected : 'local';
 }
@@ -12,10 +18,24 @@ export function apiScope() {
   // UI labels and draft keys must agree with the pinned request route until reload.
   return documentScope;
 }
+/** Explicit computer choice: saved for this browser; this document reopens without the marker. */
+export function selectComputer(id: string, hash = location.hash) {
+  localStorage.setItem('dock:host', id);
+  const url = new URL(location.href);
+  url.searchParams.delete('computer');
+  history.replaceState(history.state, '', `${url.pathname}${url.search}${hash}`);
+  location.reload();
+}
 export function apiUrl(path: string) {
   const scope = documentScope;
   // Device enrollment belongs to the entry computer, never a selected downstream host.
-  const local = path.startsWith('/phone/') || path === '/hosts' || path.startsWith('/hosts/');
+  // Push subscriptions belong to this browser's entry computer as well.
+  const local =
+    path.startsWith('/phone/') ||
+    path === '/hosts' ||
+    path.startsWith('/hosts/') ||
+    path === '/notifications' ||
+    path.startsWith('/notifications/');
   return `/api${scope === 'local' || local ? '' : `/hosts/${scope}/proxy`}${path}`;
 }
 export class ApiError extends Error {

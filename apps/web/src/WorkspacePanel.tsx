@@ -177,23 +177,33 @@ export function DraftHandoff({
       <p
         className="muted"
         role="status"
+        data-draft={
+          !draft.ready
+            ? 'connecting'
+            : draft.saving
+              ? 'saving'
+              : draft.unsaved
+                ? 'unsaved'
+                : draft.state?.own.submitted
+                  ? 'receipt'
+                  : 'saved'
+        }
         title={
           compact
             ? 'Drafts are saved separately for this browser. Other devices cannot overwrite them.'
             : undefined
         }
       >
+        {/* Routine autosave (typing, saving, saved) keeps one unchanging line so the composer
+            and conversation never move per keystroke. Failures surface below as alerts; a hung
+            save times out into one. Connecting and delivery receipts are genuine changes. */}
         {!draft.ready
           ? 'Connecting your saved draft…'
-          : draft.saving
-            ? 'Saving your draft…'
-            : draft.unsaved
-              ? 'Your typing is kept here while the draft is saved to this computer.'
-              : draft.state?.own.submitted
-                ? 'This draft has a delivery receipt. Retrying an unchanged copy will not send it twice.'
-                : compact
-                  ? 'Draft saved'
-                  : 'Draft saved separately for this browser. Other devices cannot overwrite it.'}
+          : draft.state?.own.submitted && !draft.unsaved && !draft.saving
+            ? 'This draft has a delivery receipt. Retrying an unchanged copy will not send it twice.'
+            : compact
+              ? 'Draft autosaves on this computer'
+              : 'Draft autosaves separately for this browser. Other devices cannot overwrite it.'}
       </p>
       {draft.error && (
         <div role="alert">

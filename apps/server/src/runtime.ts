@@ -126,6 +126,18 @@ const completedItem = z.object({
   turnId: z.string(),
   item: z.object({ id: z.string(), type: z.string() }).passthrough(),
 });
+/** Text items of a native `turn/start` input, joined as Codex reports its userMessage. */
+function nativeInputText(input: unknown) {
+  const items = z
+    .array(z.object({ type: z.string(), text: z.string().optional() }).passthrough())
+    .safeParse(input);
+  return items.success
+    ? items.data
+        .filter((item) => item.type === 'text')
+        .map((item) => item.text ?? '')
+        .join('\n')
+    : '';
+}
 /** Native Codex MessagePhase is `commentary | final_answer`; anything else stays unknown. */
 const assistantPhase = (value: unknown): Entry['phase'] =>
   value === 'commentary' ? 'commentary' : value === 'final_answer' ? 'final' : undefined;
@@ -1642,7 +1654,7 @@ export class Runtime {
       const reason = this.quark.managerLeaseReason(run);
       if (reason) throw new Conflict(reason);
     } catch (error) {
-      this.quark.hold(run, this.errorText(error));
+      this.quark.hold(run, this.errorText(error), false, this.quark.block(run)?.cause ?? 'lease');
       this.interruptedStarts.add(run.id);
       throw error;
     }
@@ -2074,6 +2086,12 @@ export class Runtime {
         messageId: event.id,
         usage: event.usage,
       });
+    } else if (event.type === 'rate_limit') {
+      // Recorded before the terminal result so finish() closes the owned group
+      // and keeps this turn recoverable instead of a plain failure.
+      if (agent.nativeRootId || event.deliveryId !== run.id || event.sessionId !== agent.threadId)
+        return;
+      this.quark.nativeExhaustion(run, event);
     } else if (event.type === 'result') {
       if (event.deliveryId !== run.id || event.sessionId !== agent.threadId) return;
       recordClaudeUsage(this.store, agentId, {
@@ -2818,6 +2836,25 @@ export class Runtime {
       sent = false,
       finished = false,
       cancelled = false;
+    // The owner's exact native input, captured before forwarding. This explicit entry, not
+    // the generated admission placeholder, is the owner request. Rejected input keeps no
+    // ownerInput marker, so its cancelled run remains the visible delivery state.
+    const ownerText = native && kind === 'turn' ? nativeInputText(params.input) : '';
+    const recordInput = (delivery: 'uncertain' | 'submitted' | 'rejected') => {
+      if (!ownerText || !runId) return;
+      const id = `native-input:${runId}`;
+      this.store.entry({
+        id,
+        agentId,
+        runId,
+        kind: 'user',
+        title: 'You',
+        text: ownerText,
+        status: delivery === 'submitted' ? 'complete' : delivery,
+        createdAt: this.store.savedEntry(agentId, id)?.createdAt ?? now(),
+        ...(delivery === 'rejected' ? {} : { ownerInput: { delivery } }),
+      });
+    };
     return {
       params,
       before: async () => {
@@ -2868,6 +2905,7 @@ export class Runtime {
         if (agent.role === 'manager') this.quark.requireManagerLease(run);
         const reason = this.quark.reason(run, true);
         if (reason) throw new Conflict(reason);
+        recordInput('uncertain');
         sent = true;
         this.store.setSetting(`quark:native-turn:${runId}`, { submitted: true });
         this.quark.begin(run);
@@ -2890,6 +2928,7 @@ export class Runtime {
           this.store.updateRun(runId, { turnId: result.turn.id });
           this.store.updateAgent(agentId, { turnId: result.turn.id });
         }
+        recordInput('submitted');
         finished = true;
       },
       cancel: (reason) => {
@@ -2899,6 +2938,7 @@ export class Runtime {
         if (!runId || finished) return;
         const run = this.store.run(runId);
         if (!sent || (reason === 'rejected' && !run.turnId)) {
+          if (sent) recordInput('rejected');
           this.store.updateRun(run.id, { status: 'cancelled' });
           this.store.updateAgent(agentId, { status: 'idle', turnId: null });
           this.executing.delete(agentId);

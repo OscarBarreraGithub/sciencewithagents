@@ -21,7 +21,10 @@ previews. Work items can link several source messages, and several items can sha
 message. A bare link leaves the message pending review. After reading the whole message and
 mapping its independent asks, the manager records an explicit whole-message disposition.
 That records triage, not completion. Items still need outcome evidence before closing.
-Untriaged inputs return in existing manager boundaries after steering/compaction; no new
+Native terminal turns keep the exact text sent, marked uncertain until Codex acknowledges it.
+Rejected input shows as cancelled. The main conversation shows the captured input; generated
+turn/compaction receipts remain in full history and are never owner requests. Text-free
+attachments remain only in native history. Untriaged inputs return in existing manager boundaries after steering/compaction; no new
 human attention items or model turns are created just to repeat reminders. Managers continue
 independent work while another item waits. See [the manager contract](WORKER_TOOLS.md#manager-contract).
 

@@ -290,6 +290,8 @@ leave the field/press Enter. Rates use percentage points of the full named allow
 rolling hour. Ordinary uncapped work remains on shared pace until you choose a limit.
 Zero pauses only that project's chosen provider while retaining progress. Raising from zero
 permits recovery only after a confirmed stop, fresh readings and room under all other holds.
+A typed native Claude primary-window rejection waits for that window's genuine reported
+reset before one automatic continuation ([details](QUARK_ACCOUNTING.md)).
 Lowering below recent spending can wait for older usage to leave the hour; in-flight work can
 overshoot while stopping. **Total allowance caps** remain secondary cumulative controls.
 Task caps can also use a rolling hour. See [accounting](QUARK_ACCOUNTING.md).

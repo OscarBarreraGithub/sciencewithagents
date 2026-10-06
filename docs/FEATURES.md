@@ -20,6 +20,7 @@ This describes connected source behavior, not a blanket release certification.
 | Cluster notebooks    | Open running compute-node Jupyter notebooks through the existing private SSH connection                          | Phone/selected-computer access needs that worker's separately configured notebook HTTPS address     |
 | Computer health      | Current pressure, charts, project/job attribution, grouped apps/processes and full-screen Ask                    | Detailed probes are macOS-specific; automatic checks are bounded and off on fresh installs          |
 | Phone                | Optional private Tailscale or configured domain, one-time passkey pairing and computer confirmation              | No recurring app lock; physical retention/reconnect needs device acceptance                         |
+| Notifications        | Opt-in push per device and project when approvals, decisions or failed runs stop work                            | Simulated checks only; physical iPhone delivery needs acceptance                                    |
 | Multiple computers   | Select configured hosts with separate accounts/projects/history; two copyable setup prompts                      | Connection is agent-assisted over a verified private route, not automatic discovery                 |
 | Updates and recovery | GitHub update check, automatic pre-update database copy, maintenance-agent assignment and source backups         | Agent handles customizations; quit/reopen is explicit. Source backup excludes private conversations |
 | Provider maintenance | Refresh usage, check native connection, supported CLI update paths                                               | Custom/embedded installations and sign-in may require a person; no silent provider substitution     |
@@ -144,7 +145,11 @@ Native tool catalogs may still retain old tool names, which the backend rejects 
 Stored app conversations and worker records remain searchable in project history even when
 the screen pages old messages. Manager chats keep internal team/QUARK exchanges and routine
 replies in **Subagents → Team activity**. Owner messages, replies to owner-steered turns,
-approvals and human action items remain in the main conversation. The saved history is retained;
+approvals and human action items remain in the main conversation. A provider-marked
+commentary phase joins the collapsed activity row and an explicit final reply stays in the
+timeline. Without a phase, only earlier replies of a completed turn followed by tool activity and
+a later reply on the same page join the row, labelled Earlier replies and still readable; imports,
+running/stopped turns and replies after owner steering stay in the timeline. Routine draft autosave keeps one stable status line; failures alert with Retry. The saved history is retained;
 the two views page their own entries using recorded run provenance.
 Managed chats show up to 200 entries per page; **Latest messages**
 returns to current replies without changing the draft. The Chats finder excludes background

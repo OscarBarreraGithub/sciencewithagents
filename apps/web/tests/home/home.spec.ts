@@ -326,8 +326,8 @@ test('Home shows window-specific rates and keeps a to-do after a lost save respo
     return route.fulfill({ response });
   });
   await page.goto('/');
-  await expect(page.locator('.overview-running')).toContainText('2.4 %/h');
-  await expect(page.locator('.overview-running')).toContainText('Weekly · estimate');
+  await expect(page.locator('.overview-attention')).toContainText('2.4 %/h');
+  await expect(page.locator('.overview-attention')).toContainText('Weekly · estimate');
   const text = `Keep this ${info.project.name} to-do ${Date.now()}`;
   await page.getByRole('textbox', { name: 'New to-do' }).fill(text);
   await page.getByRole('button', { name: 'Add', exact: true }).click();

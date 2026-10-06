@@ -143,9 +143,14 @@ test('Home labels hourly usage directly without the explanatory footer', async (
     });
   });
   await page.goto('/#/home');
-  await expect(page.getByRole('heading', { name: '% usage / hour', exact: true })).toBeVisible();
-  await expect(page.locator('.running-notes')).not.toContainText('%/h:');
-  await expect(page.locator('.overview-running')).toContainText('2.4 %/h');
+  // Usage is labelled per provider inside the project row, without an explanatory footer.
+  const frame = page.getByRole('region', { name: 'For your attention', exact: true });
+  const row = frame.locator('.attention-project').filter({ hasText: project.name });
+  await expect(row).toContainText('2.4 %/h');
+  await expect(row).toContainText('Weekly · estimate');
+  await expect(row.locator('.attention-project-rate').first()).toContainText('Codex %/h');
+  await expect(frame).not.toContainText('%/h:');
+  await expect(frame).not.toContainText('Browser-only estimated usage fixture.');
   await noOverflow(page);
 });
 

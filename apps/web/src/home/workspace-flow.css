@@ -1712,6 +1712,18 @@ button.chat-folder:disabled {
 .tool-group-body .tool-entry {
   margin: 0;
 }
+/* A provider-marked update or an earlier reply of a completed turn, kept with its actions. */
+.tool-group-body .tool-note > small {
+  color: #7a8190;
+  font-weight: 650;
+}
+.tool-group-body .tool-note {
+  padding: 4px 10px;
+  border-left: 2px solid var(--home-line, #e6e0d5);
+  color: #4f4a42;
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
 .tool-group-body .load-history {
   justify-self: start;
 }
