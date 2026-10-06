@@ -20,7 +20,9 @@
   grid-area: main;
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr);
-  grid-template-rows: minmax(min-content, 1.75fr) minmax(min-content, 1fr);
+  /* Only the destination row flexes to fill the screen. A flexible second row would size
+     the fr unit from a long to-do list and stretch the destinations by the same factor. */
+  grid-template-rows: minmax(min-content, 1fr) auto;
   grid-template-areas:
     '. nav'
     'resources todo';
@@ -321,7 +323,13 @@
   font-weight: 680;
   overflow-wrap: anywhere;
 }
+/* Two readable lines; the full saved preview stays in its title and the manager chat. */
 .attention-project-name small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
   color: var(--home-muted);
   font-size: var(--text-small);
   overflow-wrap: anywhere;

@@ -461,7 +461,7 @@ function ProjectAttention({
                   <div className="attention-project-row">
                     <a className="attention-project-name" href={row.href}>
                       <strong>{row.name}</strong>
-                      {row.work && <small>{row.work}</small>}
+                      {row.work && <small title={row.work}>{row.work}</small>}
                     </a>
                     {providers.map((p) =>
                       row.key === 'other' ? (
