@@ -1,5 +1,11 @@
 # Changes
 
+## 0.2.13
+
+Recognize the native parser's explicit rejection of `thread/queue/list` as an unsupported
+native queue. Other invalid requests, malformed responses and connection failures remain
+unreadable; messages queued in sciencewithagents keep their existing delivery behavior.
+
 ## 0.2.12
 
 Keep private Remote SSH connections working with VS Code's default HTTP proxy handling.

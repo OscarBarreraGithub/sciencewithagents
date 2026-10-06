@@ -137,6 +137,20 @@ export type MirrorControl = z.infer<typeof mirrorControlSchema>;
 export type MirrorResult = z.infer<typeof mirrorResultSchema>;
 export type MirrorCommand = z.infer<typeof mirrorCommandSchema>;
 
+/** Only explicit native method rejection establishes that queue reads are unsupported. */
+export function codexQueueUnsupported(error: { code?: number; message: string }): boolean {
+  return (
+    error.code === -32601 ||
+    /^(method not found|unknown method|thread\/queue\/list is not supported)/i.test(
+      error.message,
+    ) ||
+    (error.code === -32600 &&
+      /^Invalid request: unknown variant `thread\/queue\/list`, expected one of\b/i.test(
+        error.message,
+      ))
+  );
+}
+
 // Validate a native queue read before advertising queue capability. Preserve order.
 export function codexQueue(value: unknown): Pick<MirrorState, 'queuedMessages' | 'queueHasMore'> {
   const response = z

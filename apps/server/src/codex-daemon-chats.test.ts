@@ -36,11 +36,8 @@ class Socket extends EventEmitter {
   reply(frame: Frame, result: unknown) {
     this.emit('message', Buffer.from(JSON.stringify({ id: frame.id, result })));
   }
-  reject(frame: Frame, message: string) {
-    this.emit(
-      'message',
-      Buffer.from(JSON.stringify({ id: frame.id, error: { code: -32000, message } })),
-    );
+  reject(frame: Frame, message: string, code = -32000) {
+    this.emit('message', Buffer.from(JSON.stringify({ id: frame.id, error: { code, message } })));
   }
   terminate() {
     if (this.readyState === WebSocket.CLOSED) return;
@@ -69,6 +66,9 @@ function fixture() {
     queue: undefined as unknown[] | undefined,
     queueMore: false,
     queueReadFailure: undefined as string | undefined,
+    queueReadFailureCode: -32000,
+    deferQueueRead: false,
+    queueReadTransportFailure: false,
     historyError: undefined as string | undefined,
     mutation: undefined as ((frame: Frame, socket: Socket) => void) | undefined,
   };
@@ -93,8 +93,11 @@ function fixture() {
             thread: { ...metadata, ...(frame.params.includeTurns ? { turns } : {}) },
           });
         }
+        if (frame.method === 'thread/queue/list' && state.queueReadTransportFailure)
+          return client.emit('error', new Error('The native connection closed.'));
+        if (frame.method === 'thread/queue/list' && state.deferQueueRead) return;
         if (frame.method === 'thread/queue/list' && state.queueReadFailure)
-          return client.reject(frame, state.queueReadFailure);
+          return client.reject(frame, state.queueReadFailure, state.queueReadFailureCode);
         if (frame.method === 'thread/queue/list')
           return state.queue
             ? client.reply(frame, {
@@ -741,3 +744,63 @@ it('reports a transient unreadable queue without hiding readable chat or claimin
     queueReadError: undefined,
   });
 });
+
+it.each([
+  [
+    -32600,
+    'Invalid request: unknown variant `thread/queue/list`, expected one of `initialize`, `thread/start`',
+    'unsupported',
+  ],
+  [-32601, 'The requested method is absent', 'unsupported'],
+  [-32600, 'Invalid request: missing field `threadId`', 'unavailable'],
+  [-32602, 'Invalid params: threadId must be a string', 'unavailable'],
+  [-32600, 'Invalid request: unknown variant `queuePolicy`, expected one of `fifo`', 'unavailable'],
+  [
+    -32000,
+    'Invalid request: unknown variant `thread/queue/list`, expected one of `initialize`',
+    'unavailable',
+  ],
+] as const)(
+  'keeps daemon queue rejection %s %s classified as %s',
+  async (code, message, expected) => {
+    const f = fixture();
+    f.state.queueReadFailureCode = code;
+    f.state.queueReadFailure = message;
+    await f.chats.discover();
+    const state = await f.chats.read(f.chats.windows()[0].windowId);
+    expect(state).toMatchObject({ status: 'idle', canQueue: false, queueReadError: expected });
+    expect(state.queuedMessages).toBeUndefined();
+    expect(f.mutations()).toEqual([]);
+  },
+);
+
+it.each(['timeout', 'network'] as const)(
+  'keeps a daemon queue %s unavailable and recovers only on foreground discovery',
+  async (failure) => {
+    let now = Date.now();
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const f = fixture();
+    f.state.queue = [];
+    await f.chats.discover();
+    const id = f.chats.windows()[0].windowId;
+    f.state.deferQueueRead = failure === 'timeout';
+    f.state.queueReadTransportFailure = failure === 'network';
+    expect(await f.chats.read(id)).toMatchObject({
+      canQueue: false,
+      queueReadError: 'unavailable',
+    });
+    expect(f.chats.windows()).toEqual([]);
+    expect(f.sockets).toHaveLength(1);
+    f.state.deferQueueRead = false;
+    f.state.queueReadTransportFailure = false;
+    now += 2001;
+    await f.chats.discover();
+    expect(f.sockets).toHaveLength(2);
+    expect(await f.chats.read(id)).toMatchObject({
+      canQueue: true,
+      queuedMessages: [],
+      queueReadError: undefined,
+    });
+    expect(f.mutations()).toEqual([]);
+  },
+);

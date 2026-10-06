@@ -125,6 +125,8 @@ and model choices remain. Active work is never discarded by an inactivity timer.
 - **Remote editor:** an owned FASRC Remote SSH Codex fixture passed native sharing, an app
   follow-up, steering acknowledgement and Stop. A zero-turn same-browser check recovered
   history, an unsent draft and the idle composer after private-forward loss without reload.
+  A separate app-queue check held an edited follow-up through native idle and delivered it
+  exactly once after explicit release. The provider's native queue method was unsupported.
   This used 412×915 browser emulation and an owned demo gateway. Companion 0.2.12 corrects
   VS Code proxy handling of the private Unix connection. The fixture required an isolated
   node-local native database override; default cluster startup remains unresolved.

@@ -94,7 +94,10 @@ the native chat. The app computer and remote host must both stay reachable.
 An owned FASRC Remote SSH Codex fixture exercised native sharing, an app follow-up, steering
 acknowledgement and Stop. A zero-turn browser check recovered from a private-forward disconnect
 without reload, preserving history, an unsent draft and the idle composer at 412×915 emulation.
-It used a separate node-local native runtime index; default cluster startup remains unqualified.
+It used a separate node-local SQLite directory. That override is fixture-only because it also
+contains durable goals, memories and jobs; the default startup cause remains unknown.
+Version 0.2.13 corrects native queue unsupported-method classification in focused fixtures;
+the actual remote transport checks used 0.2.12.
 Disposable transport fixtures cover first setup, proxy handling, permission
 refusal, reconnect and stop; these checks do not certify other provider builds or cluster policies.
 

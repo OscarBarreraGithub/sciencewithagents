@@ -705,10 +705,15 @@ export function ProjectConfiguration({
     setError('');
     // A different project request needs a new receipt; worker edits keep it.
     persist({
-      ...spawn,
+      ...latestSpawn.current,
       ...patch,
       ...(identity && !locked ? { createKey: crypto.randomUUID() } : {}),
     });
+  };
+  const editName = (name: string) => {
+    const current = latestSpawn.current;
+    if (current.name === name && current.nameEdited) return;
+    edit({ name, nameEdited: true }, true);
   };
   useEffect(() => {
     const current = latestSpawn.current;
@@ -845,7 +850,7 @@ export function ProjectConfiguration({
     setErrorAtFolder(folder);
     setChoosingFolder(folder);
     try {
-      await step(spawn);
+      await step(latestSpawn.current);
     } catch (reason) {
       setError(
         connectionLost(reason)
@@ -1031,7 +1036,7 @@ export function ProjectConfiguration({
           submit();
         }}
       >
-        <fieldset className="config-section" disabled={busy || locked}>
+        <fieldset className="config-section" disabled={locked || (busy && !choosingFolder)}>
           <legend>Project</legend>
           <div className="config-folder" role="radiogroup" aria-label="Project files">
             {(
@@ -1046,7 +1051,7 @@ export function ProjectConfiguration({
                   name="project-folder"
                   value={value}
                   checked={spawn.folder === value}
-                  disabled={value === 'connect' && canChooseFolder === null}
+                  disabled={busy || (value === 'connect' && canChooseFolder === null)}
                   onChange={() => {
                     if (value === 'connect' && canChooseFolder) void choose();
                     else edit({ folder: value });
@@ -1096,7 +1101,8 @@ export function ProjectConfiguration({
               required
               maxLength={100}
               value={spawn.name}
-              onChange={(event) => edit({ name: event.target.value, nameEdited: true }, true)}
+              onInput={(event) => editName(event.currentTarget.value)}
+              onChange={(event) => editName(event.target.value)}
             />
           </label>
           {spawn.folder === 'connect' && (
@@ -1331,8 +1337,7 @@ export function ProjectConfiguration({
                     'Start a different setup? Anything already created stays in your projects.',
                   )
                 ) {
-                  localStorage.removeItem(setupStorageKey);
-                  setSpawn(freshSpawn());
+                  persist(freshSpawn());
                   setError('');
                 }
               }}

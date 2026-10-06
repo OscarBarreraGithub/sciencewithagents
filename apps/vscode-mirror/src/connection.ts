@@ -1,5 +1,10 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { codexTranscript as transcript, codexQueue, isBackgroundCodexThread } from '@dock/shared';
+import {
+  codexTranscript as transcript,
+  codexQueue,
+  codexQueueUnsupported,
+  isBackgroundCodexThread,
+} from '@dock/shared';
 export { codexTranscript as transcript } from '@dock/shared';
 import type { MirrorState, MirrorSend, MirrorResult, MirrorControl } from '@dock/shared';
 import {
@@ -339,11 +344,7 @@ export class MirrorConnection {
           canQueue = true;
         } catch (error) {
           queueReadError =
-            error instanceof NativeRequestRejected &&
-            (error.code === -32601 ||
-              /^(method not found|unknown method|thread\/queue\/list is not supported)/i.test(
-                error.message,
-              ))
+            error instanceof NativeRequestRejected && codexQueueUnsupported(error)
               ? 'unsupported'
               : 'unavailable';
         }

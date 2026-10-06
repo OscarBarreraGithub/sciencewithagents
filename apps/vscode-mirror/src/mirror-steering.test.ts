@@ -20,6 +20,10 @@ function fixture() {
       | undefined,
     queueMore: false,
     queueReadFailure: undefined as string | undefined,
+    queueReadFailureCode: -32000,
+    deferQueueRead: false,
+    queueReadTransportFailure: false,
+    malformedQueueRead: false,
     rejectQueue: false,
     flags: [] as string[],
     defer: false,
@@ -75,7 +79,11 @@ function fixture() {
         afterRead?.();
       }
       if (method === 'thread/queue/list') {
-        if (state.queueReadFailure) error = { code: -32000, message: state.queueReadFailure };
+        if (state.queueReadTransportFailure) throw new Error('The native connection closed.');
+        if (state.deferQueueRead) return;
+        if (state.queueReadFailure)
+          error = { code: state.queueReadFailureCode, message: state.queueReadFailure };
+        else if (state.malformedQueueRead) result = { data: 'not a queue' };
         else if (state.queue)
           result = { data: state.queue, nextCursor: state.queueMore ? 'next' : null };
         else error = { code: -32601, message: 'Method not found' };
@@ -307,3 +315,67 @@ it('keeps chat readable and exposes a transient queue error separately from unsu
     queueReadError: undefined,
   });
 });
+
+it.each([
+  [
+    -32600,
+    'Invalid request: unknown variant `thread/queue/list`, expected one of `initialize`, `thread/start`',
+    'unsupported',
+  ],
+  [-32601, 'The requested method is absent', 'unsupported'],
+  [-32600, 'Invalid request: missing field `threadId`', 'unavailable'],
+  [-32602, 'Invalid params: threadId must be a string', 'unavailable'],
+  [-32600, 'Invalid request: unknown variant `queuePolicy`, expected one of `fifo`', 'unavailable'],
+  [
+    -32600,
+    'Invalid request: unknown variant `thread/queue/list-item`, expected one of `initialize`',
+    'unavailable',
+  ],
+  [
+    -32000,
+    'Invalid request: unknown variant `thread/queue/list`, expected one of `initialize`',
+    'unavailable',
+  ],
+] as const)('classifies explicit queue rejection %s %s as %s', async (code, message, expected) => {
+  const f = fixture();
+  f.state.queueReadFailureCode = code;
+  f.state.queueReadFailure = message;
+  await f.mirror.select('thread');
+  const state = await f.mirror.read();
+  expect(state).toMatchObject({
+    status: 'busy',
+    canSteer: true,
+    canQueue: false,
+    queueReadError: expected,
+  });
+  expect(state.entries[0]?.text).toBe('Original work');
+  expect(state.queuedMessages).toBeUndefined();
+});
+
+it.each(['timeout', 'network', 'malformed'] as const)(
+  'keeps a %s queue read unavailable and recovers without changing chat',
+  async (failure) => {
+    vi.useFakeTimers();
+    const f = fixture();
+    f.state.queue = [];
+    await f.mirror.select('thread');
+    f.state.deferQueueRead = failure === 'timeout';
+    f.state.queueReadTransportFailure = failure === 'network';
+    f.state.malformedQueueRead = failure === 'malformed';
+    const reading = f.mirror.read(true);
+    if (failure === 'timeout') await vi.advanceTimersByTimeAsync(12001);
+    expect(await reading).toMatchObject({
+      status: 'busy',
+      canQueue: false,
+      queueReadError: 'unavailable',
+    });
+    f.state.deferQueueRead = false;
+    f.state.queueReadTransportFailure = false;
+    f.state.malformedQueueRead = false;
+    expect(await f.mirror.read(true)).toMatchObject({
+      canQueue: true,
+      queuedMessages: [],
+      queueReadError: undefined,
+    });
+  },
+);

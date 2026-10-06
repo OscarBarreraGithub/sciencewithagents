@@ -8,6 +8,7 @@ import { z } from 'zod';
 import {
   codexTranscript,
   codexQueue,
+  codexQueueUnsupported,
   isBackgroundCodexThread,
   mirrorControlSchema,
   mirrorPage,
@@ -363,11 +364,7 @@ export class CodexDaemonChats {
         canQueue = true;
       } catch (error) {
         queueReadError =
-          error instanceof NativeRejected &&
-          (error.code === -32601 ||
-            /^(method not found|unknown method|thread\/queue\/list is not supported)/i.test(
-              error.message,
-            ))
+          error instanceof NativeRejected && codexQueueUnsupported(error)
             ? 'unsupported'
             : 'unavailable';
       }

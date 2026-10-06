@@ -41,9 +41,12 @@ while waiting for history backfill; a separate node-local SQLite directory allow
 without changing the original native configuration. This `sqlite_home` override is fixture-only:
 the directory also contains durable goals, memories and jobs. The default startup cause remains
 unknown; no permanent repair or relocation procedure has been verified.
-Remote native goals and native/app queued-message operations were not exercised; native queue
-reading displayed an error whose unsupported/unavailable classification was not retained.
-Remote app attachments remain explicitly unsupported.
+In a separate real remote check, an app-queued follow-up stayed held while being edited,
+including through native idle, then delivered the edited wording exactly once after Save and queue.
+Companion 0.2.12 retained an explicit unknown-variant parser rejection for `thread/queue/list`;
+the app outbox worked without that native method. Version 0.2.13 classifies it as unsupported in focused fixtures;
+its updated companion has not been exercised remotely.
+Remote native goals were not exercised; remote app attachments remain explicitly unsupported.
 Disposable Unix/WebSocket fixtures cover first-run failure/retry, extension-host
 proxy handling, permissions, reconnect and stop. This preview does not certify other provider
 builds or site policy.
