@@ -1,5 +1,11 @@
 # Changes
 
+## 0.2.11
+
+Prepare structurally compatible provider hooks in Remote SSH Unix hosts only after the
+configured private socket passes its ownership and permission checks. Remote native
+editor acceptance remains separate from transport qualification.
+
 ## 0.2.10
 
 Read, create, pause, resume and clear native Codex goals from a shared conversation in

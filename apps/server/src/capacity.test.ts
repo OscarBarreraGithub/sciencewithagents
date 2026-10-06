@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from './store.js';
 import { CapacityMonitor, parseCapacity, readCapacity } from './capacity.js';
-import { ClaudeCapacityError } from './claude-capacity.js';
+import { ClaudeCapacityError, nativeClaudeFetcher } from './claude-capacity.js';
 
 const dirs: string[] = [];
 const monitors: CapacityMonitor[] = [];
@@ -202,6 +202,64 @@ it('shares a provider retry delay across refresh callers and restart, then clear
     nextRefreshAt: new Date(clock + 300_000).toISOString(),
   });
   expect(readCapacity(reopened, 'claude', clock).message).not.toContain('limiting');
+});
+it('recovers native Claude sign-in after repeated local failures without extending its shared minute retry', async () => {
+  const { root, store } = fixture();
+  let clock = stamp,
+    attempts = 0,
+    usageRequests = 0,
+    signedIn = true;
+  const reader = nativeClaudeFetcher({
+    affinity: async () => {
+      if (!signedIn) throw new Error('Native sign-in unavailable');
+      return 'fixture-account';
+    },
+    credential: async () => 'fixture-token',
+    clock: () => clock,
+    fetch: async () => {
+      usageRequests++;
+      return new Response(
+        JSON.stringify({ five_hour: { utilization: 8, resets_at: null }, seven_day: null }),
+      );
+    },
+  });
+  const monitor = new CapacityMonitor(
+    store,
+    root,
+    async (_provider, signal) => {
+      attempts++;
+      return reader(signal);
+    },
+    () => clock,
+  );
+  monitors.push(monitor);
+  await monitor.refresh('claude');
+  const good = readCapacity(store, 'claude', clock);
+  clock = Date.parse(good.nextRefreshAt!);
+  signedIn = false;
+  for (let failures = 0; failures < 6; failures++) {
+    const before = attempts;
+    await Promise.all(Array.from({ length: 20 }, () => monitor.refresh('claude')));
+    const failed = readCapacity(store, 'claude', clock);
+    expect(attempts).toBe(before + 1);
+    expect(usageRequests).toBe(1);
+    expect(failed).toMatchObject({ state: 'error', stale: true, observedAt: good.observedAt });
+    expect(failed.windows).toEqual(good.windows);
+    expect(Date.parse(failed.nextRefreshAt!) - clock).toBe(60_000);
+    clock = Date.parse(failed.nextRefreshAt!) - 1;
+    await Promise.all(Array.from({ length: 20 }, () => monitor.refresh('claude')));
+    expect(attempts).toBe(before + 1);
+    clock++;
+  }
+  signedIn = true;
+  await Promise.all(Array.from({ length: 20 }, () => monitor.refresh('claude')));
+  expect(usageRequests).toBe(2);
+  expect(readCapacity(store, 'claude', clock)).toMatchObject({
+    state: 'ready',
+    stale: false,
+    observedAt: new Date(clock).toISOString(),
+    nextRefreshAt: new Date(clock + 300_000).toISOString(),
+  });
 });
 it('binds the owner’s no-weekly statement to one verified account, without inferring it for another', async () => {
   const { root, store } = fixture();

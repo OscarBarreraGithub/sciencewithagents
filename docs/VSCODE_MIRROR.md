@@ -24,6 +24,11 @@ The owner manages the existing native SSH forward; the companion reconnects ever
 reports its failure in connection setup/status, and closes only its own sockets/timers on stop
 or setting changes. It never replays pending sends. The [remote setup guide](../apps/vscode-mirror/README.md#remote-ssh-workspaces)
 has a copyable setup prompt and exact-forward cancellation instructions.
+Provider hook preparation on a remote Unix host requires that explicit socket to pass the
+same canonical ownership/permission checks first. Unsupported local platform setup still
+refuses; remote provider structure and exact backup/restore checks remain unchanged.
+An exact recognized hook can be verified without a currently live forward, so an enabled
+remote editor can start its normal socket retry loop. New hook preparation requires the socket.
 
 Actual private forwarding to a disposable loopback HTTP fixture was checked on FASRC, including
 0700/0600 permissions and exact cleanup. Disposable local Unix/WebSocket fixtures cover first-run

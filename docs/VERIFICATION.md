@@ -78,9 +78,16 @@ and private receipts; rerun the relevant checks when a change touches these area
   Connection and job-log files were private; the token was absent from stored app records.
   The separate notebook gateway was also checked against a real compute-node Jupyter server:
   native Lab and status pages returned 200, a kernel executed a calculation over WebSocket,
-  and revocation closed both HTTP and the active socket. This used a simulated HTTPS Host on
-  loopback, not a publicly routed phone origin. The owned job, scratch files and forward were
-  removed while the existing SSH sign-in remained running. Separate local checks covered
+  and revocation closed both HTTP and the active socket. The initial check used a simulated
+  HTTPS Host on loopback. A later October 5 check used the installed app's supported launch
+  flow and the publicly routed notebook HTTPS origin with a real FASRC compute job. Native
+  Lab opened, an authenticated kernel executed over public WebSocket, a repeated handoff was
+  rejected, and closing access rejected the same HTTP cookie and closed the live socket.
+  Unauthenticated HTTP and WebSocket requests were rejected. The app panel and native Lab
+  fit all four viewport sizes; native Lab still has desktop-style panes that are narrow on a
+  phone. This used an owner browser session, not physical paired-phone acceptance. Owned
+  jobs, kernels, scratch files and forwards were removed while the existing SSH sign-in
+  remained running. Separate local checks covered
   one-use handoffs, device removal, selected-host lease expiry and lost hostname isolation.
   Native writing-role checks exercised files, HTTPS, browser rendering and cached SSH without
   app permission prompts; read-only roles remain restricted. A private Unix reverse forward

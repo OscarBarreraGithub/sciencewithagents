@@ -50,6 +50,18 @@ export function checkPrivateSocket(socketPath: string) {
     );
 }
 
+/** Provider setup is qualified locally, or explicitly opted into private Remote SSH. */
+export function providerSetupSocket(remoteSocketPath?: string): string | undefined {
+  if (remoteSocketPath) {
+    const target = bridgeTarget(4330, remoteSocketPath, 'ssh-remote');
+    return target.socketPath;
+  }
+  if (process.platform !== 'darwin' || process.arch !== 'arm64')
+    throw new Error(
+      'Local setup supports macOS on Apple Silicon only. Remote SSH setup requires a configured private Unix socket. Nothing was patched.',
+    );
+}
+
 export class MirrorTransport {
   socket?: WebSocket;
   issue = '';

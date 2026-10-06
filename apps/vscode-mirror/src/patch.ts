@@ -3,6 +3,7 @@ import { lstat, readFile, writeFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse, type Class, type NewExpression } from 'acorn';
 import { ancestor, simple } from 'acorn-walk';
+import { checkPrivateSocket, providerSetupSocket } from './transport.js';
 
 export const bridgeSymbol = 'agent-dock.codex-mirror.connection.v1';
 // Legacy restoration evidence, not an allowlist for newly installed versions.
@@ -128,9 +129,11 @@ async function replace(path: string, expected: string, next: string) {
     await unlink(temporary).catch(() => {});
   }
 }
-export async function patch(root: string): Promise<'patched' | 'already-patched'> {
-  if (process.platform !== 'darwin' || process.arch !== 'arm64')
-    throw new Error('This preview supports macOS on Apple Silicon only. Nothing was patched.');
+export async function patch(
+  root: string,
+  remoteSocketPath?: string,
+): Promise<'patched' | 'already-patched'> {
+  const socketPath = providerSetupSocket(remoteSocketPath);
   const manifest = JSON.parse(await regular(join(root, 'package.json'))) as { version: string };
   const path = join(root, 'out', 'extension.js');
   const source = await regular(path);
@@ -142,6 +145,9 @@ export async function patch(root: string): Promise<'patched' | 'already-patched'
     return 'already-patched';
   }
   const next = patchedSource(source, manifest.version);
+  // A recognized existing hook above is read-only and can reconnect after a missing forward.
+  // Preparing a new hook still requires the live private socket before any file mutation.
+  if (socketPath) checkPrivateSocket(socketPath);
   try {
     await writeFile(backup, source, { flag: 'wx', mode: 0o600 });
   } catch (error) {

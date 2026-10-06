@@ -346,6 +346,7 @@ export class CapacityMonitor {
     const promise = (async () => {
       let value: ProviderCapacity;
       let retryAt = 0;
+      let signInUnavailable = false;
       try {
         const raw = await this.fetcher(provider, this.abort.signal);
         if (this.closed) return;
@@ -382,6 +383,7 @@ export class CapacityMonitor {
         this.failures.set(provider, (this.failures.get(provider) ?? 0) + 1);
         const known = provider === 'claude' && error instanceof ClaudeCapacityError ? error : null;
         retryAt = known?.retryAt ?? 0;
+        signInUnavailable = known?.reason === 'sign-in';
         value = {
           ...previous,
           state: 'error',
@@ -391,11 +393,14 @@ export class CapacityMonitor {
             : 'Could not refresh usage. Check this computer’s provider sign-in and usage collector. Saved readings are shown as stale; automatic work waits for a fresh report.',
         };
       }
-      const delay = Math.min(
-        15 * 60,
-        (provider === 'claude' && !this.failures.get(provider) ? 300 : refreshSeconds) *
-          2 ** Math.min(4, this.failures.get(provider) ?? 0),
-      );
+      // A local sign-in check can recover promptly without polling the usage endpoint.
+      const delay = signInUnavailable
+        ? refreshSeconds
+        : Math.min(
+            15 * 60,
+            (provider === 'claude' && !this.failures.get(provider) ? 300 : refreshSeconds) *
+              2 ** Math.min(4, this.failures.get(provider) ?? 0),
+          );
       value = {
         ...value,
         attemptedAt,

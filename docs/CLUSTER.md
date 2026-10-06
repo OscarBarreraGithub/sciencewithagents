@@ -161,8 +161,10 @@ native `ssh -M -N -f <alias>` in a private terminal on this computer with strict
 checking and shows only the prompt's name, such as `Password:` or `VerificationCode:`. Each
 answer you send is typed into that prompt once and cleared from the page. It is not saved,
 logged, returned by the app or shown to agents; from a phone it travels over your paired
-connection. The result is the same shared sign-in a terminal would create, so it lasts for
-your `ControlPersist` time but not past a restart. Repeated taps and devices share one
+connection. The result is the same shared sign-in a terminal would create. `ControlPersist`
+sets how long the connection stays open after its last client closes; it does not guarantee
+24 hours of access. Sleep, a network interruption, a server disconnect or a restart can
+end it sooner. Repeated taps and devices share one
 attempt; changing the alias cancels it so an answer never reaches another host's prompt. The
 alias needs `ControlMaster` and `ControlPath`; the app does not edit SSH settings. A changed host key is never accepted:
 check it yourself in a terminal. Signing in with your usual SSH command also works.

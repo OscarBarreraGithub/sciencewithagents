@@ -209,7 +209,10 @@ export async function activate(context: vscode.ExtensionContext) {
     return adapter;
   }
   async function enable(provider: Provider) {
-    await providers[provider].patch(installed(provider).extensionPath);
+    await providers[provider].patch(
+      installed(provider).extensionPath,
+      vscode.env.remoteName ? target().socketPath : undefined,
+    );
     await context.globalState.update(`enabled.${provider}`, true);
     needsSetup.delete(provider);
     await installed(provider).activate();
@@ -427,7 +430,10 @@ export async function activate(context: vscode.ExtensionContext) {
     (Object.keys(providers) as Provider[]).map(async (provider) => {
       if (!enabled(provider)) return;
       try {
-        await providers[provider].patch(installed(provider).extensionPath);
+        await providers[provider].patch(
+          installed(provider).extensionPath,
+          vscode.env.remoteName ? target().socketPath : undefined,
+        );
         const id = shared(provider);
         if (id) {
           await (await attach(provider)).select(id);

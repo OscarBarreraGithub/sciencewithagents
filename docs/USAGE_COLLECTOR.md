@@ -1,11 +1,14 @@
 # Shared subscription usage
 
 sciencewithagents uses one host-owned collector per computer. The phone, desktop and
-both providers' managers read the same saved measurements. Every minute the collector
-reads Codex through the standalone CodexBar CLI and Claude through its native OAuth
-usage endpoint, including scoped model windows. Overlapping refreshes share a request; failures back off up
-to 15 minutes. A Claude 429/503 retry hint can extend the wait (up to a day). Each reading has its provider timestamp and becomes stale after three
-minutes. Reading a cached view sends no model prompt.
+both providers' managers read the same saved measurements. The collector checks every
+minute, reading Codex through the standalone CodexBar CLI and Claude through its native
+OAuth usage endpoint, including scoped model windows. A successful Claude read waits five
+minutes before another usage request. Overlapping refreshes share a request; failures back
+off up to 15 minutes, except local Claude sign-in checks, which retry each minute. A Claude
+429/503 retry hint can extend the wait (up to a day). Readings retain their provider timestamp
+and become stale after three minutes for Codex or six for Claude. Reading a cached view sends
+no model prompt.
 
 ## Reuse decision
 
@@ -45,6 +48,9 @@ refused authorization/access, throttled usage checks, service/network problems, 
 reports and account changes. A usage-check rate limit does not mean model allowance is exhausted.
 Raw errors, response bodies, headers and credentials stay out of the app and agent context.
 
+Local Claude sign-in failures retry after one minute so native sign-in recovery can be
+noticed promptly. Until the native account check succeeds, no usage request is sent.
+
 The existing collector respects valid numeric/HTTP-date `Retry-After` hints on Claude 429/503
 responses, with a one-day bound for implausible long hints. Its normal backoff still applies.
 That next-check time survives app restarts and is shared by manual refresh, the desktop,
@@ -52,6 +58,13 @@ phone and every manager. Pressing Refresh does not start another polling loop or
 wait. A successful report clears the failure and returns to the normal refresh interval.
 QUARK keeps its existing admission/recovery rules; an old reading does not become new capacity.
 No new sign-in, account switch or token refresh is attempted by the usage reader.
+
+If Claude itself repeatedly loses sign-in, check for other running usage monitors before
+adding another authentication workaround. Older CodexBar releases had a
+[Claude refresh-ownership conflict](https://github.com/steipete/CodexBar/pull/1239).
+The separate menu-bar app is optional: quitting it preserves the standalone Codex reader.
+Restore sign-in through native Claude, then observe renewal; a failed refresh log alone
+does not prove which process caused the sign-out. Never copy credentials into diagnostics.
 
 ## Independent windows and estimates
 

@@ -67,6 +67,8 @@ In VS Code **Remote settings**, set `agentDockMirror.remoteSocketPath` to that s
 `agentDockMirror.port` to the app's port. Workspace files cannot opt into the connection.
 Select the native conversation with the usual share action. The status bar reports connected
 chats or reconnection; its tooltip and Connection status explain setup/forward failures.
+First setup on the remote Unix host requires that private forward to be present and pass
+the ownership/permission check before preparing a structurally compatible provider hook.
 Setting changes reconnect without reloading the editor. A broken or missing forward retries
 every four seconds and rechecks permissions; pending sends are never automatically replayed.
 
