@@ -29,14 +29,20 @@ export function MessageQueue({
   }, [messages.length, hasMore, error]);
   if (!messages.length && !hasMore && !error)
     return alert ? <div className="message-queue">{alert}</div> : null;
+  const nativeQueueError =
+    error === 'unsupported'
+      ? 'Native queue unsupported'
+      : error === 'unavailable'
+        ? 'Native queue unreadable'
+        : undefined;
   const summary =
     error && !messages.length
-      ? 'Queue unavailable'
+      ? nativeQueueError
       : [
           // The count leads so a narrow or zoomed row still shows it.
           `${messages.length}${hasMore ? '+' : ''} queued message${messages.length === 1 && !hasMore ? '' : 's'}`,
           detail,
-          error && 'native queue unavailable',
+          nativeQueueError?.toLowerCase(),
         ]
           .filter(Boolean)
           .join(' · ');
@@ -66,8 +72,8 @@ export function MessageQueue({
           {error && (
             <p className="message-queue-more" role="status">
               {error === 'unsupported'
-                ? 'This provider version does not expose its native queue.'
-                : 'Queued messages could not be read. The queue may still contain messages; reconnecting automatically.'}
+                ? 'This provider version does not expose its native queue. Messages queued in this app still work.'
+                : 'Native queued messages could not be read. The native queue may still contain messages; refreshing automatically. Messages queued in this app still work.'}
             </p>
           )}
           {!actions && <p>Native queued messages stay under the editor’s control.</p>}

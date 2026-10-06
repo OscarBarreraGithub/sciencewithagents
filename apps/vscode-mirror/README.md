@@ -91,10 +91,11 @@ and empty generated directory on the remote host. Clear `remoteSocketPath` when 
 using this connection. A restart may require restoring the forward and reopening/re-sharing
 the native chat. The app computer and remote host must both stay reachable.
 
-An owned FASRC Remote SSH Codex fixture exercised native sharing, an app follow-up, steering,
-Stop and same-thread/history reconnection. It used a separate node-local native runtime index;
-the cluster's default native startup remains unqualified. Same-browser visual reconnection
-remains open. Disposable transport fixtures cover first setup, proxy handling, permission
+An owned FASRC Remote SSH Codex fixture exercised native sharing, an app follow-up, steering
+acknowledgement and Stop. A zero-turn browser check recovered from a private-forward disconnect
+without reload, preserving history, an unsent draft and the idle composer at 412×915 emulation.
+It used a separate node-local native runtime index; default cluster startup remains unqualified.
+Disposable transport fixtures cover first setup, proxy handling, permission
 refusal, reconnect and stop; these checks do not certify other provider builds or cluster policies.
 
 ## Reading and replying

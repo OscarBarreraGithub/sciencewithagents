@@ -379,8 +379,10 @@ function QueueEditor({
     operations.recoveries().find((saved) => saved.messageId === run.id)?.input ?? null,
   );
   const working = useRef<Promise<boolean> | null>(null);
+  const finalizing = useRef(false);
   const selection = useRef<DraftSelection>({ start: 0, end: 0 });
   const [busy, setBusy] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState(
     pending.current ? 'An earlier queued action needs inspection. It has not been repeated.' : '',
   );
@@ -428,12 +430,12 @@ function QueueEditor({
     return task;
   };
   useEffect(() => {
-    if (busy || uncertain || error || text === saved.current.queueEdit?.text) return;
+    if (finishing || busy || uncertain || error || text === saved.current.queueEdit?.text) return;
     const timer = window.setTimeout(() => {
       void send('save');
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [text, busy, uncertain, error]);
+  }, [text, finishing, busy, uncertain, error]);
   const reopen = async () => {
     if (busy) return;
     local.checkpoint();
@@ -476,9 +478,19 @@ function QueueEditor({
     }
   };
   const finish = async (action: 'queue' | 'discard' | 'steer' | 'remove') => {
-    if (working.current) await working.current;
-    local.checkpoint();
-    await send(action);
+    // Accept the explicit action during autosave, without losing a pointer click
+    // or starting another action while we wait for its acknowledgement.
+    if (finalizing.current) return;
+    finalizing.current = true;
+    setFinishing(true);
+    try {
+      if (working.current && !(await working.current)) return;
+      local.checkpoint();
+      await send(action);
+    } finally {
+      finalizing.current = false;
+      setFinishing(false);
+    }
   };
   return (
     <Notepad
@@ -501,8 +513,8 @@ function QueueEditor({
         uncertain ? 'Held · inspect steering outcome' : busy ? 'Held · saving…' : 'Held for editing'
       }
       canSend={!uncertain && !error && !!text.trim()}
-      sending={busy}
-      readOnly={uncertain || (busy && pending.current?.action !== 'save')}
+      sending={finishing || (busy && pending.current?.action !== 'save')}
+      readOnly={finishing || uncertain || (busy && pending.current?.action !== 'save')}
       notice={
         error ||
         (uncertain

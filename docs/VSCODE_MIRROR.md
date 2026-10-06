@@ -21,8 +21,7 @@ fall back to cluster loopback. Before every connection, the companion checks a s
 mode-0600 socket in an unlinked canonical mode-0700 directory. The WebSocket connection uses
 the supported `ws+unix` URL to set HTTP `socketPath`, with its fixed gateway path and explicit
 loopback Host, no browser Origin or redirects. VS Code's HTTP proxy wrapper passes that Unix
-request through. Socket names must survive URL parsing exactly; names altered or split by URL parsing
-fail visibly before connecting.
+request through. Socket names altered or split by URL parsing fail visibly before connecting.
 The owner manages the existing native SSH forward; the companion reconnects every four seconds,
 reports its failure in connection setup/status, and closes only its own sockets/timers on stop
 or setting changes. It never replays pending sends. The [remote setup guide](../apps/vscode-mirror/README.md#remote-ssh-workspaces)
@@ -34,10 +33,18 @@ An exact recognized hook can be verified without a currently live forward, so an
 remote editor can start its normal socket retry loop. New hook preparation requires the socket.
 
 An owned FASRC Remote SSH Codex fixture exercised native sharing, app follow-up, guarded
-steering/Stop and same-thread/history reconnection with exact cleanup. Native state startup
-on NFS failed; a separate node-local runtime index allowed startup without changing the
-original native configuration. Default cluster startup and same-browser visual reconnection
-remain open. Disposable Unix/WebSocket fixtures cover first-run failure/retry, extension-host
+steering acknowledgement and Stop with exact cleanup. A zero-turn, continuously mounted
+412×915 emulated browser showed Offline during private-forward loss, then recovered the same
+thread/history, unsent draft and idle composer without browser/editor reload. These app checks
+used an owned demo gateway, not the installed pairing boundary. Default native startup failed
+while waiting for history backfill; a separate node-local SQLite directory allowed startup
+without changing the original native configuration. This `sqlite_home` override is fixture-only:
+the directory also contains durable goals, memories and jobs. The default startup cause remains
+unknown; no permanent repair or relocation procedure has been verified.
+Remote native goals and native/app queued-message operations were not exercised; native queue
+reading displayed an error whose unsupported/unavailable classification was not retained.
+Remote app attachments remain explicitly unsupported.
+Disposable Unix/WebSocket fixtures cover first-run failure/retry, extension-host
 proxy handling, permissions, reconnect and stop. This preview does not certify other provider
 builds or site policy.
 
@@ -87,7 +94,9 @@ launches a provider. A dispatch claim closes editing; an edit claim prevents dis
 Codex items can explicitly **Steer now** to the exact observed turn; Claude stays queue-only.
 
 Native messages entered in the editor, and app items already handed to its queue, remain
-read-only here. Native queue reads show up to 100 messages and mark further pages. A definite
+read-only here. Native queue reads show up to 100 messages and mark further pages. An
+unsupported or unreadable native queue is labelled separately; messages queued in this app
+still work and wait for idle when native queue handoff is unavailable. A definite
 failed handoff requires explicit edit/requeue; uncertain handoffs remain inspectable and are
 never automatically replayed. Late saved delivery receipts can resolve uncertainty without a
 send. Native questions and permissions stay in the original editor.

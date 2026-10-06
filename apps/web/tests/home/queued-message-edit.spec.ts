@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { chatFileIds, chatFileReference, schedulerSettingsSchema } from '@dock/shared';
@@ -45,6 +45,29 @@ test.afterEach(async ({ page, baseURL }) => {
 async function openQueue(page: Page) {
   await page.getByRole('button', { name: /Expand queue/ }).click();
   await expect(page.getByRole('dialog', { name: 'Queued messages', exact: true })).toBeVisible();
+}
+
+/** Slow pointer gestures may span the 600ms autosave starting. */
+async function queueAcrossAutosave(
+  page: Page,
+  pad: Locator,
+  saveStarted: () => boolean,
+  releaseSave: () => void,
+) {
+  const button = pad.locator('button.primary');
+  const box = (await button.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  try {
+    await expect.poll(saveStarted).toBe(true);
+    await page.mouse.up();
+    // Once accepted, the explicit action waits for autosave and prevents another click.
+    await expect(button).toBeDisabled();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  } finally {
+    await page.mouse.up();
+    releaseSave();
+  }
 }
 
 async function fixture(page: Page, origin: string) {
@@ -186,6 +209,19 @@ test('editing queued wording retains its file attachment without exposing intern
   });
   expect(response.ok()).toBe(true);
   const submitted = await response.json();
+  let releaseSave!: () => void;
+  let saveStarted = false;
+  const saveReleased = new Promise<void>((resolve) => (releaseSave = resolve));
+  const actions: { action: string; text?: string; revision: number }[] = [];
+  await page.route(`**/api/agents/${saved.agentId}/queued/${submitted.id}`, async (route) => {
+    const input = route.request().postDataJSON();
+    actions.push(input);
+    if (input.action === 'save') {
+      saveStarted = true;
+      await saveReleased;
+    }
+    await route.continue();
+  });
   await page.goto(`/#/chat/${saved.agentId}`);
   await openQueue(page);
   const menu = page.getByRole('dialog', { name: 'Queued messages', exact: true });
@@ -195,9 +231,18 @@ test('editing queued wording retains its file attachment without exposing intern
   const pad = page.getByRole('dialog', { name: 'Edit queued message', exact: true });
   await expect(pad.getByRole('textbox')).toHaveValue('Read this calibration');
   await pad.getByRole('textbox').fill('Compare the calibration uncertainty');
-  await pad.getByRole('button', { name: 'Save and queue', exact: true }).click();
+  // Autosave alone leaves the item held; the explicit queue action must survive.
+  await queueAcrossAutosave(page, pad, () => saveStarted, releaseSave);
+  await expect(pad).toHaveCount(0);
   const detail = await (await page.request.get(`/api/agents/${saved.agentId}`)).json();
   const run = detail.runs.find((value: { id: string }) => value.id === submitted.id);
+  const saves = actions.filter((input) => input.action === 'save');
+  const queues = actions.filter((input) => input.action === 'queue');
+  expect(saves).toHaveLength(1);
+  expect(queues).toHaveLength(1);
+  expect(queues[0].revision).toBe(saves[0].revision + 1);
+  expect(queues[0].text).toBe(saves[0].text);
+  expect(run.queueEdit).toBeNull();
   expect(run.text).toContain('Compare the calibration uncertainty');
   expect(chatFileIds(run.text)).toEqual([file.id]);
   expect(await (await page.request.get(`/api/chat-files/${file.id}`)).body()).toEqual(bytes);
@@ -327,18 +372,26 @@ test('queued edits retain later typing on lost acknowledgements and require expl
   const saved = await fixture(page, baseURL!);
   const attempts: { key: string; text: string; action: string }[] = [];
   let lost = false;
+  let saveStarted = false;
+  let releaseSave!: () => void;
+  const saveReleased = new Promise<void>((resolve) => (releaseSave = resolve));
+  let queues = 0;
   await page.route(`**/api/agents/${saved.agentId}/queued/${saved.runId}`, async (route) => {
     const input = route.request().postDataJSON();
+    if (input.action === 'queue') queues++;
     if (input.action === 'save') {
       attempts.push(input);
-      const response = await route.fetch();
       if (!lost) {
         lost = true;
+        saveStarted = true;
+        await saveReleased;
+        await route.fetch();
         return route.fulfill({
           status: 503,
           json: { error: 'Saved edit acknowledgement was lost.' },
         });
       }
+      const response = await route.fetch();
       return route.fulfill({ response });
     }
     return route.continue();
@@ -354,9 +407,13 @@ test('queued edits retain later typing on lost acknowledgements and require expl
   const pad = page.getByRole('dialog', { name: 'Edit queued message', exact: true });
   const area = pad.getByRole('textbox');
   await area.fill('Saved before lost acknowledgement');
+  await queueAcrossAutosave(page, pad, () => saveStarted, releaseSave);
   await expect(
     pad.getByText('Saved edit acknowledgement was lost.', { exact: true }).first(),
   ).toBeVisible();
+  expect(queues).toBe(0);
+  expect((await saved.read()).queueEdit.state).toBe('editing');
+  expect((await saved.read()).text).toBe('First queued scientific question');
   await area.fill('Later typing must survive the old acknowledgement');
   await pad.getByRole('button', { name: 'Retry saved action' }).click();
   await expect
@@ -364,6 +421,8 @@ test('queued edits retain later typing on lost acknowledgements and require expl
     .toBe('Later typing must survive the old acknowledgement');
   await expect(area).toHaveValue('Later typing must survive the old acknowledgement');
   expect(attempts[0].key).toBe(attempts[1].key);
+  expect(attempts[0]).toEqual(attempts[1]);
+  expect(queues).toBe(0);
   const other = await (
     await page.request.post('/api/workspace/clients', {
       headers: saved.headers,

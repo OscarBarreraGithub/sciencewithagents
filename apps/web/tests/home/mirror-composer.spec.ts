@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { mirrorPage, type MirrorState } from '@dock/shared';
+import { mirrorPage, type MirrorState, type MirrorQueuedMessage } from '@dock/shared';
 
 test('shared-chat drafts wrap and resize without a horizontal or premature scrollbar', async ({
   page,
@@ -173,43 +173,109 @@ test('native queue is scrollable and sends the selected follow-up without steeri
   );
 });
 
-test('unreadable queue is explicit while the chat and draft remain usable', async ({ page }) => {
-  const state: MirrorState = {
-    windowId: randomUUID(),
-    threadId: randomUUID(),
-    provider: 'codex',
-    label: 'Queue recovery',
-    title: 'Readable conversation',
-    status: 'busy',
-    message: '',
-    canSteer: true,
-    steerToken: 'current-turn',
-    canQueue: false,
-    queueReadError: 'unavailable',
-    entries: [{ id: 'reply', role: 'assistant', text: 'Saved reply remains readable.' }],
-  };
-  const { entries: _, queueReadError: _error, ...window } = state;
-  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
-    route.fulfill({ json: [window] }),
-  );
-  await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
-    route.fulfill({ json: mirrorPage(state) }),
-  );
-  await page.goto(`/#/chats/vscode/${encodeURIComponent(`codex:${state.threadId}`)}`);
-  await expect(page.getByText('Queue unavailable', { exact: true })).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Queued messages' })).toHaveCount(0);
-  await page.getByRole('button', { name: /Expand queue/ }).click();
-  const details = page.getByRole('dialog', { name: 'Queued messages', exact: true });
-  await expect(details.getByText(/The queue may still contain messages/)).toBeVisible();
-  await details.getByRole('button', { name: 'Close dialog', exact: true }).click();
-  await expect(page.getByText('Saved reply remains readable.', { exact: true })).toBeVisible();
-  const field = page.getByRole('textbox', { name: 'Message Codex' });
-  await expect(field).toBeEnabled();
-  await field.fill('Retain this draft while reconnecting.');
-  await page.reload();
-  await expect(field).toHaveValue('Retain this draft while reconnecting.');
-  await expect(page.getByText('Queue unavailable', { exact: true })).toBeVisible();
-});
+for (const queueReadError of ['unsupported', 'unavailable'] as const)
+  for (const withAppRow of [false, true])
+    test(`native queue ${queueReadError} is separate from ${withAppRow ? 'app-owned messages' : 'an empty app queue'}`, async ({
+      page,
+    }) => {
+      const state: MirrorState = {
+        windowId: randomUUID(),
+        threadId: randomUUID(),
+        provider: 'codex',
+        source: withAppRow ? 'codex-daemon' : 'vscode',
+        label: 'Queue recovery',
+        title: 'Readable conversation',
+        status: 'busy',
+        message: '',
+        canSteer: true,
+        steerToken: 'current-turn',
+        // Browser capability describes the app outbox, independently of native support.
+        canQueue: true,
+        queueReadError,
+        entries: [{ id: 'reply', role: 'assistant', text: 'Saved reply remains readable.' }],
+      };
+      const { entries: _, queueReadError: _error, ...window } = state;
+      await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
+        route.fulfill({ json: [window] }),
+      );
+      await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
+        route.fulfill({ json: mirrorPage(state) }),
+      );
+      let item: MirrorQueuedMessage = {
+        id: randomUUID(),
+        provider: 'codex',
+        threadId: state.threadId!,
+        text: 'App-owned follow-up remains editable.',
+        status: 'queued',
+        createdAt: new Date().toISOString(),
+        queueRevision: 0,
+        queueEdit: null,
+        deliveryKey: null,
+        message: 'Queued here.',
+      };
+      await page.route(/\/api\/vscode\/queued\?.*$/, (route) =>
+        route.fulfill({ json: { items: withAppRow ? [item] : [] } }),
+      );
+      const actions: string[] = [];
+      await page.route(`**/api/vscode/queued/${item.id}`, (route) => {
+        if (route.request().method() === 'POST') {
+          const input = route.request().postDataJSON();
+          actions.push(input.action);
+          item = {
+            ...item,
+            queueRevision: item.queueRevision + 1,
+            queueEdit: { clientId: input.clientId, text: item.text, state: 'editing' },
+          };
+        }
+        return route.fulfill({ json: item });
+      });
+      await page.goto(`/#/chats/vscode/${encodeURIComponent(`codex:${state.threadId}`)}`);
+      const label =
+        queueReadError === 'unsupported' ? 'Native queue unsupported' : 'Native queue unreadable';
+      const summary = page.getByRole('button', { name: /Expand queue/ });
+      await expect(summary).toContainText(
+        withAppRow ? `1 queued message · ${label.toLowerCase()}` : label,
+      );
+      await expect(page.getByText('Queue unavailable', { exact: true })).toHaveCount(0);
+      await expect(page.getByRole('list', { name: 'Queued messages' })).toHaveCount(0);
+      await page.screenshot({ path: test.info().outputPath('native-queue-summary.png') });
+      await summary.click();
+      const details = page.getByRole('dialog', { name: 'Queued messages', exact: true });
+      await expect(details.getByText(/Messages queued in this app still work/)).toBeVisible();
+      await expect(
+        details.getByText(
+          queueReadError === 'unsupported'
+            ? /does not expose its native queue/
+            : /The native queue may still contain messages/,
+        ),
+      ).toBeVisible();
+      if (withAppRow) {
+        const row = details.getByRole('listitem').filter({ hasText: item.text });
+        await expect(row.getByRole('button', { name: 'Edit', exact: true })).toBeEnabled();
+        await row.getByRole('button', { name: 'Edit', exact: true }).click();
+        const edit = page.getByRole('dialog', { name: 'Edit queued message', exact: true });
+        await expect(edit.getByRole('textbox')).toHaveValue(item.text);
+        await expect(
+          edit.getByRole('button', { name: 'Save and queue', exact: true }),
+        ).toBeEnabled();
+        expect(actions).toEqual(['edit']);
+        await edit.getByRole('button', { name: 'Minimize', exact: true }).click();
+      }
+      await details.getByRole('button', { name: 'Close dialog', exact: true }).click();
+      await expect(page.getByText('Saved reply remains readable.', { exact: true })).toBeVisible();
+      const field = page.getByRole('textbox', { name: 'Message Codex' });
+      await expect(field).toBeEnabled();
+      await field.fill('Retain this draft while reconnecting.');
+      const timing = page.getByRole('combobox', { name: 'Send timing' });
+      await expect(timing).toBeEnabled();
+      await timing.selectOption('queue');
+      await expect(
+        page.getByRole('button', { name: 'Queue follow-up', exact: true }),
+      ).toBeEnabled();
+      await page.reload();
+      await expect(field).toHaveValue('Retain this draft while reconnecting.');
+      await expect(summary).toContainText(label.toLowerCase(), { ignoreCase: true });
+    });
 
 test('shared-chat status follows the newest reading through failed, slow and lost refreshes', async ({
   page,

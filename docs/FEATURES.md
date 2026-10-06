@@ -122,7 +122,8 @@ The compact **Queued messages** row opens a full-height list of short previews; 
 text** expands a message. App-managed messages and
 follow-ups queued here for shared VS Code chats can be held and edited in the notepad
 before dispatch; minimizing, reloads or another message completing never
-release the edit hold. **Save and queue** releases it explicitly. Supported Codex sessions
+release the edit hold. **Save and queue** waits for an in-progress autosave before releasing
+the hold explicitly; a failed save keeps the message held for recovery. Supported Codex sessions
 also offer an explicit **Steer now** action. Lost acknowledgements stay available for
 inspection rather than being silently resent. Messages queued directly in the native editor
 or already handed to it remain under that editor's supported controls. Original wording

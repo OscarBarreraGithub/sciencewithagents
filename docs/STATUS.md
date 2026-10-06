@@ -123,11 +123,14 @@ and model choices remain. Active work is never discarded by an inactivity timer.
   acceptance must be verified for the installation. See [Slurm cluster](CLUSTER.md).
 
 - **Remote editor:** an owned FASRC Remote SSH Codex fixture passed native sharing, an app
-  follow-up, steering/Stop and same-thread/history reconnection. Companion 0.2.12 corrects
+  follow-up, steering acknowledgement and Stop. A zero-turn same-browser check recovered
+  history, an unsent draft and the idle composer after private-forward loss without reload.
+  This used 412×915 browser emulation and an owned demo gateway. Companion 0.2.12 corrects
   VS Code proxy handling of the private Unix connection. The fixture required an isolated
-  node-local native database override; default cluster startup on NFS and same-browser
-  visual reconnection remain unqualified. Native configuration and pre-existing history
-  were preserved. See [shared native conversations](VSCODE_MIRROR.md).
+  node-local native database override; default cluster startup remains unresolved.
+  Its cause is not established. The override is fixture-only: native SQLite also stores
+  durable goals, memories and jobs. Native configuration and pre-existing history were preserved.
+  See [shared native conversations](VSCODE_MIRROR.md).
 
 - **Apps:** LaTeX/PDF reading and manager-owned project-app registration are connected.
   Local app ports and optional published HTTPS links are recorded; registration does not
