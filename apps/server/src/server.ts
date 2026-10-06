@@ -719,20 +719,14 @@ export async function createServer(
     provider: runtime.health,
     schedulingError: runtime.schedulingError,
   }));
-  const readSnapshot = () =>
-    snapshotSchema.parse({
+  const readSnapshot = () => {
+    const internalProjects = runtime.internalProjectIds();
+    return snapshotSchema.parse({
       backups: store.projects().map((project) => sourceBackupStatus(store, project.id)),
       projects: store.projects().map((p) =>
         projectSchema.parse({
           ...p,
-          internal:
-            p.internal === true ||
-            runtime.resources.projectId() === p.id ||
-            runtime.conversationSearch.projectId() === p.id ||
-            runtime.documentFormatting.projectId() === p.id ||
-            runtime.frontdesk.status().projectId === p.id ||
-            runtime.coordinator.identity()?.projectId === p.id ||
-            !!store.agent(p.managerId).surface,
+          internal: runtime.isInternalProject(p.id, internalProjects),
         }),
       ),
       agents: store.agents().map((a) => agentSchema.parse(a)),
@@ -749,6 +743,7 @@ export async function createServer(
       provider: runtime.health,
       schedulingError: runtime.schedulingError,
     });
+  };
   app.get('/api/snapshot', async () => readSnapshot());
   app.get('/api/local-access/status', async () => ({ enabled: !!options.localAccess }));
   app.get('/api/frontdesk', async () => runtime.frontdesk.status());

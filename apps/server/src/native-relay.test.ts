@@ -1,11 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import WebSocket, { WebSocketServer } from 'ws';
 import { NativeRelay } from './native-relay.js';
-import { repoRoot } from './paths.js';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => {
@@ -14,16 +14,22 @@ afterEach(() => {
 });
 
 it('forwards native RPC unchanged and holds fork acknowledgement until host subscription completes', async () => {
-  mkdirSync(join(repoRoot, 'data/tests'), { recursive: true });
-  const root = mkdtempSync(join(repoRoot, 'data/tests/relay-'));
+  // Unix socket paths must also fit when the checkout itself is deeply nested.
+  const root = mkdtempSync(join(tmpdir(), 'dock-relay-'));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const http = createServer();
   const wss = new WebSocketServer({ server: http, path: '/rpc' });
-  await new Promise<void>((resolve) => http.listen(join(root, 'p'), resolve));
   cleanups.push(() => {
     for (const ws of wss.clients) ws.terminate();
     wss.close();
     http.close();
+  });
+  await new Promise<void>((resolve, reject) => {
+    http.once('error', reject);
+    http.listen(join(root, 'p'), () => {
+      http.off('error', reject);
+      resolve();
+    });
   });
   const upstream: Record<string, unknown>[] = [];
   wss.on('connection', (socket) =>
@@ -102,8 +108,8 @@ it('forwards native RPC unchanged and holds fork acknowledgement until host subs
     return { params: { ...params, deferGoalContinuation: true }, finish, cancel };
   });
   const relay = new NativeRelay(join(root, 'r'), join(root, 'p'), prepare);
-  await relay.start();
   cleanups.push(() => relay.close());
+  await relay.start();
   expect(statSync(relay.path).mode & 0o777).toBe(0o600);
   const client = new WebSocket(`ws+unix://${relay.path}:/rpc`, { perMessageDeflate: false });
   cleanups.push(() => client.terminate());

@@ -550,6 +550,29 @@ it.each(['codex', 'claude'] as const)(
   },
 );
 
+it.each(['codex', 'claude'] as const)(
+  'advertises goal updates to an eligible %s project manager before enrollment',
+  async (provider) => {
+    store.updateAgent(manager, { provider });
+    expect((await view()).supported).toBe(true);
+    expect((await view()).goal).toBeNull();
+    if (provider === 'claude') {
+      const session = await runtime.claude.prepare(store.agent(manager));
+      expect(session.options.tools.map((tool) => tool.name)).toContain('dock_goal_update');
+    } else {
+      const client = await runtime.client(store.agent(manager));
+      const request = vi.spyOn(client, 'request');
+      await runtime.attach(manager);
+      const input = request.mock.calls.find(([method]) => method === 'thread/start')![1] as {
+        dynamicTools: { name: string }[];
+      };
+      expect(input.dynamicTools.map((tool) => tool.name)).toContain('dock_goal_update');
+    }
+    expect(store.runs()).toHaveLength(0);
+    expect(runtime.managedGoals.saved(manager)).toBeNull();
+  },
+);
+
 it('never enrolls or launches work on reads and rejects non-root/native/special managers', async () => {
   expect((await view()).goal).toBeNull();
   expect(store.runs()).toHaveLength(0);

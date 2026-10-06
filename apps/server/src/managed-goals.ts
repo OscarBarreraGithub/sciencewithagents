@@ -26,6 +26,7 @@ export class ManagedGoals {
   constructor(
     readonly store: Store,
     readonly workItems: WorkItems,
+    private readonly isInternalProject: (projectId: string) => boolean,
   ) {}
   supported(agentId: string) {
     const agent = this.store.agent(agentId);
@@ -36,7 +37,7 @@ export class ManagedGoals {
       !agent.nativeRootId &&
       !agent.interview &&
       !agent.archivedAt &&
-      !this.store.project(agent.projectId).internal
+      !this.isInternalProject(agent.projectId)
     );
   }
   saved(agentId: string): SavedGoal | null {

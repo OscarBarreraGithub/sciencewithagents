@@ -276,7 +276,7 @@ export class Runtime {
     this.documents = new Documents(store, dataDir);
     this.chatImages = new ChatImages(store, dataDir);
     this.workItems = new WorkItems(store);
-    this.managedGoals = new ManagedGoals(store, this.workItems);
+    this.managedGoals = new ManagedGoals(store, this.workItems, (id) => this.isInternalProject(id));
     this.apps = new ProjectApps(store);
     this.capacity = new CapacityMonitor(store, dataDir);
     this.cluster = new ClusterMonitor(store);
@@ -477,6 +477,26 @@ export class Runtime {
   }
   private charter(agent: PrivateAgent) {
     return `${this.roleCharter(agent)}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}`;
+  }
+  /** Retained helper identities also classify older projects without an internal flag. */
+  internalProjectIds() {
+    return new Set(
+      [
+        this.resources.projectId(),
+        this.conversationSearch.projectId(),
+        this.documentFormatting.projectId(),
+        this.frontdesk.status().projectId,
+        this.coordinator.identity()?.projectId,
+      ].filter((id): id is string => typeof id === 'string'),
+    );
+  }
+  isInternalProject(projectId: string, identities = this.internalProjectIds()) {
+    const project = this.store.project(projectId);
+    return (
+      project.internal === true ||
+      identities.has(projectId) ||
+      !!this.store.agent(project.managerId).surface
+    );
   }
   private roleCharter(agent: PrivateAgent) {
     if (this.documentFormatting.isAgent(agent.id)) return documentFormattingCharter;

@@ -95,6 +95,23 @@ describe('personal assistant API and runtime integration', () => {
     expect(store.tasks()).toHaveLength(0);
     expect(store.runs()).toHaveLength(0);
     expect(providers.size).toBe(0);
+    const agentId = frontdeskStatusSchema.parse(created.json()).agentId!;
+    expect((await get(`/api/agents/${agentId}/goal`)).json()).toMatchObject({
+      supported: false,
+      goal: null,
+    });
+    expect(
+      (
+        await post(`/api/agents/${agentId}/goal`, {
+          key: randomUUID(),
+          action: 'create',
+          expectedRevision: null,
+          objective: 'Do not enroll the personal assistant',
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(store.runs()).toHaveLength(0);
+    expect(runtime.managedGoals.saved(agentId)).toBeNull();
     expect(
       (
         await post('/api/frontdesk/settings', {

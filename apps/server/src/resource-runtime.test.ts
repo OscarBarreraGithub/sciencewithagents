@@ -278,6 +278,32 @@ it('guards automatic models, permissions and direct controls while allowing inte
   const automatic = (await runtime.resources.ask({ key: randomUUID() }, 'checkpoint')).checks[0]!;
   store.updateRun(automatic.runId, { status: 'completed' });
   store.updateAgent(automatic.agentId, { status: 'idle' });
+  const originalRuns = store.runs();
+  for (const agentId of [asked.agentId, automatic.agentId]) {
+    expect(
+      (await app.inject({ url: `/api/agents/${agentId}/goal`, headers })).json(),
+    ).toMatchObject({
+      supported: false,
+      goal: null,
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/agents/${agentId}/goal`,
+          headers,
+          payload: {
+            key: randomUUID(),
+            action: 'create',
+            expectedRevision: null,
+            objective: 'Do not enroll resource assistance',
+          },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(runtime.managedGoals.saved(agentId)).toBeNull();
+  }
+  expect(store.runs()).toEqual(originalRuns);
   const settings = {
     model: 'demo',
     effort: 'medium',
