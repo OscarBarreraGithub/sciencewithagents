@@ -125,6 +125,10 @@ one message may link several items. After reviewing the whole message and mappin
 `sourceDisposition` summarizing triage and linked items, or an answer, cancellation,
 replacement or nonactionable input. A bare link remains pending review; a disposition
 marks it triaged, not completed.
+Keep `sourceDisposition` within 2,000 characters: summarize every independent ask and
+its linked item IDs, with detailed evidence in work-item detail or checkpoints. A rejected
+oversized summary leaves the saved item and original source unchanged. Shorten the complete
+summary and retry; never truncate the original message or claim triage before saving succeeds.
 Delivery remains queued/running/failed/cancelled for normal sends; steering is submitted or
 uncertain. Uncertain input is retained without automatic native replay. Sources stay owned
 by their receiving manager. Work-item revisions and append-only events preserve provenance.

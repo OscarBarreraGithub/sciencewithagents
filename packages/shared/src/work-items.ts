@@ -12,6 +12,17 @@ const title = z
   });
 const detail = z.string().trim().max(8_000);
 const humanReply = z.string().trim().min(1).max(8_000);
+export const sourceDispositionMaxLength = 2000;
+export const sourceDispositionLengthMessage =
+  'The request review note is too long. Use a complete summary of at most 2,000 characters, keep detailed evidence in the work item, and retry. The original message is retained.';
+export const sourceDispositionSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(sourceDispositionMaxLength, sourceDispositionLengthMessage)
+  .describe(
+    'A complete whole-message triage summary, at most 2000 characters. Summarize every independent ask and linked work item; retain detailed evidence in detail/checkpoints. Never truncate the original message or claim triage before a successful save. If rejected, shorten the complete summary and retry.',
+  );
 export const workItemKindSchema = z.enum(['human', 'internal', 'general', 'idea']);
 export const workItemStatusSchema = z.enum(['open', 'in_progress', 'waiting', 'done']);
 /** Saved app entry identity, not a quoted title or a filesystem path. */
@@ -50,7 +61,7 @@ export const workItemSchema = z
     updatedAt: z.string().datetime(),
     resolvedAt: z.string().datetime().nullable(),
     sourceMessages: sourceMessages.default([]),
-    sourceDisposition: z.string().trim().min(1).max(2000).nullable().default(null),
+    sourceDisposition: sourceDispositionSchema.nullable().default(null),
   })
   .strict();
 
@@ -69,7 +80,7 @@ export const workItemRequestSchema = z
     status: workItemStatusSchema.optional(),
     humanReply: humanReply.optional(),
     sourceMessages: sourceMessages.optional(),
-    sourceDisposition: z.string().trim().min(1).max(2000).nullable().optional(),
+    sourceDisposition: sourceDispositionSchema.nullable().optional(),
   })
   .strict();
 

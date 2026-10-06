@@ -197,6 +197,58 @@ it('requires renewed whole-message triage when a saved item adds or replaces sou
   restart();
   expect(items.ownerRequests(managerId).total).toBe(2);
 });
+it('rejects an oversized triage summary without changing the item or source, then accepts a complete shorter retry', () => {
+  const text = 'Implement A; keep B open and answer the status question. '.repeat(80);
+  const source = store.enqueue(managerId, randomUUID(), text);
+  const item = items.saveForManager(managerId, {
+    key: randomUUID(),
+    title: 'Implement A and preserve B',
+    detail: 'Retained original plan.',
+    sourceMessages: [{ agentId: managerId, entryId: source.id }],
+  });
+  const head = store.head,
+    key = randomUUID();
+  const update = {
+    key,
+    id: item.id,
+    expectedRevision: item.revision,
+    title: 'Rejected new title',
+    status: 'done',
+    sourceDisposition: 'x'.repeat(2001),
+  };
+  expect(() => items.saveForManager(managerId, update)).toThrow('at most 2,000 characters');
+  expect(items.get(item.id)).toEqual(item);
+  expect(store.head).toBe(head);
+  expect(store.savedEntry(managerId, source.id)?.text).toBe(text);
+  expect(
+    items.ownerRequests(managerId).items.find(({ entryId }) => entryId === source.id)?.coverage,
+  ).toBe('linked');
+  const summary = `A and B remain open in ${item.id}; the status question was answered. All independent asks were reviewed; implementation has not completed.`;
+  const recovered = items.saveForManager(managerId, {
+    ...update,
+    title: item.title,
+    status: 'open',
+    sourceDisposition: summary,
+  });
+  expect(recovered.sourceDisposition).toBe(summary);
+  expect(recovered.sourceMessages).toEqual(item.sourceMessages);
+  expect(recovered.status).toBe('open');
+  expect(store.savedEntry(managerId, source.id)?.text).toBe(text);
+  expect(
+    items
+      .ownerRequests(managerId, { includeHandled: true })
+      .items.find(({ entryId }) => entryId === source.id)?.coverage,
+  ).toBe('triaged');
+  restart();
+  expect(
+    items.saveForManager(managerId, {
+      ...update,
+      title: item.title,
+      status: 'open',
+      sourceDisposition: summary,
+    }),
+  ).toEqual(recovered);
+});
 
 it('persists personal and manager to-dos with generated IDs, scoped reads and append-only history', () => {
   const key = randomUUID();

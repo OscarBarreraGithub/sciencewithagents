@@ -18,6 +18,8 @@ import {
   projectWorkflowSchema,
   withProjectDecisionPolicy,
   jobEstimateSchema,
+  managerWorkItemRequestSchema,
+  sourceDispositionLengthMessage,
 } from '@dock/shared';
 
 let root: string,
@@ -2007,6 +2009,87 @@ it('persists manager next steps through opaque native tool receipts and prevents
     }),
   ).rejects.toThrow();
   expect(runtime.workItems.list({ projectId: project }).items).toHaveLength(1);
+});
+it('returns a friendly bounded triage error with recovery instructions instead of raw Zod JSON', async () => {
+  const parsed = managerWorkItemRequestSchema.safeParse({
+    key: randomUUID(),
+    sourceDisposition: 'x'.repeat(2001),
+  });
+  expect(parsed.success).toBe(false);
+  if (parsed.success) throw new Error('Expected a validation error');
+  expect(runtime.errorText(parsed.error)).toBe(sourceDispositionLengthMessage);
+  expect(runtime.errorText(parsed.error)).not.toContain('too_big');
+  expect(runtime.errorText(parsed.error)).not.toContain('"path"');
+  const tool = toolsFor('manager').find(({ name }) => name === 'dock_work_item')!;
+  expect(tool.description).toContain('at most 2000 characters');
+  expect(JSON.stringify(tool.inputSchema)).toContain('"maxLength":2000');
+  expect(JSON.stringify(tool.inputSchema)).toContain('Never truncate the original message');
+  expect(managerCharter).toContain('claim triage before the save succeeds');
+  const original = 'Implement A; preserve B and answer the status question. '.repeat(60);
+  const source = store.enqueue(manager, randomUUID(), original);
+  const item = runtime.workItems.saveForManager(manager, {
+    key: randomUUID(),
+    title: 'A and B remain open',
+    sourceMessages: [{ agentId: manager, entryId: source.id }],
+  });
+  const { client, threadId } = await runtime.attach(manager);
+  const responses = vi.spyOn(client, 'respond');
+  const turnId = randomUUID();
+  expect(runtime.pulsar.reserve(store.run(source.id), new Set())).toBe(true);
+  runtime.quark.issueManagerLease(store.run(source.id));
+  store.updateRun(source.id, { status: 'running', turnId });
+  store.updateAgent(manager, { turnId });
+  client.emit('request', 'oversize-triage', 'item/tool/call', {
+    threadId,
+    turnId,
+    callId: 'oversize-triage',
+    tool: 'dock_work_item',
+    arguments: {
+      id: item.id,
+      expectedRevision: item.revision,
+      status: 'done',
+      sourceDisposition: 'x'.repeat(2001),
+    },
+  });
+  await vi.waitFor(() =>
+    expect(responses).toHaveBeenCalledWith('oversize-triage', {
+      contentItems: [{ type: 'inputText', text: sourceDispositionLengthMessage }],
+      success: false,
+    }),
+  );
+  expect(store.entries(manager).find(({ title }) => title === 'Request failed')?.text).toBe(
+    sourceDispositionLengthMessage,
+  );
+  expect(runtime.workItems.get(item.id)).toEqual(item);
+  expect(store.savedEntry(manager, source.id)?.text).toBe(original);
+  expect(
+    runtime.workItems.ownerRequests(manager).items.find(({ entryId }) => entryId === source.id)
+      ?.coverage,
+  ).toBe('linked');
+  client.emit('request', 'shorter-triage', 'item/tool/call', {
+    threadId,
+    turnId,
+    callId: 'shorter-triage',
+    tool: 'dock_work_item',
+    arguments: {
+      id: item.id,
+      expectedRevision: item.revision,
+      sourceDisposition: `A and B remain open in ${item.id}; the status question was answered. All independent asks were mapped.`,
+    },
+  });
+  await vi.waitFor(() =>
+    expect(responses).toHaveBeenCalledWith(
+      'shorter-triage',
+      expect.objectContaining({ success: true }),
+    ),
+  );
+  expect(runtime.workItems.get(item.id).status).toBe('open');
+  expect(
+    runtime.workItems
+      .ownerRequests(manager, { includeHandled: true })
+      .items.find(({ entryId }) => entryId === source.id)?.coverage,
+  ).toBe('triaged');
+  store.updateRun(source.id, { status: 'completed' });
 });
 it('previews long work details on turns and retrieves originals without modifying owner records', async () => {
   const detail = 'Long task evidence. '.repeat(300);

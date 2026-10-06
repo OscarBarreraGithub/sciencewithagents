@@ -38,6 +38,8 @@ import {
   workerDefault,
   managedCodexSource,
   managedGoalUpdateSchema,
+  sourceDispositionLengthMessage,
+  sourceDispositionMaxLength,
 } from '@dock/shared';
 import { CodexRpc, threadResponse, toolCall, turnResponse, type Provider } from './codex.js';
 import { Conflict, Store, now, publicTask, type PrivateAgent, type PrivateRun } from './store.js';
@@ -5192,6 +5194,17 @@ export class Runtime {
     });
   }
   errorText(error: unknown) {
+    if (
+      error instanceof z.ZodError &&
+      error.issues.some(
+        (issue) =>
+          issue.path.includes('sourceDisposition') &&
+          issue.code === 'too_big' &&
+          issue.origin === 'string' &&
+          issue.maximum === sourceDispositionMaxLength,
+      )
+    )
+      return sourceDispositionLengthMessage;
     return (
       error instanceof Error
         ? error.message
