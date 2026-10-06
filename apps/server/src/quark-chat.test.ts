@@ -258,7 +258,16 @@ it('answers under reserve with a signed conversation lease but denies protected 
     await runtime.tool(manager, randomUUID(), 'dock_checkpoint', {
       summary: 'The owner question is retained; delegated work remains blocked.',
     }),
-  ).toEqual({ saved: true });
+  ).toEqual({
+    saved: true,
+    coverage: {
+      openWorkItems: 0,
+      ownerRequestsAwaitingTriage: 1,
+      notice: expect.stringMatching(
+        /Saving a checkpoint resolves no work item or owner request.*Reconcile open items.*before claiming all requests are complete/,
+      ),
+    },
+  });
   const backlog = await runtime.tool(manager, randomUUID(), 'dock_work_item', {
     kind: 'internal',
     title: 'Retain this new owner ask',
