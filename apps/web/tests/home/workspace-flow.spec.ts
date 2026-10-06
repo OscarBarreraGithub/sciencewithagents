@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { defaultModelPolicy } from '@dock/shared';
+import { defaultModelPolicy, detailSchema } from '@dock/shared';
 
 test('a Claude-only first project defaults its workers correctly and preserves an explicit saved choice', async ({
   page,
@@ -156,6 +156,32 @@ test('spawn an independently configured manager, retain notepad versions and sen
   await page.screenshot({
     path: `../../data/screenshots/workspace/${info.project.name}-notepad.png`,
   });
+  // Admission can precede the reply; wait for the page's completed read, including
+  // its 5s fallback poll, before starting the rendered-reply assertion deadline.
+  const completedRead = page.waitForResponse(async (response) => {
+    if (
+      new URL(response.url()).pathname !== `/api/agents/${managerId}` ||
+      response.request().method() !== 'GET' ||
+      !response.ok()
+    )
+      return false;
+    const detail = detailSchema.parse(await response.json());
+    const run = detail.runs.find(
+      (run) => run.agentId === managerId && run.text === original && run.status === 'completed',
+    );
+    return (
+      detail.agent.id === managerId &&
+      detail.agent.status === 'idle' &&
+      !!run &&
+      detail.entries.some(
+        (entry) =>
+          entry.agentId === managerId &&
+          entry.runId === run.id &&
+          entry.kind === 'assistant' &&
+          entry.text.includes('demo mode'),
+      )
+    );
+  });
   await brief.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(brief.getByRole('alert')).toContainText('response was lost');
   await expect(editor).toHaveValue(original);
@@ -166,6 +192,7 @@ test('spawn an independently configured manager, retain notepad versions and sen
   await expect(brief).toHaveCount(0);
   await expect(page).toHaveURL(/#\/chat\/[^/]+$/);
   await expect(page.locator('.message.user').filter({ hasText: original })).toHaveCount(1);
+  await completedRead;
   await expect(page.locator('.message.assistant')).toContainText('demo mode');
   const composer = page.getByRole('textbox', { name: `Message ${name} manager`, exact: true });
   await expect(composer).toHaveValue('');
@@ -176,12 +203,7 @@ test('spawn an independently configured manager, retain notepad versions and sen
     })),
   ).toEqual({ width: true, height: true });
   await page.screenshot({ path: `../../data/screenshots/workspace/${info.project.name}-chat.png` });
-  // The running conversation uses the actual demo catalog, with changes saved through settings.
-  await expect
-    .poll(
-      async () => (await (await page.request.get(`/api/agents/${managerId}`)).json()).agent.status,
-    )
-    .toBe('idle');
+  // The conversation uses the actual demo catalog, with changes saved through settings.
   await page.getByRole('button', { name: 'Configure', exact: true }).click();
   const settings = page.locator('.chat-side .settings-card');
   await expect(settings.getByRole('combobox', { name: 'Model', exact: true })).toHaveValue('demo');

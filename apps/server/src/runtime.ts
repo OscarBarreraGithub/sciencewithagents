@@ -1,3 +1,4 @@
+import { nativeCommandCatalogSchema } from '@dock/shared';
 import { Documents } from './documents.js';
 import { ChatImages } from './chat-images.js';
 import { DocumentFormatting, documentFormattingCharter } from './document-formatting.js';
@@ -1739,7 +1740,11 @@ export class Runtime {
       });
       await session.submit({
         deliveryId: run.id,
-        text: `${this.chatImages.prompt(run.text)}\n\n<agent-dock-evidence>\n${this.context(current)}\n</agent-dock-evidence>`,
+        // Native command arguments must remain exact; appended evidence changes them.
+        text: this.store.getSetting(`native:command:${run.id}`)
+          ? run.text
+          : `${this.chatImages.prompt(run.text)}\n\n<agent-dock-evidence>\n${this.context(current)}\n</agent-dock-evidence>`,
+        ...(this.store.getSetting(`native:command:${run.id}`) ? { nativeCommand: true } : {}),
       });
       return;
     }
@@ -2061,6 +2066,11 @@ export class Runtime {
     }
     if (!run || run.id !== originRun) return; // Late frames never attach to a newer turn.
     if (event.type === 'session') {
+      if (event.commands)
+        this.store.setSetting(`native:commands:${agentId}`, {
+          threadId: event.sessionId,
+          commands: event.commands,
+        });
       this.store.event('provider.connected', agent.projectId, agentId, {
         provider: 'claude',
         threadId: event.sessionId,
@@ -2109,6 +2119,32 @@ export class Runtime {
       this.quark.nativeExhaustion(run, event);
     } else if (event.type === 'result') {
       if (event.deliveryId !== run.id || event.sessionId !== agent.threadId) return;
+      if (this.store.getSetting(`native:command:${run.id}`)) {
+        const replies = this.store
+          .entries(agentId)
+          .filter((entry) => entry.runId === run.id && entry.kind === 'assistant');
+        const text =
+          event.text ||
+          (replies.length
+            ? ''
+            : `Native command ${run.text.split(/\s/, 1)[0]} ${event.status === 'completed' ? 'finished' : event.status === 'failed' ? 'failed' : 'was interrupted'}.`);
+        if (text && !replies.some((entry) => entry.text === text))
+          this.store.entry({
+            id: `${agentId}:claude:command-result:${event.id}`,
+            agentId,
+            runId: run.id,
+            kind: 'assistant',
+            title: 'Native command result',
+            text,
+            status:
+              event.status === 'completed'
+                ? 'complete'
+                : event.status === 'failed'
+                  ? 'failed'
+                  : 'interrupted',
+            createdAt: now(),
+          });
+      }
       recordClaudeUsage(this.store, agentId, {
         sessionId: event.sessionId,
         deliveryId: run.id,
@@ -4886,11 +4922,109 @@ export class Runtime {
       }),
     );
   }
+  nativeCommandCatalog(agentId: string) {
+    const agent = this.store.agent(agentId);
+    const saved = this.store.getSetting(`native:commands:${agentId}`) as {
+      threadId?: string;
+      commands?: string[];
+    } | null;
+    return nativeCommandCatalogSchema.parse({
+      provider: agent.provider,
+      commands:
+        agent.provider === 'claude' &&
+        agent.toolPolicy === 'native' &&
+        saved?.threadId === agent.threadId
+          ? (saved.commands ?? []).filter(
+              (name) =>
+                ![
+                  'clear',
+                  'new',
+                  'resume',
+                  'fork',
+                  'exit',
+                  'quit',
+                  'model',
+                  'effort',
+                  'config',
+                  'permissions',
+                  'goal',
+                ].includes(name),
+            )
+          : [],
+      note:
+        agent.provider === 'claude'
+          ? 'Claude reports commands available without its terminal. Skills and custom commands use the same session and normal QUARK admission. Model, permissions and new context use app controls; interactive commands stay in Claude Code. Available names appear after the first reply.'
+          : 'Codex context and goal commands use typed app controls. Other Codex commands stay in Native terminal, where its full native menu is available.',
+    });
+  }
+  async enqueueNativeCommand(agentId: string, key: string, text: string) {
+    this.requireDirectControl(agentId);
+    const agent = this.store.agent(agentId);
+    requireActiveAssignment(this.store, agent);
+    if (agent.provider !== 'claude' || agent.toolPolicy !== 'native' || agent.nativeRootId)
+      throw new Conflict(
+        'Native command text is available for inherited Claude conversations. Use this conversation’s native controls.',
+      );
+    if (this.externalControl.has(agentId))
+      throw new Conflict('Return from native control before using chat commands.');
+    const existing = this.store.runs().find((run) => run.key === key);
+    if (existing) {
+      if (
+        existing.agentId !== agentId ||
+        (existing.acceptedText ?? existing.text) !== text ||
+        !this.store.getSetting(`native:command:${existing.id}`)
+      )
+        throw new Conflict('That command receipt belongs to another submission.');
+      return existing;
+    }
+    const name = text.trim().split(/\s/, 1)[0]?.slice(1);
+    if (
+      [
+        'clear',
+        'new',
+        'resume',
+        'fork',
+        'exit',
+        'quit',
+        'model',
+        'effort',
+        'config',
+        'permissions',
+        'goal',
+      ].includes(name ?? '')
+    )
+      throw new Conflict(
+        'Use the app’s context, model, permission or goal controls for this command. Your draft is retained.',
+      );
+    // Discovery submits no user message; validation precedes the durable queue.
+    const session = await this.claude.prepare(agent);
+    const commands = await session.inspectCommands();
+    if (!commands.includes(name ?? ''))
+      throw new Conflict(
+        'That command is not available in this Claude session. No message was sent; your draft is retained.',
+      );
+    this.store.setSetting(`native:commands:${agentId}`, {
+      threadId: this.store.agent(agentId).threadId,
+      commands,
+    });
+    const run = this.store.transaction(() => {
+      const result = this.store.enqueue(agentId, key, text);
+      this.store.setSetting(`native:command:${result.id}`, true);
+      this.quark.captureOwnerChat(this.store.run(result.id));
+      return result;
+    });
+    this.kick();
+    return run;
+  }
   async compact(agentId: string) {
     const agent = this.store.agent(agentId);
     this.requireDirectControl(agentId);
     requireActiveAssignment(this.store, agent);
-    if (agent.provider !== 'codex' || agent.interview)
+    if (agent.provider === 'claude') {
+      await this.enqueueNativeCommand(agentId, randomUUID(), '/compact');
+      return;
+    }
+    if (agent.interview)
       throw new Conflict(
         'Manual compaction belongs to an active Codex conversation. Claude manages its own compaction.',
       );

@@ -45,6 +45,7 @@ const models: ClaudeModel[] = [
   },
 ];
 class FixtureSession extends ClaudeSession {
+  override inspectCommands = vi.fn(async () => ['compact', 'context', 'verify']);
   override submit = vi.fn(async (input: { deliveryId: string; text: string }) => {
     if (this.submit.mock.calls.length === 1) this.options.beforeStart?.();
     this.options.beforeWrite?.(input.deliveryId);
@@ -1441,4 +1442,69 @@ describe('native primary-window rejection', () => {
     await vi.waitFor(() => expect(store.run(run.id).status).toBe('failed'));
     expect(runtime.quark.holds()).toHaveLength(0);
   });
+});
+
+it('queues discovered Claude commands exactly once with the native session and normal admission', async () => {
+  const key = randomUUID();
+  const run = await runtime.enqueueNativeCommand(manager, key, '/verify preserve exact arguments');
+  const threadId = store.agent(manager).threadId;
+  await vi.waitFor(() => expect(instances[0]?.submit).toHaveBeenCalledOnce());
+  expect(instances[0]!.submit.mock.calls[0]![0]).toEqual({
+    deliveryId: run.id,
+    text: '/verify preserve exact arguments',
+    nativeCommand: true,
+  });
+  expect(store.getSetting(`native:command:${run.id}`)).toBe(true);
+  expect(await runtime.enqueueNativeCommand(manager, key, run.text)).toMatchObject({ id: run.id });
+  expect(instances[0]!.submit).toHaveBeenCalledOnce();
+  expect(store.agent(manager).threadId).toBe(threadId);
+  expect(runtime.nativeCommandCatalog(manager).commands).toEqual(['compact', 'context', 'verify']);
+  await expect(runtime.enqueueNativeCommand(manager, randomUUID(), '/missing')).rejects.toThrow(
+    'No message was sent',
+  );
+  expect(instances[0]!.submit).toHaveBeenCalledOnce();
+});
+it('dispatches Claude compact through its existing queue and keeps model policy', async () => {
+  const model = store.agent(manager).model;
+  await runtime.compact(manager);
+  await vi.waitFor(() => expect(instances[0]?.submit).toHaveBeenCalledOnce());
+  expect(instances[0]!.submit.mock.calls[0]![0]).toMatchObject({
+    text: '/compact',
+    nativeCommand: true,
+  });
+  expect(store.agent(manager).model).toBe(model ?? 'default');
+  const input = instances[0]!.submit.mock.calls[0]![0];
+  instances[0]!.send({
+    type: 'result',
+    id: randomUUID(),
+    deliveryId: input.deliveryId,
+    sessionId: store.agent(manager).threadId!,
+    status: 'completed',
+    text: '',
+    usage: null,
+  });
+  await vi.waitFor(() => expect(store.run(input.deliveryId).status).toBe('completed'));
+  expect(store.agent(manager).turnId).toBeNull();
+  expect(
+    store.entries(manager).some((entry) => entry.text === 'Native command /compact finished.'),
+  ).toBe(true);
+});
+it('retains text from a native local command result without requiring an assistant message', async () => {
+  const run = await runtime.enqueueNativeCommand(manager, randomUUID(), '/context');
+  await vi.waitFor(() => expect(instances[0]?.submit).toHaveBeenCalledOnce());
+  instances[0]!.send({
+    type: 'result',
+    id: randomUUID(),
+    deliveryId: run.id,
+    sessionId: store.agent(manager).threadId!,
+    status: 'completed',
+    text: 'Native context summary',
+    usage: null,
+  });
+  await vi.waitFor(() => expect(store.run(run.id).status).toBe('completed'));
+  expect(
+    store
+      .entries(manager)
+      .some((entry) => entry.runId === run.id && entry.text === 'Native context summary'),
+  ).toBe(true);
 });

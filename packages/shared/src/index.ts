@@ -584,6 +584,34 @@ export const checkpointSchema = z.object({ summary: z.string().min(1).max(8000) 
 export const commandSchema = z
   .object({ key: id, command: z.enum(['compact', 'new', 'resume', 'interrupt']) })
   .strict();
+// Native names are provider-discovered; the browser never chooses an RPC or executable.
+export const nativeCommandNameSchema = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/);
+export const nativeCommandCatalogSchema = z
+  .object({
+    provider: providerIdSchema,
+    commands: z.array(nativeCommandNameSchema).max(500),
+    note: z.string().max(2000),
+  })
+  .strict();
+export const nativeCommandRequestSchema = z
+  .object({
+    key: id,
+    text: z
+      .string()
+      .trim()
+      .min(2)
+      .max(200_000)
+      .regex(/^\/[a-zA-Z0-9][a-zA-Z0-9_.:-]*(?:\s[^\0]*)?$/),
+  })
+  .strict();
+export const nativeCommandReceiptSchema = z
+  .object({
+    key: id,
+    agentId: id,
+    text: z.string().min(2).max(200_000),
+    run: runSchema,
+  })
+  .strict();
 export const terminalInputSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('input'), data: z.string().max(8192) }).strict(),
   z

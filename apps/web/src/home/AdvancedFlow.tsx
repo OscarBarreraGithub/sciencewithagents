@@ -270,9 +270,7 @@ function AdvancedCommands({
   const [choice, setChoice] = useState<Command | null>(() => {
     if (pending) return null;
     const command = commandSchema.safeParse({ command: intent, key: crypto.randomUUID() });
-    return command.success && !(agent.provider === 'claude' && command.data.command === 'compact')
-      ? command.data
-      : null;
+    return command.success ? command.data : null;
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -376,7 +374,7 @@ function AdvancedCommands({
         <button className="secondary" disabled={busy || !!pending} onClick={() => choose('new')}>
           <Plus size={16} /> New context, keep history
         </button>
-        {agent.provider === 'codex' && (
+        {!agent.nativeRootId && (
           <button
             className="secondary"
             disabled={busy || !!pending}

@@ -54,15 +54,15 @@ native provider lifecycle and durable archive. Editor sharing does not import a 
 
 ## Supported roles and controls
 
-| Surface                                          | Managed Claude behavior                                                                                                                                                                               |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Manager                                          | Native configured capabilities plus typed QUARK/project tools. Delegate bounded implementation and independent review in task workspaces.                                                             |
-| Planner, researcher, reviewer; read-only worker  | Native plan permissions plus its permitted Dock tools; explicit restricted contexts retain their old tool policy.                                                                                     |
-| Write-enabled implementer                        | Native configured tools in the existing task workspace, with original permission requests. No second Claude-created worktree is requested by the app.                                                 |
-| Stop / resume / new context                      | Typed app actions, exact saved identity and explicit new-context choice. Interrupted work is not automatically resubmitted.                                                                           |
-| External MCPs, plugins, native helpers           | Inherited from native configuration. Hook-identified helpers have separate retained records; unlinked text/team totals stay with the parent. Helpers share its budget and process-group stop control. |
-| Claude native terminal / advanced slash commands | Not attached here. Use original Claude Code or its shared VS Code chat for those native controls.                                                                                                     |
-| Provider web/image tools                         | Available when the installed native provider/configuration supports them; the app does not recreate or separately enable them.                                                                        |
+| Surface                                         | Managed Claude behavior                                                                                                                                                                                                                        |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Manager                                         | Native configured capabilities plus typed QUARK/project tools. Delegate bounded implementation and independent review in task workspaces.                                                                                                      |
+| Planner, researcher, reviewer; read-only worker | Native plan permissions plus its permitted Dock tools; explicit restricted contexts retain their old tool policy.                                                                                                                              |
+| Write-enabled implementer                       | Native configured tools in the existing task workspace, with original permission requests. No second Claude-created worktree is requested by the app.                                                                                          |
+| Stop / resume / new context                     | Typed app actions, exact saved identity and explicit new-context choice. Interrupted work is not automatically resubmitted.                                                                                                                    |
+| External MCPs, plugins, native helpers          | Inherited from native configuration. Hook-identified helpers have separate retained records; unlinked text/team totals stay with the parent. Helpers share its budget and process-group stop control.                                          |
+| Native slash commands / terminal                | Chat forwards discovered headless commands and skills, including `/compact`, to this same native session under normal QUARK admission. Interactive terminal commands stay in Claude Code; model, permissions and new context use app controls. |
+| Provider web/image tools                        | Available when the installed native provider/configuration supports them; the app does not recreate or separately enable them.                                                                                                                 |
 
 Codex retains its existing native terminal, plugins/MCPs, helper and advanced-control paths.
 Unsupported Claude options fail visibly instead of widening permissions or selecting Codex.
@@ -111,7 +111,7 @@ before publishing a hosted service or changing that boundary.
 Inherited contexts append the coordination charter and Dock MCP tools to native configuration.
 They do not use the old blanket restricted flags, empty builtin/skill/agent catalogs, or
 Dock-only MCP policy. Saved restricted contexts retain those limits until deliberately changed.
-No browser endpoint accepts a command, executable, arbitrary RPC method or MCP transport.
+The chat command endpoint accepts only a native-reported slash-command name and its text arguments. It cannot choose an executable, arbitrary RPC method or MCP transport.
 
 Built-in worker requests carry their original request and tool-use IDs and exact inputs.
 Approval replies allow or deny that single pending request; suggested persistent grants
@@ -207,3 +207,21 @@ For the current release decision and required rechecks, use [Status](STATUS.md) 
 
 Developer-only focused check: `./scripts/pnpm --filter @dock/server exec vitest run src/claude-session.test.ts src/managed-claude.test.ts src/claude-runtime.test.ts`.
 These tests use isolated fixtures; they do not send real model prompts.
+
+## Native command dispatch
+
+The chat command menu shows the commands reported by this Claude session. Command discovery
+makes no model call. Skills and custom commands use Claude’s own parser, hooks and permissions;
+arguments are forwarded exactly, without app-added prompt text. Commands use the existing
+queue, QUARK admission and native session. `/compact` can also be selected through app controls.
+The draft and attachments are retained. An uncertain response keeps the same submission receipt.
+Unknown names are rejected before a user-message write, because current Claude versions can
+otherwise treat them as ordinary, charged model messages. A command is revalidated on dispatch
+if the native process was reopened. Saved restricted contexts still have no native slash parser.
+Native commands that change context identity or app-owned model/permission settings use their
+existing typed app controls. The command list becomes available after the first native reply;
+missing discovery on an older connected computer affects only the menu. Shared VS Code command
+parsing remains owned by its extension, with no generic slash-text dispatch added here.
+
+Protocol references: [native command discovery and dispatch](https://code.claude.com/docs/en/agent-sdk/slash-commands#commands-in-agent-sdk-sessions),
+[headless command availability](https://code.claude.com/docs/en/headless#auto-approve-tools).

@@ -39,6 +39,8 @@ import {
   approvalReplySchema,
   approvalSchema,
   commandSchema,
+  nativeCommandRequestSchema,
+  nativeCommandReceiptSchema,
   decisionSchema,
   detailSchema,
   agentDetailQuerySchema,
@@ -1372,6 +1374,21 @@ export async function createServer(
     const result = runtime.quark.saveChatPolicy(target, request.body);
     runtime.kick();
     return result;
+  });
+  app.get('/api/agents/:id/native-commands', async (request) =>
+    runtime.nativeCommandCatalog(agentId(request.params)),
+  );
+  app.post('/api/agents/:id/native-commands', async (request, reply) => {
+    const target = agentId(request.params);
+    if (terminals.active(target))
+      throw new Conflict('Return from native terminal before using chat commands.');
+    const { key, text } = nativeCommandRequestSchema.parse(request.body);
+    const run = await runtime.withLock(`command:${target}`, () =>
+      runtime.enqueueNativeCommand(target, key, text),
+    );
+    return reply
+      .code(202)
+      .send(nativeCommandReceiptSchema.parse({ key, agentId: target, text, run }));
   });
   app.post('/api/agents/:id/commands', async (request) => {
     const target = agentId(request.params);

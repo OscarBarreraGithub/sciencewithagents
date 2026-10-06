@@ -12,6 +12,7 @@ import {
   claudeArguments,
   nativeFullAccessNote,
   normalizeClaudeEvent,
+  parseNativeCommands,
   parseClaudeIdentity,
   spawnClaudeChannel,
   type ClaudeChannel,
@@ -47,7 +48,11 @@ afterEach(async () => {
     rmSync(directory, { recursive: true, force: true });
   vi.useRealTimers();
 });
-function fixture(config: ClaudeSessionOptions = options(), initialize = true) {
+function fixture(
+  config: ClaudeSessionOptions = options(),
+  initialize = true,
+  initialization: Record<string, unknown> = {},
+) {
   const input = new PassThrough(),
     output = new PassThrough();
   const writes: Record<string, any>[] = [];
@@ -73,7 +78,7 @@ function fixture(config: ClaudeSessionOptions = options(), initialize = true) {
       queueMicrotask(() =>
         emit({
           type: 'control_response',
-          response: { subtype: 'success', request_id: frame.request_id, response: {} },
+          response: { subtype: 'success', request_id: frame.request_id, response: initialization },
         }),
       );
   });
@@ -1506,5 +1511,57 @@ describe('native rate-limit evidence', () => {
       expect.objectContaining({ id: old.uuid, deliveryId: first }),
       expect.objectContaining({ id: current.uuid, deliveryId: second }),
     ]);
+  });
+});
+
+describe('native Claude command transport', () => {
+  it('discovers safe native names without a user message and preserves exact command arguments/session', async () => {
+    const beforeWrite = vi.fn();
+    const f = fixture(options({ inheritNative: true, beforeWrite }), true, {
+      commands: [{ name: 'compact', description: 'Compact context' }, { name: 'project:verify' }],
+    });
+    expect(await f.session.inspectCommands()).toEqual(['compact', 'project:verify']);
+    expect(f.writes.filter((frame) => frame.type === 'user')).toHaveLength(0);
+    const deliveryId = randomUUID();
+    await f.session.submit({ deliveryId, text: '/compact retain equations', nativeCommand: true });
+    expect(f.writes.find((frame) => frame.type === 'user')).toMatchObject({
+      session_id: f.config.sessionId,
+      uuid: deliveryId,
+      message: { content: '/compact retain equations' },
+    });
+    expect(beforeWrite).toHaveBeenCalledOnce();
+  });
+  it('rejects an unknown name before user write or attempted-delivery receipt', async () => {
+    const beforeWrite = vi.fn();
+    const f = fixture(options({ inheritNative: true, beforeWrite }), true, {
+      commands: [{ name: 'compact' }],
+    });
+    await expect(
+      f.session.submit({ deliveryId: randomUUID(), text: '/missing', nativeCommand: true }),
+    ).rejects.toThrow('No message was sent');
+    expect(f.writes.some((frame) => frame.type === 'user')).toBe(false);
+    expect(beforeWrite).not.toHaveBeenCalled();
+  });
+  it('validates metadata and takes the current session list from system/init', async () => {
+    expect(
+      parseNativeCommands([
+        'compact',
+        'compact',
+        '/unsafe',
+        'with space',
+        { name: 'mcp:review' },
+        null,
+      ]),
+    ).toEqual(['compact', 'mcp:review']);
+    const f = fixture(options({ inheritNative: true }), true, { commands: [{ name: 'stale' }] });
+    await f.session.inspectCommands();
+    f.emit({
+      type: 'system',
+      subtype: 'init',
+      session_id: f.config.sessionId,
+      slash_commands: ['compact', 'fresh'],
+      tools: [],
+    });
+    expect(f.session.nativeCommands()).toEqual(['compact', 'fresh']);
   });
 });

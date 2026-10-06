@@ -891,7 +891,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
                         <button disabled={!!agent.nativeRootId} onClick={() => command('resume')}>
                           <RefreshCw size={15} /> Resume from history
                         </button>
-                        {agent.provider === 'codex' && (
+                        {!agent.nativeRootId && (
                           <button
                             disabled={!!agent.nativeRootId}
                             onClick={() => command('compact')}
@@ -913,8 +913,9 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
                         )}
                         {agent.provider === 'claude' && (
                           <p className="settings-help">
-                            Claude manages compaction itself. Its native terminal, slash commands,
-                            MCPs and plugins remain in Claude Code or its shared VS Code chat.
+                            Claude supports native compaction and discovered commands in chat.
+                            Interactive terminal commands remain in Claude Code or its shared VS
+                            Code chat.
                           </p>
                         )}
                       </div>

@@ -148,3 +148,13 @@ dialog.notepad[open]:has(> .notepad-attachments) {
   flex-wrap: wrap;
   min-width: 0;
 }
+
+.chat-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.chat-upload-actions button {
+  margin-left: 0;
+}

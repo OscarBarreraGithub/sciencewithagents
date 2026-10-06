@@ -7,7 +7,12 @@ import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { effortSchema, nativeRateLimitTypes, providerDefaultEffort } from '@dock/shared';
+import {
+  effortSchema,
+  nativeRateLimitTypes,
+  providerDefaultEffort,
+  nativeCommandNameSchema,
+} from '@dock/shared';
 import {
   claudeAuthDiagnosticReader,
   type ClaudeAuthDiagnostic,
@@ -201,7 +206,13 @@ export function claudeQuestionInput(
   return { ...input, answers: Object.fromEntries(pairs) };
 }
 export type ClaudeEvent =
-  | { type: 'session'; sessionId: string; model: string | null; tools: string[] }
+  | {
+      type: 'session';
+      sessionId: string;
+      model: string | null;
+      tools: string[];
+      commands?: string[];
+    }
   | { type: 'boundary'; sessionId: string; deliveryId: string; messageId: string | null }
   | {
       type: 'message';
@@ -647,6 +658,22 @@ export class ClaudeSession extends EventEmitter {
   private decoder = new StringDecoder('utf8');
   private buffered = '';
   private models: ClaudeModel[] = [];
+  private commands: string[] = [];
+  nativeCommands(): string[] {
+    return [...this.commands];
+  }
+  async inspectCommands(): Promise<string[]> {
+    this.starting ??= this.start();
+    await this.starting;
+    return this.nativeCommands();
+  }
+  requireCommand(text: string) {
+    const name = text.trim().split(/\s/, 1)[0]?.slice(1);
+    if (!name || !this.options.inheritNative || !this.commands.includes(name))
+      throw new Error(
+        'That command is not available in this Claude session. No message was sent; your draft is retained.',
+      );
+  }
   private nativeChildren = new Set<string>();
   private pendingResult: Extract<ClaudeEvent, { type: 'result' }> | null = null;
 
@@ -759,6 +786,7 @@ export class ClaudeSession extends EventEmitter {
         : null,
       ...(!this.options.inheritNative ? { agents: {}, skills: [] } : { forwardSubagentText: true }),
     });
+    this.commands = parseNativeCommands(initialized.commands);
     this.models = z
       .array(modelSchema)
       .max(100)
@@ -779,7 +807,11 @@ export class ClaudeSession extends EventEmitter {
     await this.starting;
     return structuredClone(this.models);
   }
-  async submit(input: { deliveryId: string; text: string }): Promise<void> {
+  async submit(input: {
+    deliveryId: string;
+    text: string;
+    nativeCommand?: boolean;
+  }): Promise<void> {
     uuid.parse(input.deliveryId);
     z.string().trim().min(1).max(200_000).parse(input.text);
     if (this.seenDeliveries.has(input.deliveryId))
@@ -797,6 +829,7 @@ export class ClaudeSession extends EventEmitter {
       this.starting ??= this.start();
       await this.starting;
       if (this.closed) throw new Error('Claude startup was cancelled.');
+      if (input.nativeCommand) this.requireCommand(input.text);
       this.deliveryId = input.deliveryId;
       // Mark before write. A lost acknowledgement is never permission to resend.
       this.seenDeliveries.add(input.deliveryId);
@@ -852,6 +885,12 @@ export class ClaudeSession extends EventEmitter {
   private receive(value: unknown) {
     if (this.closed) return;
     const frame = jsonObject.parse(value);
+    if (
+      frame.type === 'system' &&
+      frame.subtype === 'init' &&
+      frame.session_id === this.options.sessionId
+    )
+      this.commands = parseNativeCommands(frame.slash_commands);
     if (typeof frame.session_id === 'string' && frame.session_id !== this.options.sessionId)
       throw new Error('Claude session identity changed.');
     if (frame.type === 'control_response') {
@@ -1212,6 +1251,7 @@ export function normalizeClaudeEvent(
         type: 'session',
         sessionId: uuid.parse(frame.session_id),
         model: typeof frame.model === 'string' ? frame.model : null,
+        commands: parseNativeCommands(frame.slash_commands),
         tools: Array.isArray(frame.tools)
           ? frame.tools.filter((tool): tool is string => typeof tool === 'string').slice(0, 500)
           : [],
@@ -1362,4 +1402,23 @@ export function normalizeClaudeEvent(
     ];
   }
   return [];
+}
+
+/** Current SDK initialize reports command metadata; system/init reports names. */
+export function parseNativeCommands(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.slice(0, 500).flatMap((entry: unknown) => {
+        const name =
+          typeof entry === 'string'
+            ? entry
+            : entry && typeof entry === 'object' && 'name' in entry
+              ? entry.name
+              : undefined;
+        const parsed = nativeCommandNameSchema.safeParse(name);
+        return parsed.success ? [parsed.data] : [];
+      }),
+    ),
+  ];
 }

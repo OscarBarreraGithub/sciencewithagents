@@ -1139,3 +1139,14 @@ it('keeps owner-terminal creation, read, input and close on the selected authent
     await selected.close();
   }
 });
+
+it('allows only the typed native command routes on a selected host', () => {
+  const agentId = randomUUID();
+  for (const method of ['GET', 'POST'])
+    expect(proxyPath(method, `/agents/${agentId}/native-commands`)).toBe(
+      `/api/agents/${agentId}/native-commands`,
+    );
+  expect(proxyPath('POST', `/agents/${agentId}/native-commands/run`)).toBeNull();
+  expect(proxyPath('POST', `/agents/${agentId}/native-commands?method=turn/start`)).toBeNull();
+  expect(proxyPath('DELETE', `/agents/${agentId}/native-commands`)).toBeNull();
+});

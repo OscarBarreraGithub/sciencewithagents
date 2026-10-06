@@ -94,6 +94,17 @@ test('an app update offers a reload without replacing an unsent draft', async ({
   await page.goto('/#/home');
   const draft = page.getByRole('textbox', { name: 'New to-do', exact: true });
   await draft.fill('Keep this unsent note across an app update.');
+  // Finish the real baseline release check before announcing a fake newer release.
+  // AppUpdate intentionally shares an in-flight check with a visibility refresh.
+  await page.evaluate(async () => {
+    const readings: Promise<boolean>[] = [];
+    window.dispatchEvent(
+      new CustomEvent('swa:refresh-home', {
+        detail: { waitUntil: (reading: Promise<boolean>) => readings.push(reading) },
+      }),
+    );
+    await Promise.all(readings);
+  });
   await page.route('**/', async (route) => {
     if (route.request().resourceType() !== 'fetch') return route.continue();
     const response = await route.fetch();

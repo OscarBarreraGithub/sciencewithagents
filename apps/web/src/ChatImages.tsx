@@ -13,7 +13,7 @@ import {
   withChatAttachmentText,
   type ChatFile,
 } from '@dock/shared';
-import { api, apiUrl } from './api';
+import { api, apiScope, apiUrl } from './api';
 import './chatImages.css';
 
 async function png(file: File) {
@@ -104,7 +104,17 @@ function uploadFile(
   });
 }
 
-/** One pending upload belongs to the composer, including its Notepad view. */
+type PendingUpload = {
+  file: File;
+  key: string;
+  name: string;
+  data?: string;
+  uploaded?: ChatFile;
+};
+const isImage = (file: File) => /^image\/(?:png|jpeg|webp|gif|avif|bmp)$/i.test(file.type);
+
+/** The batch belongs to the composer, including its Notepad view. A failure
+ * pauses at that file; retries retain keys and already confirmed uploads. */
 export function useChatAttachmentUpload({
   currentText,
   setText,
@@ -118,7 +128,8 @@ export function useChatAttachmentUpload({
 }) {
   const mounted = useRef(true),
     busyRef = useRef(false);
-  const pending = useRef<{ key: string; name: string; data: string } | null>(null);
+  const scope = useRef(apiScope()).current;
+  const pending = useRef<PendingUpload[]>([]);
   const controller = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
@@ -128,58 +139,117 @@ export function useChatAttachmentUpload({
     return () => {
       mounted.current = false;
       controller.current?.abort();
+      pending.current = [];
     };
   }, []);
-  async function upload(file?: File) {
-    if (busyRef.current) return;
+  async function upload(files?: File[]) {
+    if (busyRef.current) {
+      if (files?.length)
+        setError(
+          'Another batch already owns this upload. Nothing from the new selection was uploaded. Choose those files again after the current batch finishes.',
+        );
+      return;
+    }
+    if (files) {
+      if (!files.length) return;
+      if (pending.current.length) {
+        setError('Retry or discard the remaining selected files before choosing more.');
+        return;
+      }
+      const available = chatAttachmentLimit - chatAttachmentCount(currentText());
+      if (files.length > available) {
+        setError(
+          `You selected ${files.length} files, but this message has room for ${available}. Nothing from this selection was uploaded. Choose up to ${available} files, or remove attached files first.`,
+        );
+        return;
+      }
+      // Reject the whole selection before starting when a size is known to be invalid.
+      const invalid = files.find(
+        (file) => !file.size || file.size > (isImage(file) ? 20 * 1024 * 1024 : chatFileByteLimit),
+      );
+      if (invalid) {
+        setError(
+          `${invalid.name}: ${isImage(invalid) && invalid.size ? 'Choose an image smaller than 20 MB.' : 'Choose a nonempty file under 8 MB.'} Nothing from this selection was uploaded. Choose the files again.`,
+        );
+        return;
+      }
+      pending.current = files.map((file) => ({
+        file,
+        key: crypto.randomUUID(),
+        name: isImage(file) ? file.name.replace(/\.[^/.]+$/, '') + '.png' : file.name,
+      }));
+    }
+    if (!pending.current.length) return;
     busyRef.current = true;
     setBusy(true);
     onBusy(true);
     setError('');
     try {
-      if (chatAttachmentCount(currentText()) >= chatAttachmentLimit)
-        throw new Error('Send these files before attaching more (four per message).');
-      if (file) {
-        pending.current = null;
-        setProgress(`Preparing ${file.name}…`);
-        const image = /^image\/(?:png|jpeg|webp|gif|avif|bmp)$/i.test(file.type);
-        pending.current = {
-          key: crypto.randomUUID(),
-          name: image ? file.name.replace(/\.[^/.]+$/, '') + '.png' : file.name,
-          data: image ? await png(file) : await data(file),
-        };
+      while (pending.current.length && mounted.current) {
+        if (apiScope() !== scope)
+          throw new Error('The selected computer changed. Reopen the original computer to retry.');
+        if (chatAttachmentCount(currentText()) >= chatAttachmentLimit)
+          throw new Error('Remove an attached file before retrying (four per message).');
+        const item = pending.current[0]!;
+        if (!item.data && !item.uploaded) {
+          setProgress(`Preparing ${item.file.name} · ${pending.current.length} remaining…`);
+          item.data = isImage(item.file) ? await png(item.file) : await data(item.file);
+        }
+        if (!mounted.current) return;
+        if (!item.uploaded) {
+          controller.current = new AbortController();
+          setProgress(`Uploading ${item.name} · 0% · ${pending.current.length} remaining`);
+          item.uploaded = await uploadFile(
+            { key: item.key, name: item.name, data: item.data! },
+            (value) => {
+              if (mounted.current)
+                setProgress(
+                  value === 100
+                    ? `Saving ${item.name}…`
+                    : `Uploading ${item.name} · ${value}% · ${pending.current.length} remaining`,
+                );
+            },
+            controller.current.signal,
+          );
+        }
+        if (!mounted.current) return;
+        if (apiScope() !== scope)
+          throw new Error('The selected computer changed. Reopen the original computer to retry.');
+        // Read at the moment of attachment, never from the selection-time draft.
+        const current = currentText();
+        if (!chatFileIds(current).includes(item.uploaded.id)) {
+          if (chatAttachmentCount(current) >= chatAttachmentLimit)
+            throw new Error('Remove an attached file before retrying (four per message).');
+          const next = current + (current ? '\n\n' : '') + chatFileReference(item.uploaded.id);
+          if (next.length > maxLength)
+            throw new Error('Shorten your message slightly, then retry adding this file.');
+          setText(next);
+        }
+        pending.current.shift();
       }
-      if (!pending.current || !mounted.current) return;
-      controller.current = new AbortController();
-      const name = pending.current.name;
-      setProgress(`Uploading ${name} · 0%`);
-      const fileInfo = await uploadFile(
-        pending.current,
-        (value) => {
-          if (mounted.current)
-            setProgress(value === 100 ? `Saving ${name}…` : `Uploading ${name} · ${value}%`);
-        },
-        controller.current.signal,
-      );
-      if (!mounted.current) return;
-      const current = currentText();
-      const next = current + (current ? '\n\n' : '') + chatFileReference(fileInfo.id);
-      if (next.length > maxLength)
-        throw new Error('Shorten your message slightly, then retry adding this file.');
-      setText(next);
-      pending.current = null;
     } catch (e) {
-      if (mounted.current) setError((e as Error).message);
+      if (mounted.current) {
+        const name = pending.current[0]?.file.name;
+        setError(
+          `${name ? name + ': ' : ''}${(e as Error).message} Remaining: ${pending.current.map((item) => item.file.name).join(', ')}. Retry upload resumes these files.`,
+        );
+      }
     } finally {
       busyRef.current = false;
       if (mounted.current) {
         setBusy(false);
-        onBusy(false);
+        onBusy(pending.current.length > 0);
         setProgress('');
       }
     }
   }
-  return { busy, error, progress, canRetry: !!pending.current, upload };
+  const discard = () => {
+    if (busyRef.current) return;
+    pending.current = [];
+    onBusy(false);
+    setError('');
+  };
+  return { busy, error, progress, canRetry: !!pending.current.length, upload, discard };
 }
 type UploadState = ReturnType<typeof useChatAttachmentUpload>;
 const size = (bytes: number) =>
@@ -308,7 +378,13 @@ export function ChatAttachmentPicker({
         aria-label="Attach files"
         aria-describedby={limitId}
         title="Up to four files, 8 MB each"
-        disabled={disabled || uploadDisabled || uploader.busy || attached >= chatAttachmentLimit}
+        disabled={
+          disabled ||
+          uploadDisabled ||
+          uploader.busy ||
+          uploader.canRetry ||
+          attached >= chatAttachmentLimit
+        }
         onClick={() => input.current?.click()}
       >
         {uploader.busy ? (
@@ -325,13 +401,14 @@ export function ChatAttachmentPicker({
       <input
         ref={input}
         type="file"
+        multiple
         aria-label="Choose files"
         aria-describedby={limitId}
         hidden
         onChange={(event) => {
-          const file = event.target.files?.[0];
+          const files = Array.from(event.target.files ?? []);
           event.target.value = '';
-          if (file && !disabled && !uploadDisabled) void uploader.upload(file);
+          if (files.length && !disabled && !uploadDisabled) void uploader.upload(files);
         }}
       />
       {!!attached && (
@@ -373,13 +450,24 @@ export function ChatAttachmentPicker({
         <div role="alert" className="chat-image-error">
           {uploader.error}
           {uploader.canRetry && (
-            <button
-              type="button"
-              disabled={disabled || uploadDisabled || uploader.busy}
-              onClick={() => void uploader.upload()}
-            >
-              Retry upload
-            </button>
+            <span className="chat-upload-actions">
+              <button
+                type="button"
+                className="chat-image-button"
+                disabled={disabled || uploadDisabled || uploader.busy}
+                onClick={() => void uploader.upload()}
+              >
+                Retry upload
+              </button>
+              <button
+                type="button"
+                className="chat-image-button"
+                disabled={uploader.busy}
+                onClick={uploader.discard}
+              >
+                Discard remaining uploads
+              </button>
+            </span>
           )}
         </div>
       )}

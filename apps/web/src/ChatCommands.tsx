@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { nativeCommandCatalogSchema } from '@dock/shared';
+import { api } from './api';
 import { Modal } from './Modal';
 import { useBackStep } from './home/Navigation';
 
@@ -11,13 +13,40 @@ export function ChatCommands({
   onCommand,
   onAdvanced,
   onBack,
+  agentId,
+  onNativeCommand,
 }: {
   onGoal: () => void;
   onCommand?: (command: ChatCommand) => void;
   onAdvanced?: () => void;
   onBack?: (close: (() => void) | null) => void;
+  agentId?: string;
+  onNativeCommand?: (text: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [catalog, setCatalog] = useState<ReturnType<
+    typeof nativeCommandCatalogSchema.parse
+  > | null>(null);
+  const [catalogError, setCatalogError] = useState('');
+  useEffect(() => {
+    if (!open || !agentId) return;
+    let active = true;
+    setCatalog(null);
+    setCatalogError('');
+    void api(`/agents/${agentId}/native-commands`)
+      .then((result) => {
+        if (active) setCatalog(nativeCommandCatalogSchema.parse(result));
+      })
+      .catch(() => {
+        if (active)
+          setCatalogError(
+            'Native command discovery is unavailable on this computer. Existing chat and app controls still work.',
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, agentId]);
   const trigger = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useBackStep(open && !onBack ? close : null);
@@ -89,7 +118,27 @@ export function ChatCommands({
               </button>
             )}
           </div>
-          <p>Other provider commands stay in the original native session.</p>
+          {catalog?.commands.length && onNativeCommand ? (
+            <div className="session-command-list">
+              {catalog.commands
+                .filter((name) => name !== 'compact')
+                .map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className="secondary"
+                    onClick={() => choose(() => onNativeCommand?.(`/${name}`))}
+                  >
+                    <code>/{name}</code> Run in Claude
+                  </button>
+                ))}
+            </div>
+          ) : null}
+          <p>
+            {catalogError ||
+              catalog?.note ||
+              'Other provider commands stay in the original native session.'}
+          </p>
         </Modal>
       )}
     </>

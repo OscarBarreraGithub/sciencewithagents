@@ -107,6 +107,11 @@ into QUARK or override provider limits. Older companions need a safe update befo
 controls are available. Claude and app-managed goal continuation are separate capabilities;
 the app does not substitute a new goal or an unsupervised loop when they are unavailable.
 
+App-managed Claude chats expose discovered native commands in the composer's **/** menu,
+including **/compact** and **/context** when available. Commands run in the existing native
+session and retain the unsent draft and attachments. Interactive commands that require the
+native terminal or editor remain there; the app does not claim complete native interface parity.
+
 App-owned Codex and Claude project managers offer a separate, explicit opt-in **Goal**
 through **/goal** or the composer’s **/** menu. The compact **VS Code** action in a manager’s
 header opens its registered project folder on that computer in a new editor window.
@@ -180,10 +185,14 @@ The optional companion needs no separate editor login. [Companion](../apps/vscod
 ## Documents on a phone
 
 **Attach files** opens the device's file picker in chat and the first-project notepad. Attach
-up to four files, 8 MB each; remove attachments before sending and retry interrupted uploads
-without duplicating them. Images retain previews and native vision support. Documents and
-other files are stored privately on the selected computer and handed to a capable native
-agent by reference. Attached drafts survive reloads. Attaching a file does not execute it or
+several files at once, up to four per message and 8 MB each. A selection that exceeds the
+remaining slots or contains an empty/oversized file is rejected before uploading. Interrupted
+batches retain completed attachments; Retry upload resumes the remaining files without
+duplicating them. Discard remaining uploads leaves completed attachments in the draft.
+Sending waits until remaining uploads are retried or discarded. You can remove attachments before
+sending. Images retain previews and native vision support. Documents and other files are stored privately on the selected computer and handed to a capable native
+agent by reference. Completed attachments in drafts survive reloads; unfinished selections
+must be chosen again after closing or reloading the chat. Attaching a file does not execute it or
 guarantee the selected assistant can interpret every format; coordination-only QUARK reads
 bounded text previews and can refer other files to an appropriate manager.
 

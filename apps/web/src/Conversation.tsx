@@ -25,6 +25,7 @@ import {
   withoutChatAttachments,
   withChatAttachmentText,
   jobEstimateSchema,
+  nativeCommandReceiptSchema,
   type Agent,
   type AgentDetail,
   type AgentDetailChannel,
@@ -746,6 +747,63 @@ export function Composer({
       active = false;
     };
   }, [storageKey, draft.ready]);
+  const nativeCommandRetry = useRef<{ key: string; text: string } | null>(null);
+  const runNativeCommand = async (commandText: string) => {
+    if (sendingRef.current || apiScope() !== scope) return;
+    sendingRef.current = true;
+    setSending(true);
+    try {
+      if (!nativeCommandRetry.current) {
+        const saved = receiptStorage.getItem(`${storageKey}:native-command`);
+        if (saved) nativeCommandRetry.current = JSON.parse(saved) as { key: string; text: string };
+      }
+      if (nativeCommandRetry.current && nativeCommandRetry.current.text !== commandText)
+        throw new Error(
+          'The earlier command has an uncertain receipt. Retry that same command before submitting another. Your draft is retained.',
+        );
+      const pending =
+        nativeCommandRetry.current?.text === commandText
+          ? nativeCommandRetry.current
+          : { key: crypto.randomUUID(), text: commandText };
+      nativeCommandRetry.current = pending;
+      receiptStorage.setItem(`${storageKey}:native-command`, JSON.stringify(pending));
+      const parsed = nativeCommandReceiptSchema.safeParse(
+        await api(`/agents/${agent.id}/native-commands`, pending),
+      );
+      if (!parsed.success)
+        throw new Error(
+          'The computer returned an incomplete command acknowledgement. Its original receipt and draft are retained.',
+        );
+      const response = parsed.data;
+      if (
+        response.key !== pending.key ||
+        response.agentId !== agent.id ||
+        response.text !== pending.text ||
+        response.run.agentId !== agent.id
+      )
+        throw new Error(
+          'The command acknowledgement did not match this submission. Its original receipt and draft are retained.',
+        );
+      nativeCommandRetry.current = null;
+      receiptStorage.removeItem(`${storageKey}:native-command`);
+      setLiteralSlash(false);
+      setNotice('Command accepted in this conversation. Your draft and attachments are kept.');
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        nativeCommandRetry.current = null;
+        receiptStorage.removeItem(`${storageKey}:native-command`);
+        setLiteralSlash(true);
+      }
+      fail(
+        error instanceof Error
+          ? error.message
+          : 'Could not run the command. Your draft is retained.',
+      );
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  };
   /** Resolves true only after the manager accepted the message. */
   const submit = async (asText = false): Promise<boolean> => {
     const value = draft.currentText().trim();
@@ -779,29 +837,23 @@ export function Composer({
       }
       return false;
     }
-    if (!retry.current && !specialized && value.startsWith('/') && !asText) {
+    if (!retry.current && !specialized && commandText.startsWith('/') && !asText) {
       const match = {
         '/new': 'new',
         '/clear': 'new',
         '/compact': 'compact',
         '/resume': 'resume',
         '/stop': 'interrupt',
-      }[value] as 'new' | 'compact' | 'resume' | 'interrupt' | undefined;
+      }[commandText] as 'new' | 'compact' | 'resume' | 'interrupt' | undefined;
       if (match) {
-        if (agent.provider === 'claude' && match === 'compact') {
-          fail(
-            'Manual Claude compaction is not connected here. Your draft is retained. Use /compact in Claude Code, or choose New context for a fresh conversation.',
-          );
-          return false;
-        }
-        onCommand(match);
-        setText('');
+        if (agent.provider === 'claude' && match === 'compact') await runNativeCommand('/compact');
+        else onCommand(match);
+      } else if (agent.provider === 'claude') {
+        await runNativeCommand(commandText);
       } else {
         setLiteralSlash(true);
         fail(
-          agent.provider === 'claude'
-            ? 'This can be sent as text, including a file path. For Claude slash commands, use Claude Code or its shared editor chat. Your draft is retained.'
-            : 'This can be sent as text, including a file path. Use Native terminal in Advanced controls for Codex slash commands. Your draft is retained.',
+          'This can be sent as text, including a file path. Use Native terminal in Advanced controls for Codex slash commands. Your draft is retained.',
         );
       }
       return false;
@@ -1220,11 +1272,13 @@ export function Composer({
                   fail('Goals are not available for this conversation. Your draft is retained.'))
               }
               onCommand={(command) => {
-                if (command === 'compact' && agent.provider === 'claude') {
-                  fail(
-                    'Manual Claude compaction is not connected here. Your draft is retained. Use /compact in Claude Code, or choose New context for a fresh conversation.',
-                  );
-                } else onCommand(command);
+                if (agent.provider === 'claude' && command === 'compact')
+                  void runNativeCommand('/compact');
+                else onCommand(command);
+              }}
+              agentId={agent.id}
+              onNativeCommand={(text) => {
+                void runNativeCommand(text);
               }}
               onAdvanced={onHelp}
               onBack={onCommandBack}
