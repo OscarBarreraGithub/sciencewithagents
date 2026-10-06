@@ -26,6 +26,8 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 - The persistent Back control has padding. Revisiting a page truncates the app's route trail:
   A → B → C → B → C returns through B → A, not repeated loops. Home clears that trail.
   Native browser history is separate. Preserve drafts and sensible return locations.
+  Selecting another app or shared chat retires the earlier chat and its sub-views from that
+  trail; Back first closes an open Notes, Subagents or Configure panel in the same chat.
 - No persistent mobile bottom bar, promotional slogans, news or personal-agent Home tile.
   Keep recovery preparation in update/support workflows rather than a Home promotion.
 

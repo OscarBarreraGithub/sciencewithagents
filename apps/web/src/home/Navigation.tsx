@@ -7,10 +7,20 @@ export const canonicalRoute = (value: string) =>
   (value.replace(/^#\//, '').replace(/\/$/, '') || 'home')
     .replace(/^usage(?=\/|$)/, 'work')
     .replace(/^advanced$/, 'settings');
+/** The exact conversation a route belongs to; Chats lists and other pages have none. */
+const conversation = (route: string) => {
+  const [page, id, ...key] = route.split('/');
+  if ((page === 'chat' || page === 'advanced') && id) return `chat/${id}`;
+  return page === 'chats' && id === 'vscode' && key.join('/') ? route : undefined;
+};
 const visitRoute = (trail: string[], route: string) => {
   const next = canonicalRoute(route);
-  const previous = trail.indexOf(next);
   if (next === 'home') return ['home'];
+  // Selecting a conversation retires every other conversation and its sub-views first,
+  // so Back (and loop truncation of old trails) can never reselect an earlier thread.
+  const selected = !next.startsWith('advanced/') && conversation(next);
+  if (selected) trail = trail.filter((stop) => (conversation(stop) ?? selected) === selected);
+  const previous = trail.indexOf(next);
   if (previous >= 0) return trail.slice(0, previous + 1);
   // Closing a notepad replaces its sub-view; Back must not reopen it.
   if (trail.at(-1)?.startsWith(`${next}/`)) return [...trail.slice(0, -1), next];
@@ -40,6 +50,18 @@ export const Navigation = createContext(() => {
   location.hash = '#/home';
 });
 
+// An open local panel (Notes, Subagents, Configure) closes before Back leaves its page.
+let localStep: (() => void) | null = null;
+export function useBackStep(close: (() => void) | null) {
+  useEffect(() => {
+    if (!close) return;
+    localStep = close;
+    return () => {
+      if (localStep === close) localStep = null;
+    };
+  }, [close]);
+}
+
 /** A small, bounded trail within the app. Home always starts a fresh trip. */
 export function useNavigation(current: string, main: RefObject<HTMLElement | null>) {
   const trail = useRef(restore(current));
@@ -66,6 +88,9 @@ export function useNavigation(current: string, main: RefObject<HTMLElement | nul
   }, []);
   const back = () => {
     // Consume synchronously so two quick taps cannot use the same stale step.
+    const close = localStep;
+    localStep = null;
+    if (close) return close();
     trail.current = trail.current.length > 1 ? trail.current.slice(0, -1) : ['home'];
     save(trail.current);
     location.hash = `#/${trail.current.at(-1) ?? 'home'}`;

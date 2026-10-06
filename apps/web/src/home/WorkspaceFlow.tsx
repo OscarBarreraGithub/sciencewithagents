@@ -48,6 +48,7 @@ import { ProjectConfiguration } from './ProjectConfiguration';
 import { readProjectSeed, seedProjectBrief } from './SpawnBrief';
 import { ProjectOwnerWorkBoard } from './OwnerWorkBoard';
 import { NewConversation } from './NewConversation';
+import { useBackStep } from './Navigation';
 import { AssistedSearch } from './AssistedSearch';
 import { EditorStatus } from './EditorStatus';
 import { BrowserStatus } from './BrowserStatus';
@@ -613,6 +614,9 @@ export function ChatPage({
       if (alive.current && currentId.current === id) setBusy(false);
     }
   };
+  const managerView = !!pane && !!agent && managesProject(agent, pane.special);
+  const panel = pane?.panel && (pane.panel === 'config' || managerView) ? pane.panel : null;
+  useBackStep(panel ? () => pane?.setPanel(null) : null);
   if (!agent)
     return (
       <FlowEmpty title="Opening the conversation…">
@@ -629,8 +633,6 @@ export function ChatPage({
   const approvals = state.approvals.filter((a) => a.agentId === id && a.status === 'pending');
   const project = state.projects.find((p) => p.id === agent.projectId);
   const surface = surfaceOf(agent);
-  const managerView = !!pane && managesProject(agent, pane.special);
-  const panel = pane?.panel && (pane.panel === 'config' || managerView) ? pane.panel : null;
   const togglePanel = (next: ChatPanel) => pane?.setPanel(panel === next ? null : next);
   const onReference = (text: string) => {
     setReference((old) => ({ nonce: (old?.nonce ?? 0) + 1, text }));
