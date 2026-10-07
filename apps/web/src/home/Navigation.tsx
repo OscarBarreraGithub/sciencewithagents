@@ -6,11 +6,13 @@ const key = () => `dock:${apiScope()}:navigation`;
 export const canonicalRoute = (value: string) =>
   (value.replace(/^#\//, '').replace(/\/$/, '') || 'home')
     .replace(/^usage(?=\/|$)/, 'work')
-    .replace(/^advanced$/, 'settings');
+    .replace(/^advanced$/, 'settings')
+    .replace(/^groups(?=\/|$)/, 'chats/groups');
 /** The exact conversation a route belongs to; Chats lists and other pages have none. */
 const conversation = (route: string) => {
   const [page, id, ...key] = route.split('/');
   if ((page === 'chat' || page === 'advanced') && id) return `chat/${id}`;
+  if (page === 'chats' && id === 'groups' && key[0]) return `chats/groups/${key[0]}`;
   return page === 'chats' && id === 'vscode' && key.join('/') ? route : undefined;
 };
 const visitRoute = (trail: string[], route: string) => {

@@ -53,7 +53,10 @@ test('explicit helpers stay excluded while same-title personal, imported and sha
   await expect(page.locator('.flow-person')).toHaveAttribute('href', `#/chat/${owner.id}`);
   await page.getByRole('button', { name: 'Managers', exact: true }).click();
   await expect(page.locator('.flow-person')).toHaveCount(4);
-  await expect(page.locator('.chat-filters [aria-pressed="true"]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await page.getByRole('button', { name: 'VS Code', exact: true }).click();
   await expect(page.locator('.flow-person')).toHaveCount(2);
   await page.reload();
@@ -148,7 +151,7 @@ test('conversation filters keep whole labels and reachable touch targets at narr
       });
     });
     expect(layout).toEqual(
-      ['Managers', 'VS Code', 'Misc', 'Groups'].map((name) => ({
+      ['All', 'Managers', 'VS Code', 'Misc', 'Groups'].map((name) => ({
         name,
         lines: 1,
         fits: true,
@@ -174,11 +177,18 @@ test('conversation filters keep whole labels and reachable touch targets at narr
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '';
   });
-  await expect(filters.getByRole('button', { name: 'All', exact: true })).toHaveCount(0);
-  await expect(filters.locator('[aria-pressed="true"]')).toHaveCount(0);
+  await expect(filters.getByRole('button', { name: 'All', exact: true })).toBeVisible();
+  await expect(filters.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await filters.screenshot({ path: info.outputPath('conversation-filters.png') });
   await filters.getByRole('button', { name: 'Groups', exact: true }).click();
-  await expect(page).toHaveURL(/#\/groups$/);
-  await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Conversation type' })).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/chats\/groups$/);
+  await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole('group', { name: 'Conversation type' })
+      .getByRole('button', { name: 'Groups', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
 });

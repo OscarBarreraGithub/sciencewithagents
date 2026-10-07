@@ -14,14 +14,14 @@ maintainer account. Use scripts/group-cloudflare-setup.mjs to prepare private co
 deploy to my own HTTPS workers.dev origin, then activate the verified configuration.
 Keep creation credentials private on my computer. Joining members use my invitation
 and host; they do not deploy another Worker or need a Cloudflare account for Groups.
-Explain the short human checklist, handle the technical work, open Home → Groups,
+Explain the short human checklist, handle the technical work, open Chats → Groups,
 then help create a project and share an invitation link. Members accept the link and join directly; no code exchange or creator approval. Verify shared
 messages in both directions and recovery after reconnect before claiming completion.
 Use each member's own Codex or Claude sign-in and native tools. Follow
 docs/CONTRIBUTOR_SETUP.md to install their chosen CLI if missing or update its existing
 installation, then verify its version and model discovery. A desktop app alone is not enough. Explain
-Local agent access before I enable it. Shared chat and Private to you have separate
-histories. Do not publish private history, drafts or files automatically.
+Local agent access before I enable it. Group chat shows everyone’s shared messages. Group manager directs my own agent’s shared work.
+Previously saved private histories remain private and are not part of this view. Do not publish private history, drafts or files automatically.
 For phone access, use the separate Cloudflare phone prompt and MY OWN Cloudflare
 Tunnel account, with authenticated device pairing; Groups hosting is separate from
 phone access to my computer. GitHub is optional for shared code/files and backups:
@@ -38,10 +38,10 @@ fetch a URL merely because it appears in an invitation, copy creator setup crede
 or silently replace an existing service mapping. I do not need to deploy a Worker or
 open a Cloudflare account to join. If setup takes longer than the invitation's 7-day
 lifetime, ask for a fresh invitation from the same creator after configuring the service.
-Open Groups → Join by invitation → Join group. The invitation grants membership directly, without a confirmation code or separate approval. Use my own Codex or Claude sign-in and native tools.
+Open Chats → Groups → Join group. The invitation grants membership directly, without a confirmation code or separate approval. Use my own Codex or Claude sign-in and native tools.
 Follow docs/CONTRIBUTOR_SETUP.md to install my chosen CLI if missing or update its
 existing installation, then verify its version and model discovery.
-Explain Shared chat, Private to you and Local agent access; verify messages in both
+Explain Group chat, Group manager and Local agent access; verify messages in both
 directions after joining. Ask whether this group uses a shared GitHub repository; if so,
 use the GitHub setup prompt to verify my own account access and connect its shared workspace.
 Phone access uses my own Cloudflare Tunnel and paired
@@ -112,6 +112,7 @@ function CopyPrompt({
       setCopyState('copied');
     } catch {
       if (text.current) {
+        text.current.closest('details')?.setAttribute('open', '');
         const range = document.createRange();
         range.selectNodeContents(text.current);
         const selection = window.getSelection();
@@ -133,9 +134,12 @@ function CopyPrompt({
           {copyState === 'copied' ? 'Copied' : button}
         </button>
       </div>
-      <pre ref={text} tabIndex={0} aria-label={label}>
-        {prompt}
-      </pre>
+      <details className="group-prompt-text">
+        <summary>Read prompt</summary>
+        <pre ref={text} tabIndex={0} aria-label={label}>
+          {prompt}
+        </pre>
+      </details>
       <p className="setup-prompt-status" role="status">
         {copyState === 'failed'
           ? 'Copy did not work. Select the prompt and copy it by hand.'
@@ -156,34 +160,34 @@ export function GroupSetupPrompt({ initiallyOpen = false }: { initiallyOpen?: bo
         invitation.
       </p>
       <p>Copy the relevant prompt into Codex or Claude on the computer being set up.</p>
-      <p>
-        <strong>Your human checklist</strong>
-      </p>
-      <ol>
-        <li>
-          Creator: sign in to your Cloudflare account and confirm Workers Free; let your setup agent
-          handle deployment.
-        </li>
-        <li>
-          Members: give your setup agent the creator’s invitation, then choose Join group in your
-          app.
-        </li>
-        <li>Enable local agents when ready and verify a shared message in each direction.</li>
-        <li>
-          For phone access, use the Cloudflare phone setup prompt in setup checks and pair your
-          phone.
-        </li>
-        <li>
-          For shared files, sign in to GitHub, provide your GitHub username, choose the repository
-          and accept collaborator access. Then enable Shared files → Automatic sync. GitHub is
-          optional for messaging.
-        </li>
-      </ol>
+      <details>
+        <summary>Your setup checklist</summary>
+        <ol>
+          <li>
+            Creator: sign in to your Cloudflare account and confirm Workers Free; let your setup
+            agent handle deployment.
+          </li>
+          <li>
+            Members: give your setup agent the creator’s invitation, then choose Join group in your
+            app.
+          </li>
+          <li>Enable local agents when ready and verify a shared message in each direction.</li>
+          <li>
+            For phone access, use the Cloudflare phone setup prompt in setup checks and pair your
+            phone.
+          </li>
+          <li>
+            For shared files, sign in to GitHub, provide your GitHub username, choose the repository
+            and accept collaborator access. Then enable Shared files → Automatic sync. GitHub is
+            optional for messaging.
+          </li>
+        </ol>
+      </details>
       {prompts.map((prompt) => (
-        <details key={prompt.label} open={prompt.label === 'Cloudflare Groups setup prompt'}>
-          <summary>{prompt.title}</summary>
+        <section className="group-setup-choice" key={prompt.label}>
+          <h3>{prompt.title}</h3>
           <CopyPrompt label={prompt.label} button={prompt.button} text={prompt.text} />
-        </details>
+        </section>
       ))}
     </details>
   );

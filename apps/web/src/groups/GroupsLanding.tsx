@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { groupDisplayNameSchema } from '@dock/shared';
 import type { GroupsLandingProps } from './types';
 import { DisplayName } from './DisplayName';
+import { Modal } from '../Modal';
+import { Users } from 'lucide-react';
 import './groups.css';
+import './groups-list.css';
 
 export function GroupsLanding({
   groups,
@@ -15,6 +18,10 @@ export function GroupsLanding({
   setupCodeRequired = false,
   onNewSetupCode,
   joinReceipt,
+  selectedId,
+  query = '',
+  onSetup,
+  setupRequired = false,
 }: GroupsLandingProps) {
   const [mode, setMode] = useState<'create' | 'join' | null>(initialInvitation ? 'join' : null);
   const [name, setName] = useState('');
@@ -24,7 +31,8 @@ export function GroupsLanding({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const active = useRef(false);
-  const heading = useRef<HTMLHeadingElement>(null);
+  const currentInvitationRevision = useRef(invitationRevision);
+  currentInvitationRevision.current = invitationRevision;
   const setupCodeInput = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (!initialInvitation) return;
@@ -32,9 +40,6 @@ export function GroupsLanding({
     setInvitation(initialInvitation);
     setError('');
   }, [initialInvitation, invitationRevision]);
-  useEffect(() => {
-    heading.current?.focus({ preventScroll: true });
-  }, []);
   const submit = async () => {
     if (active.current || !mode) return;
     if (!groupDisplayNameSchema.safeParse(name).success) {
@@ -53,21 +58,25 @@ export function GroupsLanding({
       setError('Paste your beta setup code. Members join later with your invitation.');
       return;
     }
+    const submittedRevision = currentInvitationRevision.current;
     active.current = true;
     setBusy(true);
     setError('');
     try {
       // The host owns validation/authentication and the resulting navigation.
-      if (mode === 'create')
+      if (mode === 'create') {
         await onCreate({
           projectName: project,
           displayName: name,
           ...(setupCodeRequired ? { setupCode: setupCode.trim() } : {}),
         });
-      else {
+        if (submittedRevision === currentInvitationRevision.current) setMode(null);
+      } else {
         await onJoin({ invitation, displayName: name });
-        setMode(null);
-        setInvitation('');
+        if (submittedRevision === currentInvitationRevision.current) {
+          setMode(null);
+          setInvitation('');
+        }
       }
     } catch (reason) {
       setError(
@@ -79,159 +88,184 @@ export function GroupsLanding({
     }
   };
   return (
-    <main className="groups-landing">
-      <header>
-        <p className="groups-eyebrow">Sciencewithagents</p>
-        <h1 ref={heading} tabIndex={-1}>
-          Groups
-        </h1>
-        <p>Shared work, with your own agent alongside it.</p>
-      </header>
-      {!mode ? (
-        <>
-          <div className="groups-actions">
-            <button className="primary" onClick={() => setMode('create')}>
-              New project
-            </button>
-            <button className="secondary" onClick={() => setMode('join')}>
-              Join by invitation
-            </button>
+    <div className="groups-chat-list">
+      <div className="groups-list-actions">
+        <button className="flow-button primary" onClick={() => setMode('create')}>
+          New group
+        </button>
+        <button className="flow-button" onClick={() => setMode('join')}>
+          Join group
+        </button>
+        {onSetup && (
+          <button
+            className="chat-icon-button"
+            aria-label="Group setup"
+            title="Group setup"
+            onClick={onSetup}
+          >
+            ?
+          </button>
+        )}
+      </div>
+      {joinReceipt}
+      <nav className="chat-list-scroll" aria-label="Group conversations">
+        {groups.kind === 'loading' ? (
+          <p className="chat-list-empty" role="status">
+            Loading groups…
+          </p>
+        ) : groups.kind !== 'ready' ? (
+          <div className="chat-list-empty" role="status">
+            <p>{groups.message}</p>
+            <button onClick={onRetry}>Retry groups</button>
           </div>
-          {joinReceipt}
-          <h2>Your projects</h2>
-          {groups.kind === 'loading' ? (
-            <p role="status">Loading projects…</p>
-          ) : groups.kind !== 'ready' ? (
-            <div role="status">
-              <p>{groups.message}</p>
-              <button onClick={onRetry}>Retry projects</button>
-            </div>
-          ) : groups.value.length === 0 ? (
-            <p>No groups yet. Create a project or use an invitation.</p>
-          ) : (
-            <ul className="groups-projects">
-              {groups.value.map((group) => (
-                <li key={group.id}>
-                  <button onClick={() => onOpen(group.id)}>
+        ) : (
+          <>
+            {groups.value
+              .filter((group) =>
+                group.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+              )
+              .map((group) => (
+                <button
+                  key={group.id}
+                  className={`flow-person chat-row group${selectedId === group.id ? ' selected' : ''}`}
+                  aria-current={selectedId === group.id ? 'page' : undefined}
+                  onClick={() => onOpen(group.id)}
+                >
+                  <span className="chat-row-icon manager" aria-hidden="true">
+                    <Users size={17} />
+                  </span>
+                  <span className="chat-row-text">
                     <strong>
                       <DisplayName value={group.name} />
                     </strong>
-                    <span>
-                      {group.members} {group.members === 1 ? 'member' : 'members'} · {group.sync}
-                    </span>
-                    <span aria-hidden="true">Open →</span>
-                  </button>
-                </li>
+                    <small>
+                      {group.members} {group.members === 1 ? 'member' : 'members'}
+                    </small>
+                  </span>
+                </button>
               ))}
-            </ul>
-          )}
-        </>
-      ) : (
-        <form
-          className="groups-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit();
-          }}
-          noValidate
-        >
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            onClick={() => {
+            {!groups.value.length && (
+              <p className="chat-list-empty">
+                No shared chats yet. Join with an invitation or create a group.
+              </p>
+            )}
+            {!!groups.value.length &&
+              !groups.value.some((group) =>
+                group.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+              ) && <p className="chat-list-empty">No groups match your search.</p>}
+          </>
+        )}
+      </nav>
+      {mode && (
+        <Modal
+          title={mode === 'create' ? 'New group' : 'Join a group'}
+          className="groups-form-dialog"
+          close={() => {
+            if (!busy) {
               setMode(null);
               setError('');
-              requestAnimationFrame(() => heading.current?.focus());
+            }
+          }}
+        >
+          <form
+            className="groups-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
             }}
+            noValidate
           >
-            Back to groups
-          </button>
-          <h2>{mode === 'create' ? 'New project' : 'Join a project'}</h2>
-          <label>
-            Your display name
-            <input
-              autoFocus
-              autoComplete="off"
-              value={name}
-              maxLength={120}
-              onChange={(event) => setName(event.target.value)}
-              aria-describedby="groups-name-note"
-            />
-          </label>
-          <p id="groups-name-note">
-            Type the name members should see. A display name does not verify identity.
-          </p>
-          {mode === 'create' ? (
-            <>
-              <label>
-                Project name
-                <input
-                  value={project}
-                  maxLength={120}
-                  onChange={(event) => setProject(event.target.value)}
-                />
-              </label>
-              <p>
-                Sharing files too? After creation, connect GitHub in Manage group → Shared files.
-              </p>
-              {setupCodeRequired && (
-                <>
-                  <label>
-                    Beta setup code
-                    <textarea
-                      ref={setupCodeInput}
-                      aria-label="Beta setup code"
-                      value={setupCode}
-                      maxLength={4096}
-                      rows={3}
-                      autoComplete="off"
-                      autoCapitalize="none"
-                      spellCheck={false}
-                      onChange={(event) => setSetupCode(event.target.value)}
-                      aria-describedby="groups-code-note"
-                    />
-                  </label>
-                  <p id="groups-code-note">
-                    Use the code from the beta operator to create one project. Members need only
-                    your invitation.
-                  </p>
-                </>
-              )}
-            </>
-          ) : (
             <label>
-              Invitation link
+              Your display name
               <input
-                type="text"
+                autoFocus
                 autoComplete="off"
-                value={invitation}
-                maxLength={4096}
-                onChange={(event) => setInvitation(event.target.value)}
+                value={name}
+                maxLength={120}
+                onChange={(event) => setName(event.target.value)}
+                aria-describedby="groups-name-note"
               />
             </label>
-          )}
-          {error && <p role="alert">{error}</p>}
-          {mode === 'create' && setupCodeRequired && onNewSetupCode && (
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy}
-              onClick={() => {
-                onNewSetupCode();
-                setSetupCode('');
-                setError('');
-                requestAnimationFrame(() => setupCodeInput.current?.focus());
-              }}
-            >
-              Use a new setup code
+            <p id="groups-name-note">The name other members will see.</p>
+            {mode === 'create' ? (
+              <>
+                <label>
+                  Project name
+                  <input
+                    value={project}
+                    maxLength={120}
+                    onChange={(event) => setProject(event.target.value)}
+                  />
+                </label>
+                <p>
+                  Sharing files too? After creation, connect GitHub in Manage group → Shared files.
+                </p>
+                {setupCodeRequired && (
+                  <>
+                    <label>
+                      Beta setup code
+                      <textarea
+                        ref={setupCodeInput}
+                        aria-label="Beta setup code"
+                        value={setupCode}
+                        maxLength={4096}
+                        rows={3}
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        onChange={(event) => setSetupCode(event.target.value)}
+                        aria-describedby="groups-code-note"
+                      />
+                    </label>
+                    <p id="groups-code-note">
+                      Use the code from the beta operator to create one project. Members need only
+                      your invitation.
+                    </p>
+                  </>
+                )}
+              </>
+            ) : (
+              <label>
+                Invitation link
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={invitation}
+                  maxLength={4096}
+                  onChange={(event) => setInvitation(event.target.value)}
+                />
+              </label>
+            )}
+            {error && <p role="alert">{error}</p>}
+            {mode === 'create' && setupCodeRequired && onNewSetupCode && (
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={() => {
+                  onNewSetupCode();
+                  setSetupCode('');
+                  setError('');
+                  requestAnimationFrame(() => setupCodeInput.current?.focus());
+                }}
+              >
+                Use a new setup code
+              </button>
+            )}
+            {mode === 'create' && setupRequired && onSetup && (
+              <div className="groups-setup-needed">
+                <p>Set up hosting once before creating your first group.</p>
+                <button type="button" className="secondary" onClick={onSetup}>
+                  Set up hosting
+                </button>
+              </div>
+            )}
+            <button className="primary" disabled={busy || (mode === 'create' && setupRequired)}>
+              {busy ? 'Connecting…' : mode === 'create' ? 'Create group' : 'Join group'}
             </button>
-          )}
-          <button className="primary" disabled={busy}>
-            {busy ? 'Waiting…' : mode === 'create' ? 'Continue setup' : 'Join group'}
-          </button>
-        </form>
+          </form>
+        </Modal>
       )}
-    </main>
+    </div>
   );
 }

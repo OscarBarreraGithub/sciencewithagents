@@ -1,3 +1,4 @@
+import { GroupsApp } from '../groups/GroupsApp';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
@@ -1124,6 +1125,7 @@ function MainChat({
 }) {
   const parts = route.split('/');
   const page = parts[0];
+  const groupView = page === 'chats' && parts[1] === 'groups';
   const agentId = page === 'chat' ? (parts[1] ?? '') : '';
   const brief = page === 'chat' && parts[2] === 'brief';
   const answerId = page === 'chat' && parts[2] === 'answer' ? parts[3] : undefined;
@@ -1312,7 +1314,7 @@ function MainChat({
     'Conversation';
   const editor = mirrors.chats.find((chat) => mirrorKey(chat) === editorKey);
   const editorTarget = rows.find((row) => row.kind === 'vscode' && row.key === editorKey)?.target;
-  const selected = !!agentId || !!editorKey;
+  const selected = !!agentId || !!editorKey || (groupView && !!parts[2]);
   const ListTitle = selected ? 'h2' : 'h1';
   const visibilityNotice = (
     <div className="chat-visibility-status" role="status">
@@ -1343,6 +1345,62 @@ function MainChat({
       )}
     </div>
   );
+  const chatFilters = (
+    <div className="flow-tabs chat-filters" role="group" aria-label="Conversation type">
+      {([['all', 'All'], ...filters] as [ChatFilter, string][]).map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={!groupView && filter === value}
+          onClick={() => {
+            setFilter((current) =>
+              !groupView && current === value && value !== 'all' ? 'all' : value,
+            );
+            if (groupView) location.hash = '#/chats';
+          }}
+        >
+          {label}
+        </button>
+      ))}
+      <button
+        type="button"
+        aria-pressed={groupView}
+        onClick={() => {
+          setMenu(false);
+          location.hash = '#/chats/groups';
+        }}
+      >
+        Groups
+      </button>
+    </div>
+  );
+  if (groupView)
+    return (
+      <GroupsApp
+        route={route}
+        query={query}
+        listHeader={
+          <>
+            <div className="chat-list-head">
+              <ListTitle className="chat-list-title" tabIndex={-1}>
+                Chats
+              </ListTitle>
+            </div>
+            <label className="flow-search chat-search">
+              <Search size={17} />
+              <input
+                aria-label="Find a conversation"
+                placeholder="Search groups"
+                value={query}
+                maxLength={200}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            {chatFilters}
+          </>
+        }
+      />
+    );
   return (
     <section className={`flow-page main-chat${selected ? ' has-selection' : ''}`}>
       <aside className="chat-list" aria-label="Conversations">
@@ -1392,21 +1450,7 @@ function MainChat({
             Archived
           </button>
         </div>
-        <div className="flow-tabs chat-filters" role="group" aria-label="Conversation type">
-          {filters.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={filter === value}
-              onClick={() => setFilter((current) => (current === value ? 'all' : value))}
-            >
-              {label}
-            </button>
-          ))}
-          <button type="button" onClick={() => (location.hash = '#/groups')}>
-            Groups
-          </button>
-        </div>
+        {chatFilters}
         {visibility.error && (
           <p className="chat-list-empty" role="alert">
             {visibility.error}{' '}

@@ -74,8 +74,8 @@ Follow the owner-hosted deployment instructions in docs/GROUP_HOSTING.md to
 deploy the group service to MY Cloudflare account on Workers Free. Do not use the
 maintainer's service, require a beta code, buy a domain, or enable paid services.
 Handle deployment and private local configuration; leave account sign-in and account
-selection to me. Open Groups, help me create a group and invite another person, and
-explain Shared chat versus Private to you. Use native local agents, without Docker.
+selection to me. Open Chats → Groups, help me create a group and invite another person, and
+explain Group chat (everyone’s messages) and Group manager (my agent’s shared work). Use native local agents, without Docker.
 Give me a short checklist of the remaining human steps. Verify messages in both
 directions and a private Ask once the other person joins. Report what remains untested.
 ```
@@ -90,7 +90,7 @@ sign-in and native tools. Install the chosen provider CLI if missing, or update 
 existing installation, then verify its version and model discovery.
 Configure the invitation's group service using the documented
 setup-agent process, without deploying a separate service or using the maintainer's
-account. Open Groups → Join by invitation → Join group. The invitation grants membership;
+account. Open Chats → Groups → Join group. The invitation grants membership;
 no confirmation code or separate approval is needed. Verify shared messaging and my private chat.
 Keep phone access and GitHub optional; list only the human steps I still need to do.
 ```

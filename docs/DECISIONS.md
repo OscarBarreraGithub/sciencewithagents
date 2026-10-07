@@ -17,7 +17,7 @@ Routine unsupported operations should fail visibly rather than wait indefinitely
 Real account sign-in, human questions and external policy requirements remain meaningful.
 External MCP services are not made safe by a filesystem prompt instruction.
 
-## Groups v1: separate conversations, native local agents
+## Groups v1: shared chats, native local agents
 
 New group creators host the group service in their own Cloudflare account. The app supplies
 copyable setup-agent prompts and a short human checklist; the agent handles deployment and
@@ -30,6 +30,12 @@ at `127.0.0.1:4331` through the app-owned named tunnel. The Worker preserves the
 same-origin authentication, streaming responses and WebSocket upgrades. No whole-network
 binding, domain purchase or phone VPN is part of new onboarding. Existing connections,
 including domain routes, are preserved. Groups hosting stays independent.
+
+Groups lives in **Chats → Groups**, with the ordinary list and conversation layout. Group chat
+shows shared messages from all members; Group manager directs this member’s own agent in
+the shared context. Setup, invitations and management are compact dialogs. The private-chat
+and catch-up controls are removed from this journey; their saved records retain private
+identities and are never republished or reassigned to the shared context.
 
 Each member uses their own computer, provider account and native tools. Group agents run
 through the ordinary local runtime and QUARK. Shared and private conversations have distinct
@@ -104,7 +110,7 @@ reserve into both providers without lowering it. Only explicit owner controls ch
 Optional timed release is off by default, with thresholds of 12 hours for Codex and 45 minutes
 for Claude. It lowers each actual reported window's effective reserve to zero only inside that
 window's fresh future reset interval; it never invents a refill or weekly meter. New empty
-installations enable shared protection with 20% reserves. Existing saved settings and off
+installations start with QUARK pacing and automatic checks off; enabling protection uses 20% reserve baselines. Existing saved settings and off
 choices are preserved; an owner explicitly enables protection when it is off.
 Spending toward a reset uses the bounded fast-window admission
 [pace](QUARK.md#adaptive-window-pace), not a separate finish-before-reset controller.

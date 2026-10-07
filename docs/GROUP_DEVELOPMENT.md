@@ -5,6 +5,16 @@ This developer host reuses the normal built web UI, `main --demo`, `DemoProvider
 shared feed and separate private asides behind fixture authentication. It does not implement
 real provider containment, hosting, Git synchronization or account integration.
 
+## Current Chats integration checks
+
+The current product interface is covered by `tests/group-host` with
+`playwright.group-host.config.ts`, plus `tests/home/groups-setup.spec.ts`. These
+exercise the built Chats → Groups interface on owned loopback test hosts. The older
+`tests/groups` and `tests/group-fixture` presentation suites still describe the retired
+standalone Groups/private-aside interface and require migration; they are not the
+current UI acceptance suite. Their retained server fixtures remain useful for transport
+and saved-history checks.
+
 ## Run beside an installation
 
 Use Node 24 and this isolated source checkout. Install the pinned dependencies with

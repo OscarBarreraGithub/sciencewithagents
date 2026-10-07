@@ -16,6 +16,10 @@ export type GroupRead<T> =
   | { kind: 'error'; message: string };
 export type GroupSummary = { id: GroupId; name: string; members: number; sync: string };
 export type GroupsLandingProps = {
+  selectedId?: string;
+  query?: string;
+  onSetup?: () => void;
+  setupRequired?: boolean;
   joinReceipt?: ReactNode;
   initialInvitation?: string;
   invitationRevision?: number;
@@ -32,13 +36,14 @@ export type GroupsLandingProps = {
   onRetry: () => void;
 };
 /** Supplied by an authenticated host. Labels and initials confer no authority. */
+export type GroupChatMode = 'group' | 'manager';
 export type GroupChatSlot = {
   groupId: GroupId;
   memberId: GroupMemberId;
   sessionId: GroupSessionId;
   visibility: 'shared' | 'private';
   draftIdentity: string;
-  content: ReactNode;
+  content: ReactNode | ((mode: GroupChatMode) => ReactNode);
 };
 export type GroupsWorkspaceProps = {
   onInvite?: () => void;
@@ -52,13 +57,13 @@ export type GroupsWorkspaceProps = {
   members: readonly GroupMember[];
   access: 'authorized' | 'revoked';
   sharedChat: GroupChatSlot;
-  privateAside: GroupChatSlot | null;
+  privateAside?: GroupChatSlot | null;
   loadPage: (query: GroupFeedQuery, signal: AbortSignal) => Promise<GroupRead<GroupFeedPage>>;
   loadOriginal: (
     event: GroupEvent,
     signal: AbortSignal,
   ) => Promise<GroupRead<{ eventId: GroupEvent['eventId']; text: string }>>;
-  catchUp: (signal: AbortSignal) => Promise<GroupRead<string>>;
+  catchUp?: (signal: AbortSignal) => Promise<GroupRead<string>>;
   catchUpView?: (close: () => void) => ReactNode;
   onBack: () => void;
 };

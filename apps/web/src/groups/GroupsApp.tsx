@@ -3,7 +3,7 @@ import { GroupSetupPrompt } from './GroupSetupPrompt';
 import { GroupJoinReceipt } from './GroupJoinReceipt';
 import { GroupGitPanel } from './GroupGitPanel';
 import { GroupNativeGitPanel } from './GroupNativeGitPanel';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { groupFeedPageSchema, type GroupEvent, type GroupFeedQuery } from '@dock/shared';
 import * as contracts from '@dock/shared/dist/group-host.js';
 import { api, apiScope, ApiError } from '../api';
@@ -11,7 +11,8 @@ import { GroupsLanding } from './GroupsLanding';
 import { GroupsWorkspace } from './GroupsWorkspace';
 import { GroupChat } from './GroupChat';
 import { GroupActionsBoard } from './GroupActionsBoard';
-import { GroupCatchup } from './GroupCatchup';
+import { Modal } from '../Modal';
+import type { GroupChatMode } from './GroupChat';
 import { GroupDocumentScope, GroupDocumentHost } from './GroupDocumentLink';
 import PdfReader from '../PdfReader';
 import {
@@ -55,6 +56,8 @@ function GroupConversation({
   onAuthorizationRequired,
   sharedHandle,
   executionMode,
+  mode,
+  sharedFeed,
 }: {
   slot: contracts.GroupHostSlot;
   onChanged: () => void;
@@ -62,11 +65,15 @@ function GroupConversation({
   onAuthorizationRequired: () => void;
   sharedHandle: string;
   executionMode?: 'host' | 'isolated';
+  mode: GroupChatMode;
+  sharedFeed: Pick<import('./types').GroupsWorkspaceProps, 'loadPage' | 'loadOriginal' | 'members'>;
 }) {
   return (
     <GroupDocumentScope handle={slot.handle} sharedHandle={sharedHandle}>
       <GroupChat
         slot={slot}
+        mode={mode}
+        sharedFeed={sharedFeed}
         executionMode={executionMode}
         request={request}
         onChanged={onChanged}
@@ -77,7 +84,16 @@ function GroupConversation({
     </GroupDocumentScope>
   );
 }
-export function GroupsApp({ route }: { route: string }) {
+export function GroupsApp({
+  route,
+  listHeader,
+  query,
+}: {
+  route: string;
+  listHeader?: ReactNode;
+  query?: string;
+}) {
+  const [setupOpen, setSetupOpen] = useState(false);
   const [invitation, setInvitation] = useState(initialGroupInvitation);
   const [invitationRevision, setInvitationRevision] = useState(groupInvitationRevision);
   useEffect(() => {
@@ -125,7 +141,6 @@ export function GroupsApp({ route }: { route: string }) {
   }, [controlsOpen, selected?.group.handle]);
   const authorizationRequired = useCallback(() => setControlsOpen(true), []);
   const changed = useCallback(() => setFeedRevision((n) => n + 1), []);
-  const privateChanged = useCallback(() => {}, []);
   const load = useCallback(async () => {
     if (!active.current || listRead.current) return;
     const controller = new AbortController();
@@ -160,7 +175,7 @@ export function GroupsApp({ route }: { route: string }) {
       listRead.current = null;
     };
   }, [load]);
-  const handle = route.split('/')[1];
+  const handle = route.startsWith('chats/groups') ? route.split('/')[2] : route.split('/')[1];
   useEffect(() => {
     if (handle) return;
     const refresh = () => {
@@ -295,19 +310,14 @@ export function GroupsApp({ route }: { route: string }) {
     [privateHandle],
   );
   return (
-    <div className="group-host-root">
-      {!selected && listError && <p role="alert">{listError}</p>}
-      {error && !controlsOpen && <p role="alert">{error}</p>}
-      {selected && membershipError && (
-        <p role="status">Members could not refresh: {membershipError}</p>
-      )}
-      {joinNotice && (
-        <p role="status" className="group-host-notice">
-          {joinNotice}
-        </p>
-      )}
-      {!selected ? (
+    <section className={`flow-page main-chat groups-main-chat${handle ? ' has-selection' : ''}`}>
+      <aside className="chat-list" aria-label="Conversations">
+        {listHeader}
         <GroupsLanding
+          selectedId={selected?.group.id}
+          query={query}
+          onSetup={() => setSetupOpen(true)}
+          setupRequired={serviceConfigured === false}
           joinReceipt={
             joinReceipt && (
               <GroupJoinReceipt key={joinReceipt.handle} receipt={joinReceipt} onApproved={load} />
@@ -335,9 +345,10 @@ export function GroupsApp({ route }: { route: string }) {
           onRetry={() => void load()}
           onOpen={(id) => {
             const group = list?.find((v) => v.id === id);
-            if (group) location.hash = `#/groups/${group.handle}`;
+            if (group) location.hash = `#/chats/groups/${group.handle}`;
           }}
           onCreate={async (input) => {
+            const submittedRevision = groupInvitationRevision();
             setNewSetupCodeAllowed(false);
             // Creation capabilities stay in memory until the authenticated host
             // receives them; tab recovery stores only the code's fingerprint.
@@ -372,11 +383,13 @@ export function GroupsApp({ route }: { route: string }) {
               throw reason;
             }
             operation.clear();
-            location.hash = `#/groups/${value.group.handle}`;
+            if (groupInvitationRevision() === submittedRevision)
+              location.hash = `#/chats/groups/${value.group.handle}`;
             void load();
           }}
           onJoin={async (input) => {
             const consumedInvitation = initialGroupInvitation();
+            const submittedRevision = groupInvitationRevision();
             // Only the request identity/hash is retained in browser storage. Invitation secrets remain in memory until the authenticated host receives them.
             const hash = Array.from(
               new Uint8Array(
@@ -405,311 +418,336 @@ export function GroupsApp({ route }: { route: string }) {
               throw reason;
             }
             operation.clear();
-            if (initialGroupInvitation() === consumedInvitation) {
+            const stillCurrent = groupInvitationRevision() === submittedRevision;
+            if (stillCurrent && initialGroupInvitation() === consumedInvitation) {
               clearGroupInvitation();
               setInvitation(null);
             }
             setJoinNotice('');
-            if (value.group.state === 'active') location.hash = `#/groups/${value.group.handle}`;
-            else setJoinReceipt({ handle: value.group.handle, name: value.group.name });
+            if (stillCurrent) {
+              if (value.group.state === 'active')
+                location.hash = `#/chats/groups/${value.group.handle}`;
+              else setJoinReceipt({ handle: value.group.handle, name: value.group.name });
+            }
             void load();
           }}
           initialInvitation={invitation ?? undefined}
           invitationRevision={invitationRevision}
         />
-      ) : (
-        <>
-          <dialog
-            key={selected.group.handle}
-            ref={controlsDialog}
-            className="group-host-controls"
-            aria-labelledby="group-controls-title"
-            onCancel={() => setControlsOpen(false)}
-            onClose={() => setControlsOpen(false)}
-          >
-            <div className="modal-heading">
-              <h2 id="group-controls-title">Manage group</h2>
-              <button className="secondary" onClick={() => setControlsOpen(false)}>
-                Done
-              </button>
+        {list && listError && (
+          <div className="chat-list-empty" role="alert">
+            <p>{listError}</p>
+            <button className="flow-button" onClick={() => void load()}>
+              Retry groups
+            </button>
+          </div>
+        )}
+      </aside>
+      <div className="chat-pane">
+        <div className="group-host-root">
+          {!selected && listError && <p role="alert">{listError}</p>}
+          {error && !controlsOpen && <p role="alert">{error}</p>}
+          {selected && membershipError && (
+            <p role="status">Members could not refresh: {membershipError}</p>
+          )}
+          {joinNotice && (
+            <p role="status" className="group-host-notice">
+              {joinNotice}
+            </p>
+          )}
+          {handle && !selected ? (
+            <div className="chat-pane-empty">
+              <p role="status">{error ? 'This group could not open.' : 'Opening group…'}</p>
+              <a href="#/chats/groups">Back to groups</a>
             </div>
-            {controlsOpen && error && <p role="alert">{error}</p>}
-            <details className="group-host-members" ref={membersPanel} hidden={!creatorHandle}>
-              <summary>Invite people</summary>
-              <p>
-                Create an invitation and send it privately. The other person uses their own
-                sciencewithagents app and account. New users can start with the{' '}
-                <a
-                  href="https://github.com/OscarBarreraGithub/sciencewithagents#groups-beta"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  setup guide
-                </a>
-                .
-              </p>
-              <button
-                disabled={busy}
-                onClick={() =>
-                  void act(async () => {
-                    const operation = pending(`invite:${selected.group.handle}`, {});
-                    const value = contracts.groupHostInviteResultSchema.parse(
-                      await request('invite', {
-                        handle: selected.group.handle,
-                        key: operation.key,
-                      }),
-                    );
-                    operation.clear();
-                    setInvite(groupInvitationUrl(value.fragment, location.origin));
-                    setInviteExpiresAt(value.expiresAt);
-                    setInviteCopy('idle');
-                  })
-                }
+          ) : !selected ? (
+            <div className="chat-pane-empty">
+              <h2>Choose a group</h2>
+              <p>Chat together, or ask your group manager to move the shared work forward.</p>
+            </div>
+          ) : (
+            <>
+              <dialog
+                key={selected.group.handle}
+                ref={controlsDialog}
+                className="group-host-controls"
+                aria-labelledby="group-controls-title"
+                onCancel={() => setControlsOpen(false)}
+                onClose={() => setControlsOpen(false)}
               >
-                {invite ? 'Create a fresh invitation' : 'Create invitation'}
-              </button>
-              {invite && (
-                <>
-                  <label>
-                    Invitation link
-                    <textarea
-                      ref={inviteText}
-                      aria-label="Invitation link"
-                      readOnly
-                      value={invite}
-                      rows={2}
-                    />
-                  </label>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(invite);
-                        setInviteCopy('copied');
-                      } catch {
-                        inviteText.current?.focus();
-                        inviteText.current?.select();
-                        setInviteCopy('failed');
-                      }
-                    }}
-                  >
-                    {inviteCopy === 'copied' ? 'Invitation copied' : 'Copy invitation'}
+                <div className="modal-heading">
+                  <h2 id="group-controls-title">Manage group</h2>
+                  <button className="secondary" onClick={() => setControlsOpen(false)}>
+                    Done
                   </button>
-                  {inviteCopy === 'failed' && (
-                    <p role="status">
-                      Copy did not work. The invitation is selected; copy it by hand.
-                    </p>
-                  )}
-                  {inviteExpiresAt && (
-                    <p>Valid until {new Date(inviteExpiresAt).toLocaleString()}.</p>
-                  )}
+                </div>
+                {controlsOpen && error && <p role="alert">{error}</p>}
+                <details className="group-host-members" ref={membersPanel} hidden={!creatorHandle}>
+                  <summary>Invite people</summary>
                   <p>
-                    They give this invitation to their setup agent, then open{' '}
-                    <strong>Groups → Join by invitation → Join group</strong> in their own app. The
-                    same link can invite multiple people. No confirmation code or approval is
-                    needed.
+                    Create an invitation and send it privately. The other person uses their own
+                    sciencewithagents app and account. New users can start with the{' '}
+                    <a
+                      href="https://github.com/OscarBarreraGithub/sciencewithagents#groups-beta"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      setup guide
+                    </a>
+                    .
                   </p>
-                </>
-              )}
-              {selected.members
-                .filter((m) => m.installationId !== selected.member.installationId)
-                .map((m) => (
                   <button
-                    key={m.installationId}
                     disabled={busy}
                     onClick={() =>
                       void act(async () => {
-                        const operation = pending(
-                          `revoke:${selected.group.handle}:${m.installationId}`,
-                          {},
+                        const operation = pending(`invite:${selected.group.handle}`, {});
+                        const value = contracts.groupHostInviteResultSchema.parse(
+                          await request('invite', {
+                            handle: selected.group.handle,
+                            key: operation.key,
+                          }),
                         );
-                        await request('revoke', {
-                          handle: selected.group.handle,
-                          key: operation.key,
-                          requestId: m.installationId,
-                        });
                         operation.clear();
-                        setSelected(
-                          contracts.groupHostOpenSchema.parse(
-                            await request('open', { handle: selected.group.handle }),
-                          ),
-                        );
+                        setInvite(groupInvitationUrl(value.fragment, location.origin));
+                        setInviteExpiresAt(value.expiresAt);
+                        setInviteCopy('idle');
                       })
                     }
                   >
-                    Remove {m.displayName}
+                    {invite ? 'Create a fresh invitation' : 'Create invitation'}
                   </button>
-                ))}
-            </details>
-            {selected.native.executionMode === 'host' && (
-              <GroupNativeGitPanel key={selected.shared.handle} handle={selected.shared.handle} />
-            )}
-            {selected.native.executionMode !== 'host' && (
-              <>
-                <details className="group-host-members group-host-actions">
-                  <summary>Shared work and actions</summary>
-                  <GroupActionsBoard key={selected.shared.handle} handle={selected.shared.handle} />
+                  {invite && (
+                    <>
+                      <label>
+                        Invitation link
+                        <textarea
+                          ref={inviteText}
+                          aria-label="Invitation link"
+                          readOnly
+                          value={invite}
+                          rows={2}
+                        />
+                      </label>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(invite);
+                            setInviteCopy('copied');
+                          } catch {
+                            inviteText.current?.focus();
+                            inviteText.current?.select();
+                            setInviteCopy('failed');
+                          }
+                        }}
+                      >
+                        {inviteCopy === 'copied' ? 'Invitation copied' : 'Copy invitation'}
+                      </button>
+                      {inviteCopy === 'failed' && (
+                        <p role="status">
+                          Copy did not work. The invitation is selected; copy it by hand.
+                        </p>
+                      )}
+                      {inviteExpiresAt && (
+                        <p>Valid until {new Date(inviteExpiresAt).toLocaleString()}.</p>
+                      )}
+                      <p>
+                        They give this invitation to their setup agent, then open{' '}
+                        <strong>Chats → Groups → Join group</strong> in their own app. The same link
+                        can invite multiple people. No confirmation code or approval is needed.
+                      </p>
+                    </>
+                  )}
+                  {selected.members
+                    .filter((m) => m.installationId !== selected.member.installationId)
+                    .map((m) => (
+                      <button
+                        key={m.installationId}
+                        disabled={busy}
+                        onClick={() =>
+                          void act(async () => {
+                            const operation = pending(
+                              `revoke:${selected.group.handle}:${m.installationId}`,
+                              {},
+                            );
+                            await request('revoke', {
+                              handle: selected.group.handle,
+                              key: operation.key,
+                              requestId: m.installationId,
+                            });
+                            operation.clear();
+                            setSelected(
+                              contracts.groupHostOpenSchema.parse(
+                                await request('open', { handle: selected.group.handle }),
+                              ),
+                            );
+                          })
+                        }
+                      >
+                        Remove {m.displayName}
+                      </button>
+                    ))}
                 </details>
-                <GroupGitPanel key={selected.shared.handle} handle={selected.shared.handle} />
-                <GroupReports key={selected.shared.handle} handle={selected.shared.handle} />
-              </>
-            )}
-            <details className="group-host-members">
-              <summary>Shared feed agent</summary>
-              <p>
-                Messages appear without a summary agent. This optional agent condenses older shared
-                sources; pending summaries resume when its computer reconnects.
-              </p>
-              <p role="status">{selected.feedWriter?.message}</p>
-              {selected.feedWriter?.canSelect && (
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void act(async () => {
-                      const operation = pending(`feed-writer:${selected.group.handle}`, {});
-                      await request('feed-writer', {
-                        handle: selected.shared.handle,
-                        key: operation.key,
-                      });
-                      operation.clear();
-                      setFeedWriterNotice(
-                        'This computer is the shared feed writer. Summaries wait while its agent is unavailable.',
-                      );
-                      setSelected(
-                        contracts.groupHostOpenSchema.parse(
-                          await request('open', { handle: selected.group.handle }),
-                        ),
-                      );
-                    })
+                {selected.native.executionMode === 'host' && (
+                  <GroupNativeGitPanel
+                    key={selected.shared.handle}
+                    handle={selected.shared.handle}
+                  />
+                )}
+                {selected.native.executionMode !== 'host' && (
+                  <>
+                    <details className="group-host-members group-host-actions">
+                      <summary>Shared work and actions</summary>
+                      <GroupActionsBoard
+                        key={selected.shared.handle}
+                        handle={selected.shared.handle}
+                      />
+                    </details>
+                    <GroupGitPanel key={selected.shared.handle} handle={selected.shared.handle} />
+                    <GroupReports key={selected.shared.handle} handle={selected.shared.handle} />
+                  </>
+                )}
+                <details className="group-host-members">
+                  <summary>Shared feed agent</summary>
+                  <p>
+                    Messages appear without a summary agent. This optional agent condenses older
+                    shared sources; pending summaries resume when its computer reconnects.
+                  </p>
+                  <p role="status">{selected.feedWriter?.message}</p>
+                  {selected.feedWriter?.canSelect && (
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        void act(async () => {
+                          const operation = pending(`feed-writer:${selected.group.handle}`, {});
+                          await request('feed-writer', {
+                            handle: selected.shared.handle,
+                            key: operation.key,
+                          });
+                          operation.clear();
+                          setFeedWriterNotice(
+                            'This computer is the shared feed writer. Summaries wait while its agent is unavailable.',
+                          );
+                          setSelected(
+                            contracts.groupHostOpenSchema.parse(
+                              await request('open', { handle: selected.group.handle }),
+                            ),
+                          );
+                        })
+                      }
+                    >
+                      Use this computer for the shared feed
+                    </button>
+                  )}
+                  {feedWriterNotice && <p role="status">{feedWriterNotice}</p>}
+                </details>
+                <div ref={setNativeControlsTarget} />
+              </dialog>
+              <div className="group-host-workspace">
+                <GroupsWorkspace
+                  onManage={() => setControlsOpen(true)}
+                  onInvite={
+                    creatorHandle
+                      ? () => {
+                          setControlsOpen(true);
+                          if (membersPanel.current) membersPanel.current.open = true;
+                          requestAnimationFrame(() => {
+                            membersPanel.current?.parentElement?.scrollTo({ top: 0 });
+                            membersPanel.current
+                              ?.querySelector('summary')
+                              ?.focus({ preventScroll: true });
+                          });
+                        }
+                      : undefined
                   }
-                >
-                  Use this computer for the shared feed
-                </button>
-              )}
-              {feedWriterNotice && <p role="status">{feedWriterNotice}</p>}
-            </details>
-            <div ref={setNativeControlsTarget} />
-          </dialog>
-          <div className="group-host-workspace">
-            <GroupsWorkspace
-              onManage={() => setControlsOpen(true)}
-              onInvite={
-                creatorHandle
-                  ? () => {
-                      setControlsOpen(true);
-                      if (membersPanel.current) membersPanel.current.open = true;
-                      requestAnimationFrame(() => {
-                        membersPanel.current?.parentElement?.scrollTo({ top: 0 });
-                        membersPanel.current
-                          ?.querySelector('summary')
-                          ?.focus({ preventScroll: true });
-                      });
-                    }
-                  : undefined
-              }
-              refreshableFeed
-              chatTitle="Shared chat"
-              privateDescription="Saved on this computer. Private history, drafts and files are not automatically shared."
-              sharedDescription="Messages you send here are shared with this group. Each person uses their own agent."
-              group={selected.group}
-              memberId={selected.member.memberId}
-              members={selected.members}
-              access="authorized"
-              sharedChat={{
-                groupId: selected.group.id,
-                memberId: selected.member.memberId,
-                sessionId: selected.shared.context.sessionId,
-                visibility: 'shared',
-                draftIdentity: selected.shared.handle,
-                content: (
-                  <GroupConversation
-                    slot={selected.shared}
-                    executionMode={selected.native.executionMode}
-                    sharedHandle={selected.shared.handle}
-                    onChanged={changed}
-                    nativeControlsTarget={nativeControlsTarget}
-                    onAuthorizationRequired={authorizationRequired}
-                  />
-                ),
-              }}
-              privateAside={{
-                groupId: selected.group.id,
-                memberId: selected.member.memberId,
-                sessionId: selected.private.context.sessionId,
-                visibility: 'private',
-                draftIdentity: selected.private.handle,
-                content: (
-                  <GroupConversation
-                    slot={selected.private}
-                    executionMode={selected.native.executionMode}
-                    sharedHandle={selected.shared.handle}
-                    onChanged={privateChanged}
-                    nativeControlsTarget={nativeControlsTarget}
-                    onAuthorizationRequired={authorizationRequired}
-                  />
-                ),
-              }}
-              loadPage={loadPage}
-              loadOriginal={loadOriginal}
-              catchUp={catchUp}
-              catchUpView={(close) => (
-                <GroupCatchup
-                  handle={selected.private.handle}
-                  onClose={close}
-                  members={selected.members.map((member) => ({
-                    id: member.memberId,
-                    name: member.displayName,
-                  }))}
+                  refreshableFeed
+                  group={selected.group}
+                  memberId={selected.member.memberId}
+                  members={selected.members}
+                  access="authorized"
+                  sharedChat={{
+                    groupId: selected.group.id,
+                    memberId: selected.member.memberId,
+                    sessionId: selected.shared.context.sessionId,
+                    visibility: 'shared',
+                    draftIdentity: selected.shared.handle,
+                    content: (mode: GroupChatMode) => (
+                      <GroupConversation
+                        mode={mode}
+                        sharedFeed={{ loadPage, loadOriginal, members: selected.members }}
+                        slot={selected.shared}
+                        executionMode={selected.native.executionMode}
+                        sharedHandle={selected.shared.handle}
+                        onChanged={changed}
+                        nativeControlsTarget={nativeControlsTarget}
+                        onAuthorizationRequired={authorizationRequired}
+                      />
+                    ),
+                  }}
+                  privateAside={null}
+                  loadPage={loadPage}
+                  loadOriginal={loadOriginal}
+                  catchUp={catchUp}
+                  onBack={() => {
+                    location.hash = '#/chats/groups';
+                    void load();
+                  }}
                 />
-              )}
-              onBack={() => {
-                location.hash = '#/groups';
-                void load();
-              }}
-            />
-          </div>
-        </>
-      )}
-      {!selected && (
-        <details className="group-host-recovery">
-          <summary>Recover an interrupted request</summary>
-          <button
-            onClick={() =>
-              void act(async () => {
-                for (const kind of ['create', 'join'] as const) {
-                  const storage = `swa:groups:${apiScope()}:${kind}`;
-                  const saved = JSON.parse(sessionStorage.getItem(storage) ?? 'null') as {
-                    key: string;
-                  } | null;
-                  if (!saved) continue;
-                  const value = contracts.groupHostResumeResultSchema.parse(
-                    await request('resume', { key: saved.key, kind }),
-                  );
-                  sessionStorage.removeItem(storage);
-                  if (value.group.state === 'pending')
-                    setJoinReceipt({ handle: value.group.handle, name: value.group.name });
-                  else location.hash = `#/groups/${value.group.handle}`;
-                  void load();
-                  return;
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      {setupOpen && (
+        <Modal
+          title="Group setup"
+          className="group-host-controls group-setup-dialog"
+          close={() => setSetupOpen(false)}
+        >
+          {error && <p role="alert">{error}</p>}
+          {joinNotice && <p role="status">{joinNotice}</p>}
+          <GroupSetupPrompt initiallyOpen />
+          {
+            <details className="group-host-recovery">
+              <summary>Recover an interrupted request</summary>
+              <button
+                onClick={() =>
+                  void act(async () => {
+                    for (const kind of ['create', 'join'] as const) {
+                      const storage = `swa:groups:${apiScope()}:${kind}`;
+                      const saved = JSON.parse(sessionStorage.getItem(storage) ?? 'null') as {
+                        key: string;
+                      } | null;
+                      if (!saved) continue;
+                      const value = contracts.groupHostResumeResultSchema.parse(
+                        await request('resume', { key: saved.key, kind }),
+                      );
+                      sessionStorage.removeItem(storage);
+                      if (value.group.state === 'pending')
+                        setJoinReceipt({ handle: value.group.handle, name: value.group.name });
+                      else location.hash = `#/chats/groups/${value.group.handle}`;
+                      void load();
+                      return;
+                    }
+                    setJoinNotice(
+                      'No pending setup request in this tab. Create a group or paste an invitation.',
+                    );
+                  })
                 }
-                setJoinNotice(
-                  'No pending setup request in this tab. Create a group or paste an invitation.',
-                );
-              })
-            }
-          >
-            Recover pending setup
-          </button>
-        </details>
+              >
+                Recover pending setup
+              </button>
+            </details>
+          }
+          {
+            <details className="group-host-status">
+              <summary>Connection details</summary>
+              <p>{service}</p>
+              <p>{native}</p>
+              <a href="#/welcome">Open setup checks</a>
+            </details>
+          }
+        </Modal>
       )}
-      {!selected && <GroupSetupPrompt initiallyOpen={serviceConfigured === false} />}
-      {!selected && (
-        <details className="group-host-status">
-          <summary>Connection details</summary>
-          <p>{service}</p>
-          <p>{native}</p>
-          <a href="#/welcome">Open setup checks</a>
-        </details>
-      )}
-    </div>
+    </section>
   );
 }

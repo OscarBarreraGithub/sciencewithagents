@@ -40,10 +40,12 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 ## Chats and project setup
 
 - Distinguish Managers, VS Code chats and saved Misc conversations by provenance.
-  There is no All chip: selecting an active type clears that filter. Groups opens its
-  separate shared workspace from the same chip row, without merging group histories into Chats.
-  Groups defaults to full-width chat. Keep the shared feed in a tab and management in a
-  dialog, preserving the conversation and draft underneath. New invitations last seven days.
+  All, Managers, VS Code, Misc and Groups are filters in the same Chats frame. Groups lists
+  shared conversations beside the selected group on desktop, with list/detail navigation on phones.
+  A group has two tabs: Group chat for everyone’s shared messages, and Group manager for
+  the owner’s agent requests and shared work. No separate Groups page or private-chat controls.
+  Keep setup, create/join and management in dialogs; preserve saved private history without
+  publishing it. New invitations last seven days.
   App-created helpers/resource reports are not personal chats. Never delete their evidence
   merely to clean a list. The VS Code control at the top of Chats opens setup/status instructions.
 - Use compact WhatsApp-like phone conversations: message bubbles, a short header, grouped

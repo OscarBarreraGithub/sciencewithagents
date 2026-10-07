@@ -28,6 +28,11 @@ This describes connected source behavior, not a blanket release certification.
 **Computers → Open terminal** runs your own shell on the selected computer even at zero AI
 allowance; the app must remain running. See [local access](LOCAL_ACCESS.md#run-your-own-commands).
 
+Groups appears under **Chats → Groups** in the same list/detail frame as other chats.
+**Group chat** shows the shared conversation; **Group manager** directs your agent's shared
+work. Create/join, setup, invitations and management use compact dialogs. Existing private
+histories remain saved and private; they are not shown or republished in these shared tabs.
+
 ## Report an issue
 
 Open **? → Report an issue**, enter a summary and what happened, then **Open GitHub issue

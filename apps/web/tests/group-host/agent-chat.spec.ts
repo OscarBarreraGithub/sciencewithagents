@@ -70,25 +70,25 @@ async function authenticate(page: Page, host: HostConnection = connection) {
 async function enter(page: Page) {
   await authenticate(page);
   await page.goto(`${connection.origin}/#/home`);
-  await page.getByRole('link', { name: /Groups Shared work/ }).click();
-  await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
+  await page.locator('a[href="#/chats"]').first().click();
+  await page.getByRole('button', { name: 'Groups', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
 }
 async function create(page: Page, name: string) {
-  await page.getByRole('button', { name: 'New project', exact: true }).click();
-  await page.getByLabel('Your display name', { exact: true }).fill('Amina');
-  await page.getByLabel('Project name', { exact: true }).fill(name);
-  await page.getByRole('button', { name: 'Continue setup', exact: true }).click();
+  await page.getByRole('button', { name: 'New group', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'New group', exact: true });
+  await dialog.getByLabel('Your display name', { exact: true }).fill('Amina');
+  await dialog.getByLabel('Project name', { exact: true }).fill(name);
+  await dialog.getByRole('button', { name: 'Create group', exact: true }).click();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 }
 async function chat(page: Page) {
   await expect(page.locator('.groups-workspace')).toBeVisible();
-  const tab = page.getByRole('tab', { name: 'Shared chat', exact: true });
-  if (await tab.count()) await tab.click();
+  await page.getByRole('tab', { name: 'Group chat', exact: true }).click();
 }
-async function feed(page: Page) {
+async function manager(page: Page) {
   await expect(page.locator('.groups-workspace')).toBeVisible();
-  const tab = page.getByRole('tab', { name: 'Shared feed', exact: true });
-  if (await tab.count()) await tab.click();
+  await page.getByRole('tab', { name: 'Group manager', exact: true }).click();
 }
 async function capture(page: Page, label: string) {
   await page.screenshot({
@@ -98,18 +98,29 @@ async function capture(page: Page, label: string) {
     await page.evaluate(() => innerWidth + 2),
   );
 }
-test('local agents keep shared and private chats distinct, retain exact retries and expose owner access', async ({
+test('Group manager keeps exact agent retries across human-tab switches, shared drafts and owner access', async ({
   page,
 }) => {
   await enter(page);
   await create(page, 'Compact River');
   await chat(page);
+  await expect(page.getByRole('tab')).toHaveText(['Group chat', 'Group manager']);
+  await expect(page.getByRole('tab', { name: 'Group chat', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.getByRole('combobox', { name: 'Send to', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Agent request', exact: true })).toHaveCount(0);
+  await expect(page.getByPlaceholder('Message the group…')).toBeEnabled();
+  await manager(page);
   const controls = page.locator('.group-host-controls');
   await expect(controls).toHaveJSProperty('open', false);
   await expect(page.locator('.group-host-controls')).toBeHidden();
-  await expect(page.getByRole('heading', { name: 'Shared chat', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Group manager', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await expect(page.getByText('Local agent access', { exact: true })).toBeHidden();
-  await expect(page.getByRole('combobox', { name: 'Send to', exact: true })).toHaveValue('agent');
   await expect(page.getByRole('combobox', { name: 'Agent request', exact: true })).toHaveValue(
     'ask',
   );
@@ -147,7 +158,7 @@ test('local agents keep shared and private chats distinct, retain exact retries 
     )
       ownerPosts.push(request.postDataJSON());
   });
-  const input = page.getByPlaceholder('Message your group agent…');
+  const input = page.getByPlaceholder('Message your group manager…');
   await input.scrollIntoViewIfNeeded();
   await expect(input).toBeInViewport();
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeInViewport();
@@ -160,18 +171,18 @@ test('local agents keep shared and private chats distinct, retain exact retries 
   await expect(input).toHaveValue('Exact failed native question');
   await page.reload();
   await chat(page);
-  await expect(input).toHaveValue('Exact failed native question');
-  await input.fill('Newer draft typed before retry');
-  await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
+  const humanInput = page.getByPlaceholder('Message the group…');
+  await expect(humanInput).toHaveValue('Exact failed native question');
+  await humanInput.fill('Newer draft typed before retry');
   await page.getByRole('button', { name: 'Retry previous message', exact: true }).click();
-  await expect(page.getByPlaceholder('Send a group message…')).toHaveValue(
+  await expect(page.getByPlaceholder('Message the group…')).toHaveValue(
     'Newer draft typed before retry',
   );
   expect(posts).toHaveLength(2);
   expect(posts[0]!.path).toBe('/api/groups/request-agent');
   expect(posts[1]).toEqual(posts[0]);
   expect(posts[0]!.body.intent).toBe('ask');
-  await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('agent');
+  await manager(page);
   await page.getByRole('combobox', { name: 'Agent request', exact: true }).selectOption('work');
   await input.fill('Exact shared work instruction');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
@@ -260,34 +271,40 @@ test('local agents keep shared and private chats distinct, retain exact retries 
   await page.unroute('**/api/groups/chat');
   await input.fill('Shared draft stays here');
   const sentBeforeSwitch = posts.length;
-  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Private to you', exact: true })).toBeVisible();
+  await chat(page);
+  await expect(humanInput).toHaveValue('Shared draft stays here');
   await expect(page.getByRole('combobox', { name: 'Agent request', exact: true })).toHaveCount(0);
-  await expect(page.getByPlaceholder('Ask privately…')).toHaveValue('');
-  await page.getByPlaceholder('Ask privately…').fill('Private draft stays private');
-  await page.getByRole('button', { name: 'Back to shared chat', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Private to you', exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'What mattered since last visit?', exact: true }),
+  ).toHaveCount(0);
+  await manager(page);
   await expect(input).toHaveValue('Shared draft stays here');
-  await expect(page.locator('.conversation')).not.toContainText('Private draft stays private');
   await page.reload();
   await chat(page);
-  await expect(input).toHaveValue('Shared draft stays here');
-  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
-  await expect(page.getByPlaceholder('Ask privately…')).toHaveValue('Private draft stays private');
+  await expect(humanInput).toHaveValue('Shared draft stays here');
   expect(posts).toHaveLength(sentBeforeSwitch);
-  await page.getByPlaceholder('Ask privately…').fill('Private native question');
+  await humanInput.fill('Explicit human group message');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
-  await expect(page.getByPlaceholder('Ask privately…')).toHaveValue('');
-  expect(posts.at(-1)!.body.intent).toBe('ask');
-  expect(posts.at(-1)!.body.handle).not.toBe(posts[0]!.body.handle);
-  const privateHandle = posts.at(-1)!.body.handle;
+  await expect(humanInput).toHaveValue('');
+  expect(posts.at(-1)).toMatchObject({
+    path: '/api/groups/send',
+    body: {
+      handle: posts[0]!.body.handle,
+      text: 'Explicit human group message',
+    },
+  });
+  await expect(page.locator('.conversation')).toContainText('Explicit human group message');
+  await manager(page);
+  await input.fill('Retained manager draft');
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Cancel saved request', exact: true }),
   ).toBeVisible();
-  const savedPrivateRequest = ownerPosts.findLast(
-    (body) => body.action === 'status' && body.handle === privateHandle && body.requestId,
+  const savedRequest = ownerPosts.findLast(
+    (body) => body.action === 'status' && body.handle === posts[0]!.body.handle && body.requestId,
   );
-  expect(savedPrivateRequest?.requestId).toEqual(expect.any(String));
+  expect(savedRequest?.requestId).toEqual(expect.any(String));
   await page.getByRole('button', { name: 'Cancel saved request', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Cancel saved request', exact: true })).toHaveCount(
     0,
@@ -295,20 +312,13 @@ test('local agents keep shared and private chats distinct, retain exact retries 
   await expect(page.locator('.group-native-owner')).toContainText('Local agent access enabled');
   expect(ownerPosts.at(-1)).toMatchObject({
     action: 'reject',
-    handle: privateHandle,
-    requestId: savedPrivateRequest!.requestId,
+    handle: posts[0]!.body.handle,
+    requestId: savedRequest!.requestId,
   });
   await page.getByRole('button', { name: 'Done', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
-  await page.getByPlaceholder('Write a private note…').fill('Explicit human private note');
-  await page.getByRole('button', { name: 'Send message', exact: true }).click();
-  await expect(page.locator('.conversation')).toContainText('Explicit human private note');
-  expect(posts.at(-1)!.path).toBe('/api/groups/send');
-  await capture(page, 'compact-private-reading');
-  await page.getByRole('button', { name: 'Back to shared chat', exact: true }).click();
-  await expect(input).toHaveValue('Shared draft stays here');
-  await expect(page.locator('.conversation')).not.toContainText('Private native question');
-  await expect(page.locator('.conversation')).not.toContainText('Explicit human private note');
+  await expect(input).toHaveValue('Retained manager draft');
+  expect(new Set(posts.map((post) => post.body.handle)).size).toBe(1);
+  await capture(page, 'group-manager-reading');
 });
 
 test('first local request waits for owner enable and continues the same saved request', async ({
@@ -316,14 +326,14 @@ test('first local request waits for owner enable and continues the same saved re
 }) => {
   await enter(page);
   await create(page, 'Enable Brook');
-  await chat(page);
+  await manager(page);
   const posts: Array<{ path: string; body: Record<string, unknown> }> = [];
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
     if (request.method() === 'POST' && /\/groups\/(request-agent|native-owner)$/.test(path))
       posts.push({ path, body: request.postDataJSON() });
   });
-  await page.getByPlaceholder('Message your group agent…').fill('Saved before local access');
+  await page.getByPlaceholder('Message your group manager…').fill('Saved before local access');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.locator('.group-host-controls')).toHaveJSProperty('open', true);
   await expect(page.getByRole('button', { name: 'Enable agents on this computer' })).toBeVisible();

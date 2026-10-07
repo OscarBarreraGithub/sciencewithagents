@@ -179,8 +179,9 @@ and model choices remain. Active work is never discarded by an inactivity timer.
 ## Groups
 
 **Current v1 implementation:** Groups uses ordinary host-native agents with the
-existing Codex/Claude sign-in. Shared chat and Private to you have separate native sessions,
-requests, drafts and publication destinations. The owner enables native access on their
+existing Codex/Claude sign-in. The shared journey lives under **Chats → Groups**, with
+**Group chat** for everyone’s messages and **Group manager** for the owner’s agent. Previously
+saved private sessions, requests and drafts retain their separate publication boundaries. The owner enables native access on their
 computer; incoming group messages do not authorize local work. Ask is read-only and Work
 explicitly authorizes native writing. This is not an operating-system sandbox. Docker and
 a separate Linux sign-in are not required. Existing isolated history is retained without
@@ -204,8 +205,8 @@ person’s account. An older installed prompt requires a safe update before reco
 New invitation links last seven days and admit multiple people directly before their deadline, without a
 confirmation-code exchange or creator approval. Previously accepted pending requests are
 reconciled by the updated service if their invitation and issuer remain authorized.
-The app opens joined groups into full-width chat, with a separate feed tab and a management
-dialog. The member list refreshes automatically. Existing
+The app opens joined groups in the ordinary Chats list/detail frame. Setup and create/join
+forms use dialogs, with Invite and Manage controls in the group header. The member list refreshes automatically. Existing
 creators must update their Worker as well as the app; private configuration and memberships
 are preserved. Human messaging and interrupted-request recovery remain available.
 Native chat and scoped reading are connected. Shared chat originals publish independently of
@@ -219,6 +220,11 @@ the external setup agent; joining a group alone grants no GitHub access. Protect
 isolated report capture and the older confirmed-action board depend on the retained isolated
 adapter and are not presented as available in local mode. Native Work still has ordinary
 provider tools.
+
+**Current Chats integration checks:** focused browser checks cover desktop, 412×915,
+360×800 and 915×412, including larger text, two-host message arrival, invitation recovery,
+shared drafts and retention of previously saved private history. These use isolated local
+fixtures, not physical phones or new Cloudflare accounts.
 
 **Previous hosted acceptance:** an approved HTTPS group service was deployed, with Workers Free directly
 observed in the operator account on 2026-10-07. Two empty, independently authenticated profiles

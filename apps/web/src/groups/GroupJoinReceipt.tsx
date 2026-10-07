@@ -23,7 +23,7 @@ export function GroupJoinReceipt({
         );
         if (read.signal.aborted) return;
         onApproved();
-        location.hash = `#/groups/${receipt.handle}`;
+        location.hash = `#/chats/groups/${receipt.handle}`;
       } catch (reason) {
         if (!read.signal.aborted)
           setError(

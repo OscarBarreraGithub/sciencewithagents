@@ -15,6 +15,11 @@ import { ApiError, apiScope } from '../api';
 import type { SharedDraft } from '../useWorkspaceState';
 import './group-chat.css';
 import { GroupNativeOwner } from './GroupNativeOwner';
+import type { Entry } from '@dock/shared';
+import type { GroupChatMode } from './types';
+import { useGroupMessages, type GroupMessageReader } from './useGroupMessages';
+import { displayNameText } from './DisplayName';
+export type { GroupChatMode } from './types';
 export type GroupChatClient = (path: string, body: unknown) => Promise<unknown>;
 const errorText = (value: unknown) =>
   value instanceof Error ? value.message : 'Groups host unavailable. Reconnect and retry.';
@@ -308,6 +313,8 @@ export function GroupChat({
   nativeControlsTarget,
   onAuthorizationRequired,
   executionMode,
+  mode,
+  sharedFeed,
 }: {
   slot: GroupHostSlot;
   onChanged: () => void;
@@ -315,6 +322,8 @@ export function GroupChat({
   nativeControlsTarget?: HTMLDivElement | null;
   onAuthorizationRequired?: () => void;
   executionMode?: 'host' | 'isolated';
+  mode?: GroupChatMode;
+  sharedFeed?: GroupMessageReader;
 }) {
   const fixture = location.pathname === '/group-fixture';
   const signature = useRef('');
@@ -330,9 +339,15 @@ export function GroupChat({
   const [error, setError] = useState('');
   const [refused, setRefused] = useState(false);
   const [deliveryBusy, setDeliveryBusy] = useState(false);
-  const [sendTarget, setSendTarget] = useState<'agent' | 'message'>('agent');
+  const [selectedTarget, setSendTarget] = useState<'agent' | 'message'>('agent');
+  const sendTarget = mode === 'group' ? 'message' : mode === 'manager' ? 'agent' : selectedTarget;
   const [agentIntent, setAgentIntent] = useState<'ask' | 'work'>('ask');
   const container = useRef<HTMLDivElement>(null);
+  const groupMessages = useGroupMessages(
+    slot.context.groupId,
+    mode === 'group' && slot.context.visibility === 'shared',
+    sharedFeed,
+  );
   useEffect(() => {
     let intent: 'ask' | 'work' = 'ask';
     try {
@@ -533,7 +548,7 @@ export function GroupChat({
       ) && !delivery.state.startsWith('pending:'),
   );
   const detailedReceipts =
-    chat?.nativeRequests?.filter(
+    (mode === 'group' ? [] : chat?.nativeRequests)?.filter(
       (receipt) =>
         receipt.state !== 'completed' ||
         receipt.documentAvailable ||
@@ -554,19 +569,94 @@ export function GroupChat({
         onChanged={onChanged}
       />
     ) : null;
+  const publishedOwnMessages = new Set(
+    groupMessages.messages
+      .map(({ event }) => event.origin?.scope ?? event.scope)
+      .filter(
+        (scope) =>
+          scope.memberId === slot.context.memberId &&
+          scope.source.sessionId === slot.context.sessionId,
+      )
+      .map((scope) => scope.source.messageId),
+  );
+  const undeliveredRuns = new Set(pendingDeliveries.map((delivery) => delivery.runId));
+  const unwindowedGroupEntries: Entry[] = [
+    ...groupMessages.messages.map(({ event, text }): Entry => {
+      const scope = event.origin?.scope ?? event.scope;
+      const member = sharedFeed?.members.find((value) => value.memberId === scope.memberId);
+      const name = displayNameText(
+        event.origin?.displayName ?? member?.displayName ?? 'Group member',
+      );
+      const own =
+        scope.memberId === slot.context.memberId &&
+        scope.source.sessionId === slot.context.sessionId;
+      const native = event.origin?.kind === 'native';
+      return {
+        id: event.eventId,
+        agentId: slot.agent.id,
+        runId: null,
+        kind: own && !native ? 'user' : 'message',
+        title: `${own ? 'You' : name}${native ? ' · agent' : ''}`,
+        text,
+        status: 'complete',
+        createdAt: event.recordedAt,
+      };
+    }),
+    ...(chat?.detail.entries
+      .filter(
+        (entry) =>
+          entry.title === 'Human message' &&
+          entry.runId &&
+          undeliveredRuns.has(entry.runId) &&
+          !publishedOwnMessages.has(entry.id),
+      )
+      .map((entry) => ({
+        ...entry,
+        title: entry.kind === 'user' ? 'You' : entry.title,
+      })) ?? []),
+  ];
+  const groupEntries = unwindowedGroupEntries.slice(-200);
+  const windowed =
+    mode === 'group' && sharedFeed
+      ? groupMessages.windowed || unwindowedGroupEntries.length > 200
+      : chat?.detail.hasMore;
+  const conversationDetail =
+    chat && mode === 'group' && sharedFeed
+      ? { ...chat.detail, entries: groupEntries, hasMore: false }
+      : chat && mode === 'manager'
+        ? {
+            ...chat.detail,
+            entries: chat.detail.entries.filter((entry) => entry.title !== 'Human message'),
+          }
+        : chat?.detail;
   return (
     <div
-      className={`group-chat flow-chat-main ${fixture ? 'group-fixture-chat' : ''}`}
+      className={`group-chat flow-chat-main ${mode === 'group' ? 'group-shared-chat' : ''} ${fixture ? 'group-fixture-chat' : ''}`}
       ref={container}
     >
       {nativeControlsTarget ? createPortal(nativeOwner, nativeControlsTarget) : nativeOwner}
-      {!refused && chat ? (
+      {!refused && !groupMessages.revoked && chat && conversationDetail ? (
         <Conversation
           key={slot.context.sessionId}
           agent={chat.detail.agent}
+          intro={
+            mode
+              ? {
+                  title: mode === 'group' ? 'Group chat' : 'Your group manager',
+                  description:
+                    mode === 'group'
+                      ? 'Send a message to start the conversation with your group.'
+                      : 'Ask a question, or choose Work to give your agent a shared task.',
+                  note:
+                    mode === 'group'
+                      ? 'Everyone in this group can read and reply here.'
+                      : 'Your agent’s requests and replies are shared with the group.',
+                }
+              : undefined
+          }
           // This bounded view has no older-page route. The notice below
           // reports the host flag; suppress Conversation's native paging action.
-          detail={{ ...chat.detail, hasMore: false }}
+          detail={{ ...conversationDetail, hasMore: false }}
           approvals={[]}
           act={async (action) => {
             try {
@@ -579,7 +669,7 @@ export function GroupChat({
       ) : (
         <p role="status">Loading saved chat…</p>
       )}
-      {chat?.detail.hasMore && (
+      {windowed && (
         <p className="group-chat-cue" role="status">
           Older messages hidden · this view shows the latest 200 entries.
         </p>
@@ -587,6 +677,11 @@ export function GroupChat({
       {error && (
         <p role="alert" className="group-chat-error">
           {error}
+        </p>
+      )}
+      {mode === 'group' && groupMessages.error && (
+        <p className="group-chat-error" role="alert">
+          {groupMessages.error} <button onClick={groupMessages.retry}>Retry group messages</button>
         </p>
       )}
       {(fixture || view.blocked || view.error === rejectedText) && (
@@ -604,12 +699,12 @@ export function GroupChat({
           )}
         </p>
       )}
-      {!fixture && currentReceipt && (
+      {!fixture && mode !== 'group' && currentReceipt && (
         <p className="group-chat-status" role="status">
           {agentStatusMessage(currentReceipt.state)}
         </p>
       )}
-      {!fixture && !currentReceipt && deliveryProblem && (
+      {!fixture && (mode === 'group' || !currentReceipt) && deliveryProblem && (
         <p className="group-chat-status" role="status">
           {sharedDeliveryMessage(deliveryProblem.state)} Open message details to retry.
         </p>
@@ -649,21 +744,23 @@ export function GroupChat({
           !fixture &&
           !refused && (
             <div className="group-agent-request">
-              <label>
-                <select
-                  aria-label="Send to"
-                  value={sendTarget}
-                  disabled={deliveryBusy}
-                  onChange={(event) =>
-                    setSendTarget(event.target.value === 'message' ? 'message' : 'agent')
-                  }
-                >
-                  <option value="agent">Your agent</option>
-                  <option value="message">
-                    {slot.context.visibility === 'private' ? 'Private note' : 'Group message'}
-                  </option>
-                </select>
-              </label>
+              {!mode && (
+                <label>
+                  <select
+                    aria-label="Send to"
+                    value={sendTarget}
+                    disabled={deliveryBusy}
+                    onChange={(event) =>
+                      setSendTarget(event.target.value === 'message' ? 'message' : 'agent')
+                    }
+                  >
+                    <option value="agent">Your agent</option>
+                    <option value="message">
+                      {slot.context.visibility === 'private' ? 'Private note' : 'Group message'}
+                    </option>
+                  </select>
+                </label>
+              )}
               {sendTarget === 'agent' && slot.context.visibility === 'shared' && (
                 <label>
                   <select
@@ -685,7 +782,7 @@ export function GroupChat({
         key={slot.context.sessionId}
         agent={chat?.detail.agent ?? slot.agent}
         workspace={null}
-        disabled={!view.ready || refused}
+        disabled={!view.ready || refused || groupMessages.revoked}
         draftOverride={draft}
         specialized={!fixture}
         attachments={fixture}
@@ -730,6 +827,7 @@ export function GroupChat({
             } else {
               await request('send', { handle: slot.handle, key, text: value });
               setChat(groupHostChatSchema.parse(await request('chat', { handle: slot.handle })));
+              if (mode === 'group') groupMessages.retry();
             }
             sessionStorage.removeItem(storage);
           }
@@ -740,21 +838,27 @@ export function GroupChat({
         onStop={() => setError('No native turn is running in this message context.')}
         onHelp={() =>
           setError(
-            'Human messages are saved separately from native execution. Your private conversation is excluded from the shared feed.',
+            mode
+              ? 'Group chat sends a message to everyone. Group manager sends a request to your own agent; shared work appears in Group chat.'
+              : 'Human messages are saved separately from native execution. Your private conversation is excluded from the shared feed.',
           )
         }
         messagePlaceholder={
-          slot.context.visibility === 'private'
-            ? fixture
-              ? 'Message private test session…'
-              : sendTarget === 'agent'
-                ? 'Ask privately…'
-                : 'Write a private note…'
-            : fixture
-              ? 'Message shared test session…'
-              : sendTarget === 'agent'
-                ? 'Message your group agent…'
-                : 'Send a group message…'
+          mode === 'group'
+            ? 'Message the group…'
+            : mode === 'manager'
+              ? 'Message your group manager…'
+              : slot.context.visibility === 'private'
+                ? fixture
+                  ? 'Message private test session…'
+                  : sendTarget === 'agent'
+                    ? 'Ask privately…'
+                    : 'Write a private note…'
+                : fixture
+                  ? 'Message shared test session…'
+                  : sendTarget === 'agent'
+                    ? 'Message your group agent…'
+                    : 'Send a group message…'
         }
       />
     </div>

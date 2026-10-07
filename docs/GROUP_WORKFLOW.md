@@ -1,8 +1,7 @@
 # Groups in the normal app
 
-Groups brings shared conversations and an evidence feed into the ordinary app.
-Each person keeps their own installation, provider account and private conversation. Start at
-**Home → Groups**, including from an authenticated paired phone or laptop. The selected
+Groups lives inside the ordinary Chats list. Each person keeps their own installation
+and provider account. Start at **Chats → Groups**, including from an authenticated paired phone or laptop. The selected
 computer must be awake, reachable and running the app.
 
 This workflow is integrated into the normal app. [Status](STATUS.md#groups) separates
@@ -16,24 +15,24 @@ uses fake providers and is not a substitute for this setup.
    computer from your phone or laptop, complete [owner pairing](PHONE_WORKFLOW.md) and select
    that computer first. Pairing gives owner access to that installation; a group invitation
    gives group membership instead.
-2. In Groups, expand **Set up Groups with your agent**. The creator copies **Cloudflare
+2. In **Chats → Groups**, open **Group setup (?)**. The creator copies **Cloudflare
    setup prompt** into their external Codex or Claude setup agent. It deploys Groups in
    the creator's **own Cloudflare Workers Free account**, following the concrete
    [hosting runbook](GROUP_HOSTING.md). Human steps are sign-in, account/Free confirmation
    and the chosen HTTPS address. Fresh installations use no maintainer service or beta
    operator code. Existing saved Groups settings and memberships are preserved.
-3. New/Join actions appear above setup help. The open Groups page detects completed configuration and collapses the setup prompt
-   automatically. Choose **New project**, enter project and display names, then
-   **Continue setup**. In the group header, choose **Invite people → Create invitation → Copy invitation**
+3. **New group** and **Join group** stay visible beside the list. Setup instructions open
+   separately and the list detects completed configuration automatically. Choose **New group**,
+   enter project and display names, then **Create group**. In the group header, choose **Invite people → Create invitation → Copy invitation**
    and send it privately. The same link can invite multiple people for 7 days. Each
    recipient joins directly with the link; no confirmation code or creator approval.
    New links open the service's `/join` page, which guides recipients into their own app.
    A creator's private localhost/phone address is not a group login. Older links can be
-   pasted into **Join by invitation** in the recipient's configured app.
+   pasted into **Join group** in the recipient's configured app.
 4. The member gives the **join setup prompt** and invitation to their setup agent. It
    configures the creator's service in private host files; members do not deploy another
    Worker or need Cloudflare for Groups. If setup outlasts the invitation, obtain a fresh
-   link from the same creator. Choose **Join by invitation → Join group**. The group opens
+   link from the same creator. Choose **Join group**. The group opens
    immediately, and the creator's member list updates automatically. Previously accepted
    pending requests become members when read by the updated service, provided their
    invitation was not revoked and its issuer remains active. Existing members stay joined
@@ -47,7 +46,7 @@ uses fake providers and is not a substitute for this setup.
    request starts; use ordinary provider sign-in if needed. See [native owner
    setup](GROUP_NATIVE_OWNER_SETUP.md) for the supported setup and retained isolated mode.
 6. Send a short human message from each installation and confirm both people can read it
-   and open its original in the shared feed. Shared messages and completed agent replies
+   in **Group chat**. Shared messages and completed agent replies
    publish directly; selecting a feed-summary computer is not required. The visible feed
    checks for new arrivals automatically. Native-agent readiness is a separate check.
 
@@ -56,7 +55,7 @@ from an already open group. The app removes the invitation from the address imme
 its secret stays in memory until the authenticated join request receives it.
 
 A lost network reply does not require creating another group or sending another join
-request. Use **Recover an interrupted request** on the original installation; it reconciles the saved
+request. Open **Group setup (?) → Recover an interrupted request** on the original installation; it reconciles the saved
 request and identity after reload or restart. If the service is unavailable, leave the
 request saved and retry when it returns. Do not change the service mapping to evade a pending
 request. A setup agent must reconcile changed endpoints or installation identities explicitly.
@@ -66,25 +65,28 @@ existing group; never copy their creation capability to a member host.
 
 ## Conversation and work
 
-Groups opens a full-width **Shared chat**. Switch to **Shared feed** for the condensed record;
-**Manage** opens group settings without shrinking the conversation. **Invite people** opens
-the invitation controls directly. The invitation shows its actual expiry date.
-Catch up uses the same reading surface, loads the unread page when opened and keeps detailed
-evidence queries collapsed. Opening it does not mark anything read.
+The Groups filter lists your shared chats in the normal Chats frame. Desktop keeps the list
+beside the selected group; phones show the list or the selected conversation. Old Groups links
+still open the corresponding chat. Back returns to the list, not another conversation.
 
-**Shared chat** contains messages you choose to send to the group. **Private to you** opens
-your separate local conversation and draft. Each person requests their own enrolled local
-agent; another participant's message does not authorize work on your computer.
+Each group has two tabs:
 
-The ordinary composer defaults to **Your agent** and **Ask**. Choose **Work** only to
-authorize shared work. Private agent requests always use Ask. **Send to** also offers an
-explicit human group message or private note. Failed, unknown or blocked agent requests
-retain their exact request ID, text, destination and intent across retry/reload, with no
-fallback to a human message; newer typing stays separate.
+- **Group chat** shows everyone's shared messages as ordinary chat bubbles. Sending here posts
+  a human message without invoking a model.
+- **Group manager** shows your agent's shared working conversation. **Ask** requests a read-only
+  reply; **Work** authorizes shared work. Other members' incoming messages do not authorize
+  work on your computer.
+
+Both tabs use the shared context. The current draft and exact retry identity remain retained
+when switching tabs. Saved private conversations and drafts stay private; this view neither
+opens nor publishes them. Failed requests retain their exact ID, text, destination and intent
+across retry/reload, even after changing tabs.
+
+**Invite** opens sharing controls, and **Manage (⋯)** opens settings without displacing the
+conversation. The invitation shows its actual expiry date.
 
 Human-message Send retains what you send before delivery. **Retry delivery** uses the
-same saved message after a lost reply; it does not create another message. Open an original
-from the feed to read the exact retained text. Delivery status is separate from local saving.
+same saved message after a lost reply; it does not create another message. Group chat reads the verified retained originals. Delivery status is separate from local saving.
 Shared originals use the durable delivery queue independently of optional summaries.
 A summary, provider limit or offline summary computer cannot hold up a saved chat reply.
 The older selected-writer summary workflow remains for retained activity; automatic

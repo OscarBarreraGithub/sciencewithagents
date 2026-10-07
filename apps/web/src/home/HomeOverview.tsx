@@ -167,18 +167,11 @@ function Destinations({ data }: { data: HomeData }) {
               }${sessions ? ` · ${plural(sessions, 'Codex session')}` : ''}`,
     },
     {
-      href: '#/groups',
-      label: 'Groups',
-      icon: <MessageCircle size={22} />,
-      tone: 'chats',
-      detail: 'Shared work and private asides',
-    },
-    {
       href: '#/apps',
       label: 'Apps',
       icon: <LayoutGrid size={22} />,
       tone: 'apps',
-      detail: 'LaTeX · PDF reader',
+      detail: 'Tools you add',
     },
     {
       href: '#/work',

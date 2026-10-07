@@ -47,7 +47,7 @@ test.afterAll(async () => {
   expect(child?.exitCode).toBe(0);
 });
 
-test('arrivals preserve paginated history and a manual refresh ignores its previous read', async ({
+test('shared chat follows paginated originals and retries damaged arrivals without losing history', async ({
   page,
 }) => {
   const [name, ...parts] = connection.cookie.split('=');
@@ -56,20 +56,17 @@ test('arrivals preserve paginated history and a manual refresh ignores its previ
     .addCookies([
       { name, value: parts.join('='), url: connection.origin, httpOnly: true, sameSite: 'Strict' },
     ]);
-  await page.goto(`${connection.origin}/#/home`);
-  await page.getByRole('link', { name: /Groups Shared work/ }).click();
-  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.goto(`${connection.origin}/#/chats/groups`);
+  await page.getByRole('button', { name: 'New group', exact: true }).click();
   await page.getByLabel('Your display name', { exact: true }).fill('Amina');
   await page.getByLabel('Project name', { exact: true }).fill('Paginated River');
-  const opening = page.waitForResponse((response) => response.url().endsWith('/api/groups/open'));
-  const opened = opening.then((response) => response.json() as Promise<GroupHostOpen>);
+  const opened = page
+    .waitForResponse((response) => response.url().endsWith('/api/groups/open'))
+    .then((response) => response.json() as Promise<GroupHostOpen>);
   const entries = new Map<number, GroupFeedEntry>();
   const queries: GroupFeedQuery[] = [];
-  const scopeKey = 'a'.repeat(64);
-  let reset = false;
-  let available = 30;
-  let releaseOldRead: (() => void) | undefined;
-  let oldReadStarted = false;
+  let available = 6;
+  let damaged = false;
   const event = async (sequence: number) => {
     const saved = entries.get(sequence);
     if (saved) return saved;
@@ -97,11 +94,11 @@ test('arrivals preserve paginated history and a manual refresh ignores its previ
       entityId: randomUUID(),
       revision: 1,
       category: 'Finding',
-      condensedText: `Shared event ${sequence}`,
+      condensedText: `Summary ${sequence}`,
       evidenceRefs: [],
       corrects: null,
       manifest: { bytes, sha256, chunks: [{ index: 0, bytes, sha256 }] },
-      recordedAt: new Date().toISOString(),
+      recordedAt: new Date(1700000000000 + sequence * 1000).toISOString(),
     } as GroupFeedEntry;
     entries.set(sequence, value);
     return value;
@@ -109,87 +106,63 @@ test('arrivals preserve paginated history and a manual refresh ignores its previ
   await page.route('**/api/groups/original', async (route) => {
     const { eventId } = route.request().postDataJSON();
     const entry = [...entries.values()].find((value) => value.eventId === eventId)!;
-    await route.fulfill({ json: { eventId, text: `Exact shared original ${entry.sequence}` } });
+    await route.fulfill({
+      json: {
+        eventId,
+        text:
+          damaged && entry.sequence === 7
+            ? 'Damaged content'
+            : `Exact shared original ${entry.sequence}`,
+      },
+    });
   });
   await page.route('**/api/groups/feed', async (route) => {
     const { query } = route.request().postDataJSON() as { query: GroupFeedQuery };
     queries.push(query);
-    let positions: number[];
-    let watermark: number;
-    if (query.cursor) {
-      positions = Array.from({ length: 8 }, (_, index) => query.cursor!.after + index + 1);
-      watermark = query.cursor.watermark;
-    } else if (query.after === 0) {
-      positions = [1, 2, 3, 4, 5, 6, 7, 8];
-      watermark = reset ? 40 : 30;
-    } else if (!reset && query.after === 32) {
-      oldReadStarted = true;
-      await new Promise<void>((resolve) => {
-        releaseOldRead = resolve;
-      });
-      positions = [33];
-      watermark = 33;
-    } else if (query.after >= available) {
-      positions = [];
-      watermark = available;
-    } else {
-      positions = [query.after + 1];
-      watermark = query.after === 30 ? 32 : query.after + 1;
-    }
-    const after = positions.at(-1) ?? query.after;
-    await route
-      .fulfill({
-        json: {
-          entries: await Promise.all(positions.map(event)),
-          watermark,
-          continuation:
-            positions.length && after < watermark
-              ? { version: 2, scopeKey, visibility: 'shared', after, watermark }
-              : null,
-        },
-      })
-      .catch(() => {}); // The reset deliberately aborts the held response.
+    const after = query.cursor?.after ?? query.after;
+    const watermark = query.cursor?.watermark ?? available;
+    const positions = Array.from(
+      { length: Math.min(2, Math.max(0, watermark - after)) },
+      (_, index) => after + index + 1,
+    );
+    const last = positions.at(-1) ?? after;
+    await route.fulfill({
+      json: {
+        entries: await Promise.all(positions.map(event)),
+        watermark,
+        continuation:
+          last < watermark
+            ? { version: 2, scopeKey: 'a'.repeat(64), visibility: 'shared', after: last, watermark }
+            : null,
+      },
+    });
   });
-  try {
-    await page.getByRole('button', { name: 'Continue setup', exact: true }).click();
-    await page.getByRole('tab', { name: 'Shared feed', exact: true }).click();
-    await expect(page.locator('.groups-event')).toHaveCount(8);
-    await page.getByRole('button', { name: 'Read exact original', exact: true }).first().click();
-    await expect(page.locator('.groups-original')).toContainText('Exact shared original 1');
-    const scroller = page.locator('.groups-feed-scroll');
-    const scrollTop = await scroller.evaluate((element) => {
-      element.scrollTop = 100;
-      return element.scrollTop;
-    });
-    available = 32;
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await expect(page.locator('.groups-event')).toHaveCount(9);
-    expect(queries.at(-1)!.after).toBe(30);
-    expect(await scroller.evaluate((element) => element.scrollTop)).toBeCloseTo(scrollTop, 0);
-    await expect(page.locator('.groups-original')).toContainText('Exact shared original 1');
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await expect(page.locator('.groups-event')).toHaveCount(10);
-    expect(queries.at(-1)!.after).toBe(31); // Poll continuation must not jump to watermark32.
-    await page.getByRole('button', { name: 'Load more events', exact: true }).click();
-    await expect(page.locator('.groups-event')).toHaveCount(18);
-    expect(queries.find((query) => query.cursor)?.cursor).toMatchObject({
-      after: 8,
-      watermark: 30,
-    });
-    await expect(page.locator('.groups-original')).toContainText('Exact shared original 1');
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await expect.poll(() => oldReadStarted).toBe(true);
-    reset = true;
-    available = 41;
-    await page.getByRole('button', { name: 'Refresh shared feed', exact: true }).click();
-    await expect(page.locator('.groups-event')).toHaveCount(8);
-    releaseOldRead!();
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await expect(page.locator('.groups-event')).toHaveCount(9);
-    expect(queries.at(-1)!.after).toBe(40);
-    await expect(page.getByText('Shared event 33', { exact: true })).toHaveCount(0);
-    await expect(page.locator('.groups-feed-panel')).toContainText('Shared event 41');
-  } finally {
-    releaseOldRead?.();
-  }
+  await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  const conversation = page.locator('.group-shared-chat .conversation');
+  await expect(conversation.locator('.message')).toHaveCount(6);
+  await expect(conversation).toContainText('Exact shared original 1');
+  await expect(conversation).toContainText('Exact shared original 6');
+  expect(queries.some((query) => query.cursor?.after === 2 && query.cursor.watermark === 6)).toBe(
+    true,
+  );
+  expect(queries.some((query) => query.cursor?.after === 4 && query.cursor.watermark === 6)).toBe(
+    true,
+  );
+  damaged = true;
+  available = 7;
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByRole('button', { name: 'Retry group messages' })).toBeVisible();
+  await expect(conversation.locator('.message')).toHaveCount(6);
+  await expect(conversation).not.toContainText('Damaged content');
+  damaged = false;
+  await page.getByRole('button', { name: 'Retry group messages' }).click();
+  await expect(conversation.locator('.message')).toHaveCount(7);
+  await expect(conversation).toContainText('Exact shared original 7');
+  await expect(page.getByRole('button', { name: 'Retry group messages' })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Group manager', exact: true }).click();
+  available = 8;
+  await page.getByRole('tab', { name: 'Group chat', exact: true }).click();
+  await expect(conversation.locator('.message')).toHaveCount(8);
+  await expect(conversation).toContainText('Exact shared original 8');
+  await expect(conversation).toContainText('Exact shared original 1');
 });

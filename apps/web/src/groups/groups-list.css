@@ -1,0 +1,136 @@
+/* Groups use the same list/detail frame as every other conversation. */
+.groups-chat-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  min-width: 0;
+}
+.groups-list-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.groups-list-actions .flow-button {
+  flex: 1;
+  justify-content: center;
+  white-space: nowrap;
+}
+.groups-chat-list .chat-row {
+  width: 100%;
+  text-align: left;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.groups-chat-list .chat-row.selected {
+  background: var(--accent-wash, #e8eafd);
+}
+.groups-main-chat > .chat-pane > .group-host-root {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.groups-form-dialog,
+.group-setup-dialog {
+  width: min(620px, calc(100vw - 24px));
+  max-height: calc(var(--home-visible-height, 100dvh) - 24px);
+  padding: 20px;
+  overflow: auto;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.groups-form-dialog .groups-form {
+  padding: 0;
+  margin-top: 16px;
+  gap: 12px;
+}
+.groups-form-dialog .groups-form p {
+  margin: 0;
+  font-size: 1rem;
+}
+.groups-form-dialog .groups-form label {
+  gap: 6px;
+}
+.groups-form-dialog input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  font-size: 1rem;
+}
+.group-setup-dialog .group-host-status,
+.group-setup-dialog .group-host-recovery {
+  font-size: 1rem;
+  padding: 12px 0;
+}
+.group-setup-dialog summary {
+  min-height: 44px;
+  cursor: pointer;
+  padding-block: 10px;
+}
+.group-setup-choice h3 {
+  font-size: 1rem;
+  margin: 20px 0 8px;
+}
+.group-setup-choice .setup-prompt {
+  font-size: 1rem;
+}
+.group-setup-choice .setup-prompt-head {
+  padding: 8px;
+}
+.group-setup-choice button {
+  white-space: normal;
+  min-height: 44px;
+  text-align: left;
+}
+.group-prompt-text {
+  padding: 0 12px;
+}
+.group-prompt-text pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: none;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.groups-setup-needed {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+/* Five compact filters stay readable without breaking words. */
+.chat-filters {
+  display: flex;
+  flex-wrap: wrap;
+}
+.chat-filters button {
+  flex: 1 0 auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.group-setup-choice .setup-prompt,
+.group-setup-choice .setup-prompt-head,
+.group-setup-choice .setup-prompt pre {
+  background: var(--paper);
+  color: var(--ink);
+}
+.group-setup-choice .setup-prompt {
+  border: 1px solid var(--line);
+}
+.group-setup-choice .setup-prompt-head {
+  border-bottom: 1px solid var(--line);
+}
+.group-setup-choice .setup-prompt-head button {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.group-setup-choice .setup-prompt-status {
+  color: var(--ink);
+}
+/* The generic narrow-chat rule must not shrink group input below readable/iOS zoom size. */
+.main-chat.has-selection .chat-pane .group-chat.flow-chat-main .composer textarea {
+  font-size: var(--group-reading-size, 20px);
+}

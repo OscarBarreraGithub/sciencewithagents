@@ -93,11 +93,11 @@ test('native Groups management saves a blank GitHub username and retries its exa
       { name, value: parts.join('='), url: connection.origin, httpOnly: true, sameSite: 'Strict' },
     ]);
   await page.goto(`${connection.origin}/#/home`);
-  await page.getByRole('link', { name: /Groups Shared work/ }).click();
-  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.goto(`${connection.origin}/#/chats/groups`);
+  await page.getByRole('button', { name: 'New group', exact: true }).click();
   await page.getByLabel('Your display name', { exact: true }).fill('Amina');
   await page.getByLabel('Project name', { exact: true }).fill('Native files River');
-  await page.getByRole('button', { name: 'Continue setup', exact: true }).click();
+  await page.getByRole('button', { name: 'Create group', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Native files River', exact: true }),
   ).toBeVisible();

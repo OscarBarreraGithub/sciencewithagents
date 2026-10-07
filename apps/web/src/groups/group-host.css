@@ -324,6 +324,23 @@
 .group-host-workspace .group-chat .markdown {
   line-height: 1.6;
 }
+.group-host-workspace .group-chat.group-shared-chat .message .message-heading > strong {
+  position: static;
+  width: auto;
+  height: auto;
+  clip-path: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: var(--text-caption);
+  color: var(--home-muted);
+}
+.group-host-workspace .group-chat.group-shared-chat .message .message-heading {
+  order: 0;
+  justify-content: flex-start;
+}
+.group-host-workspace .group-chat.group-shared-chat .handoff-label {
+  display: none;
+}
 .group-host-workspace .group-chat .composer textarea::placeholder {
   font-size: inherit;
 }
