@@ -23,8 +23,8 @@ are not an account-wide quota reservation or billing guarantee.
 
 1. Creator: sign in to **your** Cloudflare account, confirm the account and Workers Free,
    and approve your service's HTTPS address. The setup agent handles the commands below.
-2. Members: give the external setup agent the creator's invitation privately, then send the
-   exact enrollment confirmation code privately to the creator for approval.
+2. Members: give the external setup agent the creator's invitation privately, then choose
+   **Join group** in the app. No code exchange or separate creator approval.
 3. Enable native local agents when ready. Verify one shared message in each direction.
 4. For phone access, use the separate [Cloudflare phone setup](CLOUDFLARE_SETUP.md), in your
    own account, and authenticated device pairing. Groups delivery and phone access to the
@@ -133,10 +133,10 @@ proof of Free entitlement.
 
 ### Invitation handoff to a fresh member installation
 
-The creator opens **Group controls → Invitations and approval → Create invitation** and
+The creator opens **Invite people → Create invitation** and
 sends the invitation privately. It expires after 15 minutes. In owner-hosted mode, its
 fragment includes the exact service descriptor (the schema above **without**
-`setupCapability`), group identity and single-use invitation secret. The fragment is removed
+`setupCapability`), group identity and invitation secret. The same link can enroll multiple people before expiry. The fragment is removed
 from the browser address immediately. Do not paste it into public issues, logs or source.
 
 On the joining computer, the external setup agent saves the invitation in a temporary
@@ -154,8 +154,8 @@ The setup agent is the explicit trusted configuration boundary. Remove the tempo
 invitation file after handoff. If setup took longer than 15 minutes, obtain a fresh invitation
 from the same creator; the saved service mapping stays valid.
 
-Reload Groups, choose **Join by invitation**, and paste a current invitation. Send the exact
-confirmation code privately to the creator; they approve that exact enrollment. The joining
+Reload Groups, choose **Join by invitation**, paste a current invitation and choose **Join group**.
+The link grants membership directly; there is no confirmation code or approval step. The joining
 host holds its own generated credential and no creation capability. Attempting to create a
 group on a join-only host refuses before network handoff. To host an independent service,
 reconcile the current mapping and retained groups explicitly rather than replacing it.
@@ -166,7 +166,7 @@ Verify a human message from each installation appears at the other, and each ori
 Choose the creator's computer as shared feed writer. Verify local agent access separately
 using each person's own provider sign-in; model calls require their ordinary instruction.
 Reload/reconnect and confirm membership and saved messages persist. A lost acknowledgement
-uses **Recover pending setup** / the original request identity; never create another group
+uses **Recover an interrupted request** / the original request identity; never create another group
 to evade uncertainty. Service failures retain requests for retry. A failed deployment is not
 a completed setup. Own-account live deployment and real-device acceptance must be checked
 for each installation; local tests do not certify them.
@@ -191,7 +191,8 @@ leaves the group inaccessible; setup cannot restore it or bypass membership.
 
 A client retains three independent values generated with a cryptographically secure RNG:
 a 256-bit installation credential, a 256-bit invitation secret when issuing an invitation,
-and a 256-bit confirmation value when joining. The wire encoding is exactly 64 lowercase
+and a legacy 256-bit confirmation value retained internally for protocol compatibility.
+People do not exchange or enter that value. The wire encoding is exactly 64 lowercase
 hexadecimal characters. Each installation/group must use a fresh credential. The service
 stores only domain-separated, group-bound SHA-256 digests of these capabilities; raw
 values never enter receipts, audit, returned errors or logging. Possession authenticates
@@ -211,15 +212,15 @@ No capability goes into a path/query. The normal client places invitation secret
 user action. GET/prefetch cannot initialize or enroll. Responses use `no-store` and `no-referrer`; errors are fixed
 codes, with no input, SQL exceptions or stacks. Callers must not log requests/secrets.
 
-| Route/command                          | Required authority and result                                                                                                                                 |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/v1/create`, `initialize`             | Separate setup header plus client installation credential, operation UUID, group name and member name. Returns creator identity.                              |
-| `/v1/groups/{uuid}`, `invite`          | Active installation; client-generated invite secret, operation UUID and TTL (1–900 seconds). Returns invite UUID/deadline.                                    |
-| Same route, `join`                     | New installation credential, single-use invite secret, confirmation value, operation UUID and typed name. Returns pending identity; no membership access yet. |
-| Same route, `approve`                  | Active member supplies exact pending installation UUID and matching confirmation obtained separately from the joining person. Returns active identity.        |
-| Same route, `status`                   | Existing pending/active credential; revoked and unknown credentials fail uniformly.                                                                           |
-| Same route, `roster`/`pending`/`audit` | Active member; bounded keyset page (`after`, `limit`). Returned `next` continues the page.                                                                    |
-| Same route, `revoke`/`revokeInvite`    | Active member and exact installation/invitation UUID. Revokes active or pending enrollment, or an open/consumed invite.                                       |
+| Route/command                          | Required authority and result                                                                                                                  |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/v1/create`, `initialize`             | Separate setup header plus client installation credential, operation UUID, group name and member name. Returns creator identity.               |
+| `/v1/groups/{uuid}`, `invite`          | Active installation; client-generated invite secret, operation UUID and TTL (1–900 seconds). Returns invite UUID/deadline.                     |
+| Same route, `join`                     | New installation credential, reusable unexpired invite secret, legacy compatibility value, operation UUID and name. Returns active membership. |
+| Same route, `approve`                  | Legacy compatibility command; the current app does not use an approval step. Already-active exact enrollments can be acknowledged again.       |
+| Same route, `status`                   | Existing pending/active credential; revoked and unknown credentials fail uniformly.                                                            |
+| Same route, `roster`/`pending`/`audit` | Active member; bounded keyset page (`after`, `limit`). Returned `next` continues the page.                                                     |
+| Same route, `revoke`/`revokeInvite`    | Active member and exact installation/invitation UUID. Revokes active or pending enrollment, or an open/consumed invite.                        |
 
 The setup binding is a hash produced by `setupHash`, not a plaintext setup credential.
 It is empty in the default configuration. Setup derives a stable generated group UUID
@@ -228,24 +229,23 @@ needs no global directory/object. It can initialize only an empty object. On an 
 group, even an initialization retry requires that exact creator's active installation
 credential before the receipt is read. Setup headers are forbidden on other commands.
 
-Invitation consumption and pending creation are atomic. Approval requires the invitation
-to remain consumed, unexpired and unrevoked, and its issuer still active. Revoking an issuer
-invalidates outstanding invitations and prevents approval of its pending enrollments;
-already approved members retain their own authority. Revocation wins whenever it commits
-before a competing approval; target revocation after approval still denies target access.
-Expired pending enrollments continue occupying the pending bound until explicitly revoked.
+An unexpired, unrevoked invitation grants membership directly while its issuer is active.
+The same link admits multiple people, each with a separate installation credential. Existing
+memberships survive invitation expiry. Revoking an invitation stops new joins; revoking a
+member stops that member's access.
 
-The joining installation shows its confirmation separately to the approver; the pending
-list does not reveal it. Approval is bound to both that installation UUID and confirmation
-hash. A pending installation can recover only its own identity/status, never the roster.
+Previously accepted pending enrollments are reconciled on authenticated status/roster/pending
+reads. Conversion requires the original invitation to remain unrevoked and its issuer active,
+respects member/normal-write limits, and is audited once. The invitation deadline does not
+strand an already accepted request. Revoked enrollments and grants are never revived.
 
 ## Receipts, revocation and bounds
 
 Crypto is asynchronous before the transaction. The synchronous transaction then checks
 current group routing, authorization and revocation before reading a receipt. A fresh
-join authenticates an open, unexpired invitation and active issuer before normal admission
+join authenticates an open (or retained consumed), unexpired invitation and active issuer before normal admission
 can disclose a capacity limit. A same-ID join receipt is recovered with its bound enrolled
-credential even though its invite is now consumed. The transaction writes the membership
+credential even after its invitation expires. The transaction writes the membership
 change, audit entry, receipt and counters together. Cursors are
 fully consumed before any await. [SQLite transaction API](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/).
 
@@ -253,9 +253,9 @@ Receipts are keyed by credential hash and operation UUID and retain a canonical 
 hash with hashed secret fields. Same key/payload returns the exact response; changed payload
 or command is a conflict. The client keeps its original operation, credential, invitation
 and confirmation locally until recovery. A recovered join receipt remains the original
-pending response after approval; `status` supplies current state. Every retry authenticates
+response from its original attempt; `status` supplies current state. Every retry authenticates
 again. Revoked credentials cannot use a receipt to resurrect enrollment; rejoining requires
-a new invite, new credential and fresh approval. A retry of approval whose target was later
+an explicit new enrollment rather than an authenticated retry. A retry of approval whose target was later
 revoked fails. A self-revoked creator cannot recover initialization through setup.
 
 Audit records contain only operation kind, actor/target IDs, sequence and time. SQLite
@@ -269,7 +269,7 @@ indexed. Lifetime bounds also bound stored-row scans (including historical invit
 | Page                                                         | 1–50 entries; indexed keyset continuation                    |
 | Active installations / lifetime enrollments                  | 64 / 512                                                     |
 | Open unexpired invitations / pending enrollments             | 32 / 32                                                      |
-| Invitation lifetime                                          | Up to 15 minutes; expiry applies to join and approval        |
+| Invitation lifetime                                          | Up to 15 minutes for new joins; existing memberships persist |
 | Normal mutation admission                                    | Stops at 1,536 recorded operations or 500 mutations/day      |
 | Member revocation                                            | Exempt from normal admission; at most 512 successes/lifetime |
 | Normal non-delivery SQLite ceiling                           | 16,777,216 bytes (16 MiB), checked before and after writes   |
@@ -387,7 +387,7 @@ use `@cloudflare/vitest-plugin` (1.3.6 here), Vitest 4.1.11 and actual local wor
 [Durable Object testing](https://developers.cloudflare.com/durable-objects/examples/testing-with-durable-objects/).
 
 The suite exercises fresh creation, two independent credential holders through HTTP,
-pending approval, equal permissions, bounded pages, single-use/concurrent joins, receipt
+direct multi-person joins, legacy pending conversion, bounded pages, concurrent joins, receipt
 conflicts, revocation/approval races, eviction and runtime abort/restart recovery,
 secret-free SQLite snapshots/audit/errors, rejected private/provider canaries, expired and
 revoked invitations, cross-group denial, capacity/history/daily/member/pending limits and

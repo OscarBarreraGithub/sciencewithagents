@@ -343,7 +343,7 @@ export class GroupMembership extends DurableObject<Env> {
           }
           if (command.kind === 'join' && actor) reject('denied');
           // Only a new join authenticates its invitation. An authenticated same-ID
-          // receipt above must remain recoverable after single-use consumption.
+          // receipt above must remain recoverable after the invitation expires.
           if (command.kind === 'join') this.validInvite(secretHash!, now);
           // Each lifetime enrollment can transition to revoked only once. Invalid
           // targets and changed-key repeats fail atomically without consuming reserve.
@@ -375,9 +375,10 @@ export class GroupMembership extends DurableObject<Env> {
           }
           case 'invite': {
             this.boundCount(
-              'SELECT count(*) AS n FROM invitations WHERE state=? AND expires_at>?',
+              'SELECT count(*) AS n FROM invitations WHERE state IN (?,?) AND expires_at>?',
               L.openInvites,
               'open',
+              'consumed',
               now,
             );
             const inviteId = crypto.randomUUID();
@@ -400,21 +401,16 @@ export class GroupMembership extends DurableObject<Env> {
             const invite = this.validInvite(secretHash!, now);
             this.boundCount(
               'SELECT count(*) AS n FROM enrollments WHERE state=?',
-              L.pending,
-              'pending',
+              L.members,
+              'active',
             );
             this.boundCount('SELECT count(*) AS n FROM enrollments', L.enrollments);
             const joined = this.insertEnrollment(
               credentialHash,
               command.displayName,
-              'pending',
+              'active',
               invite.invite_id,
               confirmationHash,
-            );
-            this.rows(
-              'UPDATE invitations SET state=? WHERE invite_id=?',
-              'consumed',
-              invite.invite_id,
             );
             actorId = joined.installation_id;
             targetId = joined.installation_id;
@@ -425,19 +421,28 @@ export class GroupMembership extends DurableObject<Env> {
             const target = this.enrollment(command.installationId);
             if (
               !target ||
-              target.state !== 'pending' ||
+              target.state === 'revoked' ||
               !target.confirmation_hash ||
               !equalHash(target.confirmation_hash, confirmationHash!)
             )
               reject('denied');
+            // Older hosts may still confirm an already accepted link. Preserve
+            // their exact idempotent request without changing active membership.
+            if (target.state === 'active') {
+              targetId = target.installation_id;
+              response = { kind: 'identity', identity: this.identity(groupId, target) };
+              break;
+            }
             const invite = this.rows<Invite>(
               'SELECT invite_id,issuer_id,expires_at,state FROM invitations WHERE invite_id=?',
               target.invite_id!,
             )[0];
+            // Expiry gates the initial join. A consumed invitation already
+            // admitted this exact pending enrollment; confirmation and revocation
+            // checks still govern approval after that original join deadline.
             if (
               !invite ||
               invite.state !== 'consumed' ||
-              invite.expires_at <= now ||
               this.enrollment(invite.issuer_id)?.state !== 'active'
             )
               reject('denied');
@@ -516,10 +521,35 @@ export class GroupMembership extends DurableObject<Env> {
             break;
           }
           case 'status':
-            response = { kind: 'identity', identity: this.identity(groupId, actor!) };
+            response = {
+              kind: 'identity',
+              identity: this.identity(
+                groupId,
+                this.activateAccepted(actor!, actor!.installation_id, now),
+              ),
+            };
             break;
           case 'roster':
           case 'pending': {
+            // Existing installations may already have accepted a link under the
+            // previous approval flow. An active member's read reconciles at most
+            // the bounded pending set, without reusing a revoked invitation.
+            const legacy = this.rows<Enrollment>(
+              'SELECT * FROM enrollments WHERE state=? ORDER BY position LIMIT ?',
+              'pending',
+              L.pending,
+            );
+            for (const target of legacy) {
+              if (!this.acceptedInvitation(target)) continue;
+              try {
+                this.ctx.storage.transactionSync(() =>
+                  this.activateAccepted(target, actor!.installation_id, now),
+                );
+              } catch (error) {
+                if (error instanceof Rejection && error.code === 'limit') break;
+                throw error;
+              }
+            }
             const entries = this.rows<Enrollment>(
               'SELECT * FROM enrollments WHERE state=? AND position>? ORDER BY position LIMIT ?',
               command.kind === 'pending' ? 'pending' : 'active',
@@ -570,32 +600,13 @@ export class GroupMembership extends DurableObject<Env> {
         response = membershipReplySchema.parse(response);
         if ('operationId' in command) {
           this.rows(
-            'INSERT INTO audit(kind,actor_installation_id,target_id,recorded_at) VALUES(?,?,?,?)',
-            command.kind,
-            actorId!,
-            targetId!,
-            now,
-          );
-          this.rows(
             'INSERT INTO receipts(credential_hash,operation_id,request_hash,response) VALUES(?,?,?,?)',
             credentialHash,
             command.operationId,
             requestHash,
             JSON.stringify(response),
           );
-          const day = Math.floor(now / 86_400_000);
-          this.rows(
-            'UPDATE metadata SET operations=operations+1,day_mutations=CASE WHEN day=? THEN day_mutations+1 ELSE 1 END,day=? WHERE singleton=1',
-            day,
-            day,
-          );
-          // Fence actual normal-write growth inside the same rollback transaction;
-          // a pre-write estimate alone cannot protect the revocation reserve.
-          if (
-            command.kind !== 'revoke' &&
-            this.deliveryStorage.normalSize() > C.normalDatabaseBytes
-          )
-            reject('limit');
+          this.accountMutation(command.kind, actorId!, targetId!, now);
         }
         return { ok: true as const, value: response };
       });
@@ -607,6 +618,51 @@ export class GroupMembership extends DurableObject<Env> {
     }
   }
 
+  private acceptedInvitation(target: Enrollment): boolean {
+    const invite = this.rows<Invite>(
+      'SELECT invite_id,issuer_id,expires_at,state FROM invitations WHERE invite_id=?',
+      target.invite_id!,
+    )[0];
+    return (
+      !!invite &&
+      (invite.state === 'open' || invite.state === 'consumed') &&
+      this.enrollment(invite.issuer_id)?.state === 'active'
+    );
+  }
+  private activateAccepted(target: Enrollment, actorId: string, now: number): Enrollment {
+    if (target.state !== 'pending') return target;
+    if (!this.acceptedInvitation(target)) reject('denied');
+    const meta = this.rows<Metadata>('SELECT * FROM metadata WHERE singleton=1')[0];
+    this.admit(meta, now);
+    this.boundCount('SELECT count(*) AS n FROM enrollments WHERE state=?', L.members, 'active');
+    this.rows(
+      'UPDATE enrollments SET state=? WHERE installation_id=?',
+      'active',
+      target.installation_id,
+    );
+    // The durable pending->active transition makes repeated status/roster reads
+    // idempotent. Historical receipts stay append-only; each conversion is audited.
+    this.accountMutation('join', actorId, target.installation_id, now);
+    return { ...target, state: 'active' };
+  }
+  private accountMutation(kind: string, actorId: string, targetId: string, now: number): void {
+    this.rows(
+      'INSERT INTO audit(kind,actor_installation_id,target_id,recorded_at) VALUES(?,?,?,?)',
+      kind,
+      actorId,
+      targetId,
+      now,
+    );
+    const day = Math.floor(now / 86_400_000);
+    this.rows(
+      'UPDATE metadata SET operations=operations+1,day_mutations=CASE WHEN day=? THEN day_mutations+1 ELSE 1 END,day=? WHERE singleton=1',
+      day,
+      day,
+    );
+    // Fence all normal-write growth inside the same rollback transaction.
+    if (kind !== 'revoke' && this.deliveryStorage.normalSize() > C.normalDatabaseBytes)
+      reject('limit');
+  }
   private rows<T extends Record<string, SqlStorageValue>>(
     sql: string,
     ...bindings: SqlStorageValue[]
@@ -653,7 +709,7 @@ export class GroupMembership extends DurableObject<Env> {
     )[0];
     if (
       !invite ||
-      invite.state !== 'open' ||
+      (invite.state !== 'open' && invite.state !== 'consumed') ||
       invite.expires_at <= now ||
       this.enrollment(invite.issuer_id)?.state !== 'active'
     )

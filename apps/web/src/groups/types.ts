@@ -41,7 +41,6 @@ export type GroupChatSlot = {
   content: ReactNode;
 };
 export type GroupsWorkspaceProps = {
-  pendingRequests?: number;
   onInvite?: () => void;
   chatTitle?: string;
   privateDescription?: string;

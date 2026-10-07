@@ -1,23 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { groupHostOpenSchema } from '@dock/shared/dist/group-host.js';
 import { api, ApiError } from '../api';
 
+/** Reopens a saved join made against an older service, without another enrollment. */
 export function GroupJoinReceipt({
   receipt,
   onApproved,
 }: {
-  receipt: { handle: string; name: string; confirmation: string };
+  receipt: { handle: string; name: string };
   onApproved: () => void;
 }) {
-  const [approved, setApproved] = useState(false);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
-  const code = useRef<HTMLInputElement>(null);
-  const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => heading.current?.focus(), []);
   useEffect(() => {
-    if (approved) return;
     let controller: AbortController | undefined;
     const check = async () => {
       if (document.hidden || controller) return;
@@ -28,15 +22,14 @@ export function GroupJoinReceipt({
           await api('/groups/open', { handle: receipt.handle }, read.signal),
         );
         if (read.signal.aborted) return;
-        setApproved(true);
-        setError('');
         onApproved();
+        location.hash = `#/groups/${receipt.handle}`;
       } catch (reason) {
         if (!read.signal.aborted)
           setError(
             reason instanceof ApiError && reason.code === 'GROUP_PENDING'
-              ? ''
-              : 'Could not check approval. Reconnecting automatically; your request is saved.',
+              ? 'This group service still uses the old approval flow. Ask the creator to update it; your request is saved.'
+              : 'Could not connect. Retrying automatically; your request is saved.',
           );
       } finally {
         if (controller === read) controller = undefined;
@@ -54,57 +47,11 @@ export function GroupJoinReceipt({
       document.removeEventListener('visibilitychange', check);
       controller?.abort();
     };
-  }, [receipt.handle, approved, onApproved]);
+  }, [receipt.handle, onApproved]);
   return (
-    <section className="group-join-receipt" aria-label="Join request status">
-      <h2 ref={heading} tabIndex={-1}>
-        {approved ? 'You’re approved' : 'Request sent'}
-      </h2>
-      <p role="status">
-        {approved
-          ? `You can now open ${receipt.name}.`
-          : `Waiting for creator approval for ${receipt.name}.`}
-      </p>
-      {approved ? (
-        <button
-          className="primary"
-          onClick={() => {
-            location.hash = `#/groups/${receipt.handle}`;
-          }}
-        >
-          Open group
-        </button>
-      ) : (
-        <>
-          <p>
-            Send this confirmation code privately to the creator. They select your name under{' '}
-            <strong>Join requests</strong> and paste the code to approve you.
-          </p>
-          <label>
-            Confirmation code
-            <input ref={code} readOnly value={receipt.confirmation} />
-          </label>
-          <button
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(receipt.confirmation);
-                setCopied(true);
-                setCopyFailed(false);
-              } catch {
-                code.current?.focus();
-                code.current?.select();
-                setCopyFailed(true);
-              }
-            }}
-          >
-            {copied ? 'Code copied' : 'Copy confirmation code'}
-          </button>
-          {copyFailed && (
-            <p role="status">The code is selected. Copy it by hand and send it privately.</p>
-          )}
-          {error && <p role="status">{error}</p>}
-        </>
-      )}
+    <section className="group-join-receipt" aria-label="Join status">
+      <h2>Joining {receipt.name}</h2>
+      <p role="status">{error || 'Opening your group…'}</p>
     </section>
   );
 }

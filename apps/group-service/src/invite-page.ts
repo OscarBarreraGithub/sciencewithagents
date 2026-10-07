@@ -139,7 +139,7 @@ const html = `<!doctype html>
       <li>Copy the complete invitation above.</li>
       <li>Open your own sciencewithagents app and choose <strong>Groups → Join by invitation</strong>.</li>
       <li>Paste the invitation and enter your name. If service setup is needed, give your setup agent the invitation.</li>
-      <li>Send the confirmation code privately to the inviter so they can approve you.</li>
+      <li>Your group opens when the invitation is accepted. The same link can invite other people before it expires.</li>
     </ol>
     <h2>New to sciencewithagents?</h2>
     <p>Open the <a href="https://github.com/OscarBarreraGithub/sciencewithagents#groups-beta" rel="noreferrer noopener" target="_blank">Groups setup instructions</a>, copy the “Join a group” setup prompt, and give it with this invitation to your own setup agent. Each member installs their own app; the inviter hosts the shared service.</p>

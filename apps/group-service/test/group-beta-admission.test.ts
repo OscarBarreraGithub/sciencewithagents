@@ -209,17 +209,17 @@ it('two independent credentials enroll, recover exact ACKs across eviction, and 
     confirmation,
     displayName: 'B',
   };
-  const pending = await http(f, join, { credential: b });
-  expect(identity(pending).state).toBe('pending');
+  const accepted = await http(f, join, { credential: b });
+  expect(identity(accepted).state).toBe('active');
   expect((await http(f, { kind: 'roster', after: 0, limit: 50 }, { credential: b })).status).toBe(
-    403,
+    200,
   );
   await evictDurableObject(env.GROUPS.getByName(f.payload.groupId));
-  expect(await http(f, join, { credential: b })).toEqual(pending);
+  expect(await http(f, join, { credential: b })).toEqual(accepted);
   const approved = await http(f, {
     kind: 'approve',
     operationId: crypto.randomUUID(),
-    installationId: identity(pending).installationId,
+    installationId: identity(accepted).installationId,
     confirmation,
   });
   expect(identity(approved).state).toBe('active');
@@ -229,7 +229,7 @@ it('two independent credentials enroll, recover exact ACKs across eviction, and 
       await http(f, {
         kind: 'revoke',
         operationId: crypto.randomUUID(),
-        installationId: identity(pending).installationId,
+        installationId: identity(accepted).installationId,
       })
     ).status,
   ).toBe(200);

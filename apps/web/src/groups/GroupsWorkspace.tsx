@@ -130,13 +130,22 @@ function Workspace(props: GroupsWorkspaceProps) {
           <h1>
             <DisplayName value={group.name} />
           </h1>
-          <p>
-            {group.members} {group.members === 1 ? 'member' : 'members'} · {group.sync}
-          </p>
+          <details className="groups-member-list">
+            <summary>
+              {props.members.length} {props.members.length === 1 ? 'member' : 'members'}
+            </summary>
+            <ul>
+              {props.members.map((member) => (
+                <li key={member.installationId}>
+                  <DisplayName value={member.displayName} />
+                </li>
+              ))}
+            </ul>
+          </details>
         </div>
         {props.onInvite && (
           <button className="secondary" onClick={props.onInvite}>
-            {props.pendingRequests ? `Join requests · ${props.pendingRequests}` : 'Invite people'}
+            Invite people
           </button>
         )}
       </header>

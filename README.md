@@ -89,13 +89,13 @@ sign-in and native tools. Install the chosen provider CLI if missing, or update 
 existing installation, then verify its version and model discovery.
 Configure the invitation's group service using the documented
 setup-agent process, without deploying a separate service or using the maintainer's
-account. Open Groups and help me join. Give me the confirmation code to send privately
-to the inviter. Verify shared messaging and my separate private chat after approval.
+account. Open Groups → Join by invitation → Join group. The invitation grants membership;
+no confirmation code or separate approval is needed. Verify shared messaging and my private chat.
 Keep phone access and GitHub optional; list only the human steps I still need to do.
 ```
 
 **Your steps:** sign in to your agent provider; if creating the group, sign in to Cloudflare
-and choose your account; exchange the invitation and approve the joining member. Your
+and choose your account; send or accept the invitation link. Your
 setup agent handles the commands and configuration. GitHub sign-in is needed only for
 optional repository sharing or submitting a public issue.
 

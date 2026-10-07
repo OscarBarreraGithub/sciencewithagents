@@ -25,24 +25,20 @@ uses fake providers and is not a substitute for this setup.
 3. New/Join actions appear above setup help. The open Groups page detects completed configuration and collapses the setup prompt
    automatically. Choose **New project**, enter project and display names, then
    **Continue setup**. In the group header, choose **Invite people → Create invitation → Copy invitation**
-   and send it privately. The panel links the new-user setup guide and explains how to
-   approve the joining person's confirmation code. Invitations expire after 15 minutes; owner-hosted
-   invitations carry routing configuration and join authority, never creator credentials.
-   New links open the shared service's `/join` page, which guides recipients into their own
-   app. A creator's private localhost/phone address is not a group login. For an older link
-   showing “Only the exact app host is allowed,” copy it into **Join by invitation** in
-   the recipient's own app after their setup agent configures the invitation's service.
-4. The member copies **join setup prompt** to their own setup agent with the invitation.
-   It configures the creator's exact service in private host files; members do not deploy
-   another Worker or need Cloudflare for Groups. Obtain a fresh invitation if setup outlasts
-   its expiry. Use **Join by invitation → Request to join**. A **Request sent** receipt
-   confirms acceptance and offers **Copy confirmation code**; send it privately to the creator.
-   The creator's open group checks requests automatically and shows **Join requests · N**
-   in its header. Select the person, paste their code and choose **Approve exact enrollment**.
-   Both sides show approval; the recipient chooses **Open group**. Visible pages refresh
-   approval status every ten seconds and on focus/reconnection without model calls.
-   Matching display names alone do not
-   prove identity.
+   and send it privately. The same link can invite multiple people for 15 minutes. Each
+   recipient joins directly with the link; no confirmation code or creator approval.
+   New links open the service's `/join` page, which guides recipients into their own app.
+   A creator's private localhost/phone address is not a group login. Older links can be
+   pasted into **Join by invitation** in the recipient's configured app.
+4. The member gives the **join setup prompt** and invitation to their setup agent. It
+   configures the creator's service in private host files; members do not deploy another
+   Worker or need Cloudflare for Groups. If setup outlasts the invitation, obtain a fresh
+   link from the same creator. Choose **Join by invitation → Join group**. The group opens
+   immediately, and the creator's member list updates automatically. Previously accepted
+   pending requests become members when read by the updated service, provided their
+   invitation was not revoked and its issuer remains active. Existing members stay joined
+   when invitations expire. Updating an older installation requires both the app update
+   and the creator's existing Worker redeployment, preserving configuration and memberships.
 5. Group agents use the native agent installed on each person's own computer, with its
    existing provider sign-in, tools, skills, hooks and permissions. No Docker, Linux guest
    or separate provider account is required for local execution. Read **Group controls →
@@ -61,7 +57,7 @@ from an already open group. The app removes the invitation from the address imme
 its secret stays in memory until the authenticated join request receives it.
 
 A lost network reply does not require creating another group or sending another join
-request. Use **Recover pending setup** on the original installation; it reconciles the saved
+request. Use **Recover an interrupted request** on the original installation; it reconciles the saved
 request and identity after reload or restart. If the service is unavailable, leave the
 request saved and retry when it returns. Do not change the service mapping to evade a pending
 request. A setup agent must reconcile changed endpoints or installation identities explicitly.

@@ -379,7 +379,7 @@ test('hosted invitations use the shared service instead of the creator private a
   await capture(page, 'invite-people');
 });
 
-test('fragment invitation joins a second authenticated host and exact creator approval opens its private context', async ({
+test('invitation directly joins a second authenticated host and opens its private context', async ({
   page,
   browser,
 }) => {
@@ -420,38 +420,20 @@ test('fragment invitation joins a second authenticated host and exact creator ap
     );
     expect(new URL(member.url()).hash).toBe('#/groups');
     await member.getByLabel('Your display name', { exact: true }).fill('Li Ming');
-    await member.getByRole('button', { name: 'Request to join', exact: true }).click();
-    await expect(member.getByRole('heading', { name: 'Request sent', exact: true })).toBeVisible();
-    await expect(member.getByRole('button', { name: 'Request to join', exact: true })).toHaveCount(
-      0,
-    );
-    const confirmation = await member.getByLabel('Confirmation code', { exact: true }).inputValue();
-    await capture(member, 'join-request-sent');
-    await expect(
-      member.getByRole('button', { name: 'Copy confirmation code', exact: true }),
-    ).toBeVisible();
+    await member.getByRole('button', { name: 'Join group', exact: true }).click();
+    await expect(member.getByRole('heading', { name: 'Joined River', exact: true })).toBeVisible();
+    await expect(member.getByLabel('Confirmation code', { exact: true })).toHaveCount(0);
     const saved = await member.evaluate(() =>
       JSON.stringify({ ...sessionStorage, ...localStorage }),
     );
     expect(saved).not.toContain(invitationSecret);
-    expect(saved).not.toContain(confirmation);
-    await page.getByText('Group controls', { exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Join requests · 1', exact: true })).toBeVisible({
+    await expect(page.locator('.groups-member-list summary')).toHaveText('2 members', {
       timeout: 15000,
     });
-    await page.getByRole('button', { name: 'Join requests · 1', exact: true }).click();
-    await page.getByRole('radio', { name: /Li Ming/ }).check();
-    await capture(page, 'join-request-review');
-    await page
-      .getByLabel('Exact confirmation code from the member', { exact: true })
-      .fill(confirmation);
-    await page.getByRole('button', { name: 'Approve exact enrollment', exact: true }).click();
-    await expect(
-      page.getByLabel('Exact confirmation code from the member', { exact: true }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByText('Li Ming approved. They can now open the group.', { exact: true }),
-    ).toBeVisible();
+    await page.locator('.groups-member-list summary').click();
+    await expect(page.locator('.groups-member-list')).toContainText('Li Ming');
+    await capture(member, 'joined-directly');
+    await capture(page, 'joined-members');
     await page.getByText('Shared feed agent', { exact: true }).click();
     await page
       .getByRole('button', { name: 'Use this computer for the shared feed', exact: true })
@@ -460,11 +442,6 @@ test('fragment invitation joins a second authenticated host and exact creator ap
       page.getByText('This computer is the shared feed writer.', { exact: false }),
     ).toBeVisible();
     await page.getByText('Group controls', { exact: true }).click();
-    await expect(member.getByRole('heading', { name: 'You’re approved', exact: true })).toBeVisible(
-      { timeout: 15000 },
-    );
-    await member.getByRole('button', { name: 'Open group', exact: true }).click();
-    await expect(member.getByRole('heading', { name: 'Joined River', exact: true })).toBeVisible();
     await chat(member);
     await member.getByRole('button', { name: 'Private to you', exact: true }).click();
     await member.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');

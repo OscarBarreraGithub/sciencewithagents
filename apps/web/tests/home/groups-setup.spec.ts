@@ -214,7 +214,7 @@ test('invalid invitation can be corrected while uncertain joins keep their retry
   await page
     .getByLabel('Invitation link', { exact: true })
     .fill('https://groups.example.test/incorrect');
-  const send = page.getByRole('button', { name: 'Request to join', exact: true });
+  const send = page.getByRole('button', { name: 'Join group', exact: true });
   await send.click();
   await expect(page.getByRole('alert')).toHaveText('Use the correct service invitation.');
   await page

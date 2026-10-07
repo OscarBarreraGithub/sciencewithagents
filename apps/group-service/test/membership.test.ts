@@ -10,11 +10,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   membershipCommandSchema,
   membershipEnvelopeSchema,
+  membershipIdentitySchema,
   MEMBERSHIP_LIMITS as L,
   type MembershipResult,
   type MembershipIdentity,
 } from '@dock/shared/dist/group-membership.js';
-import { capabilityHash, creationGroupId, setupHash } from '../src/crypto.js';
+import { capabilityHash, creationGroupId, digest, setupHash } from '../src/crypto.js';
 import { MEMBERSHIP_CAPACITY as C } from '../src/capacity.js';
 import worker from '../src/index.js';
 
@@ -102,7 +103,7 @@ it('actions share the membership mutation budget, preserve same-ID replay and re
   ).toMatchObject({ ok: true });
   expect(await a.stub.actions(envelope)).toEqual({ ok: false, error: 'denied' });
 });
-async function pending(groupId: string, aliceCredential: string, displayName = 'Bob') {
+async function legacyPending(groupId: string, aliceCredential: string, displayName = 'Bob') {
   const inviteSecret = secret();
   const invitation = await call(groupId, aliceCredential, {
     kind: 'invite',
@@ -111,6 +112,7 @@ async function pending(groupId: string, aliceCredential: string, displayName = '
     ttlSeconds: 900,
   });
   if (!invitation.ok || invitation.value.kind !== 'invitation') throw new Error('fixture invite');
+  const issued = invitation.value;
   const credential = secret();
   const confirmation = secret();
   const join = {
@@ -120,7 +122,80 @@ async function pending(groupId: string, aliceCredential: string, displayName = '
     confirmation,
     displayName,
   };
-  const bob = identity(await call(groupId, credential, join));
+  // Retained records from releases that required approval. Seed their historical
+  // pending join receipt explicitly; current joins are active and reusable.
+  const bob = membershipIdentitySchema.parse({
+    groupId,
+    memberId: crypto.randomUUID(),
+    installationId: crypto.randomUUID(),
+    displayName,
+    state: 'pending',
+  });
+  const parsedJoin = membershipCommandSchema.parse(join);
+  if (parsedJoin.kind !== 'join') throw new Error('legacy fixture join');
+  const credentialHash = await capabilityHash(groupId, 'installation', credential);
+  const confirmationHash = await capabilityHash(groupId, 'confirmation', confirmation);
+  const requestHash = await digest(
+    JSON.stringify([
+      groupId,
+      {
+        ...parsedJoin,
+        inviteSecret: await capabilityHash(groupId, 'invite', inviteSecret),
+        confirmation: confirmationHash,
+      },
+    ]),
+  );
+  await runInDurableObject(env.GROUPS.getByName(groupId), (_instance, state) => {
+    const now = Date.now(),
+      day = Math.floor(now / 86_400_000);
+    state.storage.transactionSync(() => {
+      state.storage.sql
+        .exec(
+          'INSERT INTO enrollments(member_id,installation_id,credential_hash,display_name,state,invite_id,confirmation_hash) VALUES(?,?,?,?,?,?,?)',
+          bob.memberId,
+          bob.installationId,
+          credentialHash,
+          displayName,
+          'pending',
+          issued.inviteId,
+          confirmationHash,
+        )
+        .toArray();
+      state.storage.sql
+        .exec(
+          'UPDATE invitations SET state=?,expires_at=? WHERE invite_id=?',
+          'consumed',
+          now - 1,
+          issued.inviteId,
+        )
+        .toArray();
+      state.storage.sql
+        .exec(
+          'INSERT INTO receipts(credential_hash,operation_id,request_hash,response) VALUES(?,?,?,?)',
+          credentialHash,
+          join.operationId,
+          requestHash,
+          JSON.stringify({ kind: 'identity', identity: bob }),
+        )
+        .toArray();
+      state.storage.sql
+        .exec(
+          'INSERT INTO audit(kind,actor_installation_id,target_id,recorded_at) VALUES(?,?,?,?)',
+          'join',
+          bob.installationId,
+          bob.installationId,
+          now,
+        )
+        .toArray();
+      state.storage.sql
+        .exec(
+          'UPDATE metadata SET operations=operations+1,day_mutations=CASE WHEN day=? THEN day_mutations+1 ELSE 1 END,day=? WHERE singleton=1',
+          day,
+          day,
+        )
+        .toArray();
+    });
+  });
   const approval = {
     kind: 'approve',
     operationId: operationId(),
@@ -149,7 +224,7 @@ describe('actual SQLite DO membership', () => {
     const a = await create();
     await evictDurableObject(a.stub);
     expect(identity(await call(a.groupId, a.credential, a.init, setup))).toEqual(a.alice);
-    const b = await pending(a.groupId, a.credential);
+    const b = await legacyPending(a.groupId, a.credential);
     expect(b.bob.state).toBe('pending');
     expect(await call(a.groupId, b.credential, { kind: 'roster', after: 0, limit: 50 })).toEqual(
       deny,
@@ -198,7 +273,7 @@ describe('actual SQLite DO membership', () => {
 
   it('checks auth before receipts, never resurrects revoked credentials, and requires a fresh invite AND credential to rejoin', async () => {
     const a = await create();
-    const b = await pending(a.groupId, a.credential);
+    const b = await legacyPending(a.groupId, a.credential);
     await call(a.groupId, a.credential, b.approval);
     const invite = {
       kind: 'invite',
@@ -249,10 +324,10 @@ describe('actual SQLite DO membership', () => {
     );
     expect(rejoined.installationId).not.toBe(b.bob.installationId);
     expect(rejoined.memberId).not.toBe(b.bob.memberId);
-    expect(rejoined.state).toBe('pending');
+    expect(rejoined.state).toBe('active');
   });
 
-  it('consumes a single-use invitation once under simultaneous joins and converges identical concurrent retries', async () => {
+  it('reuses one invitation under simultaneous joins and converges identical concurrent retries', async () => {
     const a = await create();
     const inviteSecret = secret();
     const issue = { kind: 'invite', operationId: operationId(), inviteSecret, ttlSeconds: 900 };
@@ -272,9 +347,9 @@ describe('actual SQLite DO membership', () => {
     const results = await Promise.all(
       commands.map((command, i) => call(a.groupId, credentials[i], command)),
     );
-    expect(results.filter((r) => r.ok)).toHaveLength(1);
-    expect(results.filter((r) => !r.ok)).toEqual([deny]);
-    const winner = results[0].ok ? 0 : 1;
+    expect(results.filter((r) => r.ok)).toHaveLength(2);
+    expect(results.map(identity).every((entry) => entry.state === 'active')).toBe(true);
+    const winner = 0;
     const retries = await Promise.all([
       call(a.groupId, credentials[winner], commands[winner]),
       call(a.groupId, credentials[winner], commands[winner]),
@@ -288,16 +363,16 @@ describe('actual SQLite DO membership', () => {
       (_instance, state) =>
         state.storage.sql.exec<{ n: number }>('SELECT count(*) AS n FROM enrollments').one().n,
     );
-    expect(counts).toBe(2);
+    expect(counts).toBe(3);
   });
 
   it('serializes both approval/revocation orders and races with exact final states', async () => {
     for (const kind of ['target', 'issuer', 'invite'] as const) {
       for (const order of ['approve-first', 'revoke-first', 'concurrent'] as const) {
         const a = await create();
-        const admin = await pending(a.groupId, a.credential);
+        const admin = await legacyPending(a.groupId, a.credential);
         await call(a.groupId, a.credential, admin.approval);
-        const b = await pending(a.groupId, a.credential);
+        const b = await legacyPending(a.groupId, a.credential);
         const revocation =
           kind === 'invite'
             ? { kind: 'revokeInvite', operationId: operationId(), inviteId: b.invitation.inviteId }
@@ -340,7 +415,7 @@ describe('actual SQLite DO membership', () => {
             b.bob.installationId,
           );
         } else {
-          expect(identity(final)).toEqual(b.bob);
+          expect(final).toEqual(deny);
           expect(roster).toEqual(deny);
           expect(replay).toEqual(deny);
         }
@@ -364,10 +439,69 @@ describe('actual SQLite DO membership', () => {
     }
   });
 
-  it('requires confirmation, rejects expired/revoked invites, and denies setup/cross-group/read probes uniformly', async () => {
+  it('approves accepted pending requests after invitation expiry while preserving join and revocation checks', async () => {
+    const a = await create();
+    const accepted = await legacyPending(a.groupId, a.credential);
+    const revoked = await legacyPending(a.groupId, a.credential);
+    const inactiveIssuer = await legacyPending(a.groupId, a.credential);
+    const unusedSecret = secret();
+    expect(
+      (
+        await call(a.groupId, a.credential, {
+          kind: 'invite',
+          operationId: operationId(),
+          inviteSecret: unusedSecret,
+          ttlSeconds: 1,
+        })
+      ).ok,
+    ).toBe(true);
+    await runInDurableObject(a.stub, (_instance, state) => {
+      state.storage.sql.exec('UPDATE invitations SET expires_at=?', Date.now() - 1).toArray();
+    });
+    await evictDurableObject(a.stub);
+    expect(
+      await call(a.groupId, a.credential, { ...accepted.approval, confirmation: secret() }),
+    ).toEqual(deny);
+    expect(await call(a.groupId, secret(), accepted.approval)).toEqual(deny);
+    expect(
+      await call(a.groupId, secret(), {
+        ...accepted.join,
+        operationId: operationId(),
+        inviteSecret: unusedSecret,
+      }),
+    ).toEqual(deny);
+    expect(
+      (
+        await call(a.groupId, a.credential, {
+          kind: 'revokeInvite',
+          operationId: operationId(),
+          inviteId: revoked.invitation.inviteId,
+        })
+      ).ok,
+    ).toBe(true);
+    expect(await call(a.groupId, a.credential, revoked.approval)).toEqual(deny);
+    const approved = identity(await call(a.groupId, a.credential, accepted.approval));
+    expect(approved.state).toBe('active');
+    expect(identity(await call(a.groupId, accepted.credential, { kind: 'status' }))).toEqual(
+      approved,
+    );
+    expect(
+      (
+        await call(a.groupId, accepted.credential, {
+          kind: 'revoke',
+          operationId: operationId(),
+          installationId: a.alice.installationId,
+        })
+      ).ok,
+    ).toBe(true);
+    expect(await call(a.groupId, accepted.credential, inactiveIssuer.approval)).toEqual(deny);
+    expect(await call(a.groupId, a.credential, inactiveIssuer.approval)).toEqual(deny);
+  });
+
+  it('requires confirmation, rejects revoked invites, and denies setup/cross-group/read probes uniformly', async () => {
     const a = await create();
     const other = await create();
-    const b = await pending(a.groupId, a.credential);
+    const b = await legacyPending(a.groupId, a.credential);
     expect(await call(a.groupId, a.credential, { ...b.approval, confirmation: secret() })).toEqual(
       deny,
     );
@@ -394,17 +528,7 @@ describe('actual SQLite DO membership', () => {
       command: { kind: 'status' },
     });
     expect(await a.stub.execute(mismatched)).toEqual(deny);
-    await runInDurableObject(a.stub, (_instance, state) => {
-      state.storage.sql
-        .exec(
-          'UPDATE invitations SET expires_at=? WHERE invite_id=?',
-          Date.now() - 1,
-          b.invitation.inviteId,
-        )
-        .toArray();
-    });
-    expect(await call(a.groupId, a.credential, b.approval)).toEqual(deny);
-    const c = await pending(a.groupId, a.credential);
+    const c = await legacyPending(a.groupId, a.credential);
     await call(a.groupId, a.credential, {
       kind: 'revokeInvite',
       operationId: operationId(),
@@ -418,7 +542,7 @@ describe('actual SQLite DO membership', () => {
 
   it('has append-only secret-free audit/receipts and rejects private/provider canaries in strict inputs', async () => {
     const a = await create();
-    const b = await pending(a.groupId, a.credential);
+    const b = await legacyPending(a.groupId, a.credential);
     await call(a.groupId, a.credential, b.approval);
     const snapshot = await runInDurableObject(a.stub, (_instance, state) => {
       const tables = ['metadata', 'enrollments', 'invitations', 'receipts', 'audit'];
@@ -537,9 +661,9 @@ describe('actual SQLite DO membership', () => {
     expect(history).toBe(L.openInvites + 2);
   });
 
-  it('bounds actual pending, active-member and lifetime enrollment counts', async () => {
+  it('bounds active-member and lifetime enrollment counts while reconciling legacy pending records', async () => {
     const a = await create();
-    for (let i = 0; i < L.pending; i++) await pending(a.groupId, a.credential);
+    for (let i = 0; i < L.pending; i++) await legacyPending(a.groupId, a.credential);
     const inviteSecret = secret();
     expect(
       (
@@ -559,25 +683,20 @@ describe('actual SQLite DO membership', () => {
       displayName: 'Overflow',
     };
     const credential = secret();
-    expect(await call(a.groupId, credential, join)).toEqual({ ok: false, error: 'limit' });
-    // The failed join did not consume the invitation; revoke a pending identity and retry it.
+    expect(identity(await call(a.groupId, credential, join)).state).toBe('active');
+    // Pending records no longer gate new links; an active read reconciles them.
     const list = await call(a.groupId, a.credential, { kind: 'pending', after: 0, limit: 50 });
     if (!list.ok || list.value.kind !== 'members') throw new Error('pending');
-    expect(list.value.entries.length).toBe(L.pending);
-    await call(a.groupId, a.credential, {
-      kind: 'revoke',
-      operationId: operationId(),
-      installationId: list.value.entries[0].identity.installationId,
-    });
+    expect(list.value.entries.length).toBe(0);
     expect((await call(a.groupId, credential, join)).ok).toBe(true);
 
     const full = await create();
-    let last: Awaited<ReturnType<typeof pending>> | undefined;
+    let last: Awaited<ReturnType<typeof legacyPending>> | undefined;
     for (let i = 1; i < L.members; i++) {
-      last = await pending(full.groupId, full.credential);
+      last = await legacyPending(full.groupId, full.credential);
       expect((await call(full.groupId, full.credential, last.approval)).ok).toBe(true);
     }
-    const extra = await pending(full.groupId, full.credential);
+    const extra = await legacyPending(full.groupId, full.credential);
     expect(await call(full.groupId, full.credential, extra.approval)).toEqual({
       ok: false,
       error: 'limit',
@@ -630,7 +749,7 @@ describe('actual SQLite DO membership', () => {
       // 120 UTF-16 units: maximum JSON-escaped name width, preserved by the contract.
       const wide = '\u0001'.repeat(120);
       const a = await create(wide, '\u0800'.repeat(120));
-      const b = await pending(a.groupId, a.credential, wide);
+      const b = await legacyPending(a.groupId, a.credential, wide);
       await call(a.groupId, a.credential, b.approval);
       const inviteCommand = {
         kind: 'invite',
@@ -917,14 +1036,14 @@ describe('actual SQLite DO membership', () => {
     expect(C.reservedDatabaseBytes).toBeLessThanOrEqual(C.designBudgetBytes);
     const names = ['\u0001'.repeat(120), '\u0800'.repeat(120), '\u202e'.repeat(120)];
     const a = await create(names[0], names[1]);
-    // Real enroll/revoke transitions retain 416 historical enrollments. Advance only
-    // the fixture day to avoid conflating this growth measurement with day admission.
+    // Retained pending join fixtures and real revoke transitions retain 416 historical
+    // enrollments. Advance the fixture day separately from the storage measurement.
     for (let i = 0; i < L.enrollments - L.members - L.pending; i++) {
       if (i % 64 === 0)
         await runInDurableObject(a.stub, (_instance, state) => {
           state.storage.sql.exec('UPDATE metadata SET day=?', -1).toArray();
         });
-      const old = await pending(a.groupId, a.credential, names[i % names.length]);
+      const old = await legacyPending(a.groupId, a.credential, names[i % names.length]);
       expect(
         (
           await call(a.groupId, a.credential, {
@@ -938,9 +1057,9 @@ describe('actual SQLite DO membership', () => {
     await runInDurableObject(a.stub, (_instance, state) => {
       state.storage.sql.exec('UPDATE metadata SET day=?', -1).toArray();
     });
-    const live: Awaited<ReturnType<typeof pending>>[] = [];
+    const live: Awaited<ReturnType<typeof legacyPending>>[] = [];
     for (let i = 0; i < L.members - 1 + L.pending; i++) {
-      const member = await pending(a.groupId, a.credential, names[i % names.length]);
+      const member = await legacyPending(a.groupId, a.credential, names[i % names.length]);
       if (i < L.members - 1)
         expect((await call(a.groupId, a.credential, member.approval)).ok).toBe(true);
       live.push(member);
@@ -1138,9 +1257,9 @@ describe('actual SQLite DO membership', () => {
 
   it('denies join after expiry, approvals after issuer revocation, and conflicting receipt kinds', async () => {
     const a = await create();
-    const approved = await pending(a.groupId, a.credential);
+    const approved = await legacyPending(a.groupId, a.credential);
     await call(a.groupId, a.credential, approved.approval);
-    const b = await pending(a.groupId, a.credential);
+    const b = await legacyPending(a.groupId, a.credential);
     expect(
       await call(a.groupId, a.credential, {
         kind: 'invite',

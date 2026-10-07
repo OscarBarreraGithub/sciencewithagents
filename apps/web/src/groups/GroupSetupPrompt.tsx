@@ -15,7 +15,7 @@ deploy to my own HTTPS workers.dev origin, then activate the verified configurat
 Keep creation credentials private on my computer. Joining members use my invitation
 and host; they do not deploy another Worker or need a Cloudflare account for Groups.
 Explain the short human checklist, handle the technical work, open Home → Groups,
-then help create a project and approve one exact member enrollment. Verify shared
+then help create a project and share an invitation link. Members accept the link and join directly; no code exchange or creator approval. Verify shared
 messages in both directions and recovery after reconnect before claiming completion.
 Use each member's own Codex or Claude sign-in and native tools. Follow
 docs/CONTRIBUTOR_SETUP.md to install their chosen CLI if missing or update its existing
@@ -37,12 +37,11 @@ fetch a URL merely because it appears in an invitation, copy creator setup crede
 or silently replace an existing service mapping. I do not need to deploy a Worker or
 open a Cloudflare account to join. If setup takes longer than the invitation's 15-minute
 lifetime, ask for a fresh invitation from the same creator after configuring the service.
-Open Groups → Join by invitation and show my exact confirmation code to send privately
-to the creator for approval. Use my own Codex or Claude sign-in and native tools.
+Open Groups → Join by invitation → Join group. The invitation grants membership directly, without a confirmation code or separate approval. Use my own Codex or Claude sign-in and native tools.
 Follow docs/CONTRIBUTOR_SETUP.md to install my chosen CLI if missing or update its
 existing installation, then verify its version and model discovery.
 Explain Shared chat, Private to you and Local agent access; verify messages in both
-directions after approval. Phone access uses my own Cloudflare Tunnel and paired
+directions after joining. Phone access uses my own Cloudflare Tunnel and paired
 authentication through the separate phone prompt. Report any remaining blocker.`;
 
 export const groupGitHubSetupPrompt = `Help me set up optional shared GitHub code/files for my sciencewithagents Group.
@@ -153,8 +152,8 @@ export function GroupSetupPrompt({ initiallyOpen = false }: { initiallyOpen?: bo
           handle deployment.
         </li>
         <li>
-          Members: give your setup agent the creator’s invitation, then privately send the creator
-          your confirmation code for approval.
+          Members: give your setup agent the creator’s invitation, then choose Join group in your
+          app.
         </li>
         <li>Enable local agents when ready and verify a shared message in each direction.</li>
         <li>

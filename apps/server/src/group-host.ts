@@ -422,7 +422,7 @@ export class GroupHost {
           throw new GroupHostError(
             403,
             'GROUP_ACCESS_DENIED',
-            'Group access is pending, revoked or unavailable. Ask the creator to confirm enrollment.',
+            'The invitation or saved group access is unavailable. Ask the creator for a current invitation.',
           );
         if (parsed.error === 'conflict' && create && value.beta)
           throw new GroupHostError(
@@ -466,7 +466,7 @@ export class GroupHost {
       value.identity.installationId !== identity.installationId
     )
       throw new Conflict('Hosted enrollment identity changed.');
-    // Status replies can arrive concurrently after approval. Adopt the durable
+    // Status replies can arrive concurrently after joining. Adopt the durable
     // context tuple already issued by the first reply rather than replacing it.
     const saved = this.db.prepare('SELECT body FROM gh_groups WHERE handle=?').get(value.handle);
     if (saved) {
@@ -550,7 +550,7 @@ export class GroupHost {
       throw new GroupHostError(
         403,
         'GROUP_PENDING',
-        'Enrollment is waiting for creator approval. Share your confirmation code with the creator and reopen this group after approval.',
+        'The group service has not activated this enrollment. Retry or ask your setup agent to update the creator’s group service.',
       );
     return value;
   }
@@ -564,7 +564,7 @@ export class GroupHost {
         value.identity.state === 'active'
           ? 'Authenticated shared delivery'
           : value.identity.state === 'pending'
-            ? 'Waiting for creator approval'
+            ? 'Waiting for group service activation'
             : 'Access revoked',
       state: value.identity.state,
     });
@@ -776,58 +776,90 @@ export class GroupHost {
         'INVALID_INVITATION',
         'This invitation belongs to another Groups service. Your existing groups are unchanged. Ask your setup agent to check the invitation’s service and your saved Groups configuration before continuing.',
       );
-    return this.lock(`join:${input.key}`, async () => {
+    return this.lock(`join-group:${serviceHash(config)}:${invitation.groupId}`, async () => {
       const safeInput = {
         ...input,
         invitation: createHash('sha256').update(input.invitation).digest('hex'),
       };
       const value = recordSchema.parse(
-        this.intent(`join:${input.key}`, safeInput, () => ({
-          handle: randomUUID(),
-          name: invitation.name,
-          credential: capability(),
-          confirmation: capability(),
-          identity: {
-            groupId: invitation.groupId,
-            memberId: randomUUID(),
-            installationId: randomUUID(),
-            displayName: input.displayName,
-            state: 'pending',
-          },
-          binding: null,
-          shared: null,
-          private: null,
-          creator: false,
-          invitationSecret: invitation.secret,
-          serviceHash: serviceHash(config),
-          ...(beta ? { beta } : {}),
-        })),
+        this.intent(`join:${input.key}`, safeInput, () => {
+          const saved = this.records().find(
+            (record) =>
+              record.identity.groupId === invitation.groupId &&
+              record.serviceHash === serviceHash(config),
+          );
+          if (saved) return saved;
+          // Reopening the link after a lost response must retain the first
+          // credential and operation, including before gh_groups was saved.
+          const retained = this.db
+            .prepare(
+              `SELECT body FROM gh_operations WHERE key LIKE 'join:%'
+              AND json_extract(body,'$.identity.groupId')=?
+              AND json_extract(body,'$.serviceHash')=?
+              AND json_extract(input,'$.invitation')=? ORDER BY rowid LIMIT 1`,
+            )
+            .get(invitation.groupId, serviceHash(config), safeInput.invitation);
+          if (retained) return recordSchema.parse(JSON.parse(String(retained.body)));
+          if (this.records().length >= 32) throw new Conflict('Groups limit reached.');
+          return {
+            handle: randomUUID(),
+            name: invitation.name,
+            credential: capability(),
+            confirmation: capability(),
+            identity: {
+              groupId: invitation.groupId,
+              memberId: randomUUID(),
+              installationId: randomUUID(),
+              displayName: input.displayName,
+              state: 'pending',
+            },
+            binding: null,
+            shared: null,
+            private: null,
+            creator: false,
+            invitationSecret: invitation.secret,
+            serviceHash: serviceHash(config),
+            ...(beta ? { beta } : {}),
+          };
+        }),
       );
-      if (serviceHash(this.configured()) !== value.serviceHash)
-        throw new GroupHostError(
-          503,
-          'GROUP_SERVICE_CHANGED',
-          'Restore the original Groups service mapping before retrying this request.',
-        );
-      const reply = await this.membership(
-        value,
-        {
-          kind: 'join',
-          operationId: groupOperationIdSchema.parse(input.key),
-          inviteSecret: invitation.secret,
-          confirmation: value.confirmation,
-          displayName: input.displayName,
-        },
-        invitation.groupId,
-      );
-      if (reply.kind !== 'identity') throw unavailable();
-      const saved = this.db.prepare('SELECT body FROM gh_groups WHERE handle=?').get(value.handle);
-      const current = saved
-        ? recordSchema.parse(JSON.parse(String(saved.body)))
-        : { ...value, identity: reply.identity };
-      this.provision(current, reply.identity);
+      const current = await this.completeJoin(value);
       return { group: this.summary(current), confirmation: value.confirmation };
     });
+  }
+  private async completeJoin(value: Record) {
+    if (serviceHash(this.configured()) !== value.serviceHash)
+      throw new GroupHostError(
+        503,
+        'GROUP_SERVICE_CHANGED',
+        'Restore the original Groups service mapping before retrying this request.',
+      );
+    if (!this.db.prepare('SELECT 1 FROM gh_groups WHERE handle=?').get(value.handle)) {
+      const original = this.db
+        .prepare(
+          `SELECT key,body FROM gh_operations WHERE key LIKE 'join:%'
+          AND json_extract(body,'$.handle')=? ORDER BY rowid LIMIT 1`,
+        )
+        .get(value.handle);
+      if (!original) throw unavailable();
+      const retained = recordSchema.parse(JSON.parse(String(original.body)));
+      const reply = await this.membership(
+        retained,
+        {
+          kind: 'join',
+          operationId: groupOperationIdSchema.parse(String(original.key).slice('join:'.length)),
+          inviteSecret: retained.invitationSecret!,
+          confirmation: retained.confirmation,
+          displayName: retained.identity.displayName,
+        },
+        retained.identity.groupId,
+      );
+      if (reply.kind !== 'identity') throw unavailable();
+      this.provision({ ...retained, identity: reply.identity }, reply.identity);
+    }
+    // Historical join receipts retain their original pending state. Current
+    // authenticated status activates them without a confirmation exchange.
+    return this.active(value.handle);
   }
   async resume(raw: unknown) {
     const input = z.strictObject({ key: z.uuid(), kind: z.enum(['create', 'join']) }).parse(raw);
@@ -846,25 +878,11 @@ export class GroupHost {
           'GROUP_SERVICE_CHANGED',
           'Restore the original service mapping before resuming setup.',
         );
-      const command: MembershipCommand =
-        input.kind === 'create'
-          ? {
-              kind: 'initialize',
-              operationId: groupOperationIdSchema.parse(input.key),
-              groupName: host.groupHostCreateSchema.shape.projectName.parse(value.name),
-              displayName: value.identity.displayName,
-            }
-          : {
-              kind: 'join',
-              operationId: groupOperationIdSchema.parse(input.key),
-              inviteSecret: value.invitationSecret!,
-              confirmation: value.confirmation,
-              displayName: value.identity.displayName,
-            };
-      const reply =
-        input.kind === 'create'
-          ? await this.initialize(value, input.key)
-          : await this.membership(value, command, value.identity.groupId);
+      if (input.kind === 'join') {
+        const current = await this.completeJoin(value);
+        return { group: this.summary(current), confirmation: value.confirmation };
+      }
+      const reply = await this.initialize(value, input.key);
       if (reply.kind !== 'identity') throw unavailable();
       const saved = this.db.prepare('SELECT body FROM gh_groups WHERE handle=?').get(value.handle);
       const current = saved
@@ -873,7 +891,7 @@ export class GroupHost {
       this.provision(current, reply.identity);
       return {
         group: this.summary(current),
-        confirmation: input.kind === 'join' ? value.confirmation : null,
+        confirmation: null,
       };
     });
   }

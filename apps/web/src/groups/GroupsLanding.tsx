@@ -225,7 +225,7 @@ export function GroupsLanding({
             </button>
           )}
           <button className="primary" disabled={busy}>
-            {busy ? 'Waiting…' : mode === 'create' ? 'Continue setup' : 'Request to join'}
+            {busy ? 'Waiting…' : mode === 'create' ? 'Continue setup' : 'Join group'}
           </button>
         </form>
       )}

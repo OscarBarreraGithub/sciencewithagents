@@ -76,23 +76,6 @@
   margin: 10px 0;
   overflow-wrap: anywhere;
 }
-.group-host-members label:has(input[type='radio']) {
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
-  min-height: 44px;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-.group-host-members input[type='radio'] {
-  flex: 0 0 20px;
-  width: 20px;
-  height: 20px;
-  min-height: 0;
-  padding: 0;
-  margin: 0;
-}
 .group-host-members textarea,
 .group-host-members input:not([type='radio']) {
   width: 100%;
@@ -163,8 +146,9 @@
   border-bottom: 1px solid var(--line);
 }
 .group-host-controls > summary {
-  padding: 10px 12px;
-  min-height: 44px;
+  padding: 6px 12px;
+  min-height: 36px;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 .group-host-controls[open] {
@@ -222,4 +206,19 @@
 .group-host-workspace .group-native-receipts > summary {
   padding: 6px 12px;
   cursor: pointer;
+}
+
+.groups-member-list {
+  font-size: 0.875rem;
+  position: relative;
+}
+.groups-member-list summary {
+  cursor: pointer;
+  padding-block: 4px;
+}
+.groups-member-list ul {
+  margin: 4px 0;
+  padding-left: 20px;
+  max-height: 160px;
+  overflow: auto;
 }

@@ -433,19 +433,7 @@ async function joinMember(
   const input = { key: randomUUID(), invitation, displayName: 'Li Ming' };
   const joined = await b.post('join', input);
   expect(joined.statusCode, joined.body).toBe(200);
-  const pending = await a.post('pending', { handle });
-  expect(pending.statusCode, pending.body).toBe(200);
-  const request = pending
-    .json()
-    .requests.find((r: { displayName: string }) => r.displayName === 'Li Ming');
-  expect((await b.post('open', { handle: joined.json().group.handle })).statusCode).toBe(403);
-  const approved = await a.post('approve', {
-    handle,
-    key: randomUUID(),
-    requestId: request.requestId,
-    confirmation: joined.json().confirmation,
-  });
-  expect(approved.statusCode, approved.body).toBe(200);
+  expect(joined.json().group.state).toBe('active');
   const concurrent = await Promise.all(
     Array.from({ length: 3 }, () => b.post('open', { handle: joined.json().group.handle })),
   );
@@ -462,6 +450,133 @@ async function joinMember(
   }
   return { input, joined: joined.json(), open: groupHostOpenSchema.parse(opened.json()) };
 }
+it('one reusable invitation directly joins two hosts, retains rejoining identity and separates each private chat', async () => {
+  const a = await installation(),
+    b = await installation(),
+    c = await installation();
+  const { open } = await create(a, 'One link for the group');
+  const invite = await a.post('invite', { handle: open.group.handle, key: randomUUID() });
+  expect(invite.statusCode, invite.body).toBe(200);
+  const invitation = `http://invitation.invalid/#${invite.json().fragment}`;
+  const invalidPayload = JSON.parse(
+    new URLSearchParams(invite.json().fragment.slice('/groups?'.length)).get('invite')!,
+  );
+  invalidPayload.secret = secret();
+  const rejected = await b.post('join', {
+    key: randomUUID(),
+    invitation: `http://invitation.invalid/#/groups?invite=${encodeURIComponent(JSON.stringify(invalidPayload))}`,
+    displayName: 'B',
+  });
+  expect(rejected.statusCode, rejected.body).toBe(403);
+  const [first, repeated, second] = await Promise.all([
+    b.post('join', { key: randomUUID(), invitation, displayName: 'B' }),
+    b.post('join', { key: randomUUID(), invitation, displayName: 'B' }),
+    c.post('join', { key: randomUUID(), invitation, displayName: 'C' }),
+  ]);
+  for (const joined of [first, repeated, second]) {
+    expect(joined.statusCode, joined.body).toBe(200);
+    expect(joined.json().group.state).toBe('active');
+    expect(joined.json().group.id).toBe(open.group.id);
+  }
+  expect(repeated.json().group.handle).toBe(first.json().group.handle);
+  expect((await b.host.list()).groups).toHaveLength(1);
+  const bOpen = groupHostOpenSchema.parse(
+    (await b.post('open', { handle: first.json().group.handle })).json(),
+  );
+  const cOpen = groupHostOpenSchema.parse(
+    (await c.post('open', { handle: second.json().group.handle })).json(),
+  );
+  const members = [open, bOpen, cOpen];
+  expect(new Set(members.map((member) => member.member.installationId)).size).toBe(3);
+  expect(
+    new Set(
+      members.flatMap((member) => [
+        member.shared.context.sessionId,
+        member.private.context.sessionId,
+      ]),
+    ).size,
+  ).toBe(6);
+  for (const member of members) {
+    expect(member.shared.context).toMatchObject({
+      groupId: open.group.id,
+      memberId: member.member.memberId,
+      visibility: 'shared',
+    });
+    expect(member.private.context).toMatchObject({
+      groupId: open.group.id,
+      memberId: member.member.memberId,
+      visibility: 'private',
+    });
+  }
+  const roster = await a.post('open', { handle: open.group.handle });
+  expect(roster.statusCode, roster.body).toBe(200);
+  expect(roster.json().members).toHaveLength(3);
+  expect((await a.post('pending', { handle: open.group.handle })).json().requests).toEqual([]);
+
+  await selectFeedWriter(a, open.shared.handle);
+  const privateTexts = ['PRIVATE-A-ONLY', 'PRIVATE-B-ONLY', 'PRIVATE-C-ONLY'];
+  const sharedTexts = ['Shared from A', 'Shared from B', 'Shared from C'];
+  const hosts = [a, b, c];
+  for (const [index, current] of hosts.entries()) {
+    const member = members[index];
+    expect(
+      (
+        await current.post('send', {
+          handle: member.private.handle,
+          key: randomUUID(),
+          text: privateTexts[index],
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await current.post('send', {
+          handle: member.shared.handle,
+          key: randomUUID(),
+          text: sharedTexts[index],
+        })
+      ).statusCode,
+    ).toBe(200);
+  }
+  await progressFeed(a);
+  await a.host.promotion.pass(); // The writer processes one shared source per pass.
+  for (const [index, current] of hosts.entries()) {
+    const member = members[index];
+    const feed = await current.post('feed', {
+      handle: member.shared.handle,
+      query: { visibility: 'shared', after: 0, cursor: null, limit: 20 },
+    });
+    expect(feed.statusCode, feed.body).toBe(200);
+    const originals: string[] = [];
+    for (const event of feed.json().entries) {
+      const original = await current.post('original', {
+        handle: member.shared.handle,
+        eventId: event.eventId,
+      });
+      expect(original.statusCode, original.body).toBe(200);
+      originals.push(original.json().text);
+    }
+    expect(originals.sort()).toEqual([...sharedTexts].sort());
+    const privateChat = await current.post('chat', { handle: member.private.handle });
+    expect(privateChat.statusCode, privateChat.body).toBe(200);
+    expect(privateChat.json().detail.entries.map((entry: { text: string }) => entry.text)).toEqual([
+      privateTexts[index],
+    ]);
+    for (const text of privateTexts) expect(feed.body).not.toContain(text);
+    for (const text of privateTexts.filter((_, other) => other !== index))
+      expect(privateChat.body).not.toContain(text);
+  }
+  expect((await b.post('chat', { handle: cOpen.private.handle })).statusCode).toBe(404);
+  const directory = b.directory;
+  await b.close();
+  const resumed = await installation(directory);
+  const rejoined = await resumed.post('join', { key: randomUUID(), invitation, displayName: 'B' });
+  expect(rejoined.statusCode, rejoined.body).toBe(200);
+  expect(rejoined.json().group.handle).toBe(bOpen.group.handle);
+  const reopened = await resumed.post('open', { handle: bOpen.group.handle });
+  expect(groupHostOpenSchema.parse(reopened.json()).private.context).toEqual(bOpen.private.context);
+  expect((await resumed.host.list()).groups).toHaveLength(1);
+}, 30000);
 it('normal owner authentication, strict bounded intents and visible missing service/native setup', async () => {
   const f = await installation(undefined, { configured: false });
   const input = { key: randomUUID(), projectName: 'River', displayName: 'Amina' };
@@ -625,7 +740,6 @@ it('protected hosted configuration routes approval only in server headers for al
     'status',
     'invite',
     'pending',
-    'approve',
     'roster',
     'registerSource',
     'effect',
@@ -634,6 +748,7 @@ it('protected hosted configuration routes approval only in server headers for al
     'expand',
   ])
     expect(kinds.has(kind), kind).toBe(true);
+  expect(kinds.has('approve')).toBe(false);
   const visible = JSON.stringify(await a.host.list()) + JSON.stringify(open);
   for (const privateValue of [origin, approval, setup, freeApprovalId])
     expect(visible).not.toContain(privateValue);
@@ -678,7 +793,7 @@ it('typed hosted read failure has an actionable authenticated retry without expo
   expect(retry.statusCode, retry.body).toBe(200);
   expect(retry.json().entries).toEqual([]);
 });
-it('real workerd create/join/approval, exact host mappings, private drafts and native denial survive host/workerd restart', async () => {
+it('real workerd create/direct join, exact host mappings, private drafts and native denial survive host/workerd restart', async () => {
   const a = await installation(),
     b = await installation();
   const { input, open } = await create(a);
@@ -819,22 +934,42 @@ it('lost create and join replies resume exact retained intents without invitatio
   const invite = await a.post('invite', { handle: resumed.json().group.handle, key: randomUUID() });
   const invitation = `http://example.invalid/#${invite.json().fragment}`;
   let loseJoin = true;
-  const b = await installation(undefined, {
-    http: async (...args) => {
-      const response = await fetch(...args);
-      const body = JSON.parse((args[1]?.body as string) ?? '{}');
-      if (loseJoin && body.kind === 'join') {
+  const joinOperations: string[] = [];
+  const joinHttp: typeof fetch = async (...args) => {
+    const response = await fetch(...args);
+    const body = JSON.parse((args[1]?.body as string) ?? '{}');
+    if (body.kind === 'join') {
+      joinOperations.push(body.operationId);
+      if (loseJoin) {
         loseJoin = false;
         throw new Error('lost join ack');
       }
-      return response;
-    },
-  });
+      // An exact legacy receipt can still contain the original pending
+      // identity, while authenticated status now activates that enrollment.
+      const legacy = await response.json();
+      legacy.value.identity.state = 'pending';
+      return Response.json(legacy);
+    }
+    return response;
+  };
+  let b = await installation(undefined, { http: joinHttp });
   const key = randomUUID();
   expect((await b.post('join', { key, invitation, displayName: 'Member' })).statusCode).toBe(503);
+  const directory = b.directory;
+  await b.close();
+  b = await installation(directory, { http: joinHttp });
+  const reentered = await b.post('join', { key: randomUUID(), invitation, displayName: 'Member' });
+  expect(reentered.statusCode, reentered.body).toBe(200);
+  expect(reentered.json().group.state).toBe('active');
   const result = await b.post('resume', { key, kind: 'join' });
   expect(result.statusCode, result.body).toBe(200);
-  expect(result.json().group.state).toBe('pending');
+  expect(result.json().group.state).toBe('active');
+  expect(result.json().group.handle).toBe(reentered.json().group.handle);
+  expect(joinOperations).toEqual([key, key]);
+  expect((await b.host.list()).groups).toHaveLength(1);
+  expect(
+    (await a.post('open', { handle: resumed.json().group.handle })).json().members,
+  ).toHaveLength(2);
   expect(
     (
       await b.post('join', {
@@ -895,6 +1030,10 @@ it('acknowledged revocation denies saved feed/chat/draft/send retries across res
     requestId: joined.open.member.installationId,
   };
   expect((await a.post('revoke', revoke)).statusCode).toBe(200);
+  const rejoin = await b.post('join', { ...joined.input, key: randomUUID() });
+  expect(rejoin.statusCode, rejoin.body).toBe(403);
+  expect(rejoin.json().code).toBe('GROUP_REVOKED');
+  expect((await b.host.list()).groups).toHaveLength(1);
   await expect(feature.revalidate()).rejects.toMatchObject({ code: 'GROUP_REVOKED' });
   await expect(
     feature.readShared({ visibility: 'shared', after: 0, limit: 8, cursor: null }),
