@@ -59,6 +59,15 @@ be described as a failed core installation. Browser-test downloads are developer
    On macOS it also compiles a local launcher under ignored `data/launcher/sciencewithagents.app`.
    Source installation still needs an agent/developer environment; this is not a packaged installer.
 3. For Codex, verify its installed executable and supported sign-in state using `dock doctor`.
+   Check the version of the **actual CLI executable the app will launch** before model discovery.
+   The prerequisite check verifies that a CLI runs; it does not establish that it is current.
+   Update an outdated installation through its existing supported installation method/channel,
+   following [OpenAI's update guidance](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex#quickstart-using-goals).
+   Preserve deliberate version pins and active sessions; do not install a second conflicting copy.
+   Check the executable/version again, safely reopen the affected app connection and retry model
+   discovery. Updating a desktop app or editor extension alone does not verify the CLI version.
+   If models still fail to load, retain the actual error and version rather than guessing model IDs
+   or repeatedly asking the person to sign in. Check Claude's version too when it is selected.
    Let the owner complete required sign-in using the chosen provider’s supported flow. Preserve original
    provider approvals and advanced tools. Do not store account-level credentials in this repo.
    If they will use managed Claude, also check its native installation and subscription

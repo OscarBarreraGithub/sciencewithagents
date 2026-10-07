@@ -14,7 +14,8 @@ For your own projects, paste this into Codex or Claude on the computer that will
 Set up sciencewithagents from https://github.com/OscarBarreraGithub/sciencewithagents.
 Find and preserve any existing installation. Otherwise clone it into a local folder
 outside cloud sync. Follow docs/CONTRIBUTOR_SETUP.md and check docs/STATUS.md first.
-Use my own Codex or Claude account; I do not need both. Handle the technical setup,
+Use my own Codex or Claude account; I do not need both. Check that my chosen provider's
+CLI is up to date before checking available models. Handle the technical setup,
 install the Mac Applications launcher when supported, and open the app. Help me
 choose my manager and worker defaults, then prepare my first project without sending
 its brief until I am ready. Keep phone access, VS Code sharing and GitHub backup
@@ -38,7 +39,8 @@ Set up sciencewithagents for Groups from
 https://github.com/OscarBarreraGithub/sciencewithagents.
 Find and preserve my existing installation, accounts, files and running work.
 Follow docs/CONTRIBUTOR_SETUP.md and docs/GROUP_WORKFLOW.md. Use my own Codex or Claude
-sign-in. Follow the owner-hosted deployment instructions in docs/GROUP_HOSTING.md to
+sign-in. Check the chosen provider CLI version and model discovery before continuing.
+Follow the owner-hosted deployment instructions in docs/GROUP_HOSTING.md to
 deploy the group service to MY Cloudflare account on Workers Free. Do not use the
 maintainer's service, require a beta code, buy a domain, or enable paid services.
 Handle deployment and private local configuration; leave account sign-in and account
@@ -54,7 +56,8 @@ directions and a private Ask once the other person joins. Report what remains un
 Set up sciencewithagents from https://github.com/OscarBarreraGithub/sciencewithagents
 to join the group in my invitation. Preserve my installation, accounts and files.
 Follow docs/CONTRIBUTOR_SETUP.md and docs/GROUP_WORKFLOW.md. Use my own Codex or Claude
-sign-in and native tools. Configure the invitation's group service using the documented
+sign-in and native tools. Check the chosen provider CLI version and model discovery.
+Configure the invitation's group service using the documented
 setup-agent process, without deploying a separate service or using the maintainer's
 account. Open Groups and help me join. Give me the confirmation code to send privately
 to the inviter. Verify shared messaging and my separate private chat after approval.

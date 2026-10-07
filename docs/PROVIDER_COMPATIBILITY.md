@@ -14,6 +14,10 @@ require a tool inventory or start a prompt.
 Claude model discovery uses a fresh native-inheriting initialization without a user turn;
 optional effort metadata may be absent. Codex model discovery reads its native model list.
 Setup reports account and catalog readiness separately and checks only selected providers.
+An installed CLI can still be outdated. Setup verifies the version and executable the app
+actually launches before model discovery; see [provider setup](CONTRIBUTOR_SETUP.md#check-the-machine-first).
+After a provider update, safely reopen its app connection and retry discovery. Preserve
+explicit version choices and active work instead of replacing provider installations blindly.
 Native launches skip the older plugin/MCP policy probes; deliberately restricted contexts
 retain the checks needed for their saved policy. Required control/identity fields stay strict;
 unfamiliar observational tool names and optional metadata do not disable unrelated work.
