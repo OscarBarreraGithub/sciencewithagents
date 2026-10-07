@@ -66,7 +66,7 @@ export function EditorStatus({ data }: { data: HomeData }) {
               safe.
             </li>
             <li>
-              Choose the conversation to share. It appears in <strong>Chats → Shared</strong> on
+              Choose the conversation to share. It appears in <strong>Chats → VS Code</strong> on
               your computer and paired phone.
             </li>
           </ol>

@@ -1076,10 +1076,9 @@ const rowLabels: Record<RowState, string> = {
 };
 const rowOrder: RowState[] = ['awaiting', 'working', 'queued', 'attention', 'idle', 'offline'];
 const filters: [ChatFilter, string][] = [
-  ['all', 'All'],
   ['manager', 'Managers'],
   // VS Code chats and native Codex sessions; the saved filter key stays 'vscode'.
-  ['vscode', 'Shared'],
+  ['vscode', 'VS Code'],
   ['misc', 'Misc'],
 ];
 const kindLabels: Record<ChatKind, string> = {
@@ -1100,7 +1099,10 @@ function ago(value: string | null) {
 function savedList(): { query: string; filter: ChatFilter } {
   try {
     const value = JSON.parse(sessionStorage.getItem(listKey) ?? 'null');
-    if (typeof value?.query === 'string' && filters.some(([f]) => f === value.filter))
+    if (
+      typeof value?.query === 'string' &&
+      (value.filter === 'all' || filters.some(([f]) => f === value.filter))
+    )
       return { query: value.query.slice(0, 200), filter: value.filter };
   } catch {
     /* Filters are navigation convenience only. */
@@ -1396,11 +1398,14 @@ function MainChat({
               key={value}
               type="button"
               aria-pressed={filter === value}
-              onClick={() => setFilter(value)}
+              onClick={() => setFilter((current) => (current === value ? 'all' : value))}
             >
               {label}
             </button>
           ))}
+          <button type="button" onClick={() => (location.hash = '#/groups')}>
+            Groups
+          </button>
         </div>
         {visibility.error && (
           <p className="chat-list-empty" role="alert">

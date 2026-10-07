@@ -2,7 +2,7 @@
 
 The [companion README](../apps/vscode-mirror/README.md) is the user guide. Source is public
 and MIT licensed; the marketplace release remains pending. The app's **Chats → VS Code**
-control opens connection/setup instructions; conversations live in **Chats → Shared**.
+control opens connection/setup instructions; conversations live in **Chats → VS Code**.
 
 ## Architecture and boundaries
 
@@ -155,7 +155,7 @@ provider picker. Do not patch its UI or rewrite its database to hide them.
 
 ## Existing Codex terminal sessions
 
-Chats → Shared also discovers loaded conversations from a compatible, already-running Codex
+Chats → VS Code also discovers loaded conversations from a compatible, already-running Codex
 shared server, without the companion. It asks the installed CLI for the daemon socket,
 verifies the managed link and same-owner Unix socket, and attaches only its own observer.
 It does not start/stop the daemon, resume an unloaded thread or change its native settings.

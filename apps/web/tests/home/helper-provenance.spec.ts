@@ -51,7 +51,16 @@ test('explicit helpers stay excluded while same-title personal, imported and sha
   await page.getByRole('button', { name: 'Managers', exact: true }).click();
   await expect(page.locator('.flow-person')).toHaveCount(1);
   await expect(page.locator('.flow-person')).toHaveAttribute('href', `#/chat/${owner.id}`);
-  await page.getByRole('button', { name: 'Shared', exact: true }).click();
+  await page.getByRole('button', { name: 'Managers', exact: true }).click();
+  await expect(page.locator('.flow-person')).toHaveCount(4);
+  await expect(page.locator('.chat-filters [aria-pressed="true"]')).toHaveCount(0);
+  await page.getByRole('button', { name: 'VS Code', exact: true }).click();
+  await expect(page.locator('.flow-person')).toHaveCount(2);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'VS Code', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await expect(page.locator('.flow-person')).toHaveCount(2);
   await page.getByRole('button', { name: 'Misc', exact: true }).click();
   await expect(page.locator('.flow-person')).toHaveCount(1);
@@ -139,7 +148,7 @@ test('conversation filters keep whole labels and reachable touch targets at narr
       });
     });
     expect(layout).toEqual(
-      ['All', 'Managers', 'Shared', 'Misc'].map((name) => ({
+      ['Managers', 'VS Code', 'Misc', 'Groups'].map((name) => ({
         name,
         lines: 1,
         fits: true,
@@ -150,11 +159,13 @@ test('conversation filters keep whole labels and reachable touch targets at narr
       expect(
         await filters.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       ).toBe(true);
-    for (const name of ['All', 'Managers', 'Shared', 'Misc']) {
+    for (const name of ['Managers', 'VS Code', 'Misc']) {
       const button = filters.getByRole('button', { name, exact: true });
       await button.click();
       await expect(button).toHaveAttribute('aria-pressed', 'true');
       await expect(button).toBeInViewport();
+      await button.click();
+      await expect(button).toHaveAttribute('aria-pressed', 'false');
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
@@ -163,6 +174,11 @@ test('conversation filters keep whole labels and reachable touch targets at narr
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '';
   });
-  await filters.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(filters.getByRole('button', { name: 'All', exact: true })).toHaveCount(0);
+  await expect(filters.locator('[aria-pressed="true"]')).toHaveCount(0);
   await filters.screenshot({ path: info.outputPath('conversation-filters.png') });
+  await filters.getByRole('button', { name: 'Groups', exact: true }).click();
+  await expect(page).toHaveURL(/#\/groups$/);
+  await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Conversation type' })).toHaveCount(0);
 });

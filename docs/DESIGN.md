@@ -39,7 +39,9 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 
 ## Chats and project setup
 
-- Distinguish Managers, shared VS Code chats and saved Misc conversations by provenance.
+- Distinguish Managers, VS Code chats and saved Misc conversations by provenance.
+  There is no All chip: selecting an active type clears that filter. Groups opens its
+  separate shared workspace from the same chip row, without merging group histories into Chats.
   App-created helpers/resource reports are not personal chats. Never delete their evidence
   merely to clean a list. The VS Code control at the top of Chats opens setup/status instructions.
 - Use compact WhatsApp-like phone conversations: message bubbles, a short header, grouped
