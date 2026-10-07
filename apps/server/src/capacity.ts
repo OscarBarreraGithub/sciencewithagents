@@ -346,7 +346,8 @@ export class CapacityMonitor {
     const promise = (async () => {
       let value: ProviderCapacity;
       let retryAt = 0;
-      let signInUnavailable = false;
+      // Events keep only a fixed failure class; raw errors may carry private provider data.
+      let reason: ClaudeCapacityError['reason'] | 'unclassified' | null = null;
       try {
         const raw = await this.fetcher(provider, this.abort.signal);
         if (this.closed) return;
@@ -383,7 +384,7 @@ export class CapacityMonitor {
         this.failures.set(provider, (this.failures.get(provider) ?? 0) + 1);
         const known = provider === 'claude' && error instanceof ClaudeCapacityError ? error : null;
         retryAt = known?.retryAt ?? 0;
-        signInUnavailable = known?.reason === 'sign-in';
+        reason = known?.reason ?? 'unclassified';
         value = {
           ...previous,
           state: 'error',
@@ -394,13 +395,14 @@ export class CapacityMonitor {
         };
       }
       // A local sign-in check can recover promptly without polling the usage endpoint.
-      const delay = signInUnavailable
-        ? refreshSeconds
-        : Math.min(
-            15 * 60,
-            (provider === 'claude' && !this.failures.get(provider) ? 300 : refreshSeconds) *
-              2 ** Math.min(4, this.failures.get(provider) ?? 0),
-          );
+      const delay =
+        reason === 'sign-in'
+          ? refreshSeconds
+          : Math.min(
+              15 * 60,
+              (provider === 'claude' && !this.failures.get(provider) ? 300 : refreshSeconds) *
+                2 ** Math.min(4, this.failures.get(provider) ?? 0),
+            );
       value = {
         ...value,
         attemptedAt,
@@ -411,6 +413,7 @@ export class CapacityMonitor {
         provider,
         state: value.state,
         observedAt: value.observedAt,
+        reason,
       });
     })();
     this.pending.set(provider, promise);

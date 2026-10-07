@@ -14,7 +14,7 @@ const failureMessages = {
   profile:
     'This custom Claude profile is not supported by the usage reader. Its native conversations can still work.',
   authorization:
-    'Claude rejected the usage authorization. Check the existing sign-in in Claude on this computer.',
+    'Claude rejected the usage authorization. This alone does not mean Claude is signed out; native Claude conversations may still work. If they also fail, check the sign-in in Claude on this computer.',
   refused:
     'Claude refused this usage read. Native conversations may still work; the shared collector will retry.',
   'rate-limit':

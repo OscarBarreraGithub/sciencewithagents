@@ -62,6 +62,12 @@ supported update command. References: [Codex installation](https://learn.chatgpt
 [Codex npm/Homebrew updates](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex#quickstart-using-goals),
 [Claude installation and updates](https://code.claude.com/docs/en/setup).
 
+Claude Code 2.1.288 has a known auth-status regression that may cause extra sign-outs;
+[2.1.289 reverted it](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#21289).
+If the launcher's actual `claude` path reports 2.1.288, update it through its normal
+installer or channel to 2.1.289 or newer, keeping intentional pins and existing credentials.
+This does not establish the cause of any earlier local sign-out.
+
 The setup agent must check the resolved version **after** updating, then the app's real
 sign-in/model discovery. A successful `--version` alone does not mean it is current.
 If the command is missing or still old, inspect PATH and any captured launcher path;

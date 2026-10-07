@@ -203,6 +203,40 @@ it('shares a provider retry delay across refresh callers and restart, then clear
   });
   expect(readCapacity(reopened, 'claude', clock).message).not.toContain('limiting');
 });
+it('records only a fixed failure class in capacity events and clears it on success', async () => {
+  const { root, store } = fixture();
+  let clock = stamp;
+  const failures: unknown[] = [
+    new ClaudeCapacityError('authorization'),
+    new Error('Bearer private-token for person@example.com; body {"private":"response"}'),
+  ];
+  const monitor = new CapacityMonitor(
+    store,
+    root,
+    async () => {
+      const failure = failures.shift();
+      if (failure) throw failure;
+      return report(clock);
+    },
+    () => clock,
+  );
+  monitors.push(monitor);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await monitor.refresh('claude');
+    clock = Date.parse(readCapacity(store, 'claude', clock).nextRefreshAt!);
+  }
+  const events = store.events(0, 1000).filter((event) => event.type === 'capacity.updated');
+  const data = events.map((event) => event.data as Record<string, unknown>);
+  expect(data.map((item) => Object.keys(item))).toEqual(
+    Array(3).fill(['provider', 'state', 'observedAt', 'reason']),
+  );
+  expect(data.map((item) => [item.state, item.reason])).toEqual([
+    ['error', 'authorization'],
+    ['error', 'unclassified'],
+    ['ready', null],
+  ]);
+  expect(JSON.stringify(events)).not.toMatch(/private|person@|Bearer|response/);
+});
 it('recovers native Claude sign-in after repeated local failures without extending its shared minute retry', async () => {
   const { root, store } = fixture();
   let clock = stamp,

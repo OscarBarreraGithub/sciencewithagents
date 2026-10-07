@@ -48,6 +48,12 @@ it.each([
     expect(response.body?.locked).toBe(false);
   },
 );
+it('explains a usage authorization rejection without declaring native Claude signed out', () => {
+  const { message } = new ClaudeCapacityError('authorization');
+  expect(message).toContain('does not mean Claude is signed out');
+  expect(message).toContain('may still work');
+  expect(message).not.toMatch(/will work|refresh/i);
+});
 it('retains native Fable weekly without inventing a Fable session or general weekly limit', () => {
   const parsed = parseCapacity('claude', normalizeClaudeCapacity(raw, now), now);
   expect(parsed.source).toBe('claude-native-oauth');
