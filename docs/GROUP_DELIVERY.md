@@ -72,20 +72,20 @@ copies. See [document contracts](GROUP_DOCUMENTS.md) for local capture/compiler 
 
 ## Capacity and recovery
 
-| Guard | Bound |
-| --- | --- |
-| Retained feed operations / registered messages | 2,048 / 4,096 per group |
-| Active feed staging | 64 per authenticated enrollment; revoked staging excluded |
-| Logical feed storage | 16 MiB, including source/header/chunk/receipt accounting |
-| Shared physical delivery allocation | 64 MiB cumulative positive SQLite growth, including document tables |
-| Normal membership / aggregate normal-write fence | 16 MiB / 80 MiB |
-| Feed original / chunk | 1 MiB / 16 KiB; at most 64 chunks |
-| Feed / expansion page | 8 headers / 4 chunks |
-| Shared documents actual + reserved / incomplete uploads | 32 MiB / 8 |
-| Document chunk / manifest page | 48 KiB binary / 4 entries |
-| Daily document upload / read budget | 64 MiB / 128 MiB; metadata/wire responses also count |
-| HTTP body / decoded response | Approximately 100 KB / at most 512,000 B |
-| Host I/O / body deadline | 5 seconds; caller abort honored |
+| Guard                                                   | Bound                                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------- |
+| Retained feed operations / registered messages          | 2,048 / 4,096 per group                                             |
+| Active feed staging                                     | 64 per authenticated enrollment; revoked staging excluded           |
+| Logical feed storage                                    | 16 MiB, including source/header/chunk/receipt accounting            |
+| Shared physical delivery allocation                     | 64 MiB cumulative positive SQLite growth, including document tables |
+| Normal membership / aggregate normal-write fence        | 16 MiB / 80 MiB                                                     |
+| Feed original / chunk                                   | 1 MiB / 16 KiB; at most 64 chunks                                   |
+| Feed / expansion page                                   | 8 headers / 4 chunks                                                |
+| Shared documents actual + reserved / incomplete uploads | 32 MiB / 8                                                          |
+| Document chunk / manifest page                          | 48 KiB binary / 4 entries                                           |
+| Daily document upload / read budget                     | 64 MiB / 128 MiB; metadata/wire responses also count                |
+| HTTP body / decoded response                            | Approximately 100 KB / at most 512,000 B                            |
+| Host I/O / body deadline                                | 5 seconds; caller abort honored                                     |
 
 Pre/post capacity checks roll back refused effects. Feed writes do not consume membership's
 operation/day counters; document publication begins use existing membership admission.

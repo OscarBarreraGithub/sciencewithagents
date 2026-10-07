@@ -106,7 +106,11 @@ function fixture(provider: 'codex' | 'claude' = 'codex') {
       message: 'Saved original request',
     })),
     canRecoverPendingConsent: vi.fn(() => true),
-    recoverPendingConsent: vi.fn(async ({ requestId }: { requestId: string }) => ({ requestId, state: 'queued' as const, message: 'Same request reconnecting' })),
+    recoverPendingConsent: vi.fn(async ({ requestId }: { requestId: string }) => ({
+      requestId,
+      state: 'queued' as const,
+      message: 'Same request reconnecting',
+    })),
     ownerExecution: vi.fn(() => execution as unknown as GroupNativeExecution),
     continueAfterConsent: vi.fn(async ({} = {}) => ({
       requestId: randomUUID(),
@@ -294,7 +298,9 @@ it('deduplicates unchanged status and cools down recent retries without a lifeti
     expect((await f.call('status', { requestId })).canRetrySignIn).toBe(false);
     await expect(f.call('restart-sign-in', { requestId })).rejects.toThrow('within one minute');
     expect(db.prepare('SELECT count(*) AS n FROM gno_signin_retries').get()!.n).toBe(3);
-    const retained = db.prepare('SELECT key,binding,attempted_at FROM gno_signin_retries ORDER BY key').all();
+    const retained = db
+      .prepare('SELECT key,binding,attempted_at FROM gno_signin_retries ORDER BY key')
+      .all();
     now += 59_999;
     expect((await f.call('status', { requestId })).canRetrySignIn).toBe(false);
     now += 1;
@@ -303,10 +309,21 @@ it('deduplicates unchanged status and cools down recent retries without a lifeti
     expect(f.execution.restartDeviceSignIn).toHaveBeenCalledTimes(4);
     expect(db.prepare('SELECT count(*) AS n FROM gno_signin_retries').get()!.n).toBe(4);
     for (const attempt of retained)
-      expect(db.prepare('SELECT key,binding,attempted_at FROM gno_signin_retries WHERE key=?').get(String(attempt.key))).toEqual(attempt);
+      expect(
+        db
+          .prepare('SELECT key,binding,attempted_at FROM gno_signin_retries WHERE key=?')
+          .get(String(attempt.key)),
+      ).toEqual(attempt);
     await f.call('restart-sign-in', { requestId, key });
     expect(f.execution.restartDeviceSignIn).toHaveBeenCalledTimes(4);
-    expect(new Set(db.prepare('SELECT binding FROM gno_signin_retries').all().map((row) => row.binding))).toEqual(new Set([requestId]));
+    expect(
+      new Set(
+        db
+          .prepare('SELECT binding FROM gno_signin_retries')
+          .all()
+          .map((row) => row.binding),
+      ),
+    ).toEqual(new Set([requestId]));
     expect(f.connector.submit).not.toHaveBeenCalled();
     expect(f.connector.continueAfterConsent).not.toHaveBeenCalled();
   } finally {
@@ -322,22 +339,36 @@ it('preserves legacy timestamp-less retry evidence without permanently blocking 
   await f.close();
   const db = new DatabaseSync(join(f.directory, 'native-owner.sqlite'));
   const keys = [randomUUID(), randomUUID(), randomUUID()];
-  db.exec('DROP TABLE gno_signin_retries; CREATE TABLE gno_signin_retries(key TEXT PRIMARY KEY,binding TEXT NOT NULL)');
-  for (const key of keys) db.prepare('INSERT INTO gno_signin_retries VALUES (?,?)').run(key, requestId);
+  db.exec(
+    'DROP TABLE gno_signin_retries; CREATE TABLE gno_signin_retries(key TEXT PRIMARY KEY,binding TEXT NOT NULL)',
+  );
+  for (const key of keys)
+    db.prepare('INSERT INTO gno_signin_retries VALUES (?,?)').run(key, requestId);
   db.close();
   const owner = new GroupNativeOwner(f.directory, f.connector, f.config, f.terminal);
   cleanup.push(() => owner.close());
-  const call = (action: 'status' | 'restart-sign-in') => owner.control(f.scope, {
-    action, handle: f.scope.handle, requestId,
-    ...(action === 'status' ? {} : { key: randomUUID() }),
-  }, true);
+  const call = (action: 'status' | 'restart-sign-in') =>
+    owner.control(
+      f.scope,
+      {
+        action,
+        handle: f.scope.handle,
+        requestId,
+        ...(action === 'status' ? {} : { key: randomUUID() }),
+      },
+      true,
+    );
   expect((await call('status')).canRetrySignIn).toBe(true);
   await call('restart-sign-in');
   const retained = new DatabaseSync(join(f.directory, 'native-owner.sqlite'));
   try {
     expect(retained.prepare('SELECT count(*) AS n FROM gno_signin_retries').get()!.n).toBe(4);
     for (const key of keys)
-      expect(retained.prepare('SELECT binding,attempted_at FROM gno_signin_retries WHERE key=?').get(key)).toMatchObject({ binding: requestId, attempted_at: 0 });
+      expect(
+        retained
+          .prepare('SELECT binding,attempted_at FROM gno_signin_retries WHERE key=?')
+          .get(key),
+      ).toMatchObject({ binding: requestId, attempted_at: 0 });
   } finally {
     retained.close();
   }
@@ -350,11 +381,21 @@ it('explicit owner reconnect uses only the exact saved host request and denies d
   const f = fixture();
   const requestId = randomUUID();
   vi.mocked(f.connector.ownerExecution).mockReturnValue(null);
-  vi.mocked(f.connector.inspect).mockResolvedValue({ requestId, state: 'unknown', message: 'Restarted before model input' });
+  vi.mocked(f.connector.inspect).mockResolvedValue({
+    requestId,
+    state: 'unknown',
+    message: 'Restarted before model input',
+  });
   expect((await f.call('status', { requestId })).canReconnect).toBe(true);
   await expect(f.call('reconnect', { requestId })).rejects.toThrow('Exact retained owner request');
   const input = { action: 'reconnect', handle: f.scope.handle, requestId, key: randomUUID() };
-  const retained = { requestId, key: randomUUID(), context: f.scope.context, enrollmentHandle: f.scope.enrollmentHandle, text: 'Original saved request' };
+  const retained = {
+    requestId,
+    key: randomUUID(),
+    context: f.scope.context,
+    enrollmentHandle: f.scope.enrollmentHandle,
+    text: 'Original saved request',
+  };
   const call = () => f.owner.control(f.scope, input, true, retained);
   expect((await call()).state).toBe('checking');
   await call();
@@ -363,28 +404,51 @@ it('explicit owner reconnect uses only the exact saved host request and denies d
   expect(f.connector.continueAfterConsent).not.toHaveBeenCalled();
   // A decline intent survives restart even when the old execution is gone.
   const db = new DatabaseSync(join(f.directory, 'native-owner.sqlite'));
-  db.prepare('INSERT INTO gno_operations VALUES (?,?)').run(randomUUID(), JSON.stringify({ action: 'reject', requestId }));
+  db.prepare('INSERT INTO gno_operations VALUES (?,?)').run(
+    randomUUID(),
+    JSON.stringify({ action: 'reject', requestId }),
+  );
   db.close();
   expect((await f.call('status', { requestId })).canReconnect).toBe(false);
-  await expect(f.owner.control(f.scope, { ...input, key: randomUUID() }, true, retained)).rejects.toThrow('declined');
+  await expect(
+    f.owner.control(f.scope, { ...input, key: randomUUID() }, true, retained),
+  ).rejects.toThrow('declined');
 });
 
 it('normal host reconnect reopens blocked receipt inspection with the retained original, never native resubmission', async () => {
   const f = fixture();
-  const host = new GroupHost(f.directory, { native: {
-    availability: () => ({ available: true, message: 'Fixture only' }),
-    submit: vi.fn(), inspect: vi.fn(), owner: f.owner,
-  } });
+  const host = new GroupHost(f.directory, {
+    native: {
+      availability: () => ({ available: true, message: 'Fixture only' }),
+      submit: vi.fn(),
+      inspect: vi.fn(),
+      owner: f.owner,
+    },
+  });
   cleanup.push(() => host.close());
   Object.defineProperty(host, 'authenticatedContext', { value: async () => f.scope });
   const record = host.nativeJournal.prepare(f.scope.handle, {
-    key: randomUUID(), text: 'Exact saved original', context: f.scope.context,
+    key: randomUUID(),
+    text: 'Exact saved original',
+    context: f.scope.context,
     enrollmentHandle: f.scope.enrollmentHandle,
   });
-  host.nativeJournal.mark(record, { state: 'blocked', message: 'Old namespace closed before consent' });
+  host.nativeJournal.mark(record, {
+    state: 'blocked',
+    message: 'Old namespace closed before consent',
+  });
   vi.mocked(f.connector.ownerExecution).mockReturnValue(null);
-  vi.mocked(f.connector.inspect).mockResolvedValue({ requestId: record.request.requestId, state: 'blocked', message: 'Previous runtime stopped' });
-  const input = { action: 'reconnect', handle: f.scope.handle, requestId: record.request.requestId, key: randomUUID() };
+  vi.mocked(f.connector.inspect).mockResolvedValue({
+    requestId: record.request.requestId,
+    state: 'blocked',
+    message: 'Previous runtime stopped',
+  });
+  const input = {
+    action: 'reconnect',
+    handle: f.scope.handle,
+    requestId: record.request.requestId,
+    key: randomUUID(),
+  };
   await host.nativeOwnerControl(input);
   expect(f.connector.recoverPendingConsent).toHaveBeenCalledExactlyOnceWith(record.request);
   const retained = host.nativeJournal.get(f.scope.handle, record.request.key)!;
@@ -404,9 +468,16 @@ it('a recovered Claude admission can explicitly sign in again without borrowing 
   const terminal = vi.fn(() => randomUUID());
   const owner = new GroupNativeOwner(f.directory, f.connector, f.config, terminal);
   cleanup.push(() => owner.close());
-  const result = await owner.control(f.scope, {
-    action: 'sign-in', handle: f.scope.handle, requestId, key: randomUUID(),
-  }, true);
+  const result = await owner.control(
+    f.scope,
+    {
+      action: 'sign-in',
+      handle: f.scope.handle,
+      requestId,
+      key: randomUUID(),
+    },
+    true,
+  );
   expect(result.terminalId).toBeTruthy();
   expect(result.terminalId).not.toBe(first.terminalId);
   expect(terminal).toHaveBeenCalledTimes(1);

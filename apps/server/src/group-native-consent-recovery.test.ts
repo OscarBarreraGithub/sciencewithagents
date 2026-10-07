@@ -24,15 +24,30 @@ function fixture(submitted = false) {
   const events = new GroupEventRepository(join(root, 'events.sqlite'));
   cleanup.push(() => events.close());
   const group = events.createGroup('Restart fixture');
-  const anchor = events.createContext({ groupId: group.groupId, memberId: group.memberId, installationId: group.installationId, visibility: 'private', provider: 'owner', nativeSessionId: randomUUID() });
-  const directory = join(root, 'native'); mkdirSync(directory);
+  const anchor = events.createContext({
+    groupId: group.groupId,
+    memberId: group.memberId,
+    installationId: group.installationId,
+    visibility: 'private',
+    provider: 'owner',
+    nativeSessionId: randomUUID(),
+  });
+  const directory = join(root, 'native');
+  mkdirSync(directory);
   const path = join(directory, 'native-identities.sqlite');
   let journal = new GroupNativeJournal(path, events);
   const agentId = randomUUID();
   const handle = journal.issue(anchor, agentId, 'codex');
   const nativeContext = journal.resolve(handle).context;
-  const input = { requestId: randomUUID(), key: randomUUID(), context: anchor, enrollmentHandle: randomUUID(), text: 'Retain exactly this original pending request.' };
-  const volume = `swa-group-${randomUUID()}`, name = `swa-group-${randomUUID()}`;
+  const input = {
+    requestId: randomUUID(),
+    key: randomUUID(),
+    context: anchor,
+    enrollmentHandle: randomUUID(),
+    text: 'Retain exactly this original pending request.',
+  };
+  const volume = `swa-group-${randomUUID()}`,
+    name = `swa-group-${randomUUID()}`;
   journal.runtimeEvent(handle, 'container-reserved', { volume, name, manifest: '{}' });
   journal.beginRequest(handle, input.requestId, input.text);
   journal.requestEvent(handle, input.requestId, { state: 'admitted' });
@@ -44,29 +59,85 @@ function fixture(submitted = false) {
   cleanup.push(() => journal.close());
   const reopened = journal.reopen(nativeContext.sessionId);
   const intents = new GroupNativeIntents(join(directory, 'native-intents.sqlite'));
-  intents.bind(input, nativeContext.sessionId); intents.claim(input, nativeContext.sessionId); intents.close();
-  const store = new Store(join(root, 'host.sqlite')); cleanup.push(() => store.close());
+  intents.bind(input, nativeContext.sessionId);
+  intents.claim(input, nativeContext.sessionId);
+  intents.close();
+  const store = new Store(join(root, 'host.sqlite'));
+  cleanup.push(() => store.close());
   mkdirSync(join(root, 'workspace'));
   const project = store.register(join(root, 'workspace'), 'Fixture', '');
-  store.setSetting('group:native-route', { projectId: project.id, provider: 'codex', image: `sha256:${'3'.repeat(64)}`, resources: { workspace: null, stateBase: root, readResources: [], forbiddenPaths: [join(root, 'host.sqlite')], outbound: [] } });
-  const configured = store.getSetting('group:native-route') as { image: string; resources: unknown };
-  store.setSetting(`group:native-resources:${agentId}`, { image: configured.image, resources: configured.resources });
+  store.setSetting('group:native-route', {
+    projectId: project.id,
+    provider: 'codex',
+    image: `sha256:${'3'.repeat(64)}`,
+    resources: {
+      workspace: null,
+      stateBase: root,
+      readResources: [],
+      forbiddenPaths: [join(root, 'host.sqlite')],
+      outbound: [],
+    },
+  });
+  const configured = store.getSetting('group:native-route') as {
+    image: string;
+    resources: unknown;
+  };
+  store.setSetting(`group:native-resources:${agentId}`, {
+    image: configured.image,
+    resources: configured.resources,
+  });
   let resolve!: (execution: GroupNativeExecution) => void;
   let reject!: (error: Error) => void;
-  const admitted = new Promise<GroupNativeExecution>((yes, no) => { resolve = yes; reject = no; });
+  const admitted = new Promise<GroupNativeExecution>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
   const queue = vi.fn(() => ({ runId: randomUUID(), admitted }));
-  const runtime = { store, modelPolicy: {}, quark: {}, queueGroupNativeRequest: queue, interrupt: vi.fn(async () => {}) } as unknown as Runtime;
-  vi.spyOn(GroupDockerEngine.prototype, 'availability').mockResolvedValue({ state: 'ready', runtimeSignature: 'a'.repeat(64), cpuCores: 1, memoryMb: 2048, nativeDesktop: 'Linux guest only; macOS native app control is unavailable' });
+  const runtime = {
+    store,
+    modelPolicy: {},
+    quark: {},
+    queueGroupNativeRequest: queue,
+    interrupt: vi.fn(async () => {}),
+  } as unknown as Runtime;
+  vi.spyOn(GroupDockerEngine.prototype, 'availability').mockResolvedValue({
+    state: 'ready',
+    runtimeSignature: 'a'.repeat(64),
+    cpuCores: 1,
+    memoryMb: 2048,
+    nativeDesktop: 'Linux guest only; macOS native app control is unavailable',
+  });
   vi.spyOn(GroupNativeJournal.prototype, 'artifactReady').mockReturnValue(true);
   const connector = createGroupNativeConnector(runtime, { directory, events });
   cleanup.push(() => connector.close());
   let close!: () => void;
   const execution = Object.assign(new EventEmitter(), {
-    provider: 'codex', admissionId: randomUUID(), closed: new Promise<void>((yes) => { close = yes; }),
-    authentication: vi.fn(async () => 'signed-out'), turn: vi.fn(), reconcile: vi.fn(),
+    provider: 'codex',
+    admissionId: randomUUID(),
+    closed: new Promise<void>((yes) => {
+      close = yes;
+    }),
+    authentication: vi.fn(async () => 'signed-out'),
+    turn: vi.fn(),
+    reconcile: vi.fn(),
     close: vi.fn(async () => close()),
   }) as unknown as GroupNativeExecution;
-  return { connector, journal, reopened, input, queue, resolve, reject, execution, volume, nativeContext, events, directory, store, agentId };
+  return {
+    connector,
+    journal,
+    reopened,
+    input,
+    queue,
+    resolve,
+    reject,
+    execution,
+    volume,
+    nativeContext,
+    events,
+    directory,
+    store,
+    agentId,
+  };
 }
 
 it('reopens only a proved pending-consent request after restart, preserving context, original input and volume without a model or sign-in call', async () => {
@@ -77,10 +148,13 @@ it('reopens only a proved pending-consent request after restart, preserving cont
   await f.connector.recoverPendingConsent(f.input);
   await f.connector.recoverPendingConsent(f.input); // In-flight exact retry.
   expect(f.queue).toHaveBeenCalledTimes(1);
-  expect(f.store.getSetting(`group:native-request:${f.queue.mock.results[0].value.runId}`)).toBe(f.input.requestId);
+  expect(f.store.getSetting(`group:native-request:${f.queue.mock.results[0].value.runId}`)).toBe(
+    f.input.requestId,
+  );
   expect(f.connector.ownerExecution(f.input.requestId)).toBeNull();
   f.resolve(f.execution); // Existing bridge's admitted preparation/verified-stop boundary.
-  await Promise.resolve(); await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
   expect(f.connector.ownerExecution(f.input.requestId)).toBe(f.execution);
   expect(f.journal.request(f.reopened, f.input.requestId)?.state).toBe('pending-consent');
   expect(f.journal.request(f.reopened, f.input.requestId)?.reconciled).toBeUndefined();
@@ -94,20 +168,33 @@ it('reopens only a proved pending-consent request after restart, preserving cont
 
 it('rejects changed original input and any historical write intent before re-admission', async () => {
   const f = fixture();
-  await expect(f.connector.recoverPendingConsent({ ...f.input, text: 'changed' })).rejects.toThrow('idempotency');
+  await expect(f.connector.recoverPendingConsent({ ...f.input, text: 'changed' })).rejects.toThrow(
+    'idempotency',
+  );
   expect(f.queue).not.toHaveBeenCalled();
   const written = fixture(true);
   expect(written.connector.canRecoverPendingConsent(written.input.requestId)).toBe(false);
-  await expect(written.connector.recoverPendingConsent(written.input)).rejects.toThrow('proved unsubmitted');
+  await expect(written.connector.recoverPendingConsent(written.input)).rejects.toThrow(
+    'proved unsubmitted',
+  );
   expect(written.queue).not.toHaveBeenCalled();
-  expect(() => written.journal.restorePendingConsent(written.reopened, written.input.requestId, written.input.text, randomUUID())).toThrow('proved unsubmitted');
+  expect(() =>
+    written.journal.restorePendingConsent(
+      written.reopened,
+      written.input.requestId,
+      written.input.text,
+      randomUUID(),
+    ),
+  ).toThrow('proved unsubmitted');
 });
 
 it('failed owned preparation cannot restore consent authority or original pending input', async () => {
   const f = fixture();
   await f.connector.recoverPendingConsent(f.input);
   f.reject(new Error('Owned namespace stop could not be verified'));
-  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
   expect(f.connector.ownerExecution(f.input.requestId)).toBeNull();
   expect(f.journal.request(f.reopened, f.input.requestId)?.state).toBe('unknown');
   await expect(f.connector.continueAfterConsent(f.input.requestId)).rejects.toThrow('unsubmitted');
@@ -121,13 +208,16 @@ it('actual connector fresh submit provisions distinct native IDs from a full sav
   const input = { ...f.input, requestId: randomUUID(), key: randomUUID(), context };
   expect((await f.connector.submit(input)).state).toBe('queued');
   const intents = new GroupNativeIntents(join(f.directory, 'native-intents.sqlite'));
-  const id = intents.find(input.requestId)!; intents.close();
+  const id = intents.find(input.requestId)!;
+  intents.close();
   const native = f.journal.resolve(f.journal.reopen(id)).context;
   expect(native.sessionId).not.toBe(context.sessionId);
   expect(native.nativeSessionId).not.toBe(context.nativeSessionId);
   expect(native.provider).toBe('codex');
   f.resolve(f.execution);
-  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
   expect((await f.connector.inspect({ requestId: input.requestId })).state).toBe('pending-consent');
   expect(f.execution.turn).not.toHaveBeenCalled();
 });
@@ -136,7 +226,8 @@ it('only later explicit Continue delivers the exact retained text once, then wri
   const f = fixture();
   await f.connector.recoverPendingConsent(f.input);
   f.resolve(f.execution);
-  await Promise.resolve(); await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
   vi.mocked(f.execution.authentication).mockResolvedValue('authenticated');
   vi.mocked(f.execution.turn).mockImplementation(async (text, requestId) => {
     expect(text).toBe(f.input.text);
@@ -146,7 +237,8 @@ it('only later explicit Continue delivers the exact retained text once, then wri
   });
   await f.connector.continueAfterConsent(f.input.requestId);
   await expect(f.connector.continueAfterConsent(f.input.requestId)).rejects.toThrow('unsubmitted');
-  await Promise.resolve(); await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
   expect(f.execution.turn).toHaveBeenCalledExactlyOnceWith(f.input.text, f.input.requestId);
   expect(f.connector.canRecoverPendingConsent(f.input.requestId)).toBe(false);
 });
@@ -154,13 +246,17 @@ it('only later explicit Continue delivers the exact retained text once, then wri
 it('refuses unknown or changed retained resource grants without creating or replacing a grant', async () => {
   const missing = fixture();
   missing.store.setSetting(`group:native-resources:${missing.agentId}`, null);
-  await expect(missing.connector.recoverPendingConsent(missing.input)).rejects.toThrow('missing or changed');
+  await expect(missing.connector.recoverPendingConsent(missing.input)).rejects.toThrow(
+    'missing or changed',
+  );
   expect(missing.queue).not.toHaveBeenCalled();
   expect(missing.store.getSetting(`group:native-resources:${missing.agentId}`)).toBeNull();
   const changed = fixture();
   const pin = { image: `sha256:${'4'.repeat(64)}`, resources: {} };
   changed.store.setSetting(`group:native-resources:${changed.agentId}`, pin);
-  await expect(changed.connector.recoverPendingConsent(changed.input)).rejects.toThrow('missing or changed');
+  await expect(changed.connector.recoverPendingConsent(changed.input)).rejects.toThrow(
+    'missing or changed',
+  );
   expect(changed.queue).not.toHaveBeenCalled();
   expect(changed.store.getSetting(`group:native-resources:${changed.agentId}`)).toEqual(pin);
 });

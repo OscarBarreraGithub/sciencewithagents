@@ -4,3 +4,5 @@ data
 pnpm-lock.yaml
 test-results
 playwright-report
+# Keep the reviewed upstream seccomp policy byte-for-byte; its digest pins the native image.
+runtime/group-native/seccomp.default.json

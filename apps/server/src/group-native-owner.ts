@@ -72,7 +72,9 @@ export class GroupNativeOwner implements GroupNativeOwnerPort {
         .all()
         .some((row) => row.name === 'attempted_at')
     )
-      this.db.exec('ALTER TABLE gno_signin_retries ADD COLUMN attempted_at INTEGER NOT NULL DEFAULT 0');
+      this.db.exec(
+        'ALTER TABLE gno_signin_retries ADD COLUMN attempted_at INTEGER NOT NULL DEFAULT 0',
+      );
     this.db.exec(
       'CREATE INDEX IF NOT EXISTS gno_signin_retries_recent ON gno_signin_retries(binding,attempted_at)',
     );
@@ -152,7 +154,9 @@ export class GroupNativeOwner implements GroupNativeOwnerPort {
     if (!ownerAuthorized)
       throw new Error('Authenticate as the owner of the selected installation.');
     const previous = this.locks.get(input.handle) ?? Promise.resolve();
-    const pending = previous.catch(() => {}).then(() => this.perform(scope, input, retainedRequest));
+    const pending = previous
+      .catch(() => {})
+      .then(() => this.perform(scope, input, retainedRequest));
     this.locks.set(input.handle, pending);
     try {
       return await pending;
@@ -166,7 +170,8 @@ export class GroupNativeOwner implements GroupNativeOwnerPort {
     retainedRequest?: GroupNativeHandoff,
   ): Promise<GroupNativeOwnerStatus> {
     await scope.revalidate();
-    if ('requestId' in input && input.requestId) return this.requestControl(scope, input, retainedRequest);
+    if ('requestId' in input && input.requestId)
+      return this.requestControl(scope, input, retainedRequest);
     let status = this.saved(scope.handle) ?? this.initial();
     const current = this.live.get(scope.handle);
     if (input.action === 'status') {
@@ -346,8 +351,14 @@ export class GroupNativeOwner implements GroupNativeOwnerPort {
     return status;
   }
   private requestRejected(requestId: string) {
-    return Boolean(this.db.prepare(`SELECT 1 FROM gno_operations WHERE
-      json_extract(input,'$.action')='reject' AND json_extract(input,'$.requestId')=? LIMIT 1`).get(requestId));
+    return Boolean(
+      this.db
+        .prepare(
+          `SELECT 1 FROM gno_operations WHERE
+      json_extract(input,'$.action')='reject' AND json_extract(input,'$.requestId')=? LIMIT 1`,
+        )
+        .get(requestId),
+    );
   }
   private async requestControl(
     scope: GroupHostFeatureContext,
@@ -375,8 +386,11 @@ export class GroupNativeOwner implements GroupNativeOwnerPort {
           state:
             (await execution.authentication()) === 'authenticated' ? 'authenticated' : 'signed-out',
         };
-      status.canReconnect = Boolean(!execution && this.connector.canRecoverPendingConsent(requestId) &&
-        !this.requestRejected(requestId));
+      status.canReconnect = Boolean(
+        !execution &&
+          this.connector.canRecoverPendingConsent(requestId) &&
+          !this.requestRejected(requestId),
+      );
       return this.retryStatus(
         requestId,
         execution ?? undefined,
@@ -395,14 +409,27 @@ export class GroupNativeOwner implements GroupNativeOwnerPort {
       });
     }
     if (input.action === 'reconnect') {
-      if (!retainedRequest || retainedRequest.requestId !== requestId ||
-          publicationCanonical(retainedRequest.context) !== publicationCanonical(scope.context) ||
-          retainedRequest.enrollmentHandle !== scope.enrollmentHandle || this.requestRejected(requestId))
-        throw new Error('Exact retained owner request required; a declined request cannot reconnect.');
-      this.db.prepare('INSERT INTO gno_operations(key,input) VALUES (?,?)').run(input.key, canonical);
+      if (
+        !retainedRequest ||
+        retainedRequest.requestId !== requestId ||
+        publicationCanonical(retainedRequest.context) !== publicationCanonical(scope.context) ||
+        retainedRequest.enrollmentHandle !== scope.enrollmentHandle ||
+        this.requestRejected(requestId)
+      )
+        throw new Error(
+          'Exact retained owner request required; a declined request cannot reconnect.',
+        );
+      this.db
+        .prepare('INSERT INTO gno_operations(key,input) VALUES (?,?)')
+        .run(input.key, canonical);
       await scope.revalidate();
       await this.connector.recoverPendingConsent(retainedRequest);
-      return { ...status, state: 'checking' as const, message: 'Reconnecting the same unsubmitted request. Check sign-in when admission completes; no model input was sent.' };
+      return {
+        ...status,
+        state: 'checking' as const,
+        message:
+          'Reconnecting the same unsubmitted request. Check sign-in when admission completes; no model input was sent.',
+      };
     }
     if (!execution || snapshot.state !== 'pending-consent')
       throw new Error('This exact saved request is not awaiting retained native consent.');
@@ -503,7 +530,8 @@ export class GroupNativeOwner implements GroupNativeOwnerPort {
       ...status,
       canRetrySignIn: Boolean(
         binding &&
-          execution && execution.canRestartDeviceSignIn() &&
+          execution &&
+          execution.canRestartDeviceSignIn() &&
           status.state !== 'authenticated' &&
           this.hasSignIn(binding, execution) &&
           this.recentSignInRetries(binding) < 3,
@@ -511,7 +539,8 @@ export class GroupNativeOwner implements GroupNativeOwnerPort {
     };
   }
   private hasSignIn(binding: string, execution: GroupNativeExecution) {
-    return this.db.prepare('SELECT 1 FROM gno_signins WHERE binding IN (?,?)')
+    return this.db
+      .prepare('SELECT 1 FROM gno_signins WHERE binding IN (?,?)')
       .get(binding, `${binding}:${execution.admissionId}`);
   }
   private recentSignInRetries(binding: string) {

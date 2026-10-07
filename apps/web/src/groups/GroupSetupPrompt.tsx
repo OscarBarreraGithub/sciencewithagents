@@ -43,7 +43,11 @@ export function GroupSetupPrompt() {
       <div className="setup-prompt">
         <div className="setup-prompt-head">
           <button type="button" onClick={() => void copy()}>
-            {copyState === 'copied' ? <Check size={16} aria-hidden /> : <Copy size={16} aria-hidden />}
+            {copyState === 'copied' ? (
+              <Check size={16} aria-hidden />
+            ) : (
+              <Copy size={16} aria-hidden />
+            )}
             {copyState === 'copied' ? 'Copied' : 'Copy setup prompt'}
           </button>
         </div>
