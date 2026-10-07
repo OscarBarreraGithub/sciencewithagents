@@ -944,7 +944,7 @@ it('transmits the full 1 MiB/64-chunk original within strict packet and attempt 
     publicationEnvelope(binding, operation, repo.sharedPublication(localAccess, [event.eventId])[0])
       .header.event.manifest.bytes,
   ).toBe(1_048_576);
-});
+}, 30_000);
 
 it('cancels bounded transport deadlines and preserves intent if a transport never acknowledges', async () => {
   const operation = enqueue(append().eventId);

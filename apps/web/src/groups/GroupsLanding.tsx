@@ -11,6 +11,7 @@ export function GroupsLanding({
   onJoin,
   onRetry,
   initialInvitation,
+  invitationRevision = 0,
   setupCodeRequired = false,
   onNewSetupCode,
 }: GroupsLandingProps) {
@@ -24,6 +25,12 @@ export function GroupsLanding({
   const active = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const setupCodeInput = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!initialInvitation) return;
+    setMode('join');
+    setInvitation(initialInvitation);
+    setError('');
+  }, [initialInvitation, invitationRevision]);
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, []);

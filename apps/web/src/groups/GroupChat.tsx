@@ -18,6 +18,21 @@ import { GroupNativeOwner } from './GroupNativeOwner';
 export type GroupChatClient = (path: string, body: unknown) => Promise<unknown>;
 const errorText = (value: unknown) =>
   value instanceof Error ? value.message : 'Groups host unavailable. Reconnect and retry.';
+const sharedDeliveryMessage = (state: string) => {
+  if (state === 'source_registration_pending' || state.startsWith('pending:'))
+    return 'Waiting for the shared feed.';
+  if (['pending', 'waiting', 'idle', 'busy'].includes(state)) return 'Delivery is pending.';
+  if (state === 'offline') return 'Waiting for a connection to deliver your message.';
+  if (state === 'uncertain') return 'Delivery is not yet confirmed. Your message is saved.';
+  if (state === 'suppressed') return 'This message is not shared with the feed.';
+  if (state.startsWith('full:') || ['capacity', 'storage'].includes(state))
+    return 'The shared feed has no storage available. Your message is saved.';
+  if (['unauthorized', 'revoked', 'identity_changed'].includes(state))
+    return 'Delivery is blocked. Ask your setup agent to check group access.';
+  if (['exhausted', 'collision', 'protocol', 'integrity', 'invalid'].includes(state))
+    return 'Delivery failed. Your message is saved.';
+  return 'Delivery status is unknown. Your message is saved.';
+};
 const positions = new Map<string, number>();
 const cacheKey = (handle: string) =>
   location.pathname === '/group-fixture'
@@ -544,7 +559,7 @@ export function GroupChat({
           ?.filter((d) => !['complete', 'private'].includes(d.state))
           .map((d) => (
             <p className="group-chat-cue" role="status" key={d.key}>
-              Shared delivery: {d.state}. The original message identity is retained.{' '}
+              {sharedDeliveryMessage(d.state)}{' '}
               <button
                 disabled={deliveryBusy}
                 onClick={async () => {

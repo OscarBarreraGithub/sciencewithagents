@@ -17,6 +17,7 @@ export type GroupRead<T> =
 export type GroupSummary = { id: GroupId; name: string; members: number; sync: string };
 export type GroupsLandingProps = {
   initialInvitation?: string;
+  invitationRevision?: number;
   setupCodeRequired?: boolean;
   onNewSetupCode?: () => void;
   groups: GroupRead<readonly GroupSummary[]> | { kind: 'loading' };

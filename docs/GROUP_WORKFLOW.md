@@ -34,6 +34,15 @@ uses fake providers and is not a substitute for this setup.
    confirmation code privately to the creator. The creator selects the matching request,
    enters that code and chooses **Approve exact enrollment**. Matching display names alone
    do not prove identity. Reopen the group after approval.
+6. On the creator's computer, choose **Group controls → Shared feed agent → Use this
+   computer for the shared feed**. Keep that computer running. Send a short human message
+   from each installation and confirm both people can open the originals in the shared
+   feed before calling messaging setup complete. Feed updates happen in background batches;
+   native-agent readiness is a separate check.
+
+Opening an invitation in an existing app tab opens Join with that invitation, including
+from an already open group. The app removes the invitation from the address immediately;
+its secret stays in memory until the authenticated join request receives it.
 
 A lost network reply does not require creating another group or sending another join
 request. Use **Recover pending setup** on the original installation; it reconciles the saved
@@ -58,8 +67,7 @@ fallback to a human message; newer typing stays separate.
 Human-message Send retains what you send before delivery. **Retry delivery** uses the
 same saved message after a lost reply; it does not create another message. Open an original
 from the feed to read the exact retained text. Delivery status is separate from local saving.
-The creator chooses **Shared feed agent → Use this computer for the shared feed** once.
-That computer resumes pending summaries when it reconnects, even with its browser closed.
+The selected computer resumes pending summaries when it reconnects, even with its browser closed.
 Longer summaries can need native setup and QUARK admission; originals remain retained while
 summaries wait.
 

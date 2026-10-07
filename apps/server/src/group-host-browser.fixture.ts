@@ -1,8 +1,10 @@
 /** Disposable acceptance harness around NORMAL createServer + LocalAccess + GroupHost.
  * No --fixture, demo provider, Runtime.initialize/kick or native command is used. */
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
+import { DatabaseSync } from 'node:sqlite';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer as netServer } from 'node:net';
 import { repoRoot } from './paths.js';
@@ -13,6 +15,8 @@ import { GroupHost } from './group-host.js';
 import { createServer } from './server.js';
 import type { GroupNativeSnapshot } from './group-host-native.js';
 import { LocalAccess, prepareLocalAccess } from './local-access.js';
+import { deliveryResultSchema } from '@dock/shared/dist/group-delivery.js';
+import type { GroupPromotionSynthesis, GroupPromotionSynthesisResult } from './group-promotion.js';
 async function freePort() {
   const s = netServer();
   await new Promise<void>((r) => s.listen(0, '127.0.0.1', r));
@@ -29,6 +33,37 @@ let worker: ChildProcess | undefined;
 const closers: (() => Promise<void>)[] = [];
 let closing = false;
 const controlledAgent = process.argv.includes('--controlled-agent');
+const promotionControl = process.argv.includes('--promotion-control');
+let primaryHost: GroupHost | undefined,
+  loseCommit = false,
+  lostAcknowledgements = 0,
+  synthesisRequests = 0;
+let lostCommit: { operationId: string; eventId: string; payloadHash: string } | undefined;
+const synthesisReceipts = new Map<string, GroupPromotionSynthesisResult>();
+// Controlled semantic output, never a provider call or a native-readiness claim.
+const synthesis: GroupPromotionSynthesis = {
+  async submit(input) {
+    synthesisRequests++;
+    const original =
+      input.source.original.kind === 'inline'
+        ? input.source.original.text
+        : input.source.original.chunks.join('');
+    const result: GroupPromotionSynthesisResult = {
+      state: 'completed',
+      identity: input.identity,
+      decision: {
+        category: 'Finding',
+        sentences: [`${original.trim().replace(/\s+/g, ' ')}.`],
+        evidenceRefs: input.source.evidenceRefs,
+      },
+    };
+    synthesisReceipts.set(input.synthesisId, result);
+    return result;
+  },
+  async inspect(id) {
+    return synthesisReceipts.get(id) ?? { state: 'unknown' };
+  },
+};
 const nativeSnapshots = new Map<string, GroupNativeSnapshot>();
 let nativeSubmits = 0;
 let loseNativeAck = true;
@@ -73,7 +108,6 @@ async function launchInstallation(name: string, configured = true) {
   runtime = new Runtime(store, directory, join(root, 'unavailable-native'), async () => {
     throw new Error('Acceptance harness never launches a provider');
   });
-  let loseCommit = name === 'primary' && !controlledAgent;
   host = new GroupHost(directory, {
     betaProfile: null,
     ...(controlledAgent
@@ -107,13 +141,33 @@ async function launchInstallation(name: string, configured = true) {
     http: async (...args) => {
       const response = await fetch(...args);
       const command = JSON.parse(String(args[1]?.body ?? '{}'));
-      if (loseCommit && command.kind === 'effect' && command.packet.kind === 'commit') {
+      if (
+        name === 'primary' &&
+        loseCommit &&
+        command.kind === 'effect' &&
+        command.packet.kind === 'commit'
+      ) {
+        const result = deliveryResultSchema.parse(await response.clone().json());
+        if (
+          !result.ok ||
+          result.value.kind !== 'receipt' ||
+          result.value.receipt.state !== 'committed'
+        )
+          throw new Error('Lost-ACK fixture requires a successful remote commit');
+        const receipt = result.value.receipt;
+        lostCommit = {
+          operationId: receipt.operationId,
+          eventId: receipt.eventId,
+          payloadHash: receipt.payloadHash,
+        };
+        lostAcknowledgements++;
         loseCommit = false;
         throw new Error('Lost successful commit acknowledgement in owned acceptance harness');
       }
       return response;
     },
   });
+  if (name === 'primary') primaryHost = host;
   if (configured)
     writeFileSync(
       join(host.directory, 'service.json'),
@@ -185,6 +239,55 @@ try {
   const primary = await launchInstallation('primary'),
     secondary = await launchInstallation('secondary'),
     unconfigured = await launchInstallation('unconfigured', false);
+  if (promotionControl) {
+    // Private parent-test pipe: use the existing lifecycle, no HTTP/runtime API or timer edits.
+    const input = createInterface({ input: process.stdin });
+    closers.push(async () => input.close());
+    void (async () => {
+      for await (const line of input) {
+        const command = JSON.parse(line) as {
+          id: string;
+          kind: 'pass' | 'inspect';
+          loseCommit?: boolean;
+        };
+        if (command.kind === 'pass') {
+          if (command.loseCommit) loseCommit = true;
+          primaryHost!.promotion.start(synthesis);
+          await primaryHost!.promotion.pass();
+        } else if (command.kind !== 'inspect') throw new Error('Unknown promotion fixture command');
+        let publication = null;
+        if (lostCommit)
+          for (const file of readdirSync(primaryHost!.directory).filter((name) =>
+            /^publication-.*\.sqlite$/.test(name),
+          )) {
+            const db = new DatabaseSync(join(primaryHost!.directory, file), { readOnly: true });
+            try {
+              publication =
+                db
+                  .prepare(
+                    'SELECT operation_id AS operationId,event_id AS eventId,payload_hash AS payloadHash,state FROM gp_operations WHERE operation_id=?',
+                  )
+                  .get(lostCommit.operationId) ?? null;
+              if (publication) break;
+            } finally {
+              db.close();
+            }
+          }
+        process.stdout.write(
+          JSON.stringify({
+            id: command.id,
+            lostAcknowledgements,
+            lostCommit,
+            publication,
+            synthesisRequests,
+          }) + '\n',
+        );
+      }
+    })().catch((error) => {
+      process.stderr.write(String(error));
+      void close().then(() => process.exit(1));
+    });
+  }
   // Only stdout is the parent-test ready pipe. Never register/publish this test cookie.
   process.stdout.write(JSON.stringify({ ...primary, secondary, unconfigured }) + '\n');
 } catch (error) {

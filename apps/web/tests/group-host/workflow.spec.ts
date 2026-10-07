@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -12,6 +13,7 @@ test.beforeAll(async () => {
     [
       join(root, 'apps/server/node_modules/tsx/dist/cli.mjs'),
       join(root, 'apps/server/src/group-host-browser.fixture.ts'),
+      '--promotion-control',
     ],
     { cwd: root, env: { ...process.env, WRANGLER_SEND_METRICS: 'false' }, stdio: 'pipe' },
   );
@@ -42,6 +44,36 @@ test.afterAll(async () => {
     await end;
   }
 });
+type PromotionSnapshot = {
+  lostAcknowledgements: number;
+  lostCommit?: { operationId: string; eventId: string; payloadHash: string };
+  publication: { operationId: string; eventId: string; payloadHash: string; state: string } | null;
+  synthesisRequests: number;
+};
+async function promotion(kind: 'pass' | 'inspect', loseCommit = false): Promise<PromotionSnapshot> {
+  const id = randomUUID();
+  return new Promise((resolve, reject) => {
+    let output = '';
+    const timer = setTimeout(() => finish(new Error('Promotion fixture command timed out')), 15000);
+    function finish(error?: Error, value?: PromotionSnapshot) {
+      clearTimeout(timer);
+      child!.stdout!.off('data', read);
+      if (error) reject(error);
+      else resolve(value!);
+    }
+    function read(chunk: Buffer) {
+      output += chunk.toString();
+      const lines = output.split('\n');
+      output = lines.pop()!;
+      for (const line of lines) {
+        const value = JSON.parse(line) as PromotionSnapshot & { id: string };
+        if (value.id === id) finish(undefined, value);
+      }
+    }
+    child!.stdout!.on('data', read);
+    child!.stdin!.write(JSON.stringify({ id, kind, loseCommit }) + '\n');
+  });
+}
 async function authenticate(page: Page, host: HostConnection = connection) {
   const [name, ...parts] = host.cookie.split('=');
   await page
@@ -256,6 +288,66 @@ test('beta setup code validation, definitive expiry/used replacement and ambiguo
   for (const attempt of attempts) expect(storage).not.toContain(attempt.setupCode);
   await capture(page, 'beta-code-retry');
 });
+test('fresh-page and same-tab invitations open Join without storing fragment secrets', async ({
+  page,
+}) => {
+  await enter(page);
+  const invites = Array.from({ length: 3 }, (_, i) => {
+    const secret = randomBytes(32).toString('hex');
+    const fragment = `#/groups?invite=${encodeURIComponent(
+      JSON.stringify({ groupId: randomUUID(), secret, name: `Same-tab group ${i + 1}` }),
+    )}`;
+    return { secret, fragment, url: `${connection.origin}/${fragment}` };
+  });
+  const requestUrls: string[] = [];
+  page.on('request', (request) => requestUrls.push(request.url()));
+  await page.goto(invites[0].url);
+  await expect(page.getByLabel('Invitation link', { exact: true })).toHaveValue(invites[0].url);
+  expect(new URL(page.url()).hash).toBe('#/groups');
+  await page.getByRole('button', { name: 'Back to groups', exact: true }).click();
+  await page.evaluate(() => {
+    (window as unknown as { invitationRoutes: string[] }).invitationRoutes = [];
+    window.addEventListener('hashchange', (event) => {
+      (window as unknown as { invitationRoutes: string[] }).invitationRoutes.push(
+        event.oldURL,
+        event.newURL,
+      );
+    });
+  });
+  const open = async (index: number) => {
+    await page.evaluate((fragment) => {
+      location.hash = fragment;
+    }, invites[index].fragment);
+    await expect(page.getByRole('heading', { name: 'Join a project', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Invitation link', { exact: true })).toHaveValue(
+      invites[index].url,
+    );
+    expect(new URL(page.url()).hash).toBe('#/groups');
+    await expect(page.getByText('This page is unavailable', { exact: true })).toHaveCount(0);
+  };
+  // Reopening the same link is a new handoff even though its string is unchanged.
+  await open(0);
+  await page.getByRole('button', { name: 'Back to groups', exact: true }).click();
+  // The route is already #/groups; a changed invitation must still update React.
+  await open(1);
+  await page.getByRole('button', { name: 'Back to groups', exact: true }).click();
+  await create(page, 'Existing same-tab group');
+  await open(2);
+  await expect(page.locator('.groups-workspace')).toHaveCount(0);
+  const browserState = await page.evaluate(() =>
+    JSON.stringify({
+      session: { ...sessionStorage },
+      local: { ...localStorage },
+      routes: (window as unknown as { invitationRoutes: string[] }).invitationRoutes,
+      history: history.state,
+    }),
+  );
+  for (const invite of invites) {
+    expect(browserState).not.toContain(invite.secret);
+    expect(requestUrls.join('\n')).not.toContain(invite.secret);
+  }
+  await capture(page, 'same-tab-invitation');
+});
 test('fragment invitation joins a second authenticated host and exact creator approval opens its private context', async ({
   page,
   browser,
@@ -303,6 +395,14 @@ test('fragment invitation joins a second authenticated host and exact creator ap
     await expect(
       page.getByLabel('Exact confirmation code from the member', { exact: true }),
     ).toHaveCount(0);
+    await page.getByText('Shared feed agent', { exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Use this computer for the shared feed', exact: true })
+      .click();
+    await expect(
+      page.getByText('This computer is the shared feed writer.', { exact: false }),
+    ).toBeVisible();
+    await page.getByText('Group controls', { exact: true }).click();
     await member.getByRole('button', { name: 'Back to groups', exact: true }).click();
     await member.locator('.groups-projects button').filter({ hasText: 'Joined River' }).click();
     await expect(member.getByRole('heading', { name: 'Joined River', exact: true })).toBeVisible();
@@ -324,17 +424,28 @@ test('fragment invitation joins a second authenticated host and exact creator ap
     await sharedInput.fill(original);
     await member.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(member.locator('.conversation')).toContainText('SECOND-HOST-SHARED-EXACT');
+    await promotion('pass');
     await chat(page);
     await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
     await page.getByPlaceholder('Send a group message…').fill('FIRST-HOST-UNCERTAIN-COMMIT');
-    const acknowledgement = page.waitForResponse(
-      (r) => r.url().endsWith('/api/groups/send') && r.status() === 200,
-    );
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
-    expect((await (await acknowledgement).json()).delivery).toBe('uncertain');
+    await expect(page.locator('.conversation')).toContainText('FIRST-HOST-UNCERTAIN-COMMIT');
+    const lost = await promotion('pass', true);
+    expect(lost.lostAcknowledgements).toBe(1);
+    expect(lost.lostCommit).toBeDefined();
+    expect(lost.publication).toEqual({ ...lost.lostCommit, state: 'uncertain' });
+    expect(lost.synthesisRequests).toBe(2);
     await expect(page.getByRole('button', { name: 'Retry delivery', exact: true })).toBeVisible();
     await page.reload();
     await chat(page);
+    expect((await promotion('inspect')).publication).toEqual(lost.publication);
+    // Existing durable backoff remains authoritative; advance the normal writer lifecycle.
+    await expect
+      .poll(async () => (await promotion('pass')).publication, { intervals: [250, 500, 1000] })
+      .toEqual({ ...lost.lostCommit, state: 'complete' });
+    const recovered = await promotion('inspect');
+    expect(recovered.lostAcknowledgements).toBe(1);
+    expect(recovered.synthesisRequests).toBe(2);
     await page.getByRole('button', { name: 'Retry delivery', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retry delivery', exact: true })).toHaveCount(0);
     await feed(page);

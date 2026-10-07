@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, afterEach, expect, it } from 'vitest';
+import { beforeAll, afterAll, afterEach, expect, it, vi } from 'vitest';
 import {
   mkdtempSync,
   mkdirSync,
@@ -1302,6 +1302,103 @@ it('designated normal writer resumes another host ordinary shared source after b
   expect(
     (await b.post('feed-writer', { handle: input.handle, key: randomUUID() })).statusCode,
   ).toBe(403);
+});
+
+it('chat follows background promotion receipts for writer and nonwriter sends across restart without remote fanout', async () => {
+  let promotionCalls = 0;
+  const http: typeof fetch = async (...args) => {
+    if (String(args[0]).endsWith('/promotion')) promotionCalls++;
+    return fetch(...args);
+  };
+  const a = await installation(undefined, { http });
+  const b = await installation(undefined, { http });
+  const { open } = await create(a, 'Human delivery status');
+  const member = await joinMember(a, b, open.group.handle);
+  await selectFeedWriter(a, open.shared.handle);
+  const writerSend = {
+    handle: open.shared.handle,
+    key: randomUUID(),
+    text: 'Finding: The writer retained its exact result.',
+  };
+  const memberSend = {
+    handle: member.open.shared.handle,
+    key: randomUUID(),
+    text: 'Finding: The other installation retained its exact result.',
+  };
+  expect((await a.post('send', writerSend)).statusCode).toBe(200);
+  expect((await b.post('send', memberSend)).statusCode).toBe(200);
+  expect((await a.post('chat', { handle: writerSend.handle })).json().deliveries).toEqual([
+    expect.objectContaining({ key: writerSend.key, state: expect.stringContaining('pending') }),
+  ]);
+  expect((await b.post('chat', { handle: memberSend.handle })).json().deliveries).toEqual([
+    expect.objectContaining({ key: memberSend.key, state: expect.stringContaining('pending') }),
+  ]);
+
+  // These are the existing production timer's bounded passes. The nonwriter
+  // reconciles its own retained source without a browser Retry delivery action.
+  await progressFeed(a);
+  await a.host.promotion.pass();
+  await b.host.promotion.pass();
+  const beforeChats = promotionCalls;
+  for (const [f, input] of [
+    [a, writerSend],
+    [b, memberSend],
+  ] as const) {
+    const chat = await f.post('chat', { handle: input.handle });
+    expect(chat.statusCode, chat.body).toBe(200);
+    expect(chat.json().deliveries).toEqual([
+      expect.objectContaining({ key: input.key, state: 'complete' }),
+    ]);
+  }
+  expect(promotionCalls).toBe(beforeChats);
+
+  const note = { handle: open.private.handle, key: randomUUID(), text: 'PRIVATE-STATUS-NOTE' };
+  expect((await a.post('send', note)).statusCode).toBe(200);
+  expect((await a.post('chat', { handle: note.handle })).json().deliveries).toEqual([
+    expect.objectContaining({ key: note.key, state: 'private' }),
+  ]);
+  await a.close();
+  await b.close();
+  const resumedA = await installation(a.directory, { http });
+  const resumedB = await installation(b.directory, { http });
+  const beforeRestartChats = promotionCalls;
+  for (const [f, input] of [
+    [resumedA, writerSend],
+    [resumedB, memberSend],
+  ] as const) {
+    expect((await f.post('chat', { handle: input.handle })).json().deliveries).toEqual([
+      expect.objectContaining({ key: input.key, state: 'complete' }),
+    ]);
+    expect(f.host.db.prepare('SELECT count(*) n FROM gh_sends').get()!.n).toBe(
+      f === resumedA ? 2 : 1,
+    );
+  }
+  expect(promotionCalls).toBe(beforeRestartChats);
+});
+
+it('chat preserves the exact retained promotion capacity refusal when no producer receipt was saved', async () => {
+  const a = await installation();
+  const { open } = await create(a, 'Retained delivery capacity');
+  const input = {
+    handle: open.shared.handle,
+    key: randomUUID(),
+    text: 'Finding: Retain this result.',
+  };
+  const full = 'full: original retained; shared source capacity reached';
+  const retain = vi.spyOn(a.host.promotion, 'retain').mockResolvedValue(full);
+  try {
+    const sent = await a.post('send', input);
+    expect(sent.statusCode, sent.body).toBe(200);
+    expect(sent.json().delivery).toBe(full);
+    expect(a.host.promotion.peek(`human:${input.handle}:${input.key}`)).toBe(
+      'source_registration_pending',
+    );
+    expect((await a.post('chat', { handle: input.handle })).json().deliveries).toEqual([
+      expect.objectContaining({ key: input.key, state: full }),
+    ]);
+  } finally {
+    retain.mockRestore();
+  }
 });
 
 it('normal authenticated action confirmation dispatches through its original idle native owner without a manager model turn', async () => {

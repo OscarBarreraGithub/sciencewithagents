@@ -190,9 +190,12 @@ explicit sharing, exact PDF/Reading, lost-ack retry, restart, private-file exclu
 controlled native export hook with retained output from the actual isolated compiler check.
 
 **Hosted service:** an approved HTTPS group service is deployed, with Workers Free directly
-observed in the operator account on 2026-10-07. Fresh-install beta onboarding is implemented
-using the pinned service identity and signed group setup codes; activation of the composed
-beta source and its live two-fresh-installation acceptance remain pending.
+observed in the operator account on 2026-10-07. Scoped beta onboarding is deployed. Two empty,
+independently authenticated profiles passed create/join approval, bidirectional human delivery,
+lost-response retries, private-note/draft exclusion and host restart against the real service.
+These were two profiles on one Mac, without provider turns. Same-tab invitation and stale
+delivery-label defects found during acceptance are corrected in source; installed activation
+is being verified separately.
 
 **Still requires acceptance:** isolated provider sign-in/consent and real group-native readiness
 on the participating installations, plus the complete workflow between two unrelated people

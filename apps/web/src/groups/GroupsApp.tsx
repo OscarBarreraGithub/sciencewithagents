@@ -12,7 +12,11 @@ import { GroupActionsBoard } from './GroupActionsBoard';
 import { GroupCatchup } from './GroupCatchup';
 import { GroupDocumentScope, GroupDocumentHost } from './GroupDocumentLink';
 import PdfReader from '../PdfReader';
-import { initialGroupInvitation, clearGroupInvitation } from './group-invitation';
+import {
+  initialGroupInvitation,
+  groupInvitationRevision,
+  clearGroupInvitation,
+} from './group-invitation';
 import type { GroupRead } from './types';
 import './group-host.css';
 const request = (path: string, body?: unknown, signal?: AbortSignal) =>
@@ -68,6 +72,17 @@ function GroupConversation({
   );
 }
 export function GroupsApp({ route }: { route: string }) {
+  const [invitation, setInvitation] = useState(initialGroupInvitation);
+  const [invitationRevision, setInvitationRevision] = useState(groupInvitationRevision);
+  useEffect(() => {
+    const update = () => {
+      setInvitation(initialGroupInvitation());
+      setInvitationRevision(groupInvitationRevision());
+    };
+    window.addEventListener('hashchange', update);
+    update();
+    return () => window.removeEventListener('hashchange', update);
+  }, []);
   const [list, setList] = useState<contracts.GroupHostSummary[] | null>(null);
   const [service, setService] = useState('Loading Groups configuration…');
   const [serviceConfigured, setServiceConfigured] = useState<boolean | null>(null);
@@ -299,6 +314,7 @@ export function GroupsApp({ route }: { route: string }) {
             void load();
           }}
           onJoin={async (input) => {
+            const consumedInvitation = initialGroupInvitation();
             // Only the request identity/hash is retained in browser storage. Invitation secrets remain in memory until the authenticated host receives them.
             const hash = Array.from(
               new Uint8Array(
@@ -315,13 +331,17 @@ export function GroupsApp({ route }: { route: string }) {
               await request('join', { ...input, key: operation.key }),
             );
             operation.clear();
-            clearGroupInvitation();
+            if (initialGroupInvitation() === consumedInvitation) {
+              clearGroupInvitation();
+              setInvitation(null);
+            }
             setJoinNotice(
               `Waiting for creator approval. Send this exact confirmation code privately to the creator: ${value.confirmation}. Then reopen ${value.group.name}.`,
             );
             void load();
           }}
-          initialInvitation={initialGroupInvitation() ?? undefined}
+          initialInvitation={invitation ?? undefined}
+          invitationRevision={invitationRevision}
         />
       ) : (
         <>

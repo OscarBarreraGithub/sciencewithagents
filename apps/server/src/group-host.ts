@@ -1754,6 +1754,8 @@ export class GroupHost {
         const send = JSON.parse(String(row.body)) as {
           runId: string;
           deliveryOperation: string | null;
+          promotionReceiptId?: string;
+          promotionState?: string;
         };
         return {
           key: input.key,
@@ -1761,12 +1763,16 @@ export class GroupHost {
           state:
             slot.context.visibility === 'private'
               ? 'private'
-              : send.deliveryOperation
-                ? this.publication(value).controller.inspect(
-                    this.publication(value).access,
-                    send.deliveryOperation,
-                  ).state
-                : 'source_registration_pending',
+              : send.promotionReceiptId
+                ? send.promotionState?.startsWith('full:')
+                  ? send.promotionState
+                  : this.promotion.peek(send.promotionReceiptId)
+                : send.deliveryOperation
+                  ? this.publication(value).controller.inspect(
+                      this.publication(value).access,
+                      send.deliveryOperation,
+                    ).state
+                  : 'source_registration_pending',
         };
       }),
     });
