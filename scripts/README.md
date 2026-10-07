@@ -25,6 +25,15 @@ Browser checks are separate. Do not run every live smoke script as a setup step 
 passing suites merely to increase the test count. [Verification](../docs/VERIFICATION.md)
 records what actually ran; a script's presence is not a current compatibility result.
 
+## Cloudflare phone address without a domain
+
+`phone-cloudflare-setup.mjs prepare` creates private deployment/configuration files for a
+fixed-service phone Worker at `workers.dev`; it does not deploy or change the running app.
+Follow [the complete phone runbook](../docs/CLOUDFLARE_SETUP.md) for account selection,
+VPC/tunnel setup, pairing and verification. Focused transport/config checks are
+`node --test scripts/phone-worker.test.mjs scripts/phone-cloudflare-setup.test.mjs` after
+installing workspace dependencies; they do not replace the real HTTPS connection checks.
+
 ## Private data and test cleanup
 
 `data/` contains the live database (including its sidecars), connection credentials, saved

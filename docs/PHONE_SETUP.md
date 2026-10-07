@@ -2,21 +2,25 @@
 
 Open **Settings → Phone access** on the computer that holds your workspace. Copy its
 **Cloudflare phone setup prompt** into Codex or Claude on that computer. The agent handles
-the tunnel, account checks, private app configuration and verification using
+the free phone address, tunnel, account checks, private app configuration and verification using
 [the complete Cloudflare runbook](CLOUDFLARE_SETUP.md).
 
 The tunnel and phone address belong to **your own Cloudflare account**. Each person who
 wants to reach their computer sets up that computer's connection in their own account.
 GitHub is not required for phone access. The phone itself uses app pairing, without a
-separate Cloudflare sign-in.
+separate Cloudflare sign-in. New setup uses Workers Free and a stable free `workers.dev`
+address; you do not need to own or buy a domain. Groups hosting remains independent: the
+creator hosts its shared service, and members join by invitation.
+
+If your installed prompt still suggests Tailscale or requires a domain, have your setup
+agent follow [Update an installation](UPDATE_APP.md) safely before copying the prompt again.
 
 ## Your to-do list
 
 1. Create or sign in to your own Cloudflare account when your setup agent opens its native
    sign-in page. Complete account verification yourself; keep credentials out of chat.
-2. Choose a domain you control and approve the phone address. Your agent checks domain/DNS
-   readiness and guides any required registrar or nameserver action. A new domain may cost
-   money; the agent must explain the choice before a purchase or nameserver change.
+2. Select your Cloudflare account and approve the free `workers.dev` phone address. Your
+   agent verifies Workers Free and handles deployment. No domain or nameserver step is needed.
 3. When the agent has finished, return to **Phone access → Check phone setup**. Choose
    **Turn on phone access**, then **Create a new code**. Scan it with your phone, save its
    passkey and confirm the matching number on this computer. Pair before adding a Home

@@ -1,172 +1,174 @@
 # Cloudflare phone setup
 
-Complete external-agent runbook for phone access through **the current person's own Cloudflare
-account**. Local desktop use needs no Cloudflare account. Each person's phone tunnel belongs to
-their account and routes to their computer; never select the maintainer's account or a shared
-default service. Groups hosting is a separate setup in [Groups workflow](GROUP_WORKFLOW.md).
+External-agent runbook for a stable free phone address in **the current person's own
+Cloudflare account**. New setup uses Workers Free at `workers.dev`, one fixed Workers VPC
+Service, and an app-owned named tunnel. No purchased domain or phone VPN is required.
+Local desktop use needs no Cloudflare account. [Groups hosting](GROUP_HOSTING.md) is separate:
+one creator hosts its shared service, and members join by invitation.
 
-The agent performs the technical steps and walks the person through necessary sign-in, domain
-choices and phone verification. Give them the short list in [Phone setup](PHONE_SETUP.md).
-Keep passwords, tokens and private device evidence out of chat, Git and screenshots. Read the
-current official [dashboard](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/)
-or [API instructions](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel-api/)
-before setup; this guide defines the app boundary and repeatable handoff.
+The agent handles commands, deployment and private configuration. The person completes
+account sign-in/selection and phone pairing; give them [this short checklist](PHONE_SETUP.md).
+Read the current official [VPC setup](https://developers.cloudflare.com/workers-vpc/get-started/),
+[VPC commands](https://developers.cloudflare.com/workers-vpc/reference/wrangler-commands/) and
+[Tunnel API instructions](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel-api/)
+before setup. Keep passwords, tokens and private device evidence out of chat, Git and screenshots.
 
 ## Required boundary
 
-Cloudflare supplies HTTPS and tunnel routing. The app's **paired** entry authenticates phones;
+The path is `https://<worker>.<account-subdomain>.workers.dev` → Worker → one HTTP VPC
+Service fixed to `127.0.0.1:4331` → the app's **paired** entry. The app authenticates phones;
 there is no separate phone-side Cloudflare/GitHub login. Static assets and bounded pairing
-endpoints may be public; private APIs, images, event streams and terminal upgrades require an
-approved browser credential. Pairing needs passkey creation and exact computer confirmation.
-There is no recurring app lock. Never expose the local browser/development listener on port 4330.
+endpoints may be public. Every private API, image, event stream and terminal upgrade requires
+an approved browser credential. Pairing needs passkey creation and exact computer confirmation.
+Never expose the local owner/development listener on port 4330, use a whole-network VPC
+binding, or let requests select a destination. The same authenticated entry serves Groups
+and the rest of the app without another phone deployment.
 
-## 1. Inspect the installation and choose the account
+Workers VPC is currently free during beta on all Workers plans; normal
+[Workers limits](https://developers.cloudflare.com/workers-vpc/platform/limits/) apply.
+Verify the person's account is on Workers Free. Do not enable a paid plan or promise future
+beta pricing. [workers.dev](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)
+provides the free stable hostname; a `pages.dev` site is not a substitute tunnel hostname.
+
+## 1. Inspect the installation and select the account
 
 Follow [Contributor setup](CONTRIBUTOR_SETUP.md) for an absent installation. For an existing
-one, identify its clone, launcher, local owner port and actual private data directory
-(`DOCK_DATA_DIR` can override `data/`). Inspect existing phone settings and enabled state
-privately. Preserve working transports, paired devices, unrelated routes and active work;
-this runbook does not authorize migrating an existing connection.
+one, identify its clone, launcher, owner port and actual private data directory
+(`DOCK_DATA_DIR` can override `data/`). Inspect phone settings and enabled state privately.
+Preserve working transports, domain routes, paired devices, unrelated services and active
+work. This runbook does not authorize replacing an existing connection. If the installed
+screen still suggests Tailscale or requires a domain, follow [Update an installation](UPDATE_APP.md)
+safely before copying its prompt again; copying a new prompt does not update the running app.
 
-Open the Cloudflare dashboard's native sign-in only if needed. The person creates an account,
-completes email/MFA verification and selects **their** account. Confirm the selected account and
-zone before creating resources. Wrangler sign-in alone does not create a tunnel, route or phone
-credential. GitHub sign-in is not required for this workflow.
+Reuse working Wrangler/account sign-in. Otherwise open native Cloudflare sign-in and have
+the person complete account/email/MFA steps and select **their** account. Confirm its ID,
+Workers Free plan and `workers.dev` account subdomain before creating resources. GitHub
+sign-in is not required. Setup needs Workers Scripts Edit, Cloudflare Tunnel Edit and
+Connectivity Directory Admin/Bind rights in that account. No zone or DNS permission is
+needed for this route. A permission failure is not a reason to buy a domain or change accounts.
 
-## 2. Choose and verify the domain
+## 2. Prepare the app-owned named tunnel
 
-Ask for a domain the person controls, then select an unused single-level hostname such as
-`phone.example.com`. The domain must be active in their Cloudflare account for the normal
-published-hostname route. If necessary, guide website addition, DNS review and the registrar's
-nameserver/ownership step. Preserve existing DNS, mail and websites. Explain any purchase or
-nameserver change and wait for the person's decision before performing it. A domain is not
-automatically free; account creation alone does not provide one. If the domain is unavailable,
-report that blocker and continue independent local setup. Do not use a temporary Quick Tunnel
-as a substitute for a stable pairing origin.
+Install or reuse `cloudflared` from its official platform instructions. Use the latest
+version, **at least 2025.7.0**, with `tunnel run --token-file` support. On a Mac with Homebrew,
+`brew install cloudflared` is one supported path. Capture its stable executable path for
+the launcher if needed (`DOCK_CLOUDFLARED_BIN` is supported). Workers VPC requires QUIC;
+verify outbound UDP 7844 and no forced `http2` transport. See
+[VPC tunnel requirements](https://developers.cloudflare.com/workers-vpc/configuration/tunnel/).
 
-## 3. Prepare one remotely managed named tunnel
+Create a distinct remotely managed named tunnel for this installation, such as
+`sciencewithagents-personal-phone`, through the person's dashboard or authorized API.
+For the API, use `POST /accounts/{account_id}/cfd_tunnel` with a distinct `name` and
+`config_src: "cloudflare"`. Parse the response privately, checking `success` and the exact
+account/tunnel ID. Write its returned runtime `token` directly to the actual data directory's
+`cloudflare-tunnel.token`, a new regular owner-only file (0600). If needed, obtain the runtime
+token through `GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}/token`. Do not print either
+credential response. Store no account API token, global API key or login certificate there.
 
-Install or reuse the host's `cloudflared` using the current official platform instructions.
-Check its version and executable path; the app requires `tunnel run --token-file` support.
-On a Mac with Homebrew, `brew install cloudflared` is one supported installation path.
-Capture its stable path for the launcher if necessary (`DOCK_CLOUDFLARED_BIN` is supported).
+Do not install the dashboard's suggested system service or start another persistent
+connector: the app starts and stops this tunnel. Do not modify an unrelated tunnel.
+VPC routing needs no published hostname, DNS record, public ingress or subnet route.
+If saving a remote ingress configuration, keep it only `http_status:404`; the VPC Service
+supplies the specific private destination. Do not use a Quick Tunnel as a pairing origin.
 
-Use the person's signed-in dashboard: **Networking → Tunnels → Create a tunnel**. Create a
-distinct name for this installation, such as `sciencewithagents-personal-phone`. Use a
-remotely managed tunnel; the app's connector consumes its runtime token and remotely saved
-ingress configuration. Do not install the dashboard's suggested system service or another
-always-on connector. Do not replace an unrelated existing tunnel.
+## 3. Create the fixed service and deploy the phone Worker
 
-If the agent already has an authorized Cloudflare API capability, it may perform these steps
-through the documented API instead. Scope setup access to this account and zone (Tunnel Edit
-and DNS Edit); keep it outside app runtime storage. Create through
-`POST /accounts/{account_id}/cfd_tunnel` with `config_src: "cloudflare"`. Retain the returned
-tunnel ID privately and write its runtime token directly to the private file in step 4.
-Check every API result and read back the exact resources; never print credential responses.
+From the selected account with current Wrangler, create this one HTTP service, substituting
+the new tunnel UUID and a distinct service name:
 
-Save this exact remotely managed ingress through the dashboard's published application route,
-or `PUT /accounts/{account_id}/cfd_tunnel/{tunnel_id}/configurations` (substitute the chosen
-hostname and verified paired listener port):
-
-```json
-{
-  "config": {
-    "ingress": [
-      { "hostname": "phone.example.com", "service": "http://127.0.0.1:4331" },
-      { "service": "http_status:404" }
-    ]
-  }
-}
+```sh
+CLOUDFLARE_ACCOUNT_ID=<account-id> sh scripts/pnpm dlx wrangler@4.147.0 vpc service create sciencewithagents-phone \
+  --type http --tunnel-id <tunnel-uuid> --ipv4 127.0.0.1 --http-port 4331
+CLOUDFLARE_ACCOUNT_ID=<account-id> sh scripts/pnpm dlx wrangler@4.147.0 vpc service get <service-uuid>
 ```
 
-Leave the original Host header intact; do not set `httpHostHeader` to localhost. Add only the
-exact proxied CNAME `phone.example.com → <tunnel-id>.cfargotunnel.com`. The dashboard can create
-it when adding the published application route; read it back instead of duplicating it.
-With the API, use `POST /zones/{zone_id}/dns_records` only after checking for an existing record.
-Do not create wildcard/zone-wide routes or expose the owner/development listener on port 4330.
-A fresh paired installation needs no Access application that asks the phone to sign in.
+Read back type `http`, that tunnel ID, IPv4 `127.0.0.1` and HTTP port `4331`. Do not use
+`vpc_networks` or grant the Worker general tunnel/network access. This fresh-setup template
+fixes port 4331; retain an existing installation's different configured port and route.
 
-## 4. Save private app configuration and safely reopen
+Choose a distinct Worker name and verify its resulting
+`https://<worker>.<account-subdomain>.workers.dev` origin. From the repository root, prepare
+new private deployment files (substitute all angle-bracket values):
 
-In the actual data directory, create `phone-access.json` as a regular owner-only file (0600).
-Use the real canonical HTTPS origin with no path or port. Confirm the paired port is free,
-distinct from the owner listener and bound to loopback; 4331 is the normal paired port.
+```sh
+node scripts/phone-cloudflare-setup.mjs prepare <installation-data-dir> \
+  https://<worker>.<account-subdomain>.workers.dev <worker> <account-id> \
+  <service-uuid> --verified-workers-free
+```
+
+The helper creates a new private `phone-cloudflare/deploy-<uuid>/` directory containing
+`wrangler.json` and `phone-access.json`. It does not deploy, start a connector, activate
+phone access or overwrite existing files. Review the exact account, public origin and
+single `PAIRED_APP` binding before deploying with the generated configuration:
+
+```sh
+sh scripts/pnpm dlx wrangler@4.147.0 deploy --config <generated-directory>/wrangler.json
+```
+
+The source template is [phone-worker.ts](../deployment/phone-worker.ts); the checked-in
+Wrangler template is inert. Its VPC binding determines the destination. The fetch URL uses
+the public Worker hostname as HTTP `Host`, preserving the app's exact host/origin checks;
+the tunnel encrypts the connection until its loopback HTTP hop. Cookies, `Origin`, response
+streaming and WebSocket upgrades pass through. Verify the deployed URL exactly matches
+the configured origin; retain its name and account subdomain so pairing remains stable.
+Disable preview URLs and keep logs from recording phone credentials or conversations.
+
+## 4. Activate private app settings and safely reopen
+
+Only when the installation has no existing phone configuration, exclusively create its
+`phone-access.json` from the reviewed generated file, mode 0600:
 
 ```json
 {
-  "origin": "https://phone.example.com",
+  "origin": "https://<worker>.<account-subdomain>.workers.dev",
   "authentication": "paired",
   "transport": "cloudflare",
   "port": 4331
 }
 ```
 
-Save **only this tunnel's runtime token** to `cloudflare-tunnel.token` beside that file, as a
-regular file with mode 0600. The account API token, global API key and login certificate do
-not belong there. Transfer credentials directly through a supported private tool or local
-secret entry; never ask the person to paste one into conversation. Verify file type/mode
-without printing the token. Keep the directory ignored by Git.
+Verify `cloudflare-tunnel.token` is a regular owner-only file without printing it. Keep
+runtime/deployment data ignored by Git. Confirm 4331 is available, distinct from the owner
+listener and bound to loopback. The app reads settings at startup; coordinate a safe
+relaunch of only this installation around active work using [Operations](OPERATIONS.md).
+Leave optional login services off and never start another server against the same data.
+New paired configuration begins with phone access off and pairing closed.
 
-The app reads this configuration at server startup. Coordinate a safe relaunch of only this
-installation around its active work, using [Operations](OPERATIONS.md), then reopen its local
-**Phone access** screen. Leave optional login services off. Do not start another server against
-the same data directory. The initial paired configuration starts with phone access off and
-pairing closed; the app owns the tunnel process when enabled.
+## 5. Verify the boundary, then pair
 
-## 5. Verify the boundary, then pair the phone
+Before enabling, probe the paired listener with the public Worker **Host**: private
+requests must return 503 while off. Check `/api/snapshot`, `/api/events`, and a WebSocket
+upgrade to `/api/owner-terminal/<test-uuid>/socket` with the matching HTTPS `Origin`.
+Do not probe the owner port or count redirects as denial.
 
-Before turning access on, verify the paired listener rejects private requests while off
-(503). Probe `http://127.0.0.1:<paired-port>` using the chosen hostname in the **Host** header;
-do not probe the owner port or accept a redirect as proof of denial. Check `/api/projects`,
-`/api/events` and a WebSocket upgrade to `/api/owner-terminal/<test-uuid>/socket`, using the
-matching HTTPS Origin for the upgrade. None may return private content or status 101.
+Choose **Phone access → Turn on phone access** locally. The app starts its scoped connector;
+verify it connects over QUIC. With pairing closed, repeat the unauthenticated probes locally
+and through the real HTTPS URL: private HTTP/events/socket upgrades must return 401, with
+no private content or status 101. A ready connector alone is not acceptance. If a boundary
+check fails, turn access off and repair it before continuing.
 
-In the owner's local app, choose **Phone access → Turn on phone access**. The app starts its
-scoped connector; wait for connection-ready. While pairing remains closed, repeat the same
-unauthenticated probes locally and at the real HTTPS hostname: private HTTP/events/socket
-upgrades must return 401, never private data or status 101. The public shell and bounded
-pairing/status endpoints are intentional exceptions. Verify HTTPS and the exact tunnel/DNS
-target. If authentication fails, turn access off and repair before continuing. A ready
-connector alone is not acceptance.
+Choose **Create a new code**. The person scans it, names the phone, saves its passkey and
+confirms the matching number on the computer within 15 minutes. Follow
+[Phone acceptance](PHONE_ACCEPTANCE.md): verify the same workspace and Groups, incremental
+events, authenticated terminal upgrade, reconnect over cellular, retained drafts, off/on
+recovery and the Home Screen shortcut. Do not remove working enrollment to repeat a check.
+Return the finished HTTPS address, technical checks and remaining human/device steps;
+mark physical checks only when observed. Ordinary setup needs no full developer suite.
 
-Choose **Create a new code**. The person scans it, names the phone, saves a passkey and
-confirms its matching number on the computer within 15 minutes. Walk them through
-[Phone acceptance](PHONE_ACCEPTANCE.md), including pairing before Home Screen installation,
-the same workspace/history, reconnecting over cellular, retained drafts, and off/on recovery.
-Do not remove a working enrollment just to repeat a check.
+## Existing connections and recovery
 
-Finish with the chosen account/hostname, completed technical checks, and a short list of
-remaining human/device steps. Mark physical phone checks only when observed. Keep diagnostic
-evidence private. Normal setup does not require the full developer test suite.
+Working domain tunnels, private-network routes and Access-mode configurations remain
+supported. Preserve them rather than migrating to this new default. If the person explicitly
+chooses a domain for a new connection, use the official published-hostname route to the
+paired listener, preserving the public Host and unrelated DNS/mail/websites. Domain or trust
+changes may revoke browser approval and need a separately authorized migration with a
+consistent private backup and rollback. Never remove an Access gate without verifying its
+replacement app boundary; never open an unauthenticated fallback.
 
-## Existing Access-mode installations
-
-Access mode is retained for compatibility, not prescribed for new setup. Migration changes a
-security boundary: make a consistent private backup, record exact trust/routes/policies and
-stop only this installation's connector before changing them. Verify the paired entry locally
-first. Preserve unrelated organization MFA, applications, domains and services.
-
-Any removal of an old Access gate must be scoped to this one hostname and paired with the
-verified app-owned boundary. Read the current Cloudflare policy semantics, preserve rollback
-configuration, and verify the full HTTPS path before reopening. Trust/origin changes may revoke
-old browser approval; tell the person before migration. If a check fails, stop the connector
-and restore the exact prior route/trust/policy. Never open an unauthenticated fallback.
-
-## Failure and recovery
-
-- A tool permission failure is not an OAuth failure. Inspect the actual capability/error;
-  do not ask for another token or weaken protections as a repair.
-- The app retries an exited owned connector with bounded backoff. Use its explicit reconnect
-  action after repeated failure. Preserve approved devices and enabled intent.
-- Turn off blocks remote access; turn on restores approved browsers. Remove device revokes
-  it and closes private streams. Changing the trusted origin or losing browser storage may
-  require pairing again. Neither a synced passkey nor knowledge of the URL enrolls a browser.
-- Pair before adding a Home Screen icon. Installation and browser storage can differ; keep
-  the working browser until the icon is verified. No perpetual-storage or end-to-end-encryption
-  claim follows from using Cloudflare.
-- Ordinary setup checks its actual connection and failure paths. A source change to authentication
-  requires focused HTTP/socket/pairing regression checks, not replay of an old passing test count.
-
-References: [Tunnel setup](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/),
-[policy actions](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/),
-[app phone contract](PHONE_WORKFLOW.md), [operations](OPERATIONS.md).
+The app retries an exited owned connector with bounded backoff; its explicit reconnect
+action retains approved devices and enabled intent. Turn off blocks remote access and
+closes streams; turn on lets approved browsers reconnect. Remove device revokes it.
+Changed origin or lost browser storage can require deliberate pairing again. Pair before
+adding a Home Screen icon, then verify the shortcut while retaining the working browser.
+Cloudflare supplies transport encryption; this is not an end-to-end-encryption or permanent
+browser-storage guarantee. Record live acceptance separately from source/fixture checks.

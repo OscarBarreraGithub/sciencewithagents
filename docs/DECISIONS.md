@@ -24,8 +24,12 @@ copyable setup-agent prompts and a short human checklist; the agent handles depl
 private configuration. Joining members connect to that creator's service by invitation.
 No maintainer-issued beta code or automatic maintainer endpoint is part of new setup.
 Existing service records and groups remain intact. GitHub is optional for code sharing.
-Phone/browser-only laptop setup likewise uses the owner's Cloudflare account and domain;
-Tailscale is not offered in new phone onboarding. Existing connections are preserved.
+Phone/browser-only laptop setup uses the owner's Workers Free account and a stable free
+`workers.dev` address. One HTTP VPC Service fixes the only destination to the paired listener
+at `127.0.0.1:4331` through the app-owned named tunnel. The Worker preserves the public host,
+same-origin authentication, streaming responses and WebSocket upgrades. No whole-network
+binding, domain purchase or phone VPN is part of new onboarding. Existing connections,
+including domain routes, are preserved. Groups hosting stays independent.
 
 Each member uses their own computer, provider account and native tools. Group agents run
 through the ordinary local runtime and QUARK. Shared and private conversations have distinct

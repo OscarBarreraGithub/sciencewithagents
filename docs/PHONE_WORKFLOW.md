@@ -7,11 +7,15 @@ Actual runs belong in [Verification](VERIFICATION.md); person-only checks are in
 ## The normal journey
 
 1. In **Phone access**, copy the Cloudflare setup prompt into an external agent on the
-   computer. The agent sets up a named tunnel and domain in that person's own Cloudflare
-   account, following [the runbook](CLOUDFLARE_SETUP.md), and walks them through necessary
-   sign-in, domain choices and pairing. The phone has no separate Cloudflare/GitHub sign-in;
+   computer. The agent sets up a free `workers.dev` address in that person's own Workers
+   Free account, following [the runbook](CLOUDFLARE_SETUP.md). One fixed VPC Service connects
+   it through the app-owned named tunnel to the paired listener on `127.0.0.1:4331`.
+   The agent handles deployment and walks them through account selection and pairing.
+   The phone has no separate Cloudflare/GitHub sign-in;
    GitHub is not a phone prerequisite. The computer stays awake, online and running the app.
-   Existing connections and approved devices are preserved. See [phone setup](PHONE_SETUP.md).
+   Existing connections and approved devices are preserved, including working domain routes.
+   An older installed setup prompt needs the safe [update workflow](UPDATE_APP.md) before
+   recopying. See [phone setup](PHONE_SETUP.md).
 2. On the computer, **Phone access → Create a new code** opens one 15-minute invitation.
    The QR appears only while the connection and invitation are usable. Scanning opens
    **Name your phone** directly with one blank **Phone nickname** field. Manual fallback
@@ -25,6 +29,10 @@ Actual runs belong in [Verification](VERIFICATION.md); person-only checks are in
    works in the browser; it does not prove an icon was installed.
 5. Later, Phone access keeps the installation guide available. Failed setup saves offer
    retry without resetting pairing. Setup completion survives reload and server restart.
+
+This address serves the existing app, including Groups, through the same authenticated
+phone entry. Groups' shared service is a separate creator-owned deployment; members join
+that service by invitation. The phone connection does not create another group service.
 
 ## Pairing and continued access
 

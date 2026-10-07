@@ -84,6 +84,9 @@ test('first phone setup copies the owner Cloudflare prompt, retries checks and r
   await page.evaluate(() => (document.documentElement.style.fontSize = ''));
   const prompt = page.locator('.phone-connection-setup .setup-prompt');
   await expect(prompt).toContainText('MY OWN Cloudflare account');
+  await expect(prompt).toContainText('Workers Free');
+  await expect(prompt).toContainText('stable free workers.dev address');
+  await expect(prompt).toContainText('I do not need to own or buy a domain');
   await expect(prompt).toContainText('docs/CLOUDFLARE_SETUP.md');
   await expect(prompt).toContainText(
     'Never expose the local owner/development listener on port 4330',

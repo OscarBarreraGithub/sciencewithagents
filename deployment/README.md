@@ -1,5 +1,7 @@
 # Public website deployment
 
+For the independent, no-domain phone Worker, use [Cloudflare phone setup](../docs/CLOUDFLARE_SETUP.md).
+
 This is the maintainer runbook for the promotional website. It is separate from
 installing or updating the private sciencewithagents app. No app database, chat,
 provider credentials, private graph source, phone connection or local server is

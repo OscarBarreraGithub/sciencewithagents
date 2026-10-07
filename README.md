@@ -68,22 +68,28 @@ optional repository sharing or submitting a public issue.
 
 ## Phone or laptop access
 
-Use your own Cloudflare account and a domain you control to reach your running computer.
-Groups hosting can use a free `workers.dev` address; this phone connection uses a separate
-named tunnel and your domain. The phone itself needs no Cloudflare sign-in or Tailscale.
+Use your own Cloudflare Workers Free account and a free `workers.dev` address to reach your
+running computer. Your setup agent connects that address to the app's protected phone entry;
+you do not need to buy a domain. The phone itself needs no Cloudflare sign-in or VPN app.
 Paste this into the setup agent on the computer that runs your projects:
 
 ```text
 Set up phone and browser-only laptop access for this sciencewithagents installation.
-Follow docs/CLOUDFLARE_SETUP.md and docs/PHONE_WORKFLOW.md. Use MY Cloudflare account
-and a hostname under a domain I control. Preserve existing tunnels, pairings, projects
-and running work. Tell me if I need to supply a domain; do not buy anything. Handle the
-named tunnel and private configuration, exposing only the authenticated paired-device
-listener, never the local owner listener. Do not set up Tailscale. Coordinate any
-necessary restart with active work. Give me the short human checklist: account sign-in,
-hostname choice, phone passkey and matching-number confirmation. Verify the phone
-connection and reconnection with me; keep passwords and tunnel tokens out of chat.
+Follow docs/CLOUDFLARE_SETUP.md and docs/PHONE_WORKFLOW.md from the current source.
+Use MY Cloudflare account on Workers Free, a stable free workers.dev address, and one
+fixed Workers VPC Service through an app-owned named tunnel to the authenticated paired
+listener on 127.0.0.1:4331. Preserve existing connections, pairings, projects and running
+work. Do not require a purchased domain, paid services or a phone VPN. Handle deployment
+and private configuration; never expose the local owner listener. Coordinate any
+necessary update or restart with active work. Give me the short human checklist: account
+sign-in and selection, free address, phone passkey and matching-number confirmation.
+Verify the phone connection and reconnection with me; keep passwords and tunnel tokens out of chat.
 ```
+
+If your installed prompt still asks for Tailscale or a domain, follow
+[Update an installation](docs/UPDATE_APP.md) before copying it again. Existing working
+domain connections stay in place. Groups hosting is independent: one creator hosts its
+service in their account, and members join by invitation.
 
 [Phone or laptop access](docs/PHONE_WORKFLOW.md) · [Another worker computer](docs/MULTI_COMPUTER_SETUP.md) · [Update an installation](docs/UPDATE_APP.md)
 

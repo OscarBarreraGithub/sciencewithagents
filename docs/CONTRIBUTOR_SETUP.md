@@ -6,9 +6,10 @@ Your agent handles the technical steps below. You complete your own account sign
 the provider asks and, if pairing a phone, save its passkey and confirm the matching number
 on the computer. Never send passwords or codes through chat.
 
-Private GitHub backup and phone access through your own Cloudflare account/domain
+Private GitHub backup and phone access through your own Cloudflare Workers Free account
 are optional choices; local use needs neither.
-The phone never requires a GitHub or Cloudflare account login.
+New phone setup uses a free `workers.dev` address without an owned domain. The phone never
+requires a GitHub or Cloudflare account login. Preserve working domain connections.
 
 ## Setup agent
 
@@ -19,6 +20,8 @@ sign-in. On Mac, Welcome also opens Claude’s native Terminal/browser sign-in a
 it is signed out; account details stay with Claude. Initial source setup uses this guide.
 Phone access provides a copyable Cloudflare setup-agent prompt; see [PHONE_SETUP.md](PHONE_SETUP.md),
 [STATUS.md](STATUS.md).
+If an installed prompt still suggests Tailscale or requires a domain, follow
+[UPDATE_APP.md](UPDATE_APP.md) before recopying it; preserve active work and saved pairing.
 The retained `/?workspace=classic` interface is an optional maintenance surface. Private
 runtime and browser-test output remain under ignored `data/`; never copy them into another
 person's installation. Repository history does not authorize access to another person's accounts or computer.

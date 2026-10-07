@@ -175,3 +175,18 @@ this page a current verification guide rather than appending every edit and old 
 A failing check needs a concrete correction or explicit unresolved disposition, not repeated
 runs until a different result appears. Docs-only cleanup checks links, formatting, public file
 contents and the exported tree; it is not another app acceptance run.
+
+## No-domain phone connection — 2026-10-07
+
+A disposable Worker at `workers.dev`, fixed loopback Workers VPC Service and app-owned
+Cloudflare Tunnel were exercised against the real paired-device server entry. Unpaired
+private reads and WebSocket upgrades were rejected; a synthetic fixture device reached the
+snapshot and Groups API, uploaded/downloaded a file, received incremental SSE and exchanged
+WebSocket frames. Connector off/on preserved the same origin and approved fixture access.
+The temporary Worker, service, tunnel and local server were removed afterwards. Existing
+app connections, pairings and Groups were unchanged. This is transport acceptance, not
+a physical passkey enrollment or a new person’s account setup.
+
+Eight focused Worker/helper checks passed, including open request/response streams and a
+real local workerd WebSocket. Strict Worker/web TypeScript, Wrangler configuration validation,
+Worker deployment dry run and the web build passed.

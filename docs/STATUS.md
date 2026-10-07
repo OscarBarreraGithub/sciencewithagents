@@ -190,7 +190,13 @@ service or require a maintainer-issued beta code. Invitations carry the creator'
 handoff for the joining setup agent; creator credentials stay private. Existing groups and
 explicit service settings remain intact. GitHub is optional for shared code, not messaging.
 Phone setup likewise provides a Cloudflare prompt and human checklist, using the person's
-own account/domain. Existing paired connections are preserved.
+own Workers Free account and a stable free `workers.dev` address without an owned domain.
+The source includes a fixed VPC Service proxy template and private configuration generator;
+new setup routes only to the paired listener on `127.0.0.1:4331`. Existing paired connections
+and domain routes are preserved. A real Cloudflare route passed paired-entry authentication,
+Groups API access, upload/download, SSE, bidirectional WebSockets and connector off/on recovery
+using a disposable local fixture. This did not enroll a physical phone or configure another
+person’s account. An older installed prompt requires a safe update before recopying.
 
 The existing hosted membership, human messaging, invitation approval and recovery are reused.
 Native chat, scoped reading and feed summaries are connected. Protected Git export,

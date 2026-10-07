@@ -31,9 +31,9 @@ export function PhoneConnectionSetup({ connected }: { connected: () => Promise<v
       <div className="phone-settings-panel">
         <h3>Set up a phone connection</h3>
         <p>
-          Your phone connects through your own Cloudflare account. Your computer keeps running your
-          agents and holds your work. Give the prompt below to Codex or Claude on that computer;
-          your setup agent handles the technical work.
+          Your phone connects through a free address in your own Cloudflare account. Your computer
+          keeps running your agents and holds your work. Give the prompt below to Codex or Claude on
+          that computer; your setup agent handles the technical work.
         </p>
         <h4>Your to-do list</h4>
         <ol>
@@ -45,8 +45,8 @@ export function PhoneConnectionSetup({ connected }: { connected: () => Promise<v
             when your agent opens the sign-in page. Complete any account verification yourself.
           </li>
           <li>
-            Choose a domain you control and approve the phone address. Your agent checks the domain
-            and guides any required ownership or nameserver step. A new domain may cost money.
+            Select your account and approve the free workers.dev phone address. Your agent checks
+            Workers Free and handles setup. You do not need to buy a domain.
           </li>
           <li>
             After setup, turn on phone access here, scan the pairing code, save the passkey on your
