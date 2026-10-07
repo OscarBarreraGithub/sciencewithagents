@@ -541,6 +541,8 @@ export function Composer({
   draftOverride,
   maxLength = 24_000,
   specialized = false,
+  attachments = true,
+  preserveWhitespace = false,
   localHistory,
   messagePlaceholder,
   onSent,
@@ -572,6 +574,10 @@ export function Composer({
   draftOverride?: SharedDraft;
   maxLength?: number;
   specialized?: boolean;
+  /** Host-scoped conversations may not have an attachment transport. */
+  attachments?: boolean;
+  /** Retain exact submitted evidence in host-scoped message protocols. */
+  preserveWhitespace?: boolean;
   messagePlaceholder?: string;
   localHistory?: { versions: { text: string; at: string }[]; restore: (text: string) => void };
   /** Specialized conversations can follow an acknowledged replacement thread. */
@@ -579,6 +585,7 @@ export function Composer({
   /** Uses the existing draft owner; callers must not replace conflicting typing. */
   onDraftReady?: (draft: SharedDraft) => void;
 }) {
+  const messageText = (value: string) => (preserveWhitespace ? value : value.trim());
   const managedDraft = useSharedDraft(draftOverride ? null : workspace, agent.id);
   const sourceDraft = draftOverride ?? managedDraft;
   useEffect(() => {
@@ -725,7 +732,7 @@ export function Composer({
           )
             return;
           if (pending.draft) await draft.clearSent(pending.text, pending.draft);
-          else if (draft.currentText().trim() === pending.text) {
+          else if (messageText(draft.currentText()) === pending.text) {
             setText('');
             await draft.flush();
           }
@@ -806,13 +813,13 @@ export function Composer({
   };
   /** Resolves true only after the manager accepted the message. */
   const submit = async (asText = false): Promise<boolean> => {
-    const value = draft.currentText().trim();
+    const value = messageText(draft.currentText());
     const commandText = withoutChatAttachments(value).trim();
     const goalCommand =
       !specialized && !retry.current && !asText && /^\/goal(?:\s|$)/.test(commandText);
     const sentRevision = draftRevision.current;
     if (
-      (!value && !retry.current) ||
+      (!value.trim() && !retry.current) ||
       sendingRef.current ||
       uploading ||
       (disabled && !goalCommand && !(specialized && retry.current?.text === value)) ||
@@ -865,7 +872,7 @@ export function Composer({
       let pending = retry.current;
       if (!pending) {
         const token = await draft.flush();
-        if ((!token && !draftOverride) || draft.currentText().trim() !== value)
+        if ((!token && !draftOverride) || messageText(draft.currentText()) !== value)
           throw new Error(
             'Your text changed while preparing to send. Review it and choose Send again.',
           );
@@ -898,7 +905,7 @@ export function Composer({
         await draft.clearSent(pending.text, pending.draft);
       else if (
         draftRevision.current === sentRevision &&
-        draft.currentText().trim() === pending.text
+        messageText(draft.currentText()) === pending.text
       ) {
         setText('');
         await draft.flush();
@@ -958,7 +965,7 @@ export function Composer({
       (!specialized &&
         !retry.current &&
         /^\/goal(?:\s|$)/.test(withoutChatAttachments(text).trim())) ||
-      (specialized && retry.current?.text === text.trim())) &&
+      (specialized && retry.current?.text === messageText(text))) &&
     !sending &&
     !uploading &&
     draft.ready &&
@@ -1235,14 +1242,16 @@ export function Composer({
             <Maximize2 className="composer-notepad-icon" size={16} aria-hidden="true" />{' '}
             <span>Notepad</span>
           </button>
-          <ChatAttachmentPicker
-            key={agent.id}
-            text={text}
-            currentText={draft.currentText}
-            setText={setText}
-            disabled={sending || pendingText !== null || !draft.ready || draft.conflict}
-            uploader={attachmentUpload}
-          />
+          {attachments && (
+            <ChatAttachmentPicker
+              key={agent.id}
+              text={text}
+              currentText={draft.currentText}
+              setText={setText}
+              disabled={sending || pendingText !== null || !draft.ready || draft.conflict}
+              uploader={attachmentUpload}
+            />
+          )}
           {!specialized && !steer && (
             <select
               className="composer-priority"
@@ -1317,13 +1326,15 @@ export function Composer({
             });
           }}
           attachments={
-            <ChatAttachmentPicker
-              text={text}
-              currentText={draft.currentText}
-              setText={setText}
-              disabled={sending || pendingText !== null || !draft.ready || draft.conflict}
-              uploader={attachmentUpload}
-            />
+            attachments ? (
+              <ChatAttachmentPicker
+                text={text}
+                currentText={draft.currentText}
+                setText={setText}
+                disabled={sending || pendingText !== null || !draft.ready || draft.conflict}
+                uploader={attachmentUpload}
+              />
+            ) : undefined
           }
           controls={
             specialized ? undefined : (

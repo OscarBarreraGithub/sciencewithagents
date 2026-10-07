@@ -131,6 +131,62 @@ function job(
   );
   return { run: store.run(queued.id), worker, task, project };
 }
+it('bounds allowance lookups across an 82-job queue with unrelated project budgets', () => {
+  const quark = new Quark(store, pulsar, () => clock);
+  pulsar.statusRead = (read) => quark.withDemandSnapshot(read);
+  pulsar.allowanceDecision = (run) => quark.reason(run, run.status === 'queued');
+  const jobs = Array.from({ length: 82 }, (_, index) => job(`Queue ${index}`));
+  for (const candidate of jobs) store.updateAgent(candidate.worker.id, { model: null });
+  for (const candidate of jobs.slice(0, 27))
+    quark.saveBudget({
+      key: randomUUID(),
+      projectId: candidate.project.id,
+      taskId: candidate.task.id,
+      provider: 'claude',
+      windowId: 'primary',
+      limitPercent: 50,
+    });
+  quark.sync();
+  const fixedReset = clock + 300 * 60_000;
+  for (let index = 1; index <= 6; index++) {
+    clock += 60_000;
+    usage(10 + index * 2, fixedReset);
+    quark.sync();
+  }
+  const get = vi.spyOn(store, 'getSetting');
+  const ancestry = vi.spyOn(quark, 'taskIds');
+  const started = performance.now();
+  const status = pulsar.status();
+  const capacityReads = get.mock.calls.filter(([key]) => key.startsWith('capacity:v1:')).length;
+  console.info('82-job allowance scan', {
+    elapsedMs: performance.now() - started,
+    capacityReads,
+    ancestryReads: ancestry.mock.calls.length,
+  });
+  expect(status.jobs).toHaveLength(82);
+  expect(capacityReads).toBeLessThan(82 * 10);
+  expect(ancestry.mock.calls.length).toBeLessThanOrEqual(82 * 3);
+  ancestry.mockClear();
+  // A failed outer read cannot retain a snapshot for the next request.
+  expect(() =>
+    quark.withDemandSnapshot(() => {
+      pulsar.status();
+      throw new Error('Aborted display');
+    }),
+  ).toThrow('Aborted display');
+  ancestry.mockClear();
+  expect(pulsar.status().jobs).toHaveLength(82);
+  expect(ancestry.mock.calls.length).toBe(82 * 3);
+  // Admission never borrows the display snapshot or an earlier allowance report.
+  usage(100, fixedReset);
+  expect(pulsar.reserve(jobs[0]!.run)).toBe(false);
+  usage(22, fixedReset);
+  store.setSetting(`quark:project:${jobs[0]!.project.id}`, { paused: true });
+  expect(pulsar.reserve(jobs[0]!.run)).toBe(false);
+  expect(pulsar.status().jobs.find((entry) => entry.runId === jobs[0]!.run.id)?.reason).toContain(
+    'project is paused',
+  );
+});
 it('reads a saved job without a lease and bounds previews while retaining exact-run evidence', () => {
   const old = job('Saved job fixture');
   store.updateRun(old.run.id, { status: 'completed', text: 'Request ' + 'x'.repeat(9000) });
@@ -787,4 +843,27 @@ it('admits an incident check alongside busy projects while checkpoints stay in t
     resourceAssistant: { mode: 'snapshot', reason: 'checkpoint' },
   });
   expect(pulsar.decision(check).eligible).toBe(false);
+});
+
+it('reads ordering keys once per run and refreshes fairness on the next call, preserving disabled ties', () => {
+  const jobs = Array.from({ length: 32 }, (_, index) => job(`Queue ${index}`));
+  const runs = jobs.map((value) => value.run);
+  const estimates = vi.spyOn(pulsar, 'estimate'),
+    weights = vi.spyOn(pulsar, 'projectWeight'),
+    diagnostics = vi.spyOn(pulsar, 'isInteractiveDiagnostic');
+  expect(pulsar.ordered(runs).map((run) => run.id)).toEqual(runs.map((run) => run.id));
+  for (const spy of [estimates, weights, diagnostics]) {
+    expect(spy).toHaveBeenCalledTimes(runs.length);
+    spy.mockClear();
+  }
+  store.setSetting(
+    `pulsar:last-manager:${jobs[0].project.managerId}`,
+    new Date(clock).toISOString(),
+  );
+  expect(pulsar.ordered(runs).at(-1)?.id).toBe(runs[0].id);
+  for (const spy of [estimates, weights, diagnostics])
+    expect(spy).toHaveBeenCalledTimes(runs.length);
+  store.setSetting('pulsar:policy', { enabled: false });
+  expect(pulsar.ordered([runs[1], runs[0]]).map((run) => run.id)).toEqual([runs[1].id, runs[0].id]);
+  vi.restoreAllMocks();
 });

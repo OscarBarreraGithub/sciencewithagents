@@ -1,0 +1,63 @@
+.group-document-grant {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--border, #bbb);
+  border-radius: 12px;
+  padding: 12px;
+  margin-block: 12px;
+}
+.group-document-grant label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-block: 10px;
+  overflow-wrap: anywhere;
+}
+.group-document-grant select {
+  max-width: 100%;
+  min-width: 0;
+  flex: 1;
+}
+.group-document-grant input[type='checkbox'] {
+  flex-shrink: 0;
+}
+.group-document-grant button {
+  min-height: 44px;
+  white-space: normal;
+}
+
+.group-report-actions {
+  max-height: 35dvh;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.group-report-actions details {
+  width: 100%;
+}
+.group-report-actions summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+.group-report-actions button,
+.group-reports button {
+  min-height: 44px;
+  border: 1px solid var(--line, #e6e7df);
+  border-radius: 8px;
+  background: var(--soft, #f2f0e9);
+  color: var(--ink, #303830);
+  padding: 8px 12px;
+}
+.group-report-actions button:focus-visible,
+.group-reports button:focus-visible {
+  outline: 2px solid var(--accent, #d95735);
+  outline-offset: 2px;
+}
+.group-report-row {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.group-report-row small {
+  color: var(--muted, #6f736d);
+}

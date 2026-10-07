@@ -1,6 +1,6 @@
 # Current status
 
-Checked 2026-10-06. **Beta: current workflows have been exercised with real Codex/Claude
+Checked 2026-10-07. **Beta: current workflows have been exercised with real Codex/Claude
 projects and desktop/phone browser checks.** This is not a claim that every device or
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
@@ -46,6 +46,19 @@ persistence, admission and history checks pass across Chromium and WebKit layout
 Bounded real Codex and Claude goals each completed two turns, retaining their native session
 and exact queued continuation through Pause and an app restart. The completed real result
 also passed five browser-layout checks. These checks do not certify an unlimited autonomous run.
+Existing Codex manager catalogs receive a typed goal-progress client route at the next admitted
+turn, retaining native thread history. Focused checks cover original-turn/lease/revision guards,
+full goal retrieval through the older inspection schema and lost-response retry receipts.
+The installed server includes this route. Existing managers receive it at their next
+admitted turn; activation does not interrupt an active native conversation.
+
+Source-level Codex startup uses one twenty-second private-socket opening deadline with at most
+five seconds per handshake, cancels
+pending handshakes on close and retains existing socket paths when liveness is uncertain.
+Queue scans reuse ordering across rejected candidates and yield to local I/O; admission
+changes still recheck priority and manager fairness. Mock fixtures cover event-loop stalls,
+owned cleanup and responding sockets. The installed server includes these queue/startup
+fixes; admission and native runtime acceptance remain separate.
 
 ## Delivered, with acceptance limits
 
@@ -155,6 +168,30 @@ and model choices remain. Active work is never discarded by an inactivity timer.
   the owner's installation was unchanged. This does not certify every future update.
 - **Orb:** quiet idle motion and varied shape parameters are connected; reduced-motion,
   hidden-page and off-screen states suspend animation.
+
+## Groups
+
+**Integrated and activated in the installed app:** normal Home → Groups enrollment,
+shared conversation/private asides, exact setup/send/draft recovery, original evidence reads,
+Ask versus explicit Work, owner-bound actions and feed-writer coordination. Protected native
+route setup, per-context consent/sign-in and proved pre-turn restart recovery are connected.
+Normal Git controls use protected saved repositories and explicit visibility/review choices;
+group reports reuse the scoped Reading/PDF interface. Native isolation and report compilation
+have actual local Engine checks; authenticated membership/delivery and document transport have
+controlled local Worker/SQLite checks. Browser checks use four headless viewports, including
+phone-sized emulation; this is not physical-device evidence.
+
+**Controlled local acceptance:** the normal two-host HTTP/Worker report journey passes
+explicit sharing, exact PDF/Reading, lost-ack retry, restart, private-file exclusion and revocation of cached access. It uses a
+controlled native export hook with retained output from the actual isolated compiler check.
+
+**Still requires owner/platform acceptance:** actual Workers Free entitlement and an approved,
+deployed HTTPS group service; isolated provider sign-in/consent and real group-native readiness
+on the participating installations; and the complete workflow between two installed computers.
+Physical phone follow-up is deferred by the owner. Local tests, configuration fields and fake-provider fixtures
+supply none of those approvals. Hosting remains disabled by default, with no automatic paid
+fallback or provider-credential copying. See the [Groups workflow](GROUP_WORKFLOW.md),
+[native owner setup](GROUP_NATIVE_OWNER_SETUP.md) and [delivery limits](GROUP_DELIVERY.md).
 
 ## Intentionally deferred
 

@@ -13,8 +13,10 @@ import {
   providerDefaultEffort,
   nativeCommandNameSchema,
 } from '@dock/shared';
+import type { NativeProviderBoundary } from './native-provider-boundary.js';
 import {
   claudeAuthDiagnosticReader,
+  claudeAuthScanner,
   type ClaudeAuthDiagnostic,
   type ClaudeSessionAuthDiagnostic,
 } from './claude-auth-diagnostics.js';
@@ -334,6 +336,8 @@ export const nativeFullAccessNote =
   "You run with native full access: commands, browsers and SSH use the owner's own user permissions without approval prompts. Your project folder is your intended working scope, not a hard boundary; keep changes there unless the owner asked otherwise.";
 
 export type ClaudeSessionOptions = {
+  /** Host-only whole-process boundary. Native tool configuration is preserved. */
+  boundary?: NativeProviderBoundary;
   binary: string;
   cwd: string;
   sessionId: string;
@@ -572,23 +576,43 @@ export function spawnClaudeChannel(
   args: string[],
   cwd: string,
   authDiagnostic?: (diagnostic: ClaudeAuthDiagnostic) => void,
+  boundary?: NativeProviderBoundary,
 ): ClaudeChannel {
-  assertClaudeSubscriptionEnvironment();
+  assertClaudeSubscriptionEnvironment(boundary ? boundary.environment : process.env);
   const host = fileURLToPath(
     new URL(
       import.meta.url.endsWith('.ts') ? './claude-session-host.ts' : './claude-session-host.js',
       import.meta.url,
     ),
   );
-  const child = spawn(process.execPath, [host, binary, JSON.stringify(args)], {
-    cwd,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-    env: { ...process.env, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '60' },
-  });
+  const launch = boundary ? boundary.spawn.bind(boundary) : spawn;
+  const child = launch(
+    boundary?.claudeDirect ? binary : process.execPath,
+    boundary?.claudeDirect ? args : [host, binary, JSON.stringify(args)],
+    {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      env: {
+        ...(boundary ? boundary.environment : process.env),
+        CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '60',
+      },
+    },
+  );
+  if (!child.stdin || !child.stdout || !child.stderr)
+    throw new Error('Claude requires private stdio pipes.');
   child.stderr.on(
     'data',
-    claudeAuthDiagnosticReader((event) => authDiagnostic?.(event)),
+    boundary?.claudeDirect
+      ? claudeAuthScanner((classification) => {
+          if (child.pid)
+            authDiagnostic?.({
+              classification,
+              observedAt: new Date().toISOString(),
+              nativeProcessId: child.pid,
+            });
+        })
+      : claudeAuthDiagnosticReader((event) => authDiagnostic?.(event)),
   );
   // Prevent an unhandled EPIPE from bypassing the unavailable event/receipt recovery.
   child.stdin.on('error', () => {});
@@ -604,7 +628,7 @@ export function spawnClaudeChannel(
     output: child.stdout,
     exited,
     async close() {
-      child.stdin.end();
+      child.stdin!.end();
       const timeout = setTimeout(() => child.kill('SIGTERM'), 1500);
       try {
         await exited;
@@ -728,7 +752,10 @@ export class ClaudeSession extends EventEmitter {
     if (this.closed) throw new Error('Claude startup was cancelled.');
     const args = claudeArguments(this.options);
     this.options.beforeStart?.();
-    const channel = (this.dependencies.spawn ?? spawnClaudeChannel)(
+    // A group boundary cannot be bypassed by an ordinary fixture/native spawner.
+    const channel = (
+      this.options.boundary ? spawnClaudeChannel : (this.dependencies.spawn ?? spawnClaudeChannel)
+    )(
       this.options.binary,
       args,
       this.options.cwd,
@@ -738,6 +765,7 @@ export class ClaudeSession extends EventEmitter {
           sessionId: this.options.sessionId,
           supervisorProcessId: this.ownedProcessId,
         }),
+      this.options.boundary,
     );
     this.channel = channel;
     channel.output.on('data', (chunk: Buffer) => {
@@ -793,8 +821,13 @@ export class ClaudeSession extends EventEmitter {
       .parse(initialized.models ?? []);
   }
   private async verifyIdentity() {
-    assertClaudeSubscriptionEnvironment();
-    const identity = await (this.dependencies.identity ?? readClaudeIdentity)(this.options.binary);
+    await this.options.boundary?.check('claude');
+    assertClaudeSubscriptionEnvironment(
+      this.options.boundary ? this.options.boundary.environment : process.env,
+    );
+    const identity = await (this.options.boundary
+      ? this.options.boundary.verifyClaudeIdentity(this.options.binary)
+      : (this.dependencies.identity ?? readClaudeIdentity)(this.options.binary));
     if (identity.affinity !== this.options.accountAffinity)
       throw new Error(
         'Claude sign-in changed. This conversation will not be sent to another account.',

@@ -1,3 +1,6 @@
+import { GroupHost } from './group-host.js';
+import { createProductionGroupHost } from './group-host-bootstrap.js';
+import { GroupFixtureHost } from './group-fixture-host.js';
 import { defaultModelPolicy } from '@dock/shared';
 import { mkdirSync, openSync, closeSync, unlinkSync, readFileSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
@@ -24,10 +27,13 @@ import { prepareAgentClient } from './agent-client.js';
 import { initializeScheduling } from './pulsar.js';
 import { LocalAccess, prepareLocalAccess } from './local-access.js';
 import { NotebookGateway, readNotebookConfig } from './notebook-gateway.js';
+import { selectDevelopmentFixture } from './development-fixture.js';
 
 process.umask(0o077);
 const demo = process.argv.includes('--demo');
-const root = demo ? join(dataDir, 'demo') : dataDir;
+const fixture = selectDevelopmentFixture(process.argv.slice(2), process.env, repoRoot);
+const listenPort = fixture?.port ?? port;
+const root = fixture?.data ?? (demo ? join(dataDir, 'demo') : dataDir);
 mkdirSync(root, { recursive: true, mode: 0o700 });
 const lockPath = join(root, 'server.lock');
 function lock() {
@@ -62,6 +68,8 @@ try {
 // Main retains ownership even if configuration, a listener, or startup fails halfway.
 let store: Store | undefined;
 let runtime: Runtime | undefined;
+let groupFixture: GroupFixtureHost | undefined;
+let groupHost: GroupHost | undefined;
 let tunnel: PhoneTunnel | undefined;
 let terminals: Terminals | undefined;
 let ownerTerminals: OwnerTerminals | undefined;
@@ -109,6 +117,8 @@ function stop() {
     await close(() => hosts?.close());
     await close(() => notifications?.close());
     await runtimeClosing;
+    await close(() => groupFixture?.close());
+    await close(() => groupHost?.close());
     await close(() => store?.close());
     if (process.env.DOCK_LAUNCHER_LIFETIME === '1') {
       process.stdin.removeListener('end', requestedStop);
@@ -143,7 +153,7 @@ if (process.env.DOCK_LAUNCHER_LIFETIME === '1') {
 }
 
 startup = (async () => {
-  if (!Number.isInteger(port) || port < 1024 || port > 65535)
+  if (!Number.isInteger(listenPort) || listenPort < 1024 || listenPort > 65535)
     throw new Error(
       'sciencewithagents needs a local port between 1024 and 65535. Ask your setup agent to check its configuration.',
     );
@@ -152,7 +162,7 @@ startup = (async () => {
   if (!demo) {
     try {
       phoneConfig = readPhoneConfig(root);
-      if (phoneConfig?.port === port) throw new Error('Separate listener required.');
+      if (phoneConfig?.port === listenPort) throw new Error('Separate listener required.');
     } catch {
       phoneConfig = null;
       phoneIssue = 'configuration';
@@ -163,19 +173,20 @@ startup = (async () => {
   if (demo) {
     if (!store.getSetting('model-policy')) {
       const policy = structuredClone(defaultModelPolicy);
+      if (fixture) policy.enabledProviders = ['codex'];
       for (const task of Object.keys(policy.providers) as (keyof typeof policy.providers)[])
         policy.providers[task] = 'codex';
       for (const tier of Object.keys(policy.models.codex) as (keyof typeof policy.models.codex)[])
         policy.models.codex[tier].model = 'demo';
       store.setSetting('model-policy', policy);
     }
-    seedDemo(store, repoRoot);
+    seedDemo(store, fixture?.workspace ?? repoRoot);
   }
   runtime = new Runtime(
     store,
     root,
     binary,
-    demo ? async (agent) => new DemoProvider(agent.cwd) : undefined,
+    demo ? async (agent) => new DemoProvider(agent.cwd ?? fixture?.workspace) : undefined,
     demo
       ? {
           inspect: async () => {
@@ -183,6 +194,7 @@ startup = (async () => {
           },
         }
       : undefined,
+    fixture ? { workspace: fixture.workspace } : undefined,
   );
   const phone = new PhoneAccess(store, phoneConfig, undefined, phoneIssue);
   if (!demo)
@@ -202,34 +214,43 @@ startup = (async () => {
         'Notebook access configuration needs setup. App views still work; check private data/notebook-access.json.';
     }
   }
-  notebookGateway = new NotebookGateway(
-    notebookConfig,
-    runtime.clusterNotebooks,
-    ready,
-    Date.now,
-    notebookIssue,
-    () =>
-      !notebookConfig ||
-      !phone.config ||
-      new URL(notebookConfig.origin).hostname !== new URL(phone.config.origin).hostname,
-  );
-  await notebookGateway.listen(
+  if (!fixture)
+    notebookGateway = new NotebookGateway(
+      notebookConfig,
+      runtime.clusterNotebooks,
+      ready,
+      Date.now,
+      notebookIssue,
+      () =>
+        !notebookConfig ||
+        !phone.config ||
+        new URL(notebookConfig.origin).hostname !== new URL(phone.config.origin).hostname,
+    );
+  await notebookGateway?.listen(
     [
-      `http://127.0.0.1:${port}`,
-      `http://localhost:${port}`,
+      `http://127.0.0.1:${listenPort}`,
+      `http://localhost:${listenPort}`,
       ...(phoneConfig ? [phoneConfig.origin] : []),
     ],
-    [port, ...(phoneConfig ? [phoneConfig.port] : [])],
+    [listenPort, ...(phoneConfig ? [phoneConfig.port] : [])],
   );
   const mirrors = new VscodeMirrors(
     store,
     demo ? undefined : new CodexDaemonChats(binary),
     (text) => runtime!.chatImages.prompt(text),
   );
-  tunnel = new PhoneTunnel(phone, root);
+  if (!fixture) tunnel = new PhoneTunnel(phone, root);
   terminals = new Terminals(runtime);
-  ownerTerminals = new OwnerTerminals();
-  backups = new SourceBackups(store, root, undefined, demo ? [] : undefined);
+  ownerTerminals = new OwnerTerminals(
+    fixture
+      ? {
+          shell: join(root, 'disabled-owner-shell'),
+          cwd: fixture.workspace,
+          computer: 'Development fixture',
+        }
+      : undefined,
+  );
+  if (!fixture) backups = new SourceBackups(store, root, undefined, demo ? [] : undefined);
   hosts = new Hosts(root, undefined, demo ? [] : undefined);
   // Demo data never checks the real computer's GitHub or Cloudflare sign-in.
   const publishing = demo ? undefined : new PublishingAccounts(store);
@@ -253,7 +274,10 @@ startup = (async () => {
     }
   }
   checkStopping();
+  if (fixture) groupFixture = new GroupFixtureHost(store, runtime);
+  if (!demo && !fixture) groupHost = createProductionGroupHost(root, runtime, ownerTerminals);
   const shared: SharedEntryServices = {
+    groupHost,
     phone,
     notebookGateway,
     terminals,
@@ -300,15 +324,16 @@ startup = (async () => {
   };
   const phoneSetup = demo
     ? undefined
-    : new PhoneSetup(phone, root, port, activatePhone, undefined, () => !stopping);
+    : new PhoneSetup(phone, root, listenPort, activatePhone, undefined, () => !stopping);
   app = await createServer(
     store,
     runtime,
     localEntryOptions(shared, {
-      port,
+      groupFixture,
+      port: listenPort,
       webDir: join(repoRoot, 'apps/web/dist'),
-      agentClient: prepareAgentClient(root, port),
-      localAccess: demo ? undefined : new LocalAccess(prepareLocalAccess(root, port)),
+      agentClient: fixture ? undefined : prepareAgentClient(root, listenPort),
+      localAccess: demo ? undefined : new LocalAccess(prepareLocalAccess(root, listenPort)),
       devPort: process.env.DOCK_DEV === '1' ? 5178 : undefined,
       demo,
       tunnel,
@@ -317,7 +342,7 @@ startup = (async () => {
     }),
   );
   checkStopping();
-  await app.listen({ host: '127.0.0.1', port });
+  await app.listen({ host: '127.0.0.1', port: listenPort });
   checkStopping();
   if (phone.config) {
     try {
@@ -331,16 +356,23 @@ startup = (async () => {
   // and grants no remote access; it does not disable already authorized local work.
   // Browser actions remain gated until startup reconciliation has completed.
   await runtime.initialize();
+  groupFixture?.recover();
   if (!demo) {
     runtime.capacity.start();
     runtime.resources.start();
     runtime.cluster.start();
   }
   checkStopping();
-  tunnel.start();
-  backups.start();
+  tunnel?.start();
+  backups?.start();
   accepting = true;
-  console.log(`sciencewithagents${demo ? ' (demo)' : ''}: http://127.0.0.1:${port}`);
+  if (groupFixture)
+    console.log(
+      `Groups test host: http://127.0.0.1:${listenPort}/group-fixture#fixture=${groupFixture.token}`,
+    );
+  console.log(
+    `sciencewithagents${fixture ? ' (stub fixture)' : demo ? ' (demo)' : ''}: http://127.0.0.1:${listenPort}`,
+  );
 })();
 try {
   await startup;

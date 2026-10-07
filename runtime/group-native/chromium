@@ -1,0 +1,3 @@
+#!/bin/sh
+# Keep Chromium's own sandbox. Direct egress is impossible in network=none.
+exec /usr/bin/chromium --proxy-server=http://127.0.0.1:3128 "$@"

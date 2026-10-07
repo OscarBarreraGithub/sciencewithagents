@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": "../..",
+    "paths": { "@dock/shared/dist/*": ["packages/shared/dist/*"] }
+  },
+  "include": ["src/group-promotion*.ts", "../group-service/src/group-promotion.ts"]
+}

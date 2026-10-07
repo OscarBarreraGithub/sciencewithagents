@@ -2286,3 +2286,219 @@ it('reads project token totals without sending the recent scheduling ledger', as
   expect(detailed).toHaveProperty('accounting.runs');
   expect(JSON.stringify(compact).length).toBeLessThan(JSON.stringify(detailed).length);
 });
+
+describe('bounded drain queue ordering', () => {
+  type DrainRuntime = {
+    drain(): Promise<void>;
+    enforceAllowances(): Promise<void>;
+    releaseFinishedWorkers(): Promise<void>;
+    preparedRuns: Set<string>;
+    executing: Set<string>;
+    startRun(run: ReturnType<Store['run']>): Promise<void>;
+  };
+  const internal = () => runtime as unknown as DrainRuntime;
+  beforeEach(() => {
+    vi.spyOn(runtime, 'kick').mockImplementation(() => {});
+    vi.spyOn(internal(), 'enforceAllowances').mockResolvedValue();
+    vi.spyOn(internal(), 'releaseFinishedWorkers').mockResolvedValue();
+    vi.spyOn(runtime.quark, 'sync').mockImplementation(() => {});
+    vi.spyOn(runtime.quark, 'recoverTransient').mockImplementation(() => {});
+    vi.spyOn(runtime.coordinator, 'tick').mockImplementation(() => {});
+    vi.spyOn(runtime.providerMaintenance, 'tick').mockImplementation(() => {});
+    vi.spyOn(runtime.conversationSearch, 'maintain').mockResolvedValue();
+    vi.spyOn(runtime.localJobs, 'candidates').mockReturnValue([]);
+    vi.spyOn(runtime.pulsar, 'wantsForeground').mockReturnValue(false);
+    vi.spyOn(internal(), 'startRun').mockResolvedValue();
+    vi.spyOn(runtime.quark, 'begin').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+  const queued = (parent = manager, projectId = project) => {
+    const agent = store.addAgent({
+      projectId,
+      parentId: parent,
+      taskId: null,
+      role: 'researcher',
+      name: 'Queued worker',
+      cwd: projectRoot,
+    });
+    const run = store.enqueue(
+      agent.id,
+      randomUUID(),
+      'Bounded queued fixture',
+      'delegation',
+      parent,
+    );
+    internal().preparedRuns.add(run.id);
+    return run;
+  };
+  it.each([false, true])(
+    'assesses foreground demand only for yieldable local compute (%s)',
+    async (target) => {
+      store.setSetting('pulsar:policy', { enabled: true });
+      const foreground = vi.mocked(runtime.pulsar.wantsForeground).mockReturnValue(true),
+        yieldable = vi.spyOn(runtime.localJobs, 'hasYieldableBackground').mockReturnValue(target),
+        yieldBackground = vi.spyOn(runtime.localJobs, 'yieldBackground').mockResolvedValue();
+      await internal().drain();
+      expect(yieldable).toHaveBeenCalledOnce();
+      expect(foreground).toHaveBeenCalledTimes(Number(target));
+      expect(yieldBackground).toHaveBeenCalledTimes(Number(target));
+    },
+  );
+  it('orders an unchanged rejected queue once and serves a local socket before the scan ends', async () => {
+    const { createServer, get } = await import('node:http');
+    const jobs = Array.from({ length: 82 }, () => queued());
+    const ordered = vi.spyOn(runtime.pulsar, 'ordered');
+    const reserve = vi.spyOn(runtime.pulsar, 'reserve').mockReturnValue(false);
+    let inspectedAtResponse = -1;
+    const server = createServer((_req, res) => {
+      inspectedAtResponse = reserve.mock.calls.length;
+      res.end('ready');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address() as { port: number };
+    try {
+      const response = new Promise<void>((resolve, reject) =>
+        get(`http://127.0.0.1:${address.port}`, (res) => {
+          res.resume();
+          res.on('end', resolve);
+        }).on('error', reject),
+      );
+      await internal().drain();
+      await response;
+      expect(ordered).toHaveBeenCalledTimes(1);
+      expect(reserve).toHaveBeenCalledTimes(jobs.length);
+      expect(inspectedAtResponse).toBeGreaterThanOrEqual(0);
+      expect(inspectedAtResponse).toBeLessThan(jobs.length);
+      expect(jobs.every((run) => store.run(run.id).status === 'queued')).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+  it('reorders remaining peers after admission changes manager fairness', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    store.setSetting('pulsar:policy', { enabled: true });
+    const now = Date.now(),
+      other = store.register(join(root, 'other-project'), 'Other', '');
+    const first = queued();
+    vi.setSystemTime(now + 1);
+    const same = queued();
+    vi.setSystemTime(now + 2);
+    const peer = queued(other.managerId, other.id);
+    const order: string[] = [];
+    vi.spyOn(runtime.pulsar, 'reserve').mockImplementation((run) => {
+      order.push(run.id);
+      store.setSetting(
+        `pulsar:last-manager:${store.agent(run.agentId).parentId}`,
+        new Date().toISOString(),
+      );
+      return true;
+    });
+    const ordered = vi.spyOn(runtime.pulsar, 'ordered');
+    await internal().drain();
+    expect(order).toEqual([first.id, peer.id, same.id]);
+    expect(ordered).toHaveBeenCalledTimes(3);
+  });
+  it('rechecks a lowered owner concurrency limit after yielding before another admission', async () => {
+    queued();
+    queued();
+    internal().executing.add(manager);
+    store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 4 });
+    const reserve = vi.spyOn(runtime.pulsar, 'reserve').mockReturnValue(true);
+    vi.spyOn(performance, 'now').mockReturnValueOnce(0).mockReturnValue(21);
+    const lowered = new Promise<void>((resolve) =>
+      setImmediate(() => {
+        store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 1 });
+        resolve();
+      }),
+    );
+    await internal().drain();
+    await lowered;
+    expect(reserve).not.toHaveBeenCalled();
+    expect(internal().executing).toEqual(new Set([manager]));
+  });
+  it('serves owner I/O during real fast-paced admission checks for an 82-job queue', async () => {
+    const { createServer, get } = await import('node:http');
+    store.setSetting('pulsar:policy', { enabled: true });
+    const jobs = Array.from({ length: 82 }, () => queued());
+    const now = Date.now(),
+      reset = new Date(now + 300 * 60_000).toISOString();
+    store.setSetting(
+      'capacity:v1:codex',
+      parseCapacity(
+        'codex',
+        [
+          {
+            provider: 'codex',
+            source: 'oauth',
+            usage: {
+              updatedAt: new Date(now).toISOString(),
+              primary: { usedPercent: 22, windowMinutes: 300, resetsAt: reset },
+            },
+          },
+        ],
+        now,
+      ),
+    );
+    for (let index = 0; index < 27; index++) {
+      const other = store.register(join(root, `budget-${index}`), 'Budget fixture', '');
+      runtime.quark.saveBudget({
+        key: randomUUID(),
+        projectId: other.id,
+        taskId: null,
+        provider: 'codex',
+        windowId: 'primary',
+        limitPercent: 50,
+      });
+    }
+    for (let index = 0; index <= 6; index++)
+      store.db.prepare('INSERT INTO quark_intervals(receipt,body) VALUES(?,?)').run(
+        randomUUID(),
+        JSON.stringify({
+          provider: 'codex',
+          windowId: 'primary',
+          label: 'Session',
+          resetsAt: reset,
+          observedAt: new Date(now - (6 - index) * 60_000).toISOString(),
+          delta: index === 0 ? 0 : 2,
+          unattributed: index === 0 ? 0 : 2,
+          allocations: [],
+        }),
+      );
+    expect(runtime.quark.utilization().find((row) => row.provider === 'codex')?.state).toBe('fast');
+    const reserve = vi.spyOn(runtime.pulsar, 'reserve'); // Actual SQLite admission, not a fake rejection.
+    let inspectedAtResponse = -1,
+      responseMs = -1;
+    const started = performance.now();
+    const server = createServer((_req, res) => {
+      inspectedAtResponse = reserve.mock.calls.length;
+      responseMs = performance.now() - started;
+      res.end('ready');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address() as { port: number };
+    try {
+      const response = new Promise<void>((resolve, reject) =>
+        get(`http://127.0.0.1:${address.port}`, (res) => {
+          res.resume();
+          res.on('end', resolve);
+        }).on('error', reject),
+      );
+      await internal().drain();
+      await response;
+      console.info('82-job real admission drain', {
+        elapsedMs: performance.now() - started,
+        responseMs,
+        inspectedAtResponse,
+      });
+      expect(reserve).toHaveBeenCalledTimes(82);
+      expect(inspectedAtResponse).toBeLessThan(82);
+      expect(responseMs).toBeLessThan(5000);
+      expect(jobs.every((run) => store.run(run.id).status === 'queued')).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});

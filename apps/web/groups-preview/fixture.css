@@ -1,0 +1,62 @@
+html,
+body,
+#root {
+  height: 100%;
+}
+#root {
+  display: flex;
+  flex-direction: column;
+}
+.fixture-controls {
+  background: #eeeee5;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.875rem;
+  padding: 6px 12px;
+  flex-shrink: 0;
+}
+.fixture-controls summary {
+  cursor: pointer;
+  min-height: 28px;
+}
+.fixture-controls > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  max-height: 25vh;
+  overflow-y: auto;
+}
+.fixture-controls label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.fixture-controls button,
+.fixture-controls select {
+  font-size: 0.875rem;
+  min-height: 36px;
+}
+.fixture-surface {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.fixture-surface .groups-workspace {
+  height: 100%;
+}
+.fixture-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.fixture-error {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.fixture-chat {
+  overflow: hidden;
+}

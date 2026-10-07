@@ -10,8 +10,10 @@ export function DocumentReading({
   reading,
   size,
   close,
+  endpoint = `/documents/${id}`,
 }: {
   id: string;
+  endpoint?: string;
   reading: Reading;
   size: number;
   close: () => void;
@@ -21,7 +23,7 @@ export function DocumentReading({
   const html = useMemo(() => {
     const source = reading.html.replace(
       /reader-asset:([a-f0-9]{64}\.(?:png|jpg|jpeg|webp|gif))/g,
-      (_, asset: string) => apiUrl(`/documents/${id}/assets/${asset}`),
+      (_, asset: string) => apiUrl(`${endpoint}/assets/${asset}`),
     );
     const clean = DOMPurify.sanitize(source, {
       USE_PROFILES: { html: true },
@@ -31,7 +33,7 @@ export function DocumentReading({
     const document = new DOMParser().parseFromString(clean, 'text/html');
     for (const image of document.querySelectorAll('img')) {
       const src = image.getAttribute('src') ?? '';
-      if (!src.startsWith(apiUrl(`/documents/${id}/assets/`))) image.remove();
+      if (!src.startsWith(apiUrl(`${endpoint}/assets/`))) image.remove();
     }
     const numbers = { ...reading.labels };
     let nextNumber = 0;
@@ -151,10 +153,10 @@ export function DocumentReading({
       wrap.append(hint);
     }
     return document.body.innerHTML;
-  }, [id, reading.html, reading.labels]);
+  }, [id, endpoint, reading.html, reading.labels]);
   useLayoutEffect(() => {
     const element = scroll.current!;
-    const key = `swa:reading:${apiScope()}:${id}`;
+    const key = `swa:reading:${apiScope()}:${endpoint}`;
     try {
       element.scrollTop = Number(localStorage.getItem(key)) || 0;
     } catch {
@@ -167,7 +169,7 @@ export function DocumentReading({
         /* private storage */
       }
     };
-  }, [id, html]);
+  }, [id, endpoint, html]);
   useEffect(() => {
     const root = scroll.current!;
     const equations = [

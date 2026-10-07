@@ -110,6 +110,139 @@ function read(path: string, authorization?: string) {
     headers: { host: `127.0.0.1:${port}`, ...(authorization ? { authorization } : {}) },
   });
 }
+function goalRequest() {
+  const folder = join(root, 'existing-manager');
+  mkdirSync(folder);
+  const project = store.register(folder, 'Existing manager', '');
+  const manager = store.agent(project.managerId);
+  store.updateAgent(manager.id, { threadId: randomUUID() });
+  const goal = runtime.managedGoals.ownerAction(manager.id, {
+    key: randomUUID(),
+    action: 'create',
+    expectedRevision: null,
+    objective: 'Finish the authorized work with reviewed evidence.',
+  }).goal!;
+  const run = store.run(goal.continuationRunId!);
+  const file = join(folder, 'goal-request.json');
+  const input = {
+    key: randomUUID(),
+    managerId: manager.id,
+    runId: run.id,
+    goalId: goal.id,
+    expectedRevision: goal.revision,
+    action: 'continue',
+    summary: 'Reviewed the first result.',
+    nextAction: 'Implement the reviewed correction.',
+  };
+  const save = (value = input, path = file) => {
+    writeFileSync(path, JSON.stringify(value));
+    return agentClientCommand(root, 'goal-update', [path]);
+  };
+  const admit = () => {
+    expect(runtime.pulsar.reserve(store.run(run.id), new Set())).toBeTruthy();
+    runtime.quark.issueManagerLease(store.run(run.id));
+    store.updateRun(run.id, { status: 'running' });
+    store.updateAgent(manager.id, { status: 'running' });
+  };
+  return { manager, goal, run, file, input, save, admit };
+}
+
+it('lets an existing native catalog record goal progress from its admitted turn, retaining history and an uncertain receipt', async () => {
+  const f = goalRequest();
+  const nativeThread = store.agent(f.manager.id).threadId;
+  f.admit();
+  const inspection = (await runtime.tool(f.manager.id, randomUUID(), 'dock_inspect', {})) as {
+    managedGoal: {
+      goal: { objective: string };
+      localClient: { command: string; managerId: string; runId: string };
+    };
+  };
+  expect(inspection.managedGoal.goal.objective).toBe(f.goal.objective);
+  expect(inspection.managedGoal.localClient).toMatchObject({
+    managerId: f.manager.id,
+    runId: f.run.id,
+  });
+  expect(inspection.managedGoal.localClient.command).toContain('quark goal-update');
+  const transport = injectFetch();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit) => {
+      await transport(url, init);
+      throw new Error('Lost successful acknowledgement');
+    }),
+  );
+  await expect(f.save()).rejects.toThrow('same file and UUID');
+  const recorded = runtime.managedGoals.view(f.manager.id).goal!;
+  expect(recorded.progress.nextAction).toBe(f.input.nextAction);
+  vi.stubGlobal('fetch', transport);
+  // A completed original turn must still return its exact receipt, without borrowing another lease.
+  store.updateRun(f.run.id, { status: 'completed' });
+  expect(await f.save()).toEqual(recorded);
+  await app.close();
+  store = new Store(join(root, 'dock.sqlite'));
+  runtime = new Runtime(store, root, 'missing-cli', provider);
+  vi.spyOn(runtime, 'kick').mockImplementation(() => {});
+  app = await createServer(store, runtime, { port, demo: true, agentClient: config });
+  expect(await f.save()).toEqual(recorded);
+  await expect(f.save({ ...f.input, summary: 'Different result' })).rejects.toThrow('different');
+  expect(store.agent(f.manager.id).threadId).toBe(nativeThread);
+  expect(provider).not.toHaveBeenCalled();
+});
+
+it('rejects goal updates outside the original admitted turn, wrong goal/revision, escaped files and restricted roles', async () => {
+  vi.stubGlobal('fetch', injectFetch());
+  const f = goalRequest();
+  await expect(f.save()).rejects.toThrow('active admitted turn');
+  f.admit();
+  await expect(f.save({ ...f.input, runId: randomUUID() })).rejects.toThrow('active admitted turn');
+  await expect(f.save({ ...f.input, goalId: randomUUID() })).rejects.toThrow(
+    'matching owner-enabled goal',
+  );
+  await expect(f.save({ ...f.input, expectedRevision: f.goal.revision + 1 })).rejects.toThrow(
+    'goal changed',
+  );
+  await expect(f.save(f.input, join(root, 'outside-goal.json'))).rejects.toThrow(
+    'inside this manager',
+  );
+  store.updateAgent(f.manager.id, { permission: 'read-only' });
+  await expect(f.save()).rejects.toThrow('read-only');
+  store.updateAgent(f.manager.id, { permission: 'workspace-write', surface: 'terminal' });
+  await expect(f.save()).rejects.toThrow('project root manager');
+  expect(runtime.managedGoals.view(f.manager.id).goal!.progress.summary).toBe('');
+  expect(provider).not.toHaveBeenCalled();
+});
+
+it('requires a valid orchestration lease and refuses context maintenance for local goal progress', async () => {
+  vi.stubGlobal('fetch', injectFetch());
+  const f = goalRequest();
+  f.admit();
+  const lease = store.getSetting(`quark:manager-lease:${f.run.id}`);
+  store.setSetting(`quark:manager-lease:${f.run.id}`, null);
+  await expect(f.save()).rejects.toThrow(/lease/);
+  store.setSetting(`quark:manager-lease:${f.run.id}`, lease);
+  store.setSetting(`quark:compaction:${f.run.id}`, true);
+  await expect(f.save()).rejects.toThrow('Context maintenance');
+  expect(runtime.managedGoals.view(f.manager.id).goal!.progress.summary).toBe('');
+});
+
+it('protects the fixed goal client operation and rejects lifecycle changes before contacting the host', async () => {
+  const f = goalRequest();
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/agent-client/goal-updates',
+        headers: { host: `127.0.0.1:${port}`, origin: config.origin },
+        payload: { request: f.input, file: f.file },
+      })
+    ).statusCode,
+  ).toBe(401);
+  expect(proxyPath('POST', '/agent-client/goal-updates')).toBeNull();
+  const fetch = injectFetch();
+  vi.stubGlobal('fetch', fetch);
+  await expect(f.save({ ...f.input, action: 'resume' })).rejects.toThrow();
+  expect(fetch).not.toHaveBeenCalled();
+});
 
 it('protects every client operation, rejects foreign origins, and exposes no provider credential', async () => {
   const input = request();

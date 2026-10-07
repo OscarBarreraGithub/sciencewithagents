@@ -3,6 +3,8 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import { DocumentLink } from './Documents';
+import { GroupDocumentLink } from './groups/GroupDocumentLink';
+import { groupDocumentReference } from '@dock/shared/dist/group-documents.js';
 import { prepareChatMath } from './chatMath';
 import 'katex/dist/katex.min.css';
 import './chatMath.css';
@@ -66,6 +68,12 @@ export const ChatMarkdown = memo(
             a: ({ href, children }) => {
               const fileId = href ? chatFileId(href) : null;
               if (fileId) return <ChatFileCard key={fileId} id={fileId} />;
+              if (href && groupDocumentReference(href))
+                return report ? (
+                  <span>{children}</span>
+                ) : (
+                  <GroupDocumentLink href={href}>{children}</GroupDocumentLink>
+                );
               return report ? (
                 <span>{children}</span>
               ) : (

@@ -6,7 +6,7 @@ import { latexAuthoringCharter } from './latex-authoring.js';
 import { documentRegisterSchema, resourceInspectionSchema } from '@dock/shared';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, realpathSync } from 'node:fs';
-import { isAbsolute, join, relative } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { repoRoot } from './paths.js';
 import { z } from 'zod';
 import { isDeepStrictEqual } from 'node:util';
@@ -113,6 +113,15 @@ import { ResourceWatch, resourceCharter, interactiveResourceCharter } from './re
 import { ModelPolicy } from './model-policy.js';
 import { Setup } from './setup.js';
 import { CodexSignIn } from './codex-sign-in.js';
+import { GroupNativeBridge, type GroupNativeContext } from './group-native.js';
+import type { GroupIsolationGrant } from './group-isolation.js';
+import { GroupNamespaceStopUnverified } from './group-container.js';
+import type { GroupNativeAuth } from './group-native-auth.js';
+import type {
+  GroupAdmittedCapability,
+  GroupNativeExecution,
+  GroupExecutionResources,
+} from './group-native-execution.js';
 import { BrowserSetup } from './browser-setup.js';
 import { ResourceProbe, inspectResourceProcesses, type ResourceRoot } from './resource-probe.js';
 import {
@@ -206,6 +215,18 @@ export class Runtime {
   private providerReads = new Map<string, number>();
   private nextFinishedCleanup = 0;
   private executing = new Set<string>();
+  private groupAuth = new Map<
+    string,
+    {
+      bridge: GroupNativeBridge;
+      handle: GroupNativeContext;
+      start: (runId: string) => Promise<GroupAdmittedCapability>;
+      resolve: (auth: GroupAdmittedCapability) => void;
+      reject: (error: Error) => void;
+      auth?: GroupAdmittedCapability;
+      starting?: Promise<GroupAdmittedCapability>;
+    }
+  >();
   private interruptedStarts = new Set<string>();
   private locks = new Map<string, Promise<unknown>>();
   private pendingTools = new Map<string, Promise<unknown>>();
@@ -289,20 +310,47 @@ export class Runtime {
     readonly binary: string,
     readonly factory?: ProviderFactory,
     claudeDependencies?: ManagedClaudeDependencies,
+    readonly fixture?: { workspace: string },
   ) {
+    if (fixture && !factory)
+      throw new Error('Development fixtures require a stub provider factory.');
+    if (fixture) this.assertFixtureState();
     this.browserSetup = new BrowserSetup(() => this.codexDiscovery());
     this.documents = new Documents(store, dataDir);
     this.chatImages = new ChatImages(store, dataDir);
     this.workItems = new WorkItems(store);
     this.managedGoals = new ManagedGoals(store, this.workItems, (id) => this.isInternalProject(id));
     this.apps = new ProjectApps(store);
-    this.capacity = new CapacityMonitor(store, dataDir);
-    this.cluster = new ClusterMonitor(store);
-    this.clusterSignIn = new ClusterSignIns(this.cluster);
+    this.capacity = new CapacityMonitor(
+      store,
+      dataDir,
+      fixture
+        ? async () => {
+            throw new Conflict('Fixture collectors are disabled.');
+          }
+        : undefined,
+    );
+    this.cluster = new ClusterMonitor(
+      store,
+      fixture
+        ? async () => {
+            throw new Conflict('Fixture SSH is disabled.');
+          }
+        : undefined,
+    );
+    this.clusterSignIn = new ClusterSignIns(
+      this.cluster,
+      fixture
+        ? () => {
+            throw new Conflict('Fixture SSH sign-in is disabled.');
+          }
+        : undefined,
+    );
     this.clusterNotebooks = new ClusterNotebooks(this.cluster);
     this.cluster.afterCollect = () => this.clusterNotebooks.reconcile();
     this.pulsar = new Pulsar(store, () => this.capacity.status().machine);
     this.quark = new Quark(store, this.pulsar);
+    this.pulsar.statusRead = (read) => this.quark.withDemandSnapshot(read);
     this.quark.executing = () => this.executing;
     this.pulsar.allowanceDecision = (run, protectedChat = false) => {
       const goalReason = this.managedGoals.admissionReason(run);
@@ -327,7 +375,21 @@ export class Runtime {
         },
       };
     };
-    this.localJobs = new LocalJobs(store, dataDir);
+    this.localJobs = new LocalJobs(
+      store,
+      dataDir,
+      fixture
+        ? {
+            tools: {
+              downloader: join(dataDir, 'disabled-native-tool'),
+              ffmpeg: join(dataDir, 'disabled-native-tool'),
+              whisper: join(dataDir, 'disabled-native-tool'),
+              curl: join(dataDir, 'disabled-native-tool'),
+            },
+            model: join(dataDir, 'disabled-model'),
+          }
+        : undefined,
+    );
     this.pulsar.localResources = () => this.localJobs.reservations();
     this.pulsar.hasForegroundLocal = () =>
       this.localJobs
@@ -338,7 +400,10 @@ export class Runtime {
             this.localJobs.priority(job) !== 'background',
         );
     this.nativeChildren = new NativeChildren(store);
-    this.claudeTranscripts = new ClaudeTranscripts(store);
+    this.claudeTranscripts = new ClaudeTranscripts(
+      store,
+      fixture ? join(dataDir, 'disabled-claude') : undefined,
+    );
     this.frontdesk = new Frontdesk(store, dataDir);
     this.claude = new ManagedClaude(
       store,
@@ -359,7 +424,25 @@ export class Runtime {
           }).catch((error) => this.runtimeFailure(agentId, error));
         },
       },
-      claudeDependencies,
+      fixture
+        ? {
+            inspect: async () => {
+              throw new Conflict('Fixture Claude discovery is disabled.');
+            },
+            identity: async () => {
+              throw new Conflict('Fixture Claude identity is disabled.');
+            },
+            account: async () => {
+              throw new Conflict('Fixture Claude accounts are disabled.');
+            },
+            openSignIn: async () => {
+              throw new Conflict('Fixture Claude sign-in is disabled.');
+            },
+            session: () => {
+              throw new Conflict('Fixture Claude sessions are disabled.');
+            },
+          }
+        : claudeDependencies,
     );
     this.modelPolicy = new ModelPolicy(store, (provider) =>
       this.loadModels(
@@ -566,6 +649,44 @@ export class Runtime {
     this.quark.requireManagerLease(active);
     return this.apps.saveForManager(managerId, coordinationReceipt(managerId, key), raw);
   }
+  /** Existing native catalogs stay intact; the typed local client uses the same goal checks. */
+  updateGoalFromClient(managerId: string, runId: string, key: string, raw: unknown, file: string) {
+    const agent = this.store.agent(managerId);
+    if (!this.managedGoals.supported(managerId))
+      throw new Conflict('Only an app-owned project root manager can update goal progress.');
+    if (agent.permission === 'read-only')
+      throw new Conflict('This manager is read-only and cannot submit a local goal request.');
+    const inside = relative(realpathSync(agent.cwd), realpathSync(file));
+    if (!isAbsolute(file) || !inside || inside.startsWith('..') || isAbsolute(inside))
+      throw new Conflict('Save the goal request inside this manager’s project folder.');
+    const input = managedGoalUpdateSchema.parse(raw);
+    const receipt = { kind: 'agent-client.goal-update', managerId, runId, input };
+    if (this.store.db.prepare('SELECT 1 FROM operations WHERE key=?').get(key))
+      return this.store.operation(key, receipt, () => null);
+    const active = this.activeRun(managerId);
+    if (!active || active.id !== runId)
+      throw new Conflict('Goal progress requires the original manager’s active admitted turn.');
+    if (this.quark.isMaintenance(active.id))
+      throw new Conflict('Context maintenance cannot continue goal work.');
+    this.quark.sync();
+    this.quark.requireManagerLease(active);
+    return this.managedGoals.update(managerId, key, input, active, receipt);
+  }
+  private managedGoalContext(agent: PrivateAgent, full = false) {
+    const context = this.managedGoals.context(agent.id);
+    if (!context) return null;
+    const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+    return {
+      ...(full ? { ...context, ...this.managedGoals.view(agent.id) } : context),
+      localClient: {
+        managerId: agent.id,
+        runId: this.activeRun(agent.id)?.id ?? null,
+        command: `DOCK_DATA_DIR=${quote(this.dataDir)} node ${quote(join(repoRoot, 'apps/server/dist/cli.js'))} quark goal-update /absolute/path/to/request.json`,
+        instructions:
+          'If this native conversation has no dock_goal_update, save a JSON request inside the project folder with a new UUID key, this managerId and runId, goalId, expectedRevision, action (continue, wait, blocked or complete), summary and nextAction for continue. Run the command from this admitted turn. Retry the same file/key after an uncertain result. dock_inspect {} retrieves the full current goal and this route without requiring a newer tool schema. This route cannot create, replace, pause or resume goals.',
+      },
+    };
+  }
   private tools(agent: PrivateAgent) {
     if (this.conversationSearch.isAgent(agent.id)) return [];
     if (this.coordinator.isAgent(agent.id)) return this.coordinator.tools();
@@ -624,9 +745,51 @@ export class Runtime {
   socketPath(agentId: string) {
     return join(this.dataDir, 'sockets', `${agentId.slice(0, 18)}.sock`);
   }
+  /** Fixture records may only name owned roots and fake Codex managers/chats.
+   * Reject copied/native state before reconnection or background work. */
+  private assertFixtureAgent(agent: PrivateAgent, starting = false) {
+    if (!this.fixture) return;
+    const allowed = [this.dataDir, this.fixture.workspace].some((root) => {
+      const sub = relative(resolve(root), resolve(agent.cwd));
+      return sub === '' || (sub !== '..' && !sub.startsWith(`..${sep}`) && !isAbsolute(sub));
+    });
+    if (
+      !allowed ||
+      agent.provider !== 'codex' ||
+      agent.nativeRootId ||
+      agent.interview ||
+      (starting && (agent.role !== 'manager' || agent.taskId))
+    )
+      throw new Conflict('This record is unavailable in a stub development fixture.');
+  }
+  private assertFixtureState() {
+    if (!this.fixture) return;
+    for (const project of this.store.projects()) {
+      this.assertFixtureAgent({ ...this.store.agent(project.managerId), cwd: project.root });
+    }
+    for (const agent of this.store.agents()) this.assertFixtureAgent(agent);
+    if (
+      this.store.tasks().some((task) => task.worktree) ||
+      this.store.db.prepare('SELECT 1 FROM local_jobs LIMIT 1').get()
+    )
+      throw new Conflict('Native worktree/local-job state cannot be loaded in a stub fixture.');
+  }
   async initialize() {
+    this.assertFixtureState();
     this.store.recover();
     this.managedGoals.recover();
+    for (const run of this.store.runs(['running']))
+      if (
+        this.store.getSetting(`group:native-stop-intent:${run.id}`) ||
+        this.store.getSetting(`group:native-stop-unverified:${run.id}`)
+      ) {
+        // Reconstruct the occupied slot, never a capability or provider launch.
+        this.executing.add(run.agentId);
+        this.quark.hold(
+          run,
+          'Owned namespace stop is unverified. Retain reservation; no automatic restart.',
+        );
+      }
     this.localJobs.recover();
     this.pulsar.reconcile();
     this.frontdesk.reconcile();
@@ -738,9 +901,248 @@ export class Runtime {
     this.drainScheduled = setImmediate(() => {
       this.drainScheduled = null;
       if (this.stopped) return;
-      this.claudeTranscripts.poll();
+      if (!this.fixture) this.claudeTranscripts.poll();
       void this.drain();
     });
+  }
+  /** Local owning-host API only; no web route, browser parameters or generic
+   * native RPC. Uses the ordinary central policy/scheduler/Pulsar/QUARK lane.
+   * The caller supplies a journal-issued fresh context and awaits admission;
+   * an actual hold stays queued and is visible in QUARK rather than bypassed.
+   */
+  queueGroupAuthentication(
+    bridge: GroupNativeBridge,
+    handle: GroupNativeContext,
+    resources: Omit<GroupIsolationGrant, 'identity' | 'authentication'>,
+  ) {
+    if (this.store.agent(bridge.journal.resolve(handle).agentId).provider !== 'codex')
+      throw new Conflict('Native authentication-only probe is Codex-specific.');
+    return this.queueGroupCapability<GroupNativeAuth>(
+      bridge,
+      handle,
+      (runId) => bridge.probeAuthentication(runId, handle, resources, this.binary),
+      'Owned group native authentication probe; no model or tool turn.',
+    );
+  }
+  /** Owning host acceptance only. No browser path/image/command selection and
+   * no automatic turn or sign-in. Admission remains held until namespace stop. */
+  queueGroupExecutionProbe(
+    bridge: GroupNativeBridge,
+    handle: GroupNativeContext,
+    resources: GroupExecutionResources,
+  ) {
+    return this.queueGroupCapability<GroupNativeExecution>(
+      bridge,
+      handle,
+      (runId) => bridge.probeExecution(runId, handle, resources),
+      'Owned group native full-execution acceptance; preserve native tools and process privacy.',
+    );
+  }
+  /** Exact original native child/run only. Cancelling queued work must retire
+   * its in-memory admitted promise as well as the durable queue row. */
+  async stopGroupCoordinationWorker(workerId: string, runId: string, reason: string) {
+    const run = this.store.run(runId);
+    if (
+      run.agentId !== workerId ||
+      !this.store.getSetting(`group:native-child:${workerId}`) ||
+      !this.store.getSetting(`group:native-auth-agent:${workerId}`)
+    )
+      throw new Conflict('Exact native child/run required.');
+    this.quark.hold(run, reason, true);
+    if (run.status === 'queued') {
+      this.store.updateRun(runId, { status: 'cancelled' });
+      this.groupAuth.get(runId)?.reject(new Conflict(reason));
+      this.groupAuth.delete(runId);
+      this.store.updateAgent(workerId, { status: 'interrupted' });
+    } else if (run.status === 'running')
+      await this.interrupt(workerId, { preserveQueued: true, runId });
+    const final = this.store.run(runId);
+    if (
+      ['running', 'queued'].includes(final.status) ||
+      this.store.getSetting(`group:native-stop-unverified:${runId}`)
+    )
+      throw new GroupNamespaceStopUnverified();
+  }
+  /** Typed original-owner STOP only: cleanup must not need model/usage/resource
+   * admission. The lane revalidates scope, causal revision and exact worker/run;
+   * serialize against Start without borrowing or issuing any manager lease. */
+  async withGroupCoordinationStopControl<T>(managerId: string, body: () => Promise<T>): Promise<T> {
+    return this.withLock(`group-owner-control:${managerId}`, async () => {
+      const agent = this.store.agent(managerId);
+      if (
+        agent.role !== 'manager' ||
+        !this.store.getSetting(`group:native-auth-agent:${managerId}`)
+      )
+        throw new Conflict('Original native group manager required for Stop.');
+      return body();
+    });
+  }
+  /** Authenticated original-owner actions can coordinate an idle group manager
+   * without a model turn. Ordinary admission/physical/manual guards and signed
+   * manager leases still apply. Never available to a non-native/primary manager. */
+  async withGroupCoordinationControl<T>(
+    managerId: string,
+    actionId: string,
+    body: (runId: string) => Promise<T>,
+  ): Promise<T> {
+    return this.withLock(`group-owner-control:${managerId}`, async () => {
+      const agent = this.store.agent(managerId);
+      if (
+        this.stopped ||
+        schedulerSettings(this.store).paused ||
+        agent.role !== 'manager' ||
+        !this.store.getSetting(`group:native-auth-agent:${managerId}`) ||
+        ['interrupted', 'failed', 'waiting'].includes(agent.status)
+      )
+        throw new Conflict('Original group manager control admission is held.');
+      const active = this.activeRun(managerId);
+      if (active) {
+        this.quark.requireManagerLease(active);
+        return body(active.id);
+      }
+      if (this.store.runs(['queued']).some((r) => r.agentId === managerId))
+        throw new Conflict('Original group manager has queued input; wait for its admission.');
+      const queued = this.store.enqueue(
+        managerId,
+        `group-owner-control:${actionId}:${randomUUID()}`,
+        'Owner-confirmed group action; model-free control admission',
+      );
+      const run = this.store.run(queued.id);
+      this.store.setSetting(`group:native-control:${run.id}`, true);
+      try {
+        this.store.setSetting(
+          `pulsar:estimate:${run.id}`,
+          jobEstimateSchema.parse({
+            cpuCores: 0.1,
+            memoryMb: 64,
+            expectedTokens: 100,
+            expectedSeconds: 30,
+          }),
+        );
+        this.quark.sync();
+        if (!this.pulsar.reserve(run, this.executing))
+          throw new Conflict('QUARK holds original group owner control admission.');
+        this.quark.issueManagerLease(run);
+        this.quark.begin(run);
+        this.store.updateRun(run.id, { status: 'running' });
+        this.executing.add(managerId);
+        this.store.event('group.owner_control', agent.projectId, managerId, {
+          runId: run.id,
+          actionId,
+          modelFree: true,
+        });
+        this.quark.requireManagerLease(this.store.run(run.id));
+        return await body(run.id);
+      } finally {
+        if (
+          this.store.run(run.id).status === 'running' ||
+          this.store.run(run.id).status === 'queued'
+        )
+          this.store.updateRun(run.id, { status: 'completed' });
+        if (
+          this.store.agent(managerId).status === 'queued' &&
+          !this.store.runs(['queued']).some((r) => r.agentId === managerId)
+        )
+          this.store.updateAgent(managerId, { status: agent.status });
+        if (!this.activeRun(managerId) || this.activeRun(managerId)?.id === run.id)
+          this.executing.delete(managerId);
+        this.pulsar.settle(run.id);
+        this.quark.sync();
+        this.kick();
+      }
+    });
+  }
+  /** Production group turn/reconciliation, same central admission and exact
+   * permanent dedicated lane. No ordinary provider fallback across restart. */
+  queueGroupNativeRequest(
+    bridge: GroupNativeBridge,
+    handle: GroupNativeContext,
+    resources: GroupExecutionResources,
+  ) {
+    return this.queueGroupCapability<GroupNativeExecution>(
+      bridge,
+      handle,
+      (runId) => bridge.prepareExecution(runId, handle, resources),
+      'Group native request; preserve native capabilities and private process namespace.',
+      true,
+    );
+  }
+  private queueGroupCapability<T extends GroupAdmittedCapability>(
+    bridge: GroupNativeBridge,
+    handle: GroupNativeContext,
+    start: (runId: string) => Promise<T>,
+    purpose: string,
+    production = false,
+  ) {
+    if (
+      this.stopped ||
+      bridge.store !== this.store ||
+      bridge.models !== this.modelPolicy ||
+      bridge.quark !== this.quark
+    )
+      throw new Conflict(
+        'Owning runtime dependencies required for native authentication admission.',
+      );
+    const row = bridge.journal.resolve(handle),
+      agent = this.store.agent(row.agentId);
+    const permanent = this.store.getSetting(`group:native-auth-agent:${agent.id}`) as
+      | { contextId?: string }
+      | undefined;
+    const sameContext = production && permanent?.contextId === row.context.sessionId;
+    const child = this.store.getSetting(`group:native-child:${agent.id}`) as {
+      contextId?: string;
+      managerId?: string;
+      taskId?: string;
+    } | null;
+    const boundChild =
+      production &&
+      child?.contextId === row.context.sessionId &&
+      child.managerId === agent.parentId &&
+      child.taskId === agent.taskId &&
+      !!agent.taskId &&
+      this.store.task(agent.taskId).managerId === agent.parentId;
+    if (
+      agent.nativeRootId ||
+      (agent.threadId && (!sameContext || agent.threadId !== bridge.journal.nativeId(handle))) ||
+      (!!agent.taskId && !boundChild) ||
+      (!!agent.parentId && !boundChild) ||
+      agent.toolPolicy !== 'native' ||
+      (!sameContext && (this.store.runs().some((run) => run.agentId === agent.id) || permanent)) ||
+      (!sameContext &&
+        this.store
+          .runs()
+          .some((run) => run.agentId === agent.id && ['queued', 'running'].includes(run.status))) ||
+      this.store
+        .runs()
+        .some(
+          (run) =>
+            run.agentId === agent.id &&
+            this.store.getSetting(`group:native-stop-unverified:${run.id}`),
+        )
+    )
+      throw new Conflict(
+        'A new dedicated native agent or exact stopped production context is required; native lane cannot be reused across contexts.',
+      );
+    // Persist the dedicated lane BEFORE enqueue. A crash cannot replay this as
+    // an ordinary unconfined model turn. This marker is permanent, not a switch.
+    this.store.setSetting(`group:native-auth-agent:${agent.id}`, {
+      contextId: row.context.sessionId,
+    });
+    const run = this.store.enqueue(agent.id, randomUUID(), purpose);
+    let resolve!: (auth: T) => void, reject!: (error: Error) => void;
+    const admitted = new Promise<T>((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    this.groupAuth.set(run.id, {
+      bridge,
+      handle,
+      start,
+      resolve: (value) => resolve(value as T),
+      reject,
+    });
+    this.kick();
+    return { runId: run.id, admitted };
   }
   private prepareQueuedRun(run: PrivateRun) {
     if (this.preparations.has(run.id)) return;
@@ -751,7 +1153,7 @@ export class Runtime {
         let agent = this.store.agent(run.agentId);
         const prepared = await this.modelPolicy.prepare(agent, run.id);
         if (this.stopped || this.store.run(run.id).status !== 'queued') return;
-        if (this.store.getSetting(`owner-ticket:run:${run.id}`) && agent.taskId) {
+        if (!this.fixture && this.store.getSetting(`owner-ticket:run:${run.id}`) && agent.taskId) {
           const cwd = await this.withLock(agent.taskId, () =>
             ensureWorktree(this.store, this.store.task(agent.taskId!), this.dataDir),
           );
@@ -800,9 +1202,11 @@ export class Runtime {
       this.quark.sync();
       await this.enforceAllowances();
       await this.releaseFinishedWorkers();
-      this.providerMaintenance.tick();
-      await this.conversationSearch.maintain();
-      const scheduling = schedulerSettings(this.store);
+      if (!this.fixture) {
+        this.providerMaintenance.tick();
+        await this.conversationSearch.maintain();
+      }
+      let scheduling = schedulerSettings(this.store);
       if (scheduling.paused) {
         this.schedulingError = null;
         return;
@@ -817,33 +1221,40 @@ export class Runtime {
             .map((a) => a.id),
         ]),
       );
-      this.coordinator.tick();
+      if (!this.fixture) this.coordinator.tick();
       const allQueued = this.store.runs(['queued']);
       const conversationHeads = new Map<string, string>();
       const inputHeads = new Map<string, string>();
-      for (const run of allQueued) {
-        if (!conversationHeads.has(run.agentId)) conversationHeads.set(run.agentId, run.id);
-        // Recovery can be automatic. Keep it in FIFO with direct owner input,
-        // including editing holds, ahead of automatic coordination turns.
-        if (
-          run.sourceId === null &&
-          (run.kind === 'user' || run.kind === 'resume') &&
-          !inputHeads.has(run.agentId)
-        )
-          inputHeads.set(run.agentId, run.id);
-      }
+      const refreshHeads = (runs: PrivateRun[]) => {
+        conversationHeads.clear();
+        inputHeads.clear();
+        for (const run of runs) {
+          if (!conversationHeads.has(run.agentId)) conversationHeads.set(run.agentId, run.id);
+          // Recovery and held owner input retain FIFO ahead of automatic coordination.
+          if (
+            run.sourceId === null &&
+            (run.kind === 'user' || run.kind === 'resume') &&
+            !inputHeads.has(run.agentId)
+          )
+            inputHeads.set(run.agentId, run.id);
+        }
+      };
+      refreshHeads(allQueued);
       const queued = allQueued.filter((run) => !run.queueEdit);
       const queuedIds = new Set(queued.map((run) => run.id));
       for (const id of this.preparedRuns) if (!queuedIds.has(id)) this.preparedRuns.delete(id);
-      const waiting = this.pulsar.ordered(queued);
       const priority = { interactive: 3, high: 2, normal: 1, background: 0 };
-      const local = this.localJobs.candidates();
+      const local = this.fixture ? [] : this.localJobs.candidates();
       if (
         this.pulsar.policy().enabled &&
+        // Foreground assessment only exists here to preempt a running local
+        // compute stage. With no such target, avoid the global demand scan.
+        this.localJobs.hasYieldableBackground() &&
         (this.pulsar.wantsForeground(this.executing) ||
           local.some((job) => this.localJobs.priority(job) !== 'background'))
       )
         await this.localJobs.yieldBackground();
+      const waiting = this.pulsar.ordered(queued);
       const candidates = [
         ...waiting.map((run) => ({
           run,
@@ -856,15 +1267,38 @@ export class Runtime {
           priority: priority[this.localJobs.priority(job)],
         })),
       ];
-      while (candidates.length) {
-        const order = this.pulsar
-          .ordered(candidates.flatMap((c) => (c.run ? [c.run] : [])))
-          .map((r) => r.id);
+      const sortCandidates = (ordered: PrivateRun[]) => {
+        const order = new Map(ordered.map((run, index) => [run.id, index]));
+        for (const candidate of candidates)
+          candidate.priority = candidate.run
+            ? priority[this.pulsar.estimate(candidate.run).priority]
+            : priority[this.localJobs.priority(candidate.local!)];
         candidates.sort(
           (a, b) =>
             b.priority - a.priority ||
-            (a.run && b.run ? order.indexOf(a.run.id) - order.indexOf(b.run.id) : 0),
+            (a.run && b.run ? order.get(a.run.id)! - order.get(b.run.id)! : 0),
         );
+      };
+      sortCandidates(waiting);
+      let orderChanged = false;
+      let inspected = 0;
+      let yieldAt = performance.now() + 20;
+      while (candidates.length) {
+        // A rejected queue must leave time for socket handshakes and owner HTTP controls.
+        if (++inspected % 16 === 0 || performance.now() >= yieldAt) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          yieldAt = performance.now() + 20;
+          if (this.stopped || schedulerSettings(this.store).paused) break;
+          if (this.drainRequested) {
+            refreshHeads(this.store.runs(['queued']));
+            orderChanged = true;
+          }
+        }
+        if (orderChanged) {
+          refreshHeads(this.store.runs(['queued']));
+          sortCandidates(this.pulsar.ordered(candidates.flatMap((c) => (c.run ? [c.run] : []))));
+          orderChanged = false;
+        }
         const candidate = candidates.shift()!;
         const diagnosticSlot =
           candidate.run &&
@@ -873,6 +1307,9 @@ export class Runtime {
             const run = this.activeRun(id);
             return run && this.pulsar.isUrgentDiagnostic(run);
           });
+        // Owner controls may change while an I/O yield or local start is awaited.
+        scheduling = schedulerSettings(this.store);
+        if (scheduling.paused) break;
         if (
           [...this.executing].filter((id) => !this.store.agent(id).nativeRootId).length +
             this.localJobs.runningCount() >=
@@ -881,8 +1318,10 @@ export class Runtime {
           continue;
         if (candidate.local) {
           const decision = this.pulsar.localDecision(candidate.local, this.executing);
-          if (decision.eligible) await this.localJobs.start(candidate.local.id);
-          else this.localJobs.explain(candidate.local.id, decision.reason);
+          if (decision.eligible) {
+            await this.localJobs.start(candidate.local.id);
+            orderChanged = true;
+          } else this.localJobs.explain(candidate.local.id, decision.reason);
           continue;
         }
         const run = candidate.run!;
@@ -953,6 +1392,7 @@ export class Runtime {
         )
           continue;
         if (!this.pulsar.reserve(run, this.executing)) continue;
+        orderChanged = true;
         this.preparedRuns.delete(run.id);
         this.quark.issueManagerLease(run);
         this.quark.begin(run);
@@ -1173,6 +1613,11 @@ export class Runtime {
     }
   }
   async client(agent: PrivateAgent): Promise<Provider> {
+    if (this.store.getSetting(`group:native-auth-agent:${agent.id}`))
+      throw new Conflict(
+        'This dedicated group authentication agent cannot use an ordinary provider runtime.',
+      );
+    this.assertFixtureAgent(agent, true);
     await this.releasing.get(this.nativeChildren.rootId(agent.id));
     if (this.stopped)
       throw new Conflict('sciencewithagents is stopping. Your conversation is retained.');
@@ -1331,6 +1776,8 @@ export class Runtime {
     }
   }
   async loadModels(agent?: PrivateAgent, provider = agent?.provider ?? 'codex') {
+    if (this.fixture && provider !== 'codex')
+      throw new Conflict('Only the demo catalog is available in a stub fixture.');
     if (provider === 'claude') return this.claude.models();
     const read = async (client: Provider) => {
       const response = z
@@ -1679,6 +2126,7 @@ export class Runtime {
   }
   private async startRun(run: PrivateRun) {
     const agent = this.store.agent(run.agentId);
+    this.assertFixtureAgent(agent, true);
     requireActiveAssignment(this.store, agent);
     if (this.coordinator.startsFresh(run)) {
       // Admission serializes this agent. Reset only before this queued turn starts,
@@ -1706,6 +2154,23 @@ export class Runtime {
         return;
       }
     }
+    if (
+      this.store.getSetting(`group:native-auth-agent:${agent.id}`) &&
+      !this.groupAuth.has(run.id)
+    ) {
+      // This freshly admitted queued run never entered a native preparation.
+      // A lost in-memory lane cannot be replayed through the ordinary provider.
+      this.store.updateRun(run.id, { status: 'failed' });
+      this.store.updateAgent(agent.id, { status: 'failed' });
+      this.executing.delete(agent.id);
+      this.system(
+        agent.id,
+        'Native executor unavailable',
+        'The queued native owner was lost. Inspect the saved request; no ordinary-provider fallback or automatic resend.',
+      );
+      this.kick();
+      return;
+    }
     const claimed = this.store.transaction(() => {
       if (this.managedGoals.admissionReason(this.store.run(run.id))) return null;
       const current = this.store.claimQueuedRun(run.id);
@@ -1723,6 +2188,42 @@ export class Runtime {
       return;
     }
     run = claimed;
+    if (this.store.getSetting(`group:native-auth-agent:${agent.id}`)) {
+      const lane = this.groupAuth.get(run.id);
+      if (!lane || this.stopped)
+        throw new Conflict(
+          'Native authentication owner was lost. No ordinary-provider fallback or automatic context reuse.',
+        );
+      try {
+        lane.starting = lane.start(run.id);
+        lane.auth = await lane.starting;
+        lane.resolve(lane.auth);
+        await lane.auth.closed;
+        if (this.store.run(run.id).status === 'running') {
+          const stopping = !!this.store.getSetting(`group:native-stop-intent:${run.id}`);
+          this.store.transaction(() => {
+            this.store.updateRun(run.id, { status: stopping ? 'interrupted' : 'completed' });
+            this.store.updateAgent(agent.id, { status: stopping ? 'interrupted' : 'idle' });
+            this.store.setSetting(`group:native-stop-intent:${run.id}`, null);
+            this.store.setSetting(`group:native-stop-unverified:${run.id}`, null);
+          });
+        }
+        this.executing.delete(agent.id);
+        this.quark.acknowledgeStop(run.id);
+        this.kick();
+      } catch (error) {
+        lane.reject(
+          new Conflict(
+            'Admitted native authentication probe could not complete. Inspect its saved hold/context; no automatic fallback.',
+          ),
+        );
+        throw error;
+      } finally {
+        if (!this.store.getSetting(`group:native-stop-unverified:${run.id}`))
+          this.groupAuth.delete(run.id);
+      }
+      return;
+    }
     if (agent.provider === 'claude') {
       const session = await this.claude.prepare(agent);
       if (this.stopped) return;
@@ -2333,7 +2834,7 @@ export class Runtime {
       ...current,
       ownerRequests: this.workItems.ownerRequests(agentId, { limit: 5 }),
       openWork: this.openWork(agent.projectId),
-      managedGoal: this.managedGoals.context(agentId),
+      managedGoal: this.managedGoalContext(agent),
       jobs: current.jobs.slice(0, 5).map((job) => ({ ...job, reason: job.reason.slice(0, 240) })),
       holds: current.holds
         .slice(0, 6)
@@ -2539,7 +3040,7 @@ export class Runtime {
         agent.role === 'manager' && !agent.interview
           ? this.workItems.ownerRequests(agent.id, { limit: 10 })
           : null,
-      managedGoal: this.managedGoals.context(agent.id),
+      managedGoal: this.managedGoalContext(agent, fullWorkDetails),
       projectNotes: {
         ...notes,
         text: preview(notes.text, 1200),
@@ -3922,6 +4423,7 @@ export class Runtime {
     });
   }
   async tool(agentId: string, key: string, name: string, raw: unknown): Promise<unknown> {
+    if (this.fixture) throw new Conflict('Stub fixtures do not execute coordination tools.');
     const agent = this.store.agent(agentId);
     if (this.conversationSearch.isAgent(agentId))
       throw new Conflict('The conversation finder can only rank its supplied saved evidence.');
@@ -4855,11 +5357,77 @@ export class Runtime {
       return publicTask(result);
     });
   }
+  private async closeGroupRun(run: PrivateRun, reason: string) {
+    const lane = this.groupAuth.get(run.id);
+    // Revoke live capability authority before awaiting close, while retaining
+    // running status and its QUARK/Pulsar reservation until actual closed proof.
+    if (!this.store.getSetting(`group:native-stop-intent:${run.id}`))
+      this.store.setSetting(`group:native-stop-intent:${run.id}`, {
+        requestedAt: now(),
+        reason,
+      });
+    try {
+      const capability = lane?.auth ?? (await lane?.starting);
+      if (!capability) throw new GroupNamespaceStopUnverified();
+      await capability.close();
+      await capability.closed;
+      this.store.transaction(() => {
+        if (this.store.run(run.id).status === 'running')
+          this.store.updateRun(run.id, { status: 'interrupted' });
+        this.store.setSetting(`group:native-stop-intent:${run.id}`, null);
+        this.store.setSetting(`group:native-stop-unverified:${run.id}`, null);
+        this.store.updateAgent(run.agentId, { status: 'interrupted' });
+      });
+      this.executing.delete(run.agentId);
+      this.quark.acknowledgeStop(run.id);
+      lane?.reject(new Conflict(reason));
+      this.groupAuth.delete(run.id);
+    } catch (error) {
+      this.store.setSetting(`group:native-stop-unverified:${run.id}`, true);
+      this.quark.hold(
+        run,
+        'Owned namespace stop is unverified. Retain reservation; no automatic restart.',
+      );
+      this.quark.recordStop(run.id, this.errorText(error));
+      lane?.reject(new Conflict(reason));
+      throw error;
+    }
+  }
   async interrupt(
     agentId: string,
     options?: { preserveQueued: true; runId: string },
   ): Promise<void> {
     const agent = this.store.agent(agentId);
+    if (this.store.getSetting(`group:native-auth-agent:${agentId}`)) {
+      const run = this.activeRun(agentId);
+      if (options && run?.id !== options.runId) return;
+      if (!options?.preserveQueued) {
+        for (const queued of this.store
+          .runs(['queued'])
+          .filter((entry) => entry.agentId === agentId)) {
+          this.store.updateRun(queued.id, { status: 'cancelled' });
+          this.groupAuth
+            .get(queued.id)
+            ?.reject(new Conflict('Queued native authentication probe was cancelled.'));
+          this.groupAuth.delete(queued.id);
+        }
+      }
+      if (run && this.store.getSetting(`group:native-control:${run.id}`)) {
+        this.store.updateRun(run.id, { status: 'interrupted' });
+        this.executing.delete(agentId);
+        this.store.updateAgent(agentId, { status: 'interrupted' });
+        this.quark.acknowledgeStop(run.id);
+        this.kick();
+        return;
+      }
+      if (run) {
+        await this.closeGroupRun(run, 'Native execution was interrupted.');
+      }
+      this.store.updateAgent(agentId, { status: 'interrupted' });
+      this.executing.delete(agentId);
+      this.kick();
+      return;
+    }
     if (agent.provider === 'claude' && agent.nativeRootId) {
       if (options && this.activeRun(agentId)?.id !== options.runId) return;
       const rootRun = this.activeRun(agent.nativeRootId);
@@ -5090,6 +5658,25 @@ export class Runtime {
     );
   }
   private async failRun(run: PrivateRun, error: unknown) {
+    this.groupAuth
+      .get(run.id)
+      ?.reject(new Conflict('Native authentication admission failed; inspect the saved run.'));
+    if (
+      error instanceof GroupNamespaceStopUnverified ||
+      this.store.getSetting(`group:native-stop-unverified:${run.id}`)
+    ) {
+      this.store.setSetting(`group:native-stop-unverified:${run.id}`, true);
+      if (!this.store.getSetting(`group:native-stop-intent:${run.id}`))
+        this.store.setSetting(`group:native-stop-intent:${run.id}`, {
+          requestedAt: now(),
+          reason: 'Owned namespace stop could not be verified during preparation.',
+        });
+      this.quark.hold(
+        run,
+        'Owned namespace stop is unverified. Retain reservation; no automatic restart.',
+      );
+      return;
+    }
     if (this.stopped) return;
     if (this.interruptedStarts.has(run.id) || this.store.run(run.id).status === 'interrupted') {
       if (this.store.agent(run.agentId).provider === 'claude')
@@ -5128,6 +5715,10 @@ export class Runtime {
     if (existing) return existing;
     // Keep the task busy until its shared provider has actually stopped writing.
     const failure = (async () => {
+      if (this.store.getSetting(`group:native-auth-agent:${rootId}`)) {
+        const run = this.activeRun(rootId);
+        if (run) await this.interrupt(rootId, { preserveQueued: true, runId: run.id });
+      }
       if (this.store.agent(rootId).provider === 'claude') await this.claude.forget(rootId);
       await this.clients.get(rootId)?.close();
       this.pendingCompletions.delete(rootId);
@@ -5217,6 +5808,18 @@ export class Runtime {
   }
   async close() {
     this.stopped = true;
+    await Promise.allSettled(
+      [...this.groupAuth].map(async ([runId, lane]) => {
+        const run = this.store.run(runId);
+        if (run.status === 'running')
+          await this.closeGroupRun(run, 'Owning native execution runtime is stopping.');
+        else {
+          if (run.status === 'queued') this.store.updateRun(runId, { status: 'interrupted' });
+          lane.reject(new Conflict('Owning native execution runtime is stopping.'));
+          this.groupAuth.delete(runId);
+        }
+      }),
+    );
     if (this.drainScheduled) clearImmediate(this.drainScheduled);
     this.drainScheduled = null;
 

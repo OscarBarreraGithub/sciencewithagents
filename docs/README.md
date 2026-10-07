@@ -27,6 +27,14 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
   [outside-agent access](AGENT_USAGE_ACCESS.md), [QUARK skill](../skills/quark/SKILL.md)
 - [VS Code companion](../apps/vscode-mirror/README.md) and [bridge maintenance](VSCODE_MIRROR.md)
 - [Saved requests and paged archive review](ARCHIVE_REVIEW.md)
+- [Group collaboration data foundation and remaining gates](GROUP_COLLABORATION.md)
+- [Hosted group membership and revocation foundation](GROUP_HOSTING.md)
+- [Durable hosted receipts, exact source registration and Node transport](GROUP_DELIVERY.md)
+- [Durable group publication and journal limits](GROUP_PUBLICATION.md)
+- [Normal authenticated Groups workflow and current gates](GROUP_WORKFLOW.md)
+- [Native Groups owner setup and isolated sign-in](GROUP_NATIVE_OWNER_SETUP.md)
+- [Persistent local Groups test workflow](GROUP_FIXTURE.md)
+- [Groups presentation and synthetic browser preview](GROUP_UI.md)
 - [Verification](VERIFICATION.md), [maintenance scripts](../scripts/README.md),
   [browser checks](../apps/web/tests/README.md), [legacy workspace](CLASSIC_WORKSPACE.md)
 

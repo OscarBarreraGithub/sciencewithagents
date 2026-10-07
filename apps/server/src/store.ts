@@ -907,8 +907,15 @@ export class Store extends EventEmitter {
   }
   recover() {
     this.transaction(() => {
+      // A stop request is not proof that an owned group PID namespace exited.
+      // Keep its ledger/lease active across shutdown and restart until the
+      // owning runtime obtains actual namespace termination evidence.
       for (const r of this.runs().filter((r) => r.status === 'running'))
-        this.updateRun(r.id, { status: 'interrupted' });
+        if (
+          !this.getSetting(`group:native-stop-intent:${r.id}`) &&
+          !this.getSetting(`group:native-stop-unverified:${r.id}`)
+        )
+          this.updateRun(r.id, { status: 'interrupted' });
       for (const a of this.agents().filter((a) => ['running', 'waiting'].includes(a.status))) {
         this.updateAgent(a.id, { status: 'interrupted', turnId: null });
         this.entry({

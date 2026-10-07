@@ -279,9 +279,15 @@ export class ManagedGoals {
         this.store.updateAgent(agent.id, { status: 'idle' });
     }
   }
-  update(agentId: string, key: string, raw: unknown, run: PrivateRun) {
+  update(
+    agentId: string,
+    key: string,
+    raw: unknown,
+    run: PrivateRun,
+    receipt: unknown = { agentId, name: 'dock_goal_update', raw },
+  ) {
     const input = managedGoalUpdateSchema.parse(raw);
-    return this.store.operation(key, { agentId, name: 'dock_goal_update', raw }, () => {
+    return this.store.operation(key, receipt, () => {
       const value = this.saved(agentId);
       if (!value || !this.supported(agentId) || value.goal.id !== input.goalId)
         throw new Conflict('This turn has no matching owner-enabled goal.');

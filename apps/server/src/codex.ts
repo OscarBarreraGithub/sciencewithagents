@@ -5,10 +5,12 @@ import { dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
+import { performance } from 'node:perf_hooks';
 import WebSocket from 'ws';
 import { z } from 'zod';
 import { disabledMcpOverride } from './mcp.js';
 import type { Agent } from '@dock/shared';
+import type { NativeProviderBoundary } from './native-provider-boundary.js';
 const responseByteLimit = 16 * 1024 * 1024; // Bounded provider output, including encoded images.
 
 /** macOS Unix socket names have a 104-byte bound, including the terminator. */
@@ -73,6 +75,7 @@ export class CodexRpc extends EventEmitter implements Provider {
     { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
   >();
   private stopping = false;
+  private cancelConnect: (() => void) | null = null;
   constructor(
     readonly binary: string,
     socketPath: string,
@@ -83,12 +86,20 @@ export class CodexRpc extends EventEmitter implements Provider {
     readonly webSearch: Agent['webSearch'] = 'disabled',
     readonly imageGeneration = false,
     readonly inheritNative = false,
+    private readonly socketTiming = { openingMs: 20_000, handshakeMs: 5_000 },
+    readonly boundary?: NativeProviderBoundary,
   ) {
     super();
     this.socketPath = providerSocketPath(socketPath);
     this.shortSocket = this.socketPath !== socketPath;
   }
   async start() {
+    // Group admission precedes socket cleanup, config inventory and any process.
+    await this.boundary?.check('codex');
+    if (this.boundary && !this.inheritNative)
+      throw new Error(
+        'Confined native launch requires native inheritance; unmanaged configuration discovery is forbidden.',
+      );
     mkdirSync(dirname(this.socketPath), { recursive: true, mode: 0o700 });
     if (this.shortSocket) {
       const directory = lstatSync(dirname(this.socketPath));
@@ -102,15 +113,27 @@ export class CodexRpc extends EventEmitter implements Provider {
         );
     }
     // A socket belongs to this exact runtime. Do not delete a live listener.
-    if (existsSync(this.socketPath)) {
-      if (await this.connect(300)) {
-        this.socket?.close();
+    if (!this.boundary?.codexSocketManaged && existsSync(this.socketPath)) {
+      const before = lstatSync(this.socketPath);
+      if (!before.isSocket()) throw new Error('The private provider socket path is not a socket.');
+      const existing = await this.connect(performance.now() + this.socketTiming.handshakeMs);
+      if (existing === 'connected') {
+        this.socket?.terminate();
+        this.socket = null;
         throw new Error(
           'A previous agent runtime is still alive. Stop that runtime before starting a replacement.',
         );
       }
-      unlinkSync(this.socketPath);
+      if (existing !== 'absent' || this.stopping)
+        throw new Error('The previous private socket may still be alive; it was not removed.');
+      if (existsSync(this.socketPath)) {
+        const after = lstatSync(this.socketPath);
+        if (before.ino !== after.ino || before.dev !== after.dev)
+          throw new Error('The private provider socket changed during its liveness check.');
+        unlinkSync(this.socketPath);
+      }
     }
+    if (this.stopping) throw new Error('Codex was stopped during startup.');
     const disabledFeatures = [
       'apps',
       'plugins',
@@ -144,6 +167,7 @@ export class CodexRpc extends EventEmitter implements Provider {
       `unix://${this.socketPath}`,
       '-c',
       'analytics.enabled=false',
+      ...(this.boundary?.codexArgs ?? []),
       ...(this.inheritNative
         ? []
         : [
@@ -162,86 +186,125 @@ export class CodexRpc extends EventEmitter implements Provider {
         import.meta.url,
       ),
     );
-    const env: NodeJS.ProcessEnv = { ...process.env, RUST_LOG: 'error' };
+    const env: NodeJS.ProcessEnv = {
+      ...(this.boundary ? this.boundary.environment : process.env),
+      RUST_LOG: 'error',
+    };
     // A launch from VS Code must identify as this app, not inherit the editor's
     // originator override. Native sign-in, settings and capabilities still inherit.
     delete env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE;
-    this.process = spawn(process.execPath, [host, this.binary, JSON.stringify(args)], {
-      cwd: this.cwd,
-      stdio: ['pipe', 'ignore', 'pipe'],
-      detached: false,
-      env,
-    });
+    if (this.stopping) throw new Error('Codex was stopped during startup.');
+    const launch = this.boundary ? this.boundary.spawn.bind(this.boundary) : spawn;
+    this.process = launch(
+      this.boundary?.codexDirect ? this.binary : process.execPath,
+      this.boundary?.codexDirect ? args : [host, this.binary, JSON.stringify(args)],
+      {
+        cwd: this.cwd,
+        stdio: ['pipe', 'ignore', 'pipe'],
+        detached: false,
+        env,
+      },
+    );
     this.process.stderr?.on('data', () => {
       /* Never copy credential-bearing diagnostics into server logs. */
     });
-    this.process.on('error', () =>
-      this.fail(new Error('Codex could not start. Run pnpm dock doctor.')),
-    );
-    this.process.on('exit', () =>
-      this.fail(new Error('The Codex runtime exited. History is retained; resume to reconnect.')),
-    );
-    for (let attempt = 0; attempt < 80; attempt++) {
-      if (this.process.exitCode !== null) throw new Error('Codex exited during startup.');
-      if (await this.connect(150)) break;
-      await delay(50);
-    }
-    if (!this.socket) {
-      await this.close();
-      throw new Error('Codex did not open its private socket.');
-    }
-    this.socket.on('message', (data) => {
-      try {
-        if (Buffer.byteLength(data.toString()) > responseByteLimit)
-          throw new Error('Codex message exceeded its limit.');
-        const value = envelope.parse(JSON.parse(data.toString()));
-        if (value.method) {
-          if (value.id !== undefined) this.emit('request', value.id, value.method, value.params);
-          else this.emit('notification', value.method, value.params);
-        } else if (typeof value.id === 'number') {
-          const pending = this.pending.get(value.id);
-          if (!pending) return;
-          clearTimeout(pending.timer);
-          this.pending.delete(value.id);
-          if (value.error) pending.reject(new Error(value.error.message.slice(0, 1500)));
-          else pending.resolve(value.result);
-        }
-      } catch (error) {
-        this.fail(error instanceof Error ? error : new Error('Invalid Codex message.'));
+    this.process.on('error', () => {
+      this.cancelConnect?.();
+      this.fail(new Error('Codex could not start. Run pnpm dock doctor.'));
+    });
+    this.process.on('exit', () => {
+      this.cancelConnect?.();
+      this.fail(new Error('The Codex runtime exited. History is retained; resume to reconnect.'));
+    });
+    try {
+      const deadline = performance.now() + this.socketTiming.openingMs;
+      while (!this.stopping && performance.now() < deadline) {
+        if (this.process.exitCode !== null || this.process.signalCode !== null)
+          throw new Error('Codex exited during startup.');
+        if (
+          (await this.connect(
+            Math.min(deadline, performance.now() + this.socketTiming.handshakeMs),
+          )) === 'connected'
+        )
+          break;
+        const remaining = deadline - performance.now();
+        if (remaining > 0 && !this.stopping) await delay(Math.min(50, remaining));
       }
-    });
-    this.socket.on('close', () => this.fail(new Error('The Codex connection closed.')));
-    this.socket.on('error', () => this.fail(new Error('The Codex connection failed.')));
-    await this.request('initialize', {
-      clientInfo: { name: 'agent_dock', title: 'sciencewithagents', version: '0.1.0' },
-      capabilities: {
-        experimentalApi: true,
-        optOutNotificationMethods: [
-          'item/reasoning/textDelta',
-          'item/reasoning/summaryTextDelta',
-          'item/reasoning/summaryPartAdded',
-        ],
-      },
-    });
-    this.socket.send(JSON.stringify({ method: 'initialized', params: {} }));
-    this.ready = true;
+      if (!this.socket || this.stopping) throw new Error('Codex did not open its private socket.');
+      this.socket.on('message', (data) => {
+        try {
+          if (Buffer.byteLength(data.toString()) > responseByteLimit)
+            throw new Error('Codex message exceeded its limit.');
+          const value = envelope.parse(JSON.parse(data.toString()));
+          if (value.method) {
+            if (value.id !== undefined) this.emit('request', value.id, value.method, value.params);
+            else this.emit('notification', value.method, value.params);
+          } else if (typeof value.id === 'number') {
+            const pending = this.pending.get(value.id);
+            if (!pending) return;
+            clearTimeout(pending.timer);
+            this.pending.delete(value.id);
+            if (value.error) pending.reject(new Error(value.error.message.slice(0, 1500)));
+            else pending.resolve(value.result);
+          }
+        } catch (error) {
+          this.fail(error instanceof Error ? error : new Error('Invalid Codex message.'));
+        }
+      });
+      this.socket.on('close', () => this.fail(new Error('The Codex connection closed.')));
+      this.socket.on('error', () => this.fail(new Error('The Codex connection failed.')));
+      await this.request('initialize', {
+        clientInfo: { name: 'agent_dock', title: 'sciencewithagents', version: '0.1.0' },
+        capabilities: {
+          experimentalApi: true,
+          optOutNotificationMethods: [
+            'item/reasoning/textDelta',
+            'item/reasoning/summaryTextDelta',
+            'item/reasoning/summaryPartAdded',
+          ],
+        },
+      });
+      this.socket.send(JSON.stringify({ method: 'initialized', params: {} }));
+      if (this.stopping) throw new Error('Codex was stopped during startup.');
+      this.ready = true;
+    } catch (error) {
+      await this.close();
+      throw error;
+    }
   }
-  private connect(timeout: number): Promise<boolean> {
+  private connect(deadline: number): Promise<'connected' | 'absent' | 'uncertain'> {
+    if (this.stopping || performance.now() >= deadline) return Promise.resolve('uncertain');
     return new Promise((resolve) => {
+      const remaining = Math.max(1, Math.ceil(deadline - performance.now()));
       const socket = new WebSocket(`ws+unix://${this.socketPath}:/rpc`, {
         headers: { Host: 'localhost' },
         perMessageDeflate: false,
-        handshakeTimeout: timeout,
+        handshakeTimeout: remaining,
         maxPayload: responseByteLimit,
       });
-      socket.once('open', () => {
-        this.socket = socket;
-        resolve(true);
-      });
-      socket.once('error', () => {
-        socket.close();
-        resolve(false);
-      });
+      let settled = false;
+      const finish = (result: 'connected' | 'absent' | 'uncertain') => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (this.cancelConnect === cancel) this.cancelConnect = null;
+        if (result === 'connected' && !this.stopping && performance.now() < deadline)
+          this.socket = socket;
+        else {
+          if (result === 'connected') result = 'uncertain';
+          socket.terminate();
+        }
+        resolve(result);
+      };
+      const cancel = () => finish('uncertain');
+      const timer = setTimeout(cancel, remaining);
+      this.cancelConnect = cancel;
+      socket.once('open', () => finish('connected'));
+      // Keep the handler through termination: aborting CONNECTING emits an error asynchronously.
+      socket.on('error', (error: NodeJS.ErrnoException) =>
+        finish(['ENOENT', 'ECONNREFUSED'].includes(error.code ?? '') ? 'absent' : 'uncertain'),
+      );
+      socket.once('close', () => finish('uncertain'));
     });
   }
   request(method: string, params: unknown = {}): Promise<unknown> {
@@ -282,9 +345,11 @@ export class CodexRpc extends EventEmitter implements Provider {
   async close() {
     this.stopping = true;
     this.ready = false;
-    this.socket?.close();
+    this.cancelConnect?.();
+    this.socket?.terminate();
+    this.socket = null;
     this.process?.kill('SIGTERM');
-    if (this.process && this.process.exitCode === null) {
+    if (this.process && this.process.exitCode === null && this.process.signalCode === null) {
       const proc = this.process;
       await Promise.race([
         new Promise<void>((resolve) => proc.once('exit', () => resolve())),
@@ -295,6 +360,7 @@ export class CodexRpc extends EventEmitter implements Provider {
     this.fail(new Error('Codex was stopped.'));
     this.removeAllListeners();
     if (
+      !this.boundary?.codexSocketManaged &&
       this.shortSocket &&
       this.process &&
       (this.process.exitCode !== null || this.process.signalCode !== null)

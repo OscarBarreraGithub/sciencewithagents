@@ -4,6 +4,7 @@ type EntryOptions = NonNullable<Parameters<typeof createServer>[2]>;
 /** Services main creates once and both computer entries must receive. */
 export type SharedEntryServices = Pick<
   EntryOptions,
+  | 'groupHost'
   | 'phone'
   | 'notebookGateway'
   | 'terminals'

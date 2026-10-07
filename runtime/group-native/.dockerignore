@@ -1,0 +1,11 @@
+*
+!Dockerfile
+!init.mjs
+!rpc-relay.mjs
+!connect.mjs
+!chromium
+!canary.py
+
+!claude-stream.mjs
+
+!group-documents.py

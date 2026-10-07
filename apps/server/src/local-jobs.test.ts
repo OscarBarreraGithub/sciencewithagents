@@ -112,9 +112,12 @@ it('retains an idempotent local job, fixed argument stages, transcript and one m
 it('preempts only owned background local compute, retains memory and resumes the same process', async () => {
   const f = fixture(true);
   const job = jobs.create({ ...request(), resources: { priority: 'background' } });
+  expect(jobs.hasYieldableBackground()).toBe(false);
   await jobs.start(job.id);
   await vi.waitFor(() => expect(jobs.get(job.id).phase).toBe('transcribing'));
+  expect(jobs.hasYieldableBackground()).toBe(true);
   await jobs.yieldBackground();
+  expect(jobs.hasYieldableBackground()).toBe(false);
   expect(jobs.get(job.id)).toMatchObject({ status: 'paused', autoPaused: true });
   expect(jobs.reservations()[0]).toMatchObject({ cpuCores: 0, memoryMb: 1024 });
   await jobs.start(job.id);

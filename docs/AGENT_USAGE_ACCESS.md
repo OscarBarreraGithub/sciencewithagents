@@ -86,6 +86,34 @@ same receipt. Changing a previously accepted request under its key is rejected. 
 key only for genuinely new authorized work. The client cannot raise a saved cap, resume holds,
 approve permissions or integrate results. Those remain owner controls in the app.
 
+## Existing manager goal progress
+
+An app-owned project manager whose Codex tool catalog predates `dock_goal_update` receives
+`quark goal-update /absolute/project/request.json` instructions in its next admitted turn.
+`dock_inspect {}` reads the full current goal and supplies that manager and turn ID, with the
+installation's exact command. Save the request inside the manager's project folder:
+
+```json
+{
+  "key": "NEW_REQUEST_UUID",
+  "managerId": "MANAGER_UUID",
+  "runId": "CURRENT_ADMITTED_RUN_UUID",
+  "goalId": "GOAL_UUID",
+  "expectedRevision": 1,
+  "action": "continue",
+  "summary": "Reviewed the first result.",
+  "nextAction": "Implement the reviewed correction."
+}
+```
+
+Actions are `continue`, `wait`, `blocked` or `complete`; `continue` requires `nextAction`.
+The host applies the same goal revision, completion reconciliation and manager lease checks
+as the native tool. A delayed request cannot borrow a later turn's authority. Retry the exact
+file/key after a lost acknowledgement; an accepted receipt remains readable after the original
+turn finishes or the app restarts. This route cannot create, replace, pause or resume goals,
+change native tools or start a model turn. It needs the running installation's updated server;
+an updated CLI alone does not add the endpoint to an older server.
+
 ## Instructions and installation boundary
 
 The reusable [QUARK skill](../skills/quark/SKILL.md) ships with the source. An outside agent

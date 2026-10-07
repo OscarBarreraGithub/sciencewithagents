@@ -34,8 +34,11 @@ archive and host recovery evidence remain available if provider resume is unavai
 New orchestration starts fresh. Historical imports preserve their actual provenance;
 complete team indexing starts only when sciencewithagents observes the original activity.
 In the checked Codex API, `thread/resume` cannot override `dynamicTools`. Existing rollouts retain their
-saved tool definitions. Do not force a new context merely to add a feature to an old thread;
-offer an explicit new context and retain the old archive. The optional newly documented
+saved tool definitions. Existing project managers receive a typed local-client fallback for
+goal progress on their next admitted turn, preserving the thread, model and native tools.
+`dock_inspect {}` reads the full goal and the current turn's fallback instructions; writes
+require that original turn's manager lease, matching goal/revision and a durable receipt.
+Do not force a new context merely to add a feature to an old thread. The optional newly documented
 paginated provider history mode is not certified here; unsupported full reads/resume fail
 closed rather than manufacturing recovery from list summaries.
 

@@ -57,6 +57,8 @@ export function initializeScheduling(store: Store) {
   });
 }
 export class Pulsar {
+  /** Host supplies a synchronous read scope; admission/reservation always rechecks live state. */
+  statusRead: <T>(read: () => T) => T = (read) => read();
   allowanceDecision: (
     run: PrivateRun,
     protectedChat?: boolean,
@@ -124,6 +126,12 @@ export class Pulsar {
   }
   hasReservation(runId: string) {
     return this.lease(runId) !== null;
+  }
+  /** Existing admitted estimate, for the owned group process namespace only. */
+  admittedResources(runId: string) {
+    const lease = this.lease(runId);
+    if (!lease || lease.finishedAt) throw new Conflict('Current Pulsar reservation required.');
+    return { cpuCores: lease.estimate.cpuCores, memoryMb: lease.estimate.memoryMb };
   }
   /** Includes admitted jobs awaiting provider startup; no second reservation ledger. */
   allowanceReservations(since: number) {
@@ -337,32 +345,42 @@ export class Pulsar {
     );
   }
   ordered(runs: PrivateRun[]) {
-    if (!this.policy().enabled)
-      return [...runs].sort(
+    const enabled = this.policy().enabled,
+      now = this.clock();
+    // Read SQLite-backed keys once per run, never from Array.sort's comparator.
+    // Nothing survives this call: a new admission immediately refreshes fairness.
+    return runs
+      .map((run) => {
+        const priority = this.estimate(run).priority;
+        return {
+          run,
+          diagnostic: Number(this.isInteractiveDiagnostic(run)),
+          priority: rank[priority],
+          background: this.backgroundScore(run, priority, now),
+          weight: this.projectWeight(run),
+          manager: enabled
+            ? String(this.store.getSetting(`pulsar:last-manager:${this.manager(run)}`) ?? '')
+            : '',
+        };
+      })
+      .sort(
         (a, b) =>
-          Number(this.isInteractiveDiagnostic(b)) - Number(this.isInteractiveDiagnostic(a)) ||
-          rank[this.estimate(b).priority] - rank[this.estimate(a).priority] ||
-          this.backgroundScore(b) - this.backgroundScore(a) ||
-          this.projectWeight(b) - this.projectWeight(a),
-      );
-    return [...runs].sort(
-      (a, b) =>
-        Number(this.isInteractiveDiagnostic(b)) - Number(this.isInteractiveDiagnostic(a)) ||
-        rank[this.estimate(b).priority] - rank[this.estimate(a).priority] ||
-        this.backgroundScore(b) - this.backgroundScore(a) ||
-        this.projectWeight(b) - this.projectWeight(a) ||
-        String(this.store.getSetting(`pulsar:last-manager:${this.manager(a)}`) ?? '').localeCompare(
-          String(this.store.getSetting(`pulsar:last-manager:${this.manager(b)}`) ?? ''),
-        ) ||
-        a.createdAt.localeCompare(b.createdAt),
-    );
+          b.diagnostic - a.diagnostic ||
+          b.priority - a.priority ||
+          b.background - a.background ||
+          b.weight - a.weight ||
+          (enabled
+            ? a.manager.localeCompare(b.manager) || a.run.createdAt.localeCompare(b.run.createdAt)
+            : 0),
+      )
+      .map((row) => row.run);
   }
   /** Relative effort is a queue hint, never a provider allowance or CPU entitlement. */
-  private backgroundScore(run: PrivateRun) {
-    if (this.estimate(run).priority !== 'background') return 0;
+  private backgroundScore(run: PrivateRun, priority: JobEstimate['priority'], now: number) {
+    if (priority !== 'background') return 0;
     const taskId = this.taskId(run);
     const ticket = taskId ? this.store.task(taskId).ownerTicket : undefined;
-    const ageHours = Math.max(0, (this.clock() - Date.parse(run.createdAt)) / 3600_000);
+    const ageHours = Math.max(0, (now - Date.parse(run.createdAt)) / 3600_000);
     return (
       (ticket?.priority ?? 3) * 20 - (ticket?.estimatedCompute ?? 3) * 2 + Math.min(ageHours, 168)
     );
@@ -918,9 +936,11 @@ export class Pulsar {
       )
       .all(...args)
       .reverse();
-    const jobs = [...active, ...history]
-      .map((row) => JSON.parse(String(row.body)) as PrivateRun)
-      .map((run) => this.statusRow(run));
+    const jobs = this.statusRead(() =>
+      [...active, ...history]
+        .map((row) => JSON.parse(String(row.body)) as PrivateRun)
+        .map((run) => this.statusRow(run)),
+    );
     return pulsarStatusSchema.parse({
       name: 'QUARK',
       policy: this.policy(),

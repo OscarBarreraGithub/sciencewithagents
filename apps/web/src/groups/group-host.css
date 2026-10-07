@@ -1,0 +1,159 @@
+.group-host-root {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+}
+.group-host-status,
+.group-host-members {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8rem;
+}
+.group-host-status p {
+  max-width: 65ch;
+}
+.group-host-members[open] {
+  max-height: 40%;
+  overflow: auto;
+}
+.group-host-members label {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.group-host-members textarea,
+.group-host-members input:not([type='radio']) {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+}
+.group-host-notice,
+.group-host-root > p[role='alert'] {
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+}
+.group-host-workspace {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.group-host-workspace .groups-workspace {
+  height: 100%;
+}
+.home-shell:has(.group-host-workspace) .home-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.home-shell:has(.group-host-workspace) .group-host-root {
+  flex: 1;
+  overflow: hidden;
+}
+/* The normal Home chrome must leave actual reading space inside a group. */
+.home-shell:has(.group-host-workspace) .home-topline {
+  display: none;
+}
+.home-shell:has(.group-host-workspace) .home-content {
+  padding-top: 0;
+}
+.group-host-workspace .groups-workspace-heading {
+  flex-wrap: wrap;
+}
+.group-host-workspace .groups-workspace-heading > div {
+  flex: 1;
+  min-width: min(100%, 220px);
+}
+@media (max-height: 500px) {
+  .home-shell:has(.group-host-workspace) .group-host-root {
+    overflow: auto;
+  }
+  .group-host-workspace {
+    flex-shrink: 0;
+    min-height: 24rem;
+  }
+  .home-shell:has(.group-host-workspace) .home-content {
+    padding-inline: 0;
+  }
+  .group-host-workspace .groups-workspace-heading {
+    padding: 4px 12px;
+  }
+  .group-host-members {
+    padding-block: 0;
+  }
+}
+
+/* Management stays available without displacing the conversation by default. */
+.group-host-controls {
+  flex: 0 0 auto;
+  min-width: 0;
+  border-bottom: 1px solid var(--line);
+}
+.group-host-controls > summary {
+  padding: 10px 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.group-host-controls[open] {
+  max-height: 65%;
+  overflow: auto;
+}
+.group-host-controls .group-host-members[open] {
+  max-height: none;
+  overflow: visible;
+}
+.group-host-controls .group-git-panel {
+  margin: 8px 12px;
+}
+.group-host-workspace .groups-workspace-heading {
+  padding: 6px 12px;
+  gap: 10px;
+}
+.group-host-workspace .groups-workspace-heading > div {
+  min-width: 0;
+}
+.group-host-workspace .groups-workspace-heading h1 {
+  font-size: 1.05rem;
+}
+.group-host-workspace .groups-panel-heading {
+  padding: 8px 12px;
+}
+.group-host-workspace .groups-panel-heading > p {
+  display: none;
+}
+
+.group-host-workspace .group-agent-request {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 6px 12px;
+  flex: 0 0 auto;
+}
+.group-host-workspace .group-agent-request label {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+}
+.group-host-workspace .group-agent-request select {
+  min-height: 36px;
+  max-width: 100%;
+  font: inherit;
+}
+.group-host-workspace .group-native-receipts {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.group-host-workspace .group-native-receipts > summary {
+  padding: 6px 12px;
+  cursor: pointer;
+}

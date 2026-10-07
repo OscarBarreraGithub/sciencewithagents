@@ -223,13 +223,19 @@ export class LocalJobs {
           expectedFinishAt: null,
         });
   }
+  private yieldableBackground(job: LocalJob) {
+    return (
+      job.status === 'running' &&
+      this.priority(job) === 'background' &&
+      ['transcribing', 'converting'].includes(job.phase)
+    );
+  }
+  hasYieldableBackground() {
+    return this.all().some((job) => this.yieldableBackground(job));
+  }
   async yieldBackground() {
     for (const job of this.all())
-      if (
-        job.status === 'running' &&
-        this.priority(job) === 'background' &&
-        ['transcribing', 'converting'].includes(job.phase)
-      )
+      if (this.yieldableBackground(job))
         try {
           await this.pause(job.id, true);
         } catch {

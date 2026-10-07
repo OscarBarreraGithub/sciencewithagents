@@ -1,0 +1,31 @@
+/* Loaded after Conversation styles. Shared by the normal host and test host. */
+.group-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.group-chat-cue {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  margin: 0;
+  padding: 6px 12px;
+  overflow-wrap: anywhere;
+  background: #e8ece8;
+}
+.group-chat-cue.private {
+  background: #f2e8da;
+  border-left: 4px solid #866137;
+}
+.group-chat-error {
+  margin: 0;
+  padding: 6px 12px;
+  overflow-wrap: anywhere;
+}
+
+.group-native-receipts {
+  flex-shrink: 0;
+  max-height: 30vh;
+  overflow: auto;
+}

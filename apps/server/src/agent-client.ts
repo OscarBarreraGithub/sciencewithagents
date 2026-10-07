@@ -14,6 +14,8 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import {
   agentAppRequestSchema,
+  agentManagedGoalUpdateRequestSchema,
+  managedGoalSchema,
   agentTaskRequestSchema,
   agentTaskResultSchema,
   projectAppSchema,
@@ -143,6 +145,14 @@ export function registerAgentClient(
       const { key, managerId, ...input } = body.request;
       return runtime.saveAppFromClient(managerId, key, input, body.file);
     });
+    client.post('/api/agent-client/goal-updates', async (request) => {
+      const body = z
+        .object({ request: agentManagedGoalUpdateRequestSchema, file: z.string().min(1).max(4096) })
+        .strict()
+        .parse(request.body);
+      const { key, managerId, runId, ...input } = body.request;
+      return runtime.updateGoalFromClient(managerId, runId, key, input, body.file);
+    });
     client.post('/api/agent-client/tasks', async (request, reply) => {
       const input = agentTaskRequestSchema.parse(request.body);
       if (
@@ -200,11 +210,12 @@ export async function agentClientCommand(
         'quark jobs [project-id]',
         'quark dispatch <request.json>',
         'quark app <request.json>',
+        'quark goal-update <request.json>',
       ],
       guide: 'docs/AGENT_USAGE_ACCESS.md',
     };
   const reads = ['projects', 'usage', 'resources', 'cluster', 'jobs'];
-  const writes = ['dispatch', 'app'];
+  const writes = ['dispatch', 'app', 'goal-update'];
   if (!reads.includes(command) && !writes.includes(command))
     throw new Error('Unknown QUARK command. Use quark help.');
   if (args.length > (['jobs', ...writes].includes(command) ? 1 : 0))
@@ -219,8 +230,14 @@ export async function agentClientCommand(
         throw new Error('Use a JSON request file under 64 KB.');
       const value: unknown = JSON.parse(readFileSync(fd, 'utf8'));
       body =
-        command === 'app'
-          ? { request: agentAppRequestSchema.parse(value), file: realpathSync(args[0]) }
+        command === 'app' || command === 'goal-update'
+          ? {
+              request: (command === 'app'
+                ? agentAppRequestSchema
+                : agentManagedGoalUpdateRequestSchema
+              ).parse(value),
+              file: realpathSync(args[0]),
+            }
           : agentTaskRequestSchema.parse(value);
     } finally {
       closeSync(fd);
@@ -235,7 +252,14 @@ export async function agentClientCommand(
       'The private QUARK client is unavailable. Open sciencewithagents on this computer and use its configured data directory.',
     );
   }
-  const path = command === 'app' ? 'apps' : body ? 'tasks' : command;
+  const path =
+    command === 'app'
+      ? 'apps'
+      : command === 'goal-update'
+        ? 'goal-updates'
+        : body
+          ? 'tasks'
+          : command;
   let response: Response;
   try {
     response = await fetch(
@@ -283,6 +307,7 @@ export async function agentClientCommand(
   if (command === 'cluster') return clusterStatusSchema.parse(value);
   if (command === 'projects') return z.array(projectSchema).parse(value);
   if (command === 'jobs') return jobsSchema.parse(value);
+  if (command === 'goal-update') return managedGoalSchema.parse(value);
   if (command === 'app')
     return z
       .union([projectAppSchema, z.object({ removed: z.literal(true), id: z.string() }).strict()])

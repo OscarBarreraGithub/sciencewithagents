@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src",
+    "group-documents-preview",
+    "tests/group-documents",
+    "vite.group-documents.config.ts",
+    "playwright.group-documents.config.ts"
+  ]
+}

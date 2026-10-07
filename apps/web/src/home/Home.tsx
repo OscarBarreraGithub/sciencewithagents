@@ -1,3 +1,4 @@
+import { GroupsApp } from '../groups/GroupsApp';
 import { OwnerTerminal } from '../OwnerTerminal';
 import { BugReport } from './BugReport';
 import { LatexApp } from '../Documents';
@@ -51,6 +52,7 @@ import { seedProjectBrief } from './SpawnBrief';
 // Document titles only. Every route below keeps its existing screen.
 const titles: Record<string, string> = {
   home: 'Home',
+  groups: 'Groups',
   welcome: 'Welcome and setup',
   apps: 'Apps',
   latex: 'LaTeX',
@@ -90,6 +92,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const nav = [
   { key: 'chats', label: 'Chats', icon: MessageCircle },
   { key: 'apps', label: 'Apps', icon: LayoutGrid },
+  { key: 'groups', label: 'Groups', icon: MessageCircle },
   { key: 'work', label: 'QUARK', icon: Layers3 },
 ];
 const section = (page: string) =>
@@ -507,6 +510,8 @@ export function Home() {
                 location.hash = seedProjectBrief(seed);
               }}
             />
+          ) : page === 'groups' ? (
+            <GroupsApp key={apiScope()} route={currentRoute} />
           ) : page === 'apps' ? (
             <AppsGallery key={apiScope()} route={currentRoute} computer={selectedHost(data)} />
           ) : page === 'latex' ? (

@@ -1,3 +1,5 @@
+export * from './groups.js';
+export * from './group-membership.js';
 export * from './mirror-outbox.js';
 export * from './queued-message.js';
 export * from './work-items.js';

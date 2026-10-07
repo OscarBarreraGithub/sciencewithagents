@@ -1,0 +1,54 @@
+.group-actions {
+  min-width: 0;
+  padding: 1rem;
+  overflow-wrap: anywhere;
+}
+.group-actions-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+.group-actions h2,
+.group-actions h3 {
+  margin: 0.4rem 0;
+}
+.group-actions p {
+  line-height: 1.5;
+}
+.group-actions label {
+  display: grid;
+  gap: 0.5rem;
+}
+.group-actions textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 6rem;
+  font: inherit;
+  padding: 0.65rem;
+  resize: vertical;
+}
+.group-actions article {
+  border: 1px solid #8b8b8b;
+  border-radius: 0.5rem;
+  padding: 0.8rem;
+  margin-top: 0.8rem;
+}
+.group-actions button {
+  min-height: 44px;
+  padding: 0.6rem 0.8rem;
+  font: inherit;
+  cursor: pointer;
+}
+.group-actions-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.group-actions-ref {
+  font-size: 0.85rem;
+}
+.group-actions-confirm {
+  border-width: 2px !important;
+}

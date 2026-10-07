@@ -1,0 +1,91 @@
+.group-git-panel {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border, #b6bcb6);
+  border-radius: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.group-git-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.group-git-panel details {
+  margin-top: 14px;
+}
+.group-git-panel label {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0;
+  align-items: stretch;
+  color: inherit;
+  text-align: left;
+}
+.group-git-panel select {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  border-radius: 8px;
+  font: inherit;
+}
+.group-git-panel fieldset {
+  min-width: 0;
+  margin: 12px 0;
+  border: 1px solid var(--border, #b6bcb6);
+  border-radius: 8px;
+}
+.group-git-panel input[type='checkbox'] {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.group-git-panel fieldset label {
+  flex-direction: row;
+  align-items: center;
+}
+.group-git-panel button {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font: inherit;
+  border: 1px solid var(--line, #b6bcb6);
+  background: var(--soft, #f2f0e9);
+  color: var(--ink, #303830);
+  cursor: pointer;
+}
+.group-git-panel button:hover:not(:disabled) {
+  border-color: var(--ink, #303830);
+  background: var(--paper, #fffefa);
+}
+.group-git-panel button:focus-visible {
+  outline: 2px solid var(--accent, #d95735);
+  outline-offset: 2px;
+}
+.group-git-panel button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.group-git-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.group-git-buttons button {
+  flex: 1 1 12rem;
+}
+.group-git-panel li {
+  overflow-wrap: anywhere;
+}
+.group-git-retry {
+  padding: 10px;
+  border: 1px solid var(--border, #b6bcb6);
+  border-radius: 8px;
+}

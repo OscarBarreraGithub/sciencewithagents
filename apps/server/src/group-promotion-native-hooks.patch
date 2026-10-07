@@ -1,0 +1,262 @@
+diff --git a/apps/server/src/group-native.ts b/apps/server/src/group-native.ts
+--- a/apps/server/src/group-native.ts
++++ b/apps/server/src/group-native.ts
+@@ -1,3 +1,7 @@
++import {
++  groupPromotionNativeScope,
++  groupPromotionNativeMode,
++} from './group-promotion-native-synthesis.js';
+ import { groupNativeChildScope } from './group-native-coordination-scope.js';
+ import { randomUUID, createHash } from 'node:crypto';
+ import { DatabaseSync } from 'node:sqlite';
+@@ -54,6 +58,7 @@
+   const extension = import.meta.url.endsWith('.ts') ? 'ts' : 'js';
+   const hash = createHash('sha256');
+   for (const name of [
++    'group-promotion-native-synthesis',
+     'group-native',
+     'group-container',
+     'group-native-execution',
+@@ -691,10 +696,23 @@
+     production: boolean,
+   ) {
+     const { row, agent: original } = this.#admitted(runId, handle);
++    const synthesis = production
++      ? groupPromotionNativeScope(
++          this.store,
++          this.journal.repository,
++          this.journal,
++          handle,
++          resources,
++        )
++      : null;
++    const synthesisBinding = synthesis
++      ? groupPromotionNativeMode(this.store, row.agentId)!
++      : undefined;
+     const retained = production ? this.journal.savedContainer(handle) : null;
+-    const childScope = production
+-      ? groupNativeChildScope(this.store, this.journal, handle, resources)
+-      : null;
++    const childScope =
++      production && !synthesis
++        ? groupNativeChildScope(this.store, this.journal, handle, resources)
++        : null;
+     if (!retained && (original.threadId || this.journal.nativeId(handle)))
+       throw new GroupIsolationBlocked('Fresh native context required.');
+     const agent = await this.models.prepare(original, runId);
+@@ -730,6 +748,7 @@
+     ]);
+     const admitted = () => {
+       this.#admitted(runId, handle);
++      synthesis?.check();
+       mounts.check();
+       if (Date.now() >= resources.expiresAt)
+         throw new GroupIsolationBlocked('Guest grant expired.');
+@@ -741,7 +760,8 @@
+           installationId: row.context.installationId,
+           groupId: row.context.groupId,
+           memberId: row.context.memberId,
+-          contextId: childScope?.context.sessionId ?? row.context.sessionId,
++          contextId:
++            synthesis?.context.sessionId ?? childScope?.context.sessionId ?? row.context.sessionId,
+           visibility: row.context.visibility,
+         },
+         image: resources.image,
+@@ -768,7 +788,7 @@
+           );
+         }
+       },
+-      retained?.volume ?? childScope?.volume,
++      retained?.volume ?? synthesis?.volume ?? childScope?.volume,
+     );
+     const execution = new GroupNativeExecution(
+       container,
+@@ -779,7 +799,8 @@
+       handle,
+       admitted,
+       {
+-        retained: !!retained || !!childScope,
++        retained: !!retained || !!childScope || !!synthesis,
++        ...(synthesis ? { workspace: synthesis.workspace, synthesisBinding } : {}),
+         ...(childScope ? { workspace: childScope.workspace } : {}),
+         tools: (resources.tools ?? []).map((tool) => ({
+           ...tool,
+diff --git a/apps/server/src/group-native-execution.ts b/apps/server/src/group-native-execution.ts
+--- a/apps/server/src/group-native-execution.ts
++++ b/apps/server/src/group-native-execution.ts
+@@ -1,3 +1,9 @@
++import {
++  type GroupPromotionNativeBinding,
++  groupPromotionNativeCodexArgs,
++  groupPromotionNativeClaudeArgs,
++} from './group-promotion-native-synthesis.js';
++import { managedMcpConfig } from './mcp.js';
+ import { randomUUID } from 'node:crypto';
+ import { EventEmitter } from 'node:events';
+ import { runNativeGitExport, type NativeGitExportRequest } from './group-native-git-export.js';
+@@ -72,6 +78,7 @@
+     private readonly admitted: () => void,
+     private readonly options: {
+       retained?: boolean;
++      synthesisBinding?: GroupPromotionNativeBinding;
+       workspace?: string;
+       tools?: ClaudeHostTool[];
+       recordCheck?: (kind: GroupNativeCheck, detail: unknown) => void;
+@@ -81,9 +88,19 @@
+   }
+   get workspace() {
+     const path = this.options.workspace ?? '/workspace';
+-    if (path !== '/workspace' && !/^\/workspace\/tasks\/[a-f0-9-]{36}$/.test(path))
++    if (
++      path !== '/workspace' &&
++      !(
++        this.options.synthesisBinding
++          ? /^\/tmp\/group-synthesis\/[a-f0-9-]{36}$/
++          : /^\/workspace\/tasks\/[a-f0-9-]{36}$/
++      ).test(path)
++    )
+       throw new GroupIsolationBlocked('Host-issued task workspace required.');
+     return path;
++  }
++  get synthesisBinding() {
++    return this.options.synthesisBinding;
+   }
+   async initialize() {
+     this.admitted();
+@@ -123,7 +140,7 @@
+       this.workspace,
+       false,
+       this.agent.pluginsEnabled,
+-      'v2',
++      this.synthesisBinding ? 'off' : 'v2',
+       this.agent.webSearch,
+       this.agent.imageGeneration,
+       true,
+@@ -171,7 +188,11 @@
+       codexDirect: true,
+       codexSocketManaged: true,
+       claudeDirect: true,
+-      codexArgs: ['-c', 'cli_auth_credentials_store="file"'],
++      codexArgs: [
++        '-c',
++        'cli_auth_credentials_store="file"',
++        ...(this.synthesisBinding ? groupPromotionNativeCodexArgs() : []),
++      ],
+       environment: Object.freeze({
+         HOME: '/home/agent',
+         CODEX_HOME: '/home/agent/.codex',
+@@ -200,7 +221,12 @@
+         }
+         return this.container.spawn(
+           binary.endsWith('/claude')
+-            ? ['node', '/opt/dock/claude-stream.mjs', ...actual]
++            ? [
++                'node',
++                '/opt/dock/claude-stream.mjs',
++                ...actual,
++                ...(this.synthesisBinding ? groupPromotionNativeClaudeArgs() : []),
++              ]
+             : [binary, ...actual],
+           this.workspace,
+         );
+@@ -312,6 +338,7 @@
+     this.#adapter.respond(pending.id, value);
+   }
+   #messageSource(nativeId: string) {
++    if (this.synthesisBinding) return undefined; // Not a chat/feed source; no private-message alias either.
+     if (this.journal.resolve(this.handle).context.visibility === 'shared')
+       return this.journal.publicationSource(this.handle, nativeId);
+     this.journal.retainPrivateMessage(this.handle, nativeId);
+@@ -360,6 +387,11 @@
+   }
+   async turn(prompt: string, requestId?: string): Promise<GroupTurnResult> {
+     this.admitted();
++    if (
++      this.synthesisBinding &&
++      (this.options.tools?.length || this.agent.permission !== 'read-only')
++    )
++      throw new GroupIsolationBlocked('Synthesis must have no work mutation capabilities.');
+     z.string().trim().min(1).max(200000).parse(prompt);
+     if (this.#closing || this.#busy)
+       throw new GroupIsolationBlocked('Owned native turn is unavailable or busy.');
+@@ -399,6 +431,14 @@
+       const response = z.object({ thread: z.object({ id: z.string().min(1) }) }).parse(
+         await adapter.request(retainedId ? 'thread/resume' : 'thread/start', {
+           ...(retainedId ? { threadId: retainedId } : {}),
++          ...(this.synthesisBinding
++            ? {
++                config: {
++                  mcp_servers: await managedMcpConfig(adapter, []),
++                  web_search: 'disabled',
++                },
++              }
++            : {}),
+           dynamicTools: (this.options.tools ?? []).map(({ name, description, inputSchema }) => ({
+             type: 'function',
+             name,
+@@ -410,8 +450,9 @@
+           sandbox: this.agent.permission === 'read-only' ? 'read-only' : 'danger-full-access',
+           approvalPolicy: 'never',
+           model: this.agent.model,
+-          developerInstructions:
+-            'Use only resources mounted for this group. Host project input, when granted, is read-only at /resources/workspace; explicit read grants are /resources/0, /resources/1, etc. Your writable task workspace is the native current working directory in this context’s private guest volume. Copy approved input there when editing. Native homes, hooks and history remain inside this guest; no automatic host export or publication.',
++          developerInstructions: this.synthesisBinding
++            ? 'Synthesize only the source supplied in this turn. Return the requested JSON decision. Do not use tools, read history, mutate work or publish messages.'
++            : 'Use only resources mounted for this group. Host project input, when granted, is read-only at /resources/workspace; explicit read grants are /resources/0, /resources/1, etc. Your writable task workspace is the native current working directory in this context’s private guest volume. Copy approved input there when editing. Native homes, hooks and history remain inside this guest; no automatic host export or publication.',
+         }),
+       );
+       this.journal.bindNative(this.handle, response.thread.id);
+@@ -553,8 +594,9 @@
+         inheritNative: true,
+         model: this.agent.model!,
+         effort: this.agent.effort!,
+-        charter:
+-          'Use only resources mounted for this group. Host project input, when granted, is read-only at /resources/workspace; read grants are /resources/0, /resources/1, etc. Your writable task workspace is the native current working directory in this context’s guest volume. Copy approved input there when editing. No automatic host export or publication.',
++        charter: this.synthesisBinding
++          ? 'Synthesize only the source supplied in this turn. Return the requested JSON decision. Do not use tools, read history, mutate work or publish messages.'
++          : 'Use only resources mounted for this group. Host project input, when granted, is read-only at /resources/workspace; read grants are /resources/0, /resources/1, etc. Your writable task workspace is the native current working directory in this context’s guest volume. Copy approved input there when editing. No automatic host export or publication.',
+         tools: this.options.tools ?? [],
+         beforeWrite: (id) => {
+           if (this.#requestId)
+diff --git a/apps/server/src/group-container.ts b/apps/server/src/group-container.ts
+--- a/apps/server/src/group-container.ts
++++ b/apps/server/src/group-container.ts
+@@ -164,7 +164,11 @@
+     ReadonlyRootfs: z.literal(true),
+     RestartPolicy: z.object({ Name: z.literal('no') }),
+   }),
+-  State: z.object({ Running: z.boolean(), Status: z.string(), Pid: z.number().int().nonnegative().optional() }),
++  State: z.object({
++    Running: z.boolean(),
++    Status: z.string(),
++    Pid: z.number().int().nonnegative().optional(),
++  }),
+ });
+ export function assertGroupContainerInspection(
+   raw: unknown,
+@@ -499,7 +503,11 @@
+     workspace = '/workspace',
+   ): ChildProcess {
+     id.parse(container);
+-    if (workspace !== '/workspace' && !/^\/workspace\/tasks\/[a-f0-9-]{36}$/.test(workspace))
++    if (
++      workspace !== '/workspace' &&
++      !/^\/workspace\/tasks\/[a-f0-9-]{36}$/.test(workspace) &&
++      !/^\/tmp\/group-synthesis\/[a-f0-9-]{36}$/.test(workspace)
++    )
+       throw new GroupIsolationBlocked('Host-issued task workspace required.');
+     return this.execHost(
+       [
+@@ -531,7 +539,11 @@
+         // PID1 may honor the private stop/EOF between inspection and kill.
+         // A failed kill never proves closure: reconcile the exact owned scope.
+         const reconciled = await this.inspect(container, context);
+-        if (reconciled.State.Running || reconciled.State.Status !== 'exited' || reconciled.State.Pid !== 0)
++        if (
++          reconciled.State.Running ||
++          reconciled.State.Status !== 'exited' ||
++          reconciled.State.Pid !== 0
++        )
+           throw error;
+       }
+     }

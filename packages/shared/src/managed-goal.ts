@@ -57,3 +57,9 @@ export type ManagedGoal = z.infer<typeof managedGoalSchema>;
 export type ManagedGoalView = z.infer<typeof managedGoalViewSchema>;
 export type ManagedGoalAction = z.infer<typeof managedGoalActionSchema>;
 export type ManagedGoalUpdate = z.infer<typeof managedGoalUpdateSchema>;
+/** Saved local-client receipt, bound to the original admitted manager turn. */
+export const agentManagedGoalUpdateRequestSchema = managedGoalUpdateSchema.safeExtend({
+  key: id,
+  managerId: id,
+  runId: id,
+});

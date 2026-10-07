@@ -1,0 +1,67 @@
+/* Loaded after normal chat styles. Only the explicit local test entry mounts these rules. */
+html:has(.group-fixture-root),
+body:has(.group-fixture-root) {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+.group-fixture-root {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+.group-fixture-status {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #eeeee5;
+  font-size: 0.8rem;
+}
+.group-fixture-status summary {
+  min-height: 28px;
+  cursor: pointer;
+}
+.group-fixture-status p {
+  max-height: 15vh;
+  overflow: auto;
+}
+.group-fixture-surface {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.group-fixture-surface .groups-workspace {
+  height: 100%;
+}
+.group-fixture-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.group-fixture-cue {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  margin: 0;
+  padding: 6px 12px;
+  overflow-wrap: anywhere;
+  background: #e8ece8;
+}
+.group-fixture-cue.private {
+  background: #f2e8da;
+  border-left: 4px solid #866137;
+}
+.group-fixture-error {
+  margin: 0;
+  padding: 6px 12px;
+  overflow-wrap: anywhere;
+}
+.group-fixture-root .groups-chat-panel,
+.group-fixture-root .groups-feed-scroll {
+  overscroll-behavior: contain;
+}

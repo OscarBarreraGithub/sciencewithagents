@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src",
+    "groups-preview",
+    "tests/groups",
+    "vite.groups-preview.config.ts",
+    "playwright.groups.config.ts"
+  ]
+}

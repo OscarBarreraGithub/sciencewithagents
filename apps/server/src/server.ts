@@ -1,3 +1,7 @@
+import { registerGroupHostRoutes } from './group-host-routes.js';
+import type { GroupHost } from './group-host.js';
+import { registerGroupFixtureRoutes, type GroupFixtureHost } from './group-fixture-host.js';
+import { fixtureRouteAllowed } from './development-fixture.js';
 import { BugReports, registerBugReportRoutes } from './bug-reports.js';
 import { registerAppUpdateRoutes } from './app-updates.js';
 import { openBrowserSetup } from './browser-setup.js';
@@ -123,6 +127,8 @@ export async function createServer(
     agentClient?: ReturnType<typeof prepareAgentClient>;
     localAccess?: LocalAccess;
     webDir?: string;
+    groupFixture?: GroupFixtureHost;
+    groupHost?: GroupHost;
     devPort?: number;
     demo?: boolean;
     folderPicker?: FolderPicker;
@@ -157,7 +163,35 @@ export async function createServer(
     keepAliveTimeout: 5000,
   });
   const terminals = options.terminals ?? new Terminals(runtime);
-  const ownerTerminals = options.ownerTerminals ?? new OwnerTerminals();
+  const ownerTerminals =
+    options.ownerTerminals ??
+    new OwnerTerminals(
+      runtime.fixture
+        ? {
+            shell: join(runtime.dataDir, 'disabled-owner-shell'),
+            cwd: runtime.fixture.workspace,
+            computer: 'Development fixture',
+          }
+        : undefined,
+    );
+  if (
+    runtime.fixture &&
+    (!options.demo ||
+      options.remote ||
+      options.localAccess ||
+      options.agentClient ||
+      options.devPort)
+  )
+    throw new Error(
+      'Stub fixture server requires a local demo without native client configuration.',
+    );
+  if (
+    options.groupFixture &&
+    (!runtime.fixture ||
+      options.groupFixture.runtime !== runtime ||
+      options.groupFixture.store !== store)
+  )
+    throw new Error('Groups test host requires its exact explicit fixture runtime/store.');
   const phone = options.phone;
   if (options.remote && options.localAccess)
     throw new Error('The phone entry cannot accept local installation credentials.');
@@ -234,13 +268,15 @@ export async function createServer(
   };
   app.setErrorHandler((error, _request, reply) => {
     const status =
-      error instanceof ZodError
-        ? 400
-        : error instanceof Missing
-          ? 404
-          : error instanceof Conflict
-            ? 409
-            : 500;
+      options.groupFixture && (error as { statusCode?: number }).statusCode === 413
+        ? 413
+        : error instanceof ZodError
+          ? 400
+          : error instanceof Missing
+            ? 404
+            : error instanceof Conflict
+              ? 409
+              : 500;
     if (
       options.localAccess &&
       [
@@ -289,6 +325,14 @@ export async function createServer(
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'no-referrer');
     reply.header('X-Frame-Options', 'DENY');
+    if (
+      runtime.fixture &&
+      !fixtureRouteAllowed(request.method, request.routeOptions.url, request.url.split('?')[0])
+    )
+      return reply.code(403).send({
+        code: 'FIXTURE_ROUTE_DISABLED',
+        error: 'This native or filesystem action is unavailable in a stub development fixture.',
+      });
     if (options.ready && !options.ready())
       return reply
         .code(503)
@@ -721,10 +765,30 @@ export async function createServer(
     });
   }
   registerAgentClient(app, runtime, options.remote ? undefined : options.agentClient);
+  if (options.groupHost) {
+    if (options.groupFixture || runtime.fixture || options.demo)
+      throw new Error('Normal Groups host cannot use a demo or fixture runtime.');
+    registerGroupHostRoutes(
+      app,
+      options.groupHost,
+      (request) =>
+        !!phoneSessions.get(request) ||
+        localRoles.get(request) === 'owner' ||
+        localRoles.get(request) === 'host' ||
+        (!!options.localAccess &&
+          browserOrigins.has(remoteOrigin ?? `http://${request.headers.host}`) &&
+          options.localAccess.browser(request.headers.cookie)),
+    );
+  }
+  if (options.groupFixture) {
+    registerGroupFixtureRoutes(app, options.groupFixture);
+    app.get('/', async (_request, reply) => reply.redirect('/group-fixture'));
+  }
   app.get('/api/health', async () => ({
     ok: true,
     pid: process.pid,
     demo: !!options.demo,
+    ...(options.groupFixture ? { groupFixture: true } : {}),
     provider: runtime.health,
     schedulingError: runtime.schedulingError,
   }));

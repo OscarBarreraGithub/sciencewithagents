@@ -1,3 +1,4 @@
+import './groups/group-invitation';
 import { DocumentHost } from './Documents';
 import React, { lazy, Suspense, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -44,11 +45,22 @@ function WorkspaceApp() {
     <Home />
   );
 }
+const fixtureEnabled =
+  location.pathname === '/group-fixture' &&
+  (await fetch('/api/health')
+    .then((response) => response.json())
+    .then((value: { groupFixture?: boolean }) => value.groupFixture === true)
+    .catch(() => false));
+const FixtureApp = fixtureEnabled ? (await import('./groups/GroupFixture')).GroupFixture : null;
 createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <PhoneGate initialPairingCode={initialPairingCode}>
-      <WorkspaceApp />
-      <DocumentHost />
-    </PhoneGate>
-  </React.StrictMode>,
+  FixtureApp ? (
+    <FixtureApp />
+  ) : (
+    <React.StrictMode>
+      <PhoneGate initialPairingCode={initialPairingCode}>
+        <WorkspaceApp />
+        <DocumentHost />
+      </PhoneGate>
+    </React.StrictMode>
+  ),
 );

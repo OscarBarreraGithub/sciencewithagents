@@ -45,8 +45,18 @@ function clearReceipt(storageKey: string, saved: Receipt | null) {
 }
 
 /** Direct owner input only. No model, scheduler, command replay or native account changes. */
-export function OwnerTerminal({ computer }: { computer: string }) {
-  const storageKey = useRef(`dock:${apiScope()}:owner-terminal`).current;
+export function OwnerTerminal({
+  computer,
+  fixedSessionId,
+  onBack,
+}: {
+  computer: string;
+  fixedSessionId?: string;
+  onBack?: () => void;
+}) {
+  const storageKey = useRef(
+    `dock:${apiScope()}:owner-terminal${fixedSessionId ? `:${fixedSessionId}` : ''}`,
+  ).current;
   const host = useRef<HTMLDivElement>(null);
   const socket = useRef<WebSocket | null>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -60,6 +70,7 @@ export function OwnerTerminal({ computer }: { computer: string }) {
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState('');
   const back = () => {
+    if (onBack) return onBack();
     location.hash = '#/computers';
   };
   useEffect(() => {
@@ -101,7 +112,9 @@ export function OwnerTerminal({ computer }: { computer: string }) {
         ws.send(JSON.stringify({ type: 'input', data: data.slice(start, start + 8192) }));
     });
     void (async () => {
-      saved.current ??= receipt(storageKey);
+      saved.current ??= fixedSessionId
+        ? { key: fixedSessionId, id: fixedSessionId }
+        : receipt(storageKey);
       const info = ownerTerminalSessionSchema.parse(
         await api(
           saved.current.id ? `/owner-terminal/${saved.current.id}` : '/owner-terminal',
@@ -177,7 +190,7 @@ export function OwnerTerminal({ computer }: { computer: string }) {
       terminal.current = null;
       term.dispose();
     };
-  }, [attempt]);
+  }, [attempt, fixedSessionId]);
   const closeShell = async () => {
     if (!session || closing) return;
     setClosing(true);
@@ -217,7 +230,7 @@ export function OwnerTerminal({ computer }: { computer: string }) {
               {connection === 'moved' ? 'Take control here' : 'Reconnect'}
             </button>
           )}
-          {(connection === 'exited' || connection === 'closed') && (
+          {!fixedSessionId && (connection === 'exited' || connection === 'closed') && (
             <button
               onClick={() => {
                 clearReceipt(storageKey, saved.current);

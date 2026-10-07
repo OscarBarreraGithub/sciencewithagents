@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, Download, Minus, Plus, RefreshCw } from 'lucide-react';
 import {
   documentReadingSchema,
@@ -19,7 +19,9 @@ function PdfPages({
   onReady,
   onFailure,
   controller,
+  endpoint,
 }: {
+  endpoint: string;
   doc: SavedDocument;
   onReady: (pages: number, page: number, scale: number) => void;
   onFailure: (message: string) => void;
@@ -29,7 +31,7 @@ function PdfPages({
   const pages = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const element = container.current!;
-    const key = `dock:pdf:${apiScope()}:${doc.id}`;
+    const key = `dock:pdf:${apiScope()}:${endpoint}`;
     let disposed = false;
     let destroy: (() => void) | undefined;
     let cleanup: (() => void) | undefined;
@@ -58,7 +60,7 @@ function PdfPages({
       controller.current = viewer;
       links.setViewer(viewer);
       const task = pdfjs.getDocument({
-        url: apiUrl(`/documents/${doc.id}/pdf`),
+        url: apiUrl(`${endpoint}/pdf`),
         cMapUrl: '/pdf-assets/cmaps/',
         cMapPacked: true,
         standardFontDataUrl: '/pdf-assets/standard_fonts/',
@@ -199,7 +201,7 @@ function PdfPages({
       cleanup?.();
       destroy?.();
     };
-  }, [doc.id, doc.builtAt, onReady, onFailure, controller]);
+  }, [doc.id, doc.builtAt, endpoint, onReady, onFailure, controller]);
   return (
     <div ref={container} className="pdf-scroll" tabIndex={0} aria-label="PDF pages">
       <div className="pdfViewer" ref={pages} />
@@ -207,7 +209,55 @@ function PdfPages({
   );
 }
 
-export default function PdfReader({ id, close }: { id: string; close: () => void }) {
+export default function PdfReader({
+  id,
+  close,
+  endpoint,
+  scoped = false,
+  actions,
+}: {
+  id: string;
+  close: () => void;
+  endpoint?: string;
+  scoped?: boolean;
+  actions?: ReactNode;
+}) {
+  const match =
+    endpoint &&
+    /^\/groups\/(?:documents|reports)\/([a-f0-9-]{36})\/([a-f0-9-]{36})\/([a-f0-9]{64})$/.exec(
+      endpoint,
+    );
+  if ((scoped && (!match || match[2] !== id)) || (!scoped && endpoint !== undefined))
+    return (
+      <div role="alert">
+        <p>This scoped document is unavailable. Reopen its group conversation.</p>
+        <button onClick={close}>Back</button>
+      </div>
+    );
+  return (
+    <Reader
+      key={endpoint ?? id}
+      id={id}
+      close={close}
+      endpoint={endpoint ?? `/documents/${id}`}
+      scoped={scoped}
+      actions={actions}
+    />
+  );
+}
+function Reader({
+  id,
+  close,
+  endpoint,
+  scoped,
+  actions,
+}: {
+  id: string;
+  close: () => void;
+  endpoint: string;
+  scoped: boolean;
+  actions?: ReactNode;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const controller = useRef<Viewer | null>(null);
   const closeRef = useRef(close);
@@ -233,7 +283,7 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
   useEffect(() => {
     const abort = new AbortController();
     void api(
-      formatId ? `/documents/${id}/formatted/${formatId}` : `/documents/${id}/reading`,
+      formatId && !scoped ? `${endpoint}/formatted/${formatId}` : `${endpoint}/reading`,
       undefined,
       abort.signal,
       150000,
@@ -251,7 +301,7 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
         setMode('pdf');
       });
     return () => abort.abort();
-  }, [id, readingVersion, formatId]);
+  }, [id, endpoint, scoped, readingVersion, formatId]);
   function resizeText(delta: number) {
     const next = Math.max(18, Math.min(30, size + delta));
     setSize(next);
@@ -287,7 +337,7 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
       try {
         const result = documentSchema.parse(
           await api(
-            `/documents/${id}${open ? '/open' : ''}`,
+            `${endpoint}${open ? '/open' : ''}`,
             open ? { key: actionKey.current } : undefined,
             abort.signal,
           ),
@@ -302,13 +352,13 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
     return () => {
       abort.abort();
     };
-  }, [id]);
+  }, [id, endpoint]);
   // Poll a rebuild without remounting the existing PDF while it is in progress.
   useEffect(() => {
     if (!doc || !['queued', 'building'].includes(doc.state)) return;
     const abort = new AbortController();
     const timer = setTimeout(() => {
-      void api(`/documents/${id}`, undefined, abort.signal)
+      void api(endpoint, undefined, abort.signal)
         .then(documentSchema.parse)
         .then(setDoc)
         .catch((error) => {
@@ -319,15 +369,13 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
       clearTimeout(timer);
       abort.abort();
     };
-  }, [id, doc]);
+  }, [id, endpoint, doc]);
   async function rebuild() {
     setSending(true);
     setReadingVersion((value) => value + 1);
     setError('');
     try {
-      setDoc(
-        documentSchema.parse(await api(`/documents/${id}/build`, { key: crypto.randomUUID() })),
-      );
+      setDoc(documentSchema.parse(await api(`${endpoint}/build`, { key: crypto.randomUUID() })));
     } catch (error) {
       setError((error as Error).message);
     } finally {
@@ -373,7 +421,7 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
         )}
         {doc?.hasPdf && (
           <a
-            href={apiUrl(`/documents/${id}/pdf`)}
+            href={apiUrl(`${endpoint}/pdf`)}
             download={doc.name.replace(/\.tex$/i, '.pdf')}
             aria-label="Download PDF"
           >
@@ -381,6 +429,7 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
           </a>
         )}
       </header>
+      {actions && <div className="pdf-toolbar group-report-actions">{actions}</div>}
       {(reading?.available || readingError) && (
         <div className="pdf-toolbar reader-mode" aria-label="Reading controls">
           {reading?.available && (
@@ -418,7 +467,7 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
           )}
         </div>
       )}
-      {reading?.available && (
+      {reading?.available && !scoped && (
         <DocumentFormatControls
           id={id}
           selected={formatId}
@@ -521,9 +570,21 @@ export default function PdfReader({ id, close }: { id: string; close: () => void
       )}
       <div className="pdf-body">
         {mode === 'reading' && reading?.available ? (
-          <DocumentReading id={id} reading={reading} size={size} close={close} />
+          <DocumentReading
+            id={id}
+            endpoint={endpoint}
+            reading={reading}
+            size={size}
+            close={close}
+          />
         ) : mode === 'pdf' && doc?.hasPdf ? (
-          <PdfPages doc={doc} controller={controller} onReady={ready} onFailure={failure} />
+          <PdfPages
+            doc={doc}
+            endpoint={endpoint}
+            controller={controller}
+            onReady={ready}
+            onFailure={failure}
+          />
         ) : (
           <div className="pdf-wait" role="status">
             {error || doc?.error

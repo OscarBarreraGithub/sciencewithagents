@@ -106,6 +106,17 @@ const windowTotalSchema = z.object({
 /** One host-owned ledger. Provider counters are evidence; allowance shares are estimates. */
 export class Quark {
   executing: () => ReadonlySet<string> = () => new Set();
+  private demandSnapshot: { value?: ReturnType<typeof materialDemand> } | null = null;
+  /** Synchronous display reads share demand, never an admission decision or an async turn. */
+  withDemandSnapshot<T>(read: () => T): T {
+    if (this.demandSnapshot) return read();
+    this.demandSnapshot = {};
+    try {
+      return read();
+    } finally {
+      this.demandSnapshot = null;
+    }
+  }
   // A process-local signer fences old leases on restart. This key never enters a
   // model prompt, API response, repository or provider credential store.
   private readonly leaseSigner = randomBytes(32);
@@ -316,6 +327,12 @@ export class Quark {
       this.store.event('quark.settings', null, null, next);
       return next;
     });
+  }
+  /** Durable exact admission evidence. Retained artifacts must not depend on
+   * the bounded recent-runs view used for current scheduling/display. */
+  runLedger(runId: string): QuarkRun | null {
+    const row = this.store.db.prepare('SELECT body FROM quark_runs WHERE run_id=?').get(runId);
+    return row ? quarkRunSchema.parse(JSON.parse(String(row.body))) : null;
   }
   runs(recent = false, since = this.clock() - 120_000) {
     return this.store.db
@@ -767,6 +784,14 @@ export class Quark {
     b: Allowance,
     run: Pick<QuarkRun, 'projectId' | 'provider' | 'taskAncestors'> & { model?: string | null },
   ) {
+    // Most allowances belong to another project/task. Do not parse a provider
+    // report for those identities during each queue/demand decision.
+    if (
+      b.projectId !== run.projectId ||
+      b.provider !== run.provider ||
+      (b.taskId && !run.taskAncestors.includes(b.taskId))
+    )
+      return false;
     const window = readCapacity(this.store, b.provider, this.clock()).windows.find(
       (w) => w.id === b.windowId,
     );
@@ -777,11 +802,7 @@ export class Quark {
       !run.model.toLowerCase().includes(window.model)
     )
       return false;
-    return (
-      b.projectId === run.projectId &&
-      b.provider === run.provider &&
-      (!b.taskId || run.taskAncestors.includes(b.taskId))
-    );
+    return true;
   }
   private spent(b: Allowance) {
     const cached = this.spentCache.get(b.id) ?? { sequence: b.startSequence, percent: 0 };
@@ -1068,16 +1089,18 @@ export class Quark {
       };
     if (bypass) return null;
     const allowRecent = !admitting && this.store.run(run.id).status === 'running';
+    const taskAncestors = this.taskIds(run);
     const budgets = this.budgets()
-      .filter((b) =>
-        this.applies(b, {
-          projectId: a.projectId,
-          provider: a.provider,
-          model: a.model,
-          taskAncestors: this.taskIds(run),
-        }),
+      .filter(
+        (b) =>
+          b.enabled &&
+          this.applies(b, {
+            projectId: a.projectId,
+            provider: a.provider,
+            model: a.model,
+            taskAncestors,
+          }),
       )
-      .filter((b) => b.enabled)
       .map((b) =>
         this.budgetStatus(b, ignoreBudgetPause, allowRecent, admitting ? run.id : undefined),
       );
@@ -1197,7 +1220,9 @@ export class Quark {
     let demand: ReturnType<typeof materialDemand> | null = null;
     for (const window of windows) {
       if (!this.enforcesPace(a.provider, window, pacing)) continue;
-      demand ??= materialDemand(this.store, this, now);
+      demand ??= this.demandSnapshot
+        ? (this.demandSnapshot.value ??= materialDemand(this.store, this, now))
+        : materialDemand(this.store, this, now);
       const caps = this.budgets().filter(
         (b) =>
           b.projectId === a.projectId &&

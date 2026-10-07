@@ -26,6 +26,10 @@ tasks, branches, receipts and results already live together in the app.
 Internal `pulsar` API paths and storage keys retain their earlier names for compatibility.
 Use [current status](STATUS.md) for release blockers and unfinished utilization automation.
 
+Queue displays share advisory demand within one synchronous read. Admission still checks
+current holds, allowance and reservations for each job. Long rejected queue scans yield to
+owner controls after about 20 ms of work or 16 candidates; an individual check can take longer.
+
 ## Opt-in manager goals
 
 An app-owned project root manager can retain one explicit owner goal for Codex or Claude.
@@ -376,3 +380,7 @@ paced, and Maximize useful Claude work exempts the Claude five-hour window. On-t
 underused windows are not paced. No cap is saved, no job is created, and nothing consumes
 allowance merely because it is available. Whole-percent readings and unvalidated attribution
 make shares approximate; the reason text states the reading uncertainty.
+
+Foreground preemption checks run only when a running background conversion or transcription
+can actually yield. This avoids unnecessary global queue scans; job admission and owner
+allowance, resource and pause checks remain fresh.

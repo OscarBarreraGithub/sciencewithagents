@@ -30,6 +30,13 @@ export class OwnerTerminals {
     })(),
   ) {}
   open(key: string) {
+    return this.openOwned(key);
+  }
+  /** Host capability only: no HTTP body may select this executable or arguments. */
+  openNativeLogin(key: string, invocation: { executable: string; args: readonly string[] }) {
+    return this.openOwned(`group-native:${key}`, invocation);
+  }
+  private openOwned(key: string, invocation?: { executable: string; args: readonly string[] }) {
     if (this.stopped) throw new Conflict('The computer terminal service is stopping.');
     const existing = this.openings.get(key);
     if (existing) return this.read(existing);
@@ -39,21 +46,33 @@ export class OwnerTerminals {
       throw new Conflict('The computer’s login shell must be configured with an absolute path.');
     accessSync(this.configuration.shell, constants.X_OK);
     // Only trusted server configuration selects the native executable and starting folder.
-    const process = pty.spawn(this.configuration.shell, ['-l'], {
-      name: 'xterm-256color',
-      cols: 80,
-      rows: 24,
-      cwd: this.configuration.cwd,
-      env: Object.fromEntries(
-        Object.entries({ ...globalThis.process.env, TERM: 'xterm-256color' }).filter(
-          (entry): entry is [string, string] =>
-            typeof entry[1] === 'string' && !entry[0].startsWith('DOCK_'),
+    const process = pty.spawn(
+      invocation?.executable ?? this.configuration.shell,
+      invocation ? [...invocation.args] : ['-l'],
+      {
+        name: 'xterm-256color',
+        cols: 80,
+        rows: 24,
+        cwd: this.configuration.cwd,
+        env: Object.fromEntries(
+          Object.entries({ ...globalThis.process.env, TERM: 'xterm-256color' }).filter(
+            (entry): entry is [string, string] =>
+              typeof entry[1] === 'string' && !entry[0].startsWith('DOCK_'),
+          ),
         ),
-      ),
-    });
+      },
+    );
     const id = randomUUID();
     const session: Session = {
-      info: { id, ...this.configuration, status: 'running', exitCode: null },
+      info: {
+        id,
+        ...this.configuration,
+        ...(invocation
+          ? { shell: 'Isolated Claude subscription login', cwd: 'Owned group context' }
+          : {}),
+        status: 'running',
+        exitCode: null,
+      },
       process,
       buffer: '',
       clients: new Set(),

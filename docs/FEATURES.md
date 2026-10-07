@@ -132,6 +132,9 @@ requires reconciling scoped open requests, work items, tasks and active/pending 
 continues until the separate **Stop reply** action. Failed or interrupted work needs the
 existing chat inspection/resume path. Existing managers and standalone chats are not
 automatically enrolled, and there is no additional raw-token budget.
+Older Codex manager conversations retain their native identity and tool catalog. Their next
+admitted turn receives a typed local-client route for recording goal progress when its original
+catalog lacks the new tool; saved requests retain the original turn and retry receipt.
 
 The compact **Queued messages** row opens a full-height list of short previews; **Read full
 text** expands a message. App-managed messages and
