@@ -178,6 +178,7 @@ const crash = (
   eventId: string,
   journal = journalPath,
   childBinding = binding,
+  offlineDeadlineMs = 10_000,
 ) =>
   new Promise<{ code: number | null; output: string }>((resolveChild, reject) => {
     const child = spawn(
@@ -208,10 +209,14 @@ const crash = (
     );
     let output = '',
       error = '';
-    const timeout = setTimeout(() => {
-      child.kill('SIGKILL');
-      reject(new Error('Owned child deadline'));
-    }, 10_000);
+    // Full-payload offline cases perform 110 recovery steps in this one child.
+    const timeout = setTimeout(
+      () => {
+        child.kill('SIGKILL');
+        reject(new Error('Owned child deadline'));
+      },
+      mode === 'offline' ? offlineDeadlineMs : 10_000,
+    );
     child.stdout.on('data', (chunk: Buffer) => {
       output += chunk.toString();
     });
@@ -1107,7 +1112,7 @@ it('keeps a full 64-chunk publication retryable through prolonged offline before
   const operation = enqueue(event.eventId);
   const outage = async () => {
     controller.close();
-    const child = await crash('offline', event.eventId);
+    const child = await crash('offline', event.eventId, journalPath, binding, 20_000);
     expect(child).toEqual({ code: 0, output: operation });
     advance(110 * LIMITS.maxBackoffMs);
     repo.close();
@@ -1322,7 +1327,13 @@ it.each(['begin', 'chunk', 'commit'] as const)(
     const trace = [...receiver.trace];
     advance();
     controller.close();
-    const child = await crash('offline', event.eventId);
+    const child = await crash(
+      'offline',
+      event.eventId,
+      journalPath,
+      binding,
+      kind === 'chunk' ? 20_000 : 10_000,
+    );
     expect(child).toEqual({ code: 0, output: operation });
     advance(110 * LIMITS.maxBackoffMs);
     repo.close();

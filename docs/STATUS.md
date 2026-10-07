@@ -194,8 +194,10 @@ observed in the operator account on 2026-10-07. Scoped beta onboarding is deploy
 independently authenticated profiles passed create/join approval, bidirectional human delivery,
 lost-response retries, private-note/draft exclusion and host restart against the real service.
 These were two profiles on one Mac, without provider turns. Same-tab invitation and stale
-delivery-label defects found during acceptance are corrected in source; installed activation
-is being verified separately.
+delivery-label corrections are activated on the maintainer installation; the retained-profile
+replay passes without resending messages. Its chats, queues, pairings and phone tunnel survived
+the update. A first real native setup check found a pre-admission capability mismatch; the
+setup-only correction has a composed regression check and awaits real native acceptance.
 
 **Still requires acceptance:** isolated provider sign-in/consent and real group-native readiness
 on the participating installations, plus the complete workflow between two unrelated people

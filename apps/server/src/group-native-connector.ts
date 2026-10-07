@@ -212,13 +212,17 @@ export function createGroupNativeConnector(
           : 'QUARK admission or native completion is pending; uncertain native tools are never repeated.'),
     };
   };
-  const resources = (handle: GroupNativeContext): GroupExecutionResources => {
+  const resources = (
+    handle: GroupNativeContext,
+    includeGroupTools = true,
+  ): GroupExecutionResources => {
     const configured = route();
-    const tools =
-      scopedTools?.(journal.resolve(handle).context) ??
-      [...(capabilities.get(runtime)?.values() ?? [])].flatMap((factory) =>
-        factory(journal.resolve(handle).context),
-      );
+    const tools = includeGroupTools
+      ? (scopedTools?.(journal.resolve(handle).context) ??
+        [...(capabilities.get(runtime)?.values() ?? [])].flatMap((factory) =>
+          factory(journal.resolve(handle).context),
+        ))
+      : [];
     if (new Set(tools.map((tool) => tool.name)).size !== tools.length)
       throw new GroupIsolationBlocked('Scoped native tool names have multiple owners.');
     return {
@@ -776,7 +780,9 @@ export function createGroupNativeConnector(
       const handle = journal.issue(input.context, agent.id, configured.provider);
       const context = journal.resolve(handle).context;
       intents.bind(input, context.sessionId);
-      const queued = runtime.queueGroupExecutionProbe(bridge, handle, resources(handle));
+      // Acceptance uses native provider tools in a fresh implementer guest. It
+      // has no group Work request or manager/child authority for app group tools.
+      const queued = runtime.queueGroupExecutionProbe(bridge, handle, resources(handle, false));
       acceptanceAgents.add(agent.id);
       return {
         context,
