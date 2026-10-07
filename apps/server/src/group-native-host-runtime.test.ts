@@ -10,6 +10,7 @@ import { GroupEventRepository } from './group-events.js';
 import { createGroupHostNativeConnector } from './group-native-host-runtime.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { createProductionGroupHost } from './group-host-bootstrap.js';
+import { privateGroupFile } from './group-host-storage.js';
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
@@ -25,7 +26,9 @@ function fixture(readEvidence?: (context: GroupContext) => Promise<string>) {
   });
   const runtime = new Runtime(store, directory, 'UNUSED', provider);
   const kick = vi.spyOn(runtime, 'kick').mockImplementation(() => {});
-  const events = new GroupEventRepository(join(directory, 'groups/events.sqlite'));
+  const eventsPath = join(directory, 'groups/events.sqlite');
+  privateGroupFile(eventsPath);
+  const events = new GroupEventRepository(eventsPath);
   const group = events.createGroup('Unit');
   const shared = events.createContext({
     groupId: group.groupId,

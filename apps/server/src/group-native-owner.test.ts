@@ -605,7 +605,9 @@ it('a malformed private route fails closed for native readiness while preserving
     authState: 'per-context',
     message: 'Prior unrelated route',
   });
-  const host = createProductionGroupHost(f.directory, {} as Runtime);
+  const host = createProductionGroupHost(f.directory, {} as Runtime, undefined, {
+    executionMode: 'isolated',
+  });
   cleanup.push(() => host.close());
   const status = await host.native.availability();
   expect(status.available).toBe(false);
