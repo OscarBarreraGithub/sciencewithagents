@@ -717,6 +717,9 @@ test('Group chat receives other members as normal bubbles without a writer, relo
         .filter({ hasText: 'Live message from Li Ming' })
         .locator('.message-heading'),
     ).toContainText('Li Ming', { timeout: 15000 });
+    await expect(
+      page.locator('.chat-row.group').filter({ hasText: 'Live chat River' }),
+    ).toContainText('2 members');
     await member.getByPlaceholder('Message the group…').fill('A second shared update');
     await member.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(transcript).toContainText('A second shared update', { timeout: 15000 });

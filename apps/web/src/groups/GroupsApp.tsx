@@ -337,7 +337,14 @@ export function GroupsApp({
           }
           groups={
             list
-              ? { kind: 'ready', value: list }
+              ? {
+                  kind: 'ready',
+                  value: list.map((group) =>
+                    selected?.group.id === group.id
+                      ? { ...group, members: selected.members.length }
+                      : group,
+                  ),
+                }
               : listError
                 ? { kind: 'error', message: listError }
                 : { kind: 'loading' }
