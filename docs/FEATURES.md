@@ -23,7 +23,7 @@ This describes connected source behavior, not a blanket release certification.
 | Notifications        | Opt-in push per device and project when approvals, decisions or failed runs stop work                                 | Simulated checks only; physical iPhone delivery needs acceptance                                    |
 | Multiple computers   | Select configured hosts with separate accounts/projects/history; two copyable setup prompts                           | Connection is agent-assisted over a verified private route, not automatic discovery                 |
 | Updates and recovery | GitHub update check, automatic pre-update database copy, maintenance-agent assignment and source backups              | Agent handles customizations; quit/reopen is explicit. Source backup excludes private conversations |
-| Provider maintenance | Refresh usage, check native connection, supported CLI update paths                                                    | Custom/embedded installations and sign-in may require a person; no silent provider substitution     |
+| Provider maintenance | Welcome has copyable terminal install/update commands; refresh usage and check native sign-in/models                 | Setup agent verifies the actual CLI version; desktop apps alone do not supply a verified CLI        |
 
 **Computers → Open terminal** runs your own shell on the selected computer even at zero AI
 allowance; the app must remain running. See [local access](LOCAL_ACCESS.md#run-your-own-commands).

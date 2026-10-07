@@ -24,6 +24,7 @@ import {
 } from '@dock/shared';
 import { api } from '../api';
 import { ClaudeSignIn } from './ClaudeSignIn';
+import { ProviderCliSetup } from './ProviderCliSetup';
 import { FlowHeading } from './WorkspaceFlow';
 import type { HomeData } from './useHomeData';
 import './welcome.css';
@@ -264,6 +265,10 @@ export function Welcome({ data }: { data: HomeData }) {
               </p>
             </div>
           </div>
+          <ProviderCliSetup
+            key={state?.policy.policy.enabledProviders[0] ?? 'codex'}
+            initialProvider={state?.policy.policy.enabledProviders[0] ?? 'codex'}
+          />
           <button className="flow-button primary" disabled={busy} onClick={() => void load(true)}>
             <RefreshCw size={17} />
             {busy ? 'Checking…' : 'Check this computer'}
@@ -315,8 +320,9 @@ export function Welcome({ data }: { data: HomeData }) {
                     )}
                     {account?.state === 'unavailable' && (
                       <p>
-                        Check that the native app is installed and signed in on this computer, then
-                        retry. This result does not prove you are signed out.
+                        Check that the {names[provider]} CLI is installed, current and signed in on
+                        this computer. Use “Install or update Codex / Claude” above, then retry.
+                        This result does not prove you are signed out.
                       </p>
                     )}
                     {account?.state === 'custom' && (

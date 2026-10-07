@@ -36,6 +36,7 @@ try {
           `The selected executable did not identify itself as ${label}. Check its host setup selection.`,
         );
       available.push(label);
+      console.log(`${label}: ${version} (${binary})`);
     } catch (error) {
       if (explicit) throw error;
       console.warn(
@@ -46,6 +47,9 @@ try {
   const providers = available.length
     ? `Available providers: ${available.join(', ')}.`
     : 'No agent provider is available yet. The app can open; use Welcome and setup to connect Codex or Claude before starting work.';
+  console.log(
+    'Install or update your chosen CLI before checking models. A desktop app alone is not enough. Terminal commands: docs/CONTRIBUTOR_SETUP.md#install-or-update-your-agent-cli',
+  );
   const source = resolve(root),
     home = homedir();
   if (

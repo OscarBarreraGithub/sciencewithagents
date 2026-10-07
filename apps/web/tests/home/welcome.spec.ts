@@ -32,6 +32,90 @@ function status(): SetupStatus {
   };
 }
 
+test('CLI setup offers copyable install and update commands without launching work', async ({
+  page,
+}, info) => {
+  const state = status();
+  state.accounts[0] = {
+    provider: 'codex',
+    state: 'unavailable',
+    checkedAt: new Date().toISOString(),
+  };
+  const writes: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST') writes.push(new URL(request.url()).pathname);
+  });
+  await page.route('**/api/setup', (route) => route.fulfill({ json: state }));
+  await page.route('**/api/setup/check', (route) => route.fulfill({ json: state }));
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: async (text: string) => localStorage.setItem('copied-cli-command', text),
+      },
+      configurable: true,
+    });
+  });
+  await page.goto('/#/welcome');
+  await expect(
+    page.getByText('Check that the Codex CLI is installed', { exact: false }),
+  ).toBeVisible();
+  const setup = page.locator('.welcome-cli-setup');
+  await expect(setup.locator('pre')).toBeHidden();
+  await setup.locator('summary').click();
+  await expect(setup.getByRole('combobox', { name: 'Provider', exact: true })).toHaveValue('codex');
+  await setup.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('copied-cli-command')))
+    .toBe('curl -fsSL https://chatgpt.com/codex/install.sh | sh');
+  await setup
+    .getByRole('combobox', { name: 'Install or update method', exact: true })
+    .selectOption({ label: 'Update npm install' });
+  await expect(setup.locator('pre')).toHaveText('npm install -g @openai/codex@latest');
+  await setup
+    .getByRole('combobox', { name: 'Install or update method', exact: true })
+    .selectOption({ label: 'Update Homebrew install' });
+  await expect(setup.locator('pre')).toHaveText('brew update\nbrew upgrade --cask codex');
+  await setup.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('claude');
+  await expect(setup.locator('pre')).toHaveText('curl -fsSL https://claude.ai/install.sh | bash');
+  await setup
+    .getByRole('combobox', { name: 'Install or update method', exact: true })
+    .selectOption({ label: 'Update native / npm install' });
+  await setup.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('copied-cli-command')))
+    .toBe('claude update');
+  await setup
+    .getByRole('combobox', { name: 'Install or update method', exact: true })
+    .selectOption({ label: 'Update Homebrew latest' });
+  await expect(setup.locator('pre')).toHaveText(
+    'brew update\nbrew upgrade --cask claude-code@latest',
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: async () => {
+          throw new Error('Clipboard unavailable');
+        },
+      },
+    });
+  });
+  await setup.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect(setup.getByRole('status')).toContainText('copy it by hand');
+  expect(await page.evaluate(() => getSelection()?.toString())).toBe(
+    'brew update\nbrew upgrade --cask claude-code@latest',
+  );
+  expect(writes).toEqual([]);
+  await setup.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('codex');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const bounds = await setup.boundingBox();
+  expect(bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await mkdir('../../data/screenshots/cli-setup', { recursive: true });
+  await setup.screenshot({ path: `../../data/screenshots/cli-setup/${info.project.name}.png` });
+  await setup.locator('summary').click();
+  await page.getByRole('button', { name: 'Check this computer', exact: true }).click();
+  await expect.poll(() => writes).toEqual(['/api/setup/check']);
+});
+
 test('a new workspace opens setup, preserves progress and retries checks without dispatching work', async ({
   page,
 }, info) => {

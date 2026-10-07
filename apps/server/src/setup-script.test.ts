@@ -65,7 +65,10 @@ function fixture(cloud = false) {
 }
 it('checks prerequisites without installation or sign-in and refuses a missing or wrong Codex executable before writes', async () => {
   const f = fixture();
-  expect((await f.run(['--check'])).stdout).toContain('Prerequisites available');
+  const check = (await f.run(['--check'])).stdout;
+  expect(check).toContain('Prerequisites available');
+  expect(check).toContain(`Codex CLI: codex-cli fixture (${join(f.bin, 'codex')})`);
+  expect(check).toContain('docs/CONTRIBUTOR_SETUP.md#install-or-update-your-agent-cli');
   expect(existsSync(join(f.root, 'setup-steps'))).toBe(false);
   await expect(f.run([], { DOCK_CODEX_BIN: '/missing/codex' })).rejects.toThrow('Codex CLI');
   await expect(f.run([], { DOCK_CODEX_BIN: process.execPath })).rejects.toThrow(

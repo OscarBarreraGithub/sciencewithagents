@@ -17,7 +17,9 @@ and host; they do not deploy another Worker or need a Cloudflare account for Gro
 Explain the short human checklist, handle the technical work, open Home → Groups,
 then help create a project and approve one exact member enrollment. Verify shared
 messages in both directions and recovery after reconnect before claiming completion.
-Use each member's own existing Codex or Claude sign-in and native tools. Explain
+Use each member's own Codex or Claude sign-in and native tools. Follow
+docs/CONTRIBUTOR_SETUP.md to install their chosen CLI if missing or update its existing
+installation, then verify its version and model discovery. A desktop app alone is not enough. Explain
 Local agent access before I enable it. Shared chat and Private to you have separate
 histories. Do not publish private history, drafts or files automatically.
 For phone access, use the separate Cloudflare phone prompt and MY OWN Cloudflare
@@ -37,6 +39,8 @@ open a Cloudflare account to join. If setup takes longer than the invitation's 1
 lifetime, ask for a fresh invitation from the same creator after configuring the service.
 Open Groups → Join by invitation and show my exact confirmation code to send privately
 to the creator for approval. Use my own Codex or Claude sign-in and native tools.
+Follow docs/CONTRIBUTOR_SETUP.md to install my chosen CLI if missing or update its
+existing installation, then verify its version and model discovery.
 Explain Shared chat, Private to you and Local agent access; verify messages in both
 directions after approval. Phone access uses my own Cloudflare Tunnel and paired
 authentication through the separate phone prompt. Report any remaining blocker.`;

@@ -8,14 +8,42 @@ stay local; Groups publishes explicitly shared content to its configured group s
 
 **Shared group?** Use the [Groups setup prompt](#groups-beta).
 
+**Only have the Codex or Claude desktop app?** Install its terminal tool first; you only
+need one. Open Terminal on the computer that will run your agents:
+
+<details>
+<summary>Install Codex or Claude Code</summary>
+
+**Codex:**
+
+```sh
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+```
+
+**Claude Code:**
+
+```sh
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+Open a new Terminal window, run `codex --version` or `claude --version`, then run
+`codex` or `claude`. Sign in with your own subscription account if asked and paste
+the setup prompt below. Already installed? Use the
+[update commands for your installation](docs/CONTRIBUTOR_SETUP.md#install-or-update-your-agent-cli).
+These are the official [Codex](https://learn.chatgpt.com/docs/codex/cli) and
+[Claude](https://code.claude.com/docs/en/quickstart) macOS/Linux installers.
+
+</details>
+
 For your own projects, paste this into Codex or Claude on the computer that will run your agents:
 
 ```text
 Set up sciencewithagents from https://github.com/OscarBarreraGithub/sciencewithagents.
 Find and preserve any existing installation. Otherwise clone it into a local folder
 outside cloud sync. Follow docs/CONTRIBUTOR_SETUP.md and check docs/STATUS.md first.
-Use my own Codex or Claude account; I do not need both. Check that my chosen provider's
-CLI is up to date before checking available models. Handle the technical setup,
+Use my own Codex or Claude account; I do not need both. Install my chosen provider's
+CLI if missing, or update it through its existing method, then verify its version and
+available models. A desktop app alone is not enough. Handle the technical setup,
 install the Mac Applications launcher when supported, and open the app. Help me
 choose my manager and worker defaults, then prepare my first project without sending
 its brief until I am ready. Keep phone access, VS Code sharing and GitHub backup
@@ -39,7 +67,8 @@ Set up sciencewithagents for Groups from
 https://github.com/OscarBarreraGithub/sciencewithagents.
 Find and preserve my existing installation, accounts, files and running work.
 Follow docs/CONTRIBUTOR_SETUP.md and docs/GROUP_WORKFLOW.md. Use my own Codex or Claude
-sign-in. Check the chosen provider CLI version and model discovery before continuing.
+sign-in. Install the chosen provider CLI if missing, or update its existing installation,
+then verify its version and model discovery before continuing.
 Follow the owner-hosted deployment instructions in docs/GROUP_HOSTING.md to
 deploy the group service to MY Cloudflare account on Workers Free. Do not use the
 maintainer's service, require a beta code, buy a domain, or enable paid services.
@@ -56,7 +85,8 @@ directions and a private Ask once the other person joins. Report what remains un
 Set up sciencewithagents from https://github.com/OscarBarreraGithub/sciencewithagents
 to join the group in my invitation. Preserve my installation, accounts and files.
 Follow docs/CONTRIBUTOR_SETUP.md and docs/GROUP_WORKFLOW.md. Use my own Codex or Claude
-sign-in and native tools. Check the chosen provider CLI version and model discovery.
+sign-in and native tools. Install the chosen provider CLI if missing, or update its
+existing installation, then verify its version and model discovery.
 Configure the invitation's group service using the documented
 setup-agent process, without deploying a separate service or using the maintainer's
 account. Open Groups and help me join. Give me the confirmation code to send privately

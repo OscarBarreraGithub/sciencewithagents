@@ -26,6 +26,51 @@ The retained `/?workspace=classic` interface is an optional maintenance surface.
 runtime and browser-test output remain under ignored `data/`; never copy them into another
 person's installation. Repository history does not authorize access to another person's accounts or computer.
 
+### Install or update your agent CLI
+
+The desktop apps and editor extensions do not establish that a current terminal CLI is
+available. Install **one** chosen provider on the computer that will run the agents.
+Welcome → Check this computer → **Install or update Codex / Claude** also has copyable commands.
+On Mac, open Terminal with Spotlight (Command–Space, type Terminal, Return).
+
+For a new macOS/Linux CLI installation, use the provider's official installer:
+
+| Provider | Install latest |
+| --- | --- |
+| Codex | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` |
+| Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash` |
+
+Open a **new Terminal window** and run `codex --version` or `claude --version`, then
+`codex` or `claude`. Complete native sign-in with your own ChatGPT/Claude subscription if
+asked. Paste the README setup prompt into that agent. No second provider is required.
+
+For an existing CLI, have the setup agent identify the executable and its installation
+method first (`command -v codex` / `command -v claude`; respect explicit host overrides).
+Update through that same method rather than adding a competing copy:
+
+| Existing installation | Update command |
+| --- | --- |
+| Codex standalone | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` |
+| Codex npm | `npm install -g @openai/codex@latest` |
+| Codex Homebrew (Mac) | `brew update`, then `brew upgrade --cask codex` |
+| Claude native / npm | `claude update` |
+| Claude Homebrew stable (Mac) | `brew update`, then `brew upgrade --cask claude-code` |
+| Claude Homebrew latest (Mac) | `brew update`, then `brew upgrade --cask claude-code@latest` |
+
+Respect intentional pins and organization policies. For other installers, use their
+supported update command. References: [Codex installation](https://learn.chatgpt.com/docs/codex/cli),
+[Codex npm/Homebrew updates](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex#quickstart-using-goals),
+[Claude installation and updates](https://code.claude.com/docs/en/setup).
+
+The setup agent must check the resolved version **after** updating, then the app's real
+sign-in/model discovery. A successful `--version` alone does not mean it is current.
+If the command is missing or still old, inspect PATH and any captured launcher path;
+native installers normally use `~/.local/bin`. Follow the installer's PATH guidance or
+select its stable executable explicitly in host setup. Rebuild the launcher configuration
+when its captured path needs to change, and reopen only when active work is safe.
+Keep existing credentials and conversations. Never fix this by deleting provider state,
+installing with `sudo`, or silently changing to API-key billing.
+
 ### Check the machine first
 
 | Computer          | Current support and setup boundary                                                                                                                                                                                                                             |
@@ -46,7 +91,9 @@ be described as a failed core installation. Browser-test downloads are developer
 1. Read AGENTS.md, README.md, STATUS.md and DECISIONS.md.
    Confirm the actual directory and installed **Node 24+ and Git**, then the owner’s chosen
    **Codex CLI or Claude Code**. Neither provider requires the other.
-   The Codex desktop app alone is not proof that its CLI is installed and on the setup PATH.
+   A Codex or Claude desktop app alone is not proof that its CLI is installed and on the setup PATH.
+   Use the [terminal install/update instructions](#install-or-update-your-agent-cli) above
+   before model discovery, including when a desktop app is acting as the setup agent.
    Prefer a local folder such as `~/Developer`; avoid Documents/iCloud or other synced folders
    for live databases and worktrees. Do not move an existing installation without preserving
    its records and inspecting its actual paths. Do not copy another owner's
