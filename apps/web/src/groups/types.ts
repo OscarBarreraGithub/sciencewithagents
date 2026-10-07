@@ -16,6 +16,7 @@ export type GroupRead<T> =
   | { kind: 'error'; message: string };
 export type GroupSummary = { id: GroupId; name: string; members: number; sync: string };
 export type GroupsLandingProps = {
+  joinReceipt?: ReactNode;
   initialInvitation?: string;
   invitationRevision?: number;
   setupCodeRequired?: boolean;
@@ -40,6 +41,8 @@ export type GroupChatSlot = {
   content: ReactNode;
 };
 export type GroupsWorkspaceProps = {
+  pendingRequests?: number;
+  onInvite?: () => void;
   chatTitle?: string;
   privateDescription?: string;
   sharedDescription?: string;

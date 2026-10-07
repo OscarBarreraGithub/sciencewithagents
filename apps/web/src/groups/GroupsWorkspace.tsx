@@ -134,6 +134,11 @@ function Workspace(props: GroupsWorkspaceProps) {
             {group.members} {group.members === 1 ? 'member' : 'members'} · {group.sync}
           </p>
         </div>
+        {props.onInvite && (
+          <button className="secondary" onClick={props.onInvite}>
+            {props.pendingRequests ? `Join requests · ${props.pendingRequests}` : 'Invite people'}
+          </button>
+        )}
       </header>
       {!wide && (
         <div

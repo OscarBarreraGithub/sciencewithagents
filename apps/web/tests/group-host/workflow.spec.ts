@@ -350,18 +350,62 @@ test('fresh-page and same-tab invitations open Join without storing fragment sec
   }
   await capture(page, 'same-tab-invitation');
 });
+test('hosted invitations use the shared service instead of the creator private app address', async ({
+  page,
+}) => {
+  await enter(page);
+  await create(page, 'Portable invitation');
+  await page.route('**/api/groups/invite', async (route) => {
+    const response = await route.fetch();
+    const value = (await response.json()) as { fragment: string; expiresAt: number };
+    const payload = JSON.parse(
+      new URLSearchParams(value.fragment.replace(/^\/groups\?/, '')).get('invite')!,
+    );
+    payload.service = { mode: 'hosted', endpoint: 'https://groups.example.test/' };
+    await route.fulfill({
+      json: { ...value, fragment: `/groups?invite=${encodeURIComponent(JSON.stringify(payload))}` },
+    });
+  });
+  await page.getByRole('button', { name: 'Invite people', exact: true }).click();
+  await page.getByRole('button', { name: 'Create invitation', exact: true }).click();
+  const link = await page
+    .getByLabel('Invitation (expires in 15 minutes)', { exact: true })
+    .inputValue();
+  expect(new URL(link).origin).toBe('https://groups.example.test');
+  expect(new URL(link).pathname).toBe('/join');
+  expect(new URL(link).search).toBe('');
+  expect(new URL(link).hash).toMatch(/^#\/groups\?invite=/);
+  expect(new URL(link).origin).not.toBe(connection.origin);
+  await capture(page, 'invite-people');
+});
+
 test('fragment invitation joins a second authenticated host and exact creator approval opens its private context', async ({
   page,
   browser,
 }) => {
   await enter(page);
   await create(page, 'Joined River');
-  await page.getByText('Group controls', { exact: true }).click();
-  await page.getByText('Invitations and approval', { exact: true }).click();
+  await page.getByRole('button', { name: 'Invite people', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'setup guide', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Create invitation', exact: true }).click();
   const link = await page
     .getByLabel('Invitation (expires in 15 minutes)', { exact: true })
     .inputValue();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as Window & { copiedInvitation?: string }).copiedInvitation = text;
+        },
+      },
+    });
+  });
+  await page.getByRole('button', { name: 'Copy invitation', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Invitation copied', exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as Window & { copiedInvitation?: string }).copiedInvitation),
+  ).toBe(link);
   const fragment = new URL(link).hash;
   const invitationSecret = JSON.parse(
     new URLSearchParams(fragment.replace(/^#\/?groups\??/, '')).get('invite')!,
@@ -377,19 +421,27 @@ test('fragment invitation joins a second authenticated host and exact creator ap
     expect(new URL(member.url()).hash).toBe('#/groups');
     await member.getByLabel('Your display name', { exact: true }).fill('Li Ming');
     await member.getByRole('button', { name: 'Request to join', exact: true }).click();
-    await expect(member.locator('.group-host-notice')).toContainText(
-      'Waiting for creator approval',
+    await expect(member.getByRole('heading', { name: 'Request sent', exact: true })).toBeVisible();
+    await expect(member.getByRole('button', { name: 'Request to join', exact: true })).toHaveCount(
+      0,
     );
-    const confirmation = (await member.locator('.group-host-notice').textContent())!.match(
-      /[a-f0-9]{64}/,
-    )![0];
+    const confirmation = await member.getByLabel('Confirmation code', { exact: true }).inputValue();
+    await capture(member, 'join-request-sent');
+    await expect(
+      member.getByRole('button', { name: 'Copy confirmation code', exact: true }),
+    ).toBeVisible();
     const saved = await member.evaluate(() =>
       JSON.stringify({ ...sessionStorage, ...localStorage }),
     );
     expect(saved).not.toContain(invitationSecret);
     expect(saved).not.toContain(confirmation);
-    await page.getByRole('button', { name: 'Refresh join requests', exact: true }).click();
+    await page.getByText('Group controls', { exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Join requests · 1', exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    await page.getByRole('button', { name: 'Join requests · 1', exact: true }).click();
     await page.getByRole('radio', { name: /Li Ming/ }).check();
+    await capture(page, 'join-request-review');
     await page
       .getByLabel('Exact confirmation code from the member', { exact: true })
       .fill(confirmation);
@@ -397,6 +449,9 @@ test('fragment invitation joins a second authenticated host and exact creator ap
     await expect(
       page.getByLabel('Exact confirmation code from the member', { exact: true }),
     ).toHaveCount(0);
+    await expect(
+      page.getByText('Li Ming approved. They can now open the group.', { exact: true }),
+    ).toBeVisible();
     await page.getByText('Shared feed agent', { exact: true }).click();
     await page
       .getByRole('button', { name: 'Use this computer for the shared feed', exact: true })
@@ -405,8 +460,10 @@ test('fragment invitation joins a second authenticated host and exact creator ap
       page.getByText('This computer is the shared feed writer.', { exact: false }),
     ).toBeVisible();
     await page.getByText('Group controls', { exact: true }).click();
-    await member.getByRole('button', { name: 'Back to groups', exact: true }).click();
-    await member.locator('.groups-projects button').filter({ hasText: 'Joined River' }).click();
+    await expect(member.getByRole('heading', { name: 'You’re approved', exact: true })).toBeVisible(
+      { timeout: 15000 },
+    );
+    await member.getByRole('button', { name: 'Open group', exact: true }).click();
     await expect(member.getByRole('heading', { name: 'Joined River', exact: true })).toBeVisible();
     await chat(member);
     await member.getByRole('button', { name: 'Private to you', exact: true }).click();

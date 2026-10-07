@@ -1,7 +1,8 @@
 import { GroupReports } from './GroupReports';
 import { GroupSetupPrompt } from './GroupSetupPrompt';
+import { GroupJoinReceipt } from './GroupJoinReceipt';
 import { GroupGitPanel } from './GroupGitPanel';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { groupFeedPageSchema, type GroupEvent, type GroupFeedQuery } from '@dock/shared';
 import * as contracts from '@dock/shared/dist/group-host.js';
 import { api, apiScope, ApiError } from '../api';
@@ -16,6 +17,7 @@ import {
   initialGroupInvitation,
   groupInvitationRevision,
   clearGroupInvitation,
+  groupInvitationUrl,
 } from './group-invitation';
 import type { GroupRead } from './types';
 import './group-host.css';
@@ -94,11 +96,26 @@ export function GroupsApp({ route }: { route: string }) {
   const [native, setNative] = useState('Checking agent availability…');
   const [selected, setSelected] = useState<contracts.GroupHostOpen | null>(null);
   const [error, setError] = useState('');
+  const [listError, setListError] = useState('');
+  const listRead = useRef<AbortController | null>(null);
+  const active = useRef(false);
   const [joinNotice, setJoinNotice] = useState('');
+  const [joinReceipt, setJoinReceipt] = useState<{
+    handle: string;
+    name: string;
+    confirmation: string;
+  } | null>(null);
   const [feedWriterNotice, setFeedWriterNotice] = useState('');
   const [feedRevision, setFeedRevision] = useState(0);
   const [invite, setInvite] = useState('');
+  const [inviteCopy, setInviteCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const inviteText = useRef<HTMLTextAreaElement>(null);
+  const membersPanel = useRef<HTMLDetailsElement>(null);
+  const requestsHeading = useRef<HTMLHeadingElement>(null);
   const [requests, setRequests] = useState<{ requestId: string; displayName: string }[]>([]);
+  const [requestsError, setRequestsError] = useState('');
+  const [requestsRevision, setRequestsRevision] = useState(0);
+  const [approvalNotice, setApprovalNotice] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [approvalId, setApprovalId] = useState('');
   const [busy, setBusy] = useState(false);
@@ -108,8 +125,14 @@ export function GroupsApp({ route }: { route: string }) {
   const changed = useCallback(() => setFeedRevision((n) => n + 1), []);
   const privateChanged = useCallback(() => {}, []);
   const load = useCallback(async () => {
+    if (!active.current || listRead.current) return;
+    const controller = new AbortController();
+    listRead.current = controller;
     try {
-      const value = contracts.groupHostListSchema.parse(await request('groups'));
+      const value = contracts.groupHostListSchema.parse(
+        await request('groups', undefined, controller.signal),
+      );
+      if (controller.signal.aborted) return;
       setList(value.groups);
       setService(value.service.message);
       setServiceConfigured(value.service.configured);
@@ -119,21 +142,53 @@ export function GroupsApp({ route }: { route: string }) {
           ? `${value.native.message} Sign-in is checked separately for each isolated group context.`
           : value.native.message,
       );
-      setError('');
+      setListError('');
     } catch (reason) {
-      setError(message(reason));
+      if (!controller.signal.aborted) setListError(message(reason));
+    } finally {
+      if (listRead.current === controller) listRead.current = null;
     }
   }, []);
   useEffect(() => {
+    active.current = true;
     void load();
+    return () => {
+      active.current = false;
+      listRead.current?.abort();
+      listRead.current = null;
+    };
   }, [load]);
   const handle = route.split('/')[1];
+  useEffect(() => {
+    if (handle) return;
+    const refresh = () => {
+      if (!document.hidden) void load();
+    };
+    // The setup agent writes configuration outside this tab. Observe it until ready;
+    // this is a local status read, not a provider launch or Cloudflare request.
+    const timer = serviceConfigured !== true ? window.setInterval(refresh, 5000) : undefined;
+    window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [handle, serviceConfigured, load]);
   useEffect(() => {
     let alive = true;
     setSelected(null);
     setControlsOpen(false);
     setInvite('');
+    setInviteCopy('idle');
     setRequests([]);
+    setError('');
+    setRequestsError('');
+    setApprovalNotice('');
+    setApprovalId('');
+    setConfirmation('');
     if (!handle) return;
     void request('open', { handle })
       .then((raw) => {
@@ -146,6 +201,42 @@ export function GroupsApp({ route }: { route: string }) {
       alive = false;
     };
   }, [handle]);
+  // This existing host capability is creator-only. Members must not poll an
+  // endpoint they cannot read. These bounded reads never launch a model.
+  const creatorHandle = selected?.feedWriter?.canSelect ? selected.group.handle : undefined;
+  useEffect(() => {
+    if (!creatorHandle) return;
+    let controller: AbortController | undefined;
+    const refresh = async () => {
+      if (document.hidden || controller) return;
+      const read = new AbortController();
+      controller = read;
+      try {
+        const value = contracts.groupHostPendingSchema.parse(
+          await request('pending', { handle: creatorHandle }, read.signal),
+        );
+        if (read.signal.aborted) return;
+        setRequests(value.requests);
+        setRequestsError('');
+      } catch (reason) {
+        if (!read.signal.aborted) setRequestsError(message(reason));
+      } finally {
+        if (controller === read) controller = undefined;
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 10000);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      controller?.abort();
+    };
+  }, [creatorHandle, requestsRevision]);
   const act = async (fn: () => Promise<void>) => {
     if (busy) return;
     setBusy(true);
@@ -208,52 +299,20 @@ export function GroupsApp({ route }: { route: string }) {
   );
   return (
     <div className="group-host-root">
-      <details className="group-host-status" hidden={Boolean(selected)}>
-        <summary>Groups delivery and agent setup</summary>
-        <p>{service}</p>
-        <p>{native}</p>
-        <a href="#/welcome">Open setup checks</a>
-      </details>
-      {!selected && <GroupSetupPrompt initiallyOpen={serviceConfigured === false} />}
+      {!selected && listError && <p role="alert">{listError}</p>}
       {error && <p role="alert">{error}</p>}
       {joinNotice && (
         <p role="status" className="group-host-notice">
           {joinNotice}
         </p>
       )}
-      {!selected && (
-        <button
-          onClick={() =>
-            void act(async () => {
-              for (const kind of ['create', 'join'] as const) {
-                const storage = `swa:groups:${apiScope()}:${kind}`;
-                const saved = JSON.parse(sessionStorage.getItem(storage) ?? 'null') as {
-                  key: string;
-                } | null;
-                if (!saved) continue;
-                const value = contracts.groupHostResumeResultSchema.parse(
-                  await request('resume', { key: saved.key, kind }),
-                );
-                sessionStorage.removeItem(storage);
-                if (value.confirmation)
-                  setJoinNotice(
-                    `Waiting for creator approval. Share privately this exact confirmation code: ${value.confirmation}`,
-                  );
-                else location.hash = `#/groups/${value.group.handle}`;
-                void load();
-                return;
-              }
-              setJoinNotice(
-                'No pending setup request in this tab. Create a group or paste an invitation.',
-              );
-            })
-          }
-        >
-          Recover pending setup
-        </button>
-      )}
       {!selected ? (
         <GroupsLanding
+          joinReceipt={
+            joinReceipt && (
+              <GroupJoinReceipt key={joinReceipt.handle} receipt={joinReceipt} onApproved={load} />
+            )
+          }
           setupCodeRequired={setupCodeRequired}
           onNewSetupCode={
             newSetupCodeAllowed
@@ -269,8 +328,8 @@ export function GroupsApp({ route }: { route: string }) {
           groups={
             list
               ? { kind: 'ready', value: list }
-              : error
-                ? { kind: 'error', message: error }
+              : listError
+                ? { kind: 'error', message: listError }
                 : { kind: 'loading' }
           }
           onRetry={() => void load()}
@@ -330,17 +389,32 @@ export function GroupsApp({ route }: { route: string }) {
               displayName: input.displayName,
               invitationHash: hash,
             });
-            const value = contracts.groupHostJoinResultSchema.parse(
-              await request('join', { ...input, key: operation.key }),
-            );
+            let value: ReturnType<typeof contracts.groupHostJoinResultSchema.parse>;
+            try {
+              value = contracts.groupHostJoinResultSchema.parse(
+                await request('join', { ...input, key: operation.key }),
+              );
+            } catch (reason) {
+              // These failures occur before a durable join or network request.
+              // Keep uncertain acknowledgements, but allow correcting bad input.
+              if (
+                reason instanceof ApiError &&
+                ['INVALID_INVITATION', 'GROUP_SETUP_REQUIRED'].includes(reason.code ?? '')
+              )
+                operation.clear();
+              throw reason;
+            }
             operation.clear();
             if (initialGroupInvitation() === consumedInvitation) {
               clearGroupInvitation();
               setInvitation(null);
             }
-            setJoinNotice(
-              `Waiting for creator approval. Send this exact confirmation code privately to the creator: ${value.confirmation}. Then reopen ${value.group.name}.`,
-            );
+            setJoinNotice('');
+            setJoinReceipt({
+              handle: value.group.handle,
+              name: value.group.name,
+              confirmation: value.confirmation,
+            });
             void load();
           }}
           initialInvitation={invitation ?? undefined}
@@ -355,8 +429,21 @@ export function GroupsApp({ route }: { route: string }) {
             onToggle={(event) => setControlsOpen(event.currentTarget.open)}
           >
             <summary>Group controls</summary>
-            <details className="group-host-members">
+            <details className="group-host-members" ref={membersPanel} hidden={!creatorHandle}>
               <summary>Invitations and approval</summary>
+              {approvalNotice && <p role="status">{approvalNotice}</p>}
+              <p>
+                Create an invitation and send it privately. The other person uses their own
+                sciencewithagents app and account. New users can start with the{' '}
+                <a
+                  href="https://github.com/OscarBarreraGithub/sciencewithagents#groups-beta"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  setup guide
+                </a>
+                .
+              </p>
               <button
                 disabled={busy}
                 onClick={() =>
@@ -369,119 +456,164 @@ export function GroupsApp({ route }: { route: string }) {
                       }),
                     );
                     operation.clear();
-                    setInvite(`${location.origin}${location.pathname}#${value.fragment}`);
+                    setInvite(groupInvitationUrl(value.fragment, location.origin));
+                    setInviteCopy('idle');
                   })
                 }
               >
-                Create invitation
+                {invite ? 'Create a fresh invitation' : 'Create invitation'}
               </button>
               {invite && (
-                <label>
-                  Invitation (expires in 15 minutes)
-                  <textarea
-                    aria-label="Invitation (expires in 15 minutes)"
-                    readOnly
-                    value={invite}
-                  />
-                </label>
-              )}
-              <button
-                disabled={busy}
-                onClick={() =>
-                  void act(async () =>
-                    setRequests(
-                      contracts.groupHostPendingSchema.parse(
-                        await request('pending', { handle: selected.group.handle }),
-                      ).requests,
-                    ),
-                  )
-                }
-              >
-                Refresh join requests
-              </button>
-              {requests.map((r) => (
-                <label key={r.requestId}>
-                  <input
-                    type="radio"
-                    name="request"
-                    checked={approvalId === r.requestId}
-                    onChange={() => setApprovalId(r.requestId)}
-                  />
-                  {r.displayName} · {r.requestId}
-                </label>
-              ))}
-              {selected.members
-                .filter((m) => m.installationId !== selected.member.installationId)
-                .map((m) => (
-                  <button
-                    key={m.installationId}
-                    disabled={busy}
-                    onClick={() =>
-                      void act(async () => {
-                        const operation = pending(
-                          `revoke:${selected.group.handle}:${m.installationId}`,
-                          {},
-                        );
-                        await request('revoke', {
-                          handle: selected.group.handle,
-                          key: operation.key,
-                          requestId: m.installationId,
-                        });
-                        operation.clear();
-                        setSelected(
-                          contracts.groupHostOpenSchema.parse(
-                            await request('open', { handle: selected.group.handle }),
-                          ),
-                        );
-                      })
-                    }
-                  >
-                    Remove enrollment: {m.displayName}
-                  </button>
-                ))}
-              {!!requests.length && (
                 <>
                   <label>
-                    Exact confirmation code from the member
-                    <input
-                      value={confirmation}
-                      autoComplete="off"
-                      onChange={(e) => setConfirmation(e.target.value)}
-                      maxLength={64}
+                    Invitation (expires in 15 minutes)
+                    <textarea
+                      ref={inviteText}
+                      aria-label="Invitation (expires in 15 minutes)"
+                      readOnly
+                      value={invite}
+                      rows={2}
                     />
                   </label>
                   <button
-                    disabled={busy || !approvalId || confirmation.length !== 64}
-                    onClick={() =>
-                      void act(async () => {
-                        const hash = Array.from(
-                          new Uint8Array(
-                            await crypto.subtle.digest(
-                              'SHA-256',
-                              new TextEncoder().encode(confirmation),
-                            ),
-                          ),
-                        )
-                          .map((v) => v.toString(16).padStart(2, '0'))
-                          .join('');
-                        const operation = pending(`approve:${selected.group.handle}`, {
-                          requestId: approvalId,
-                          hash,
-                        });
-                        await request('approve', {
-                          handle: selected.group.handle,
-                          key: operation.key,
-                          requestId: approvalId,
-                          confirmation,
-                        });
-                        operation.clear();
-                        setConfirmation('');
-                        setRequests([]);
-                      })
-                    }
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(invite);
+                        setInviteCopy('copied');
+                      } catch {
+                        inviteText.current?.focus();
+                        inviteText.current?.select();
+                        setInviteCopy('failed');
+                      }
+                    }}
                   >
-                    Approve exact enrollment
+                    {inviteCopy === 'copied' ? 'Invitation copied' : 'Copy invitation'}
                   </button>
+                  {inviteCopy === 'failed' && (
+                    <p role="status">
+                      Copy did not work. The invitation is selected; copy it by hand.
+                    </p>
+                  )}
+                  <p>
+                    They give this invitation to their setup agent, then open{' '}
+                    <strong>Groups → Join by invitation</strong> in their own app. They send you a
+                    confirmation code; select their name in the requests below, and paste that code
+                    to approve them.
+                  </p>
+                </>
+              )}
+              {creatorHandle && (
+                <>
+                  <h3 ref={requestsHeading}>
+                    Join requests{requests.length > 0 ? ` · ${requests.length}` : ''}
+                  </h3>
+                  <button disabled={busy} onClick={() => setRequestsRevision((value) => value + 1)}>
+                    Refresh join requests
+                  </button>
+                  {requestsError && (
+                    <p role="alert">Could not check join requests: {requestsError}</p>
+                  )}
+                  {!requests.length && !requestsError && (
+                    <p>No pending requests. This updates automatically.</p>
+                  )}
+                  {requests.map((r) => (
+                    <label key={r.requestId}>
+                      <input
+                        type="radio"
+                        name="request"
+                        checked={approvalId === r.requestId}
+                        onChange={() => setApprovalId(r.requestId)}
+                      />
+                      {r.displayName}
+                    </label>
+                  ))}
+                  {selected.members
+                    .filter((m) => m.installationId !== selected.member.installationId)
+                    .map((m) => (
+                      <button
+                        key={m.installationId}
+                        disabled={busy}
+                        onClick={() =>
+                          void act(async () => {
+                            const operation = pending(
+                              `revoke:${selected.group.handle}:${m.installationId}`,
+                              {},
+                            );
+                            await request('revoke', {
+                              handle: selected.group.handle,
+                              key: operation.key,
+                              requestId: m.installationId,
+                            });
+                            operation.clear();
+                            setSelected(
+                              contracts.groupHostOpenSchema.parse(
+                                await request('open', { handle: selected.group.handle }),
+                              ),
+                            );
+                          })
+                        }
+                      >
+                        Remove enrollment: {m.displayName}
+                      </button>
+                    ))}
+                  {!!requests.length && (
+                    <>
+                      <label>
+                        Exact confirmation code from the member
+                        <input
+                          value={confirmation}
+                          autoComplete="off"
+                          onChange={(e) => setConfirmation(e.target.value)}
+                          maxLength={64}
+                        />
+                      </label>
+                      <button
+                        disabled={busy || !approvalId || confirmation.length !== 64}
+                        onClick={() =>
+                          void act(async () => {
+                            const hash = Array.from(
+                              new Uint8Array(
+                                await crypto.subtle.digest(
+                                  'SHA-256',
+                                  new TextEncoder().encode(confirmation),
+                                ),
+                              ),
+                            )
+                              .map((v) => v.toString(16).padStart(2, '0'))
+                              .join('');
+                            const operation = pending(`approve:${selected.group.handle}`, {
+                              requestId: approvalId,
+                              hash,
+                            });
+                            await request('approve', {
+                              handle: selected.group.handle,
+                              key: operation.key,
+                              requestId: approvalId,
+                              confirmation,
+                            });
+                            operation.clear();
+                            const approvedName =
+                              requests.find((r) => r.requestId === approvalId)?.displayName ??
+                              'Member';
+                            setApprovalNotice(
+                              `${approvedName} approved. They can now open the group.`,
+                            );
+                            setConfirmation('');
+                            setRequests((items) => items.filter((r) => r.requestId !== approvalId));
+                            setApprovalId('');
+                            setRequestsRevision((value) => value + 1);
+                            setSelected(
+                              contracts.groupHostOpenSchema.parse(
+                                await request('open', { handle: selected.group.handle }),
+                              ),
+                            );
+                          })
+                        }
+                      >
+                        Approve exact enrollment
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </details>
@@ -533,6 +665,23 @@ export function GroupsApp({ route }: { route: string }) {
           </details>
           <div className="group-host-workspace">
             <GroupsWorkspace
+              pendingRequests={requests.length}
+              onInvite={
+                creatorHandle
+                  ? () => {
+                      setControlsOpen(true);
+                      if (membersPanel.current) membersPanel.current.open = true;
+                      requestAnimationFrame(() => {
+                        membersPanel.current?.parentElement?.scrollTo({ top: 0 });
+                        membersPanel.current
+                          ?.querySelector('summary')
+                          ?.focus({ preventScroll: true });
+                        if (requests.length)
+                          requestsHeading.current?.scrollIntoView({ block: 'start' });
+                      });
+                    }
+                  : undefined
+              }
               refreshableFeed
               chatTitle="Shared chat"
               privateDescription="Saved on this computer. Private history, drafts and files are not automatically shared."
@@ -595,6 +744,51 @@ export function GroupsApp({ route }: { route: string }) {
             />
           </div>
         </>
+      )}
+      {!selected && (
+        <details className="group-host-recovery">
+          <summary>Recover an interrupted request</summary>
+          <button
+            onClick={() =>
+              void act(async () => {
+                for (const kind of ['create', 'join'] as const) {
+                  const storage = `swa:groups:${apiScope()}:${kind}`;
+                  const saved = JSON.parse(sessionStorage.getItem(storage) ?? 'null') as {
+                    key: string;
+                  } | null;
+                  if (!saved) continue;
+                  const value = contracts.groupHostResumeResultSchema.parse(
+                    await request('resume', { key: saved.key, kind }),
+                  );
+                  sessionStorage.removeItem(storage);
+                  if (value.confirmation)
+                    setJoinReceipt({
+                      handle: value.group.handle,
+                      name: value.group.name,
+                      confirmation: value.confirmation,
+                    });
+                  else location.hash = `#/groups/${value.group.handle}`;
+                  void load();
+                  return;
+                }
+                setJoinNotice(
+                  'No pending setup request in this tab. Create a group or paste an invitation.',
+                );
+              })
+            }
+          >
+            Recover pending setup
+          </button>
+        </details>
+      )}
+      {!selected && <GroupSetupPrompt initiallyOpen={serviceConfigured === false} />}
+      {!selected && (
+        <details className="group-host-status">
+          <summary>Connection details</summary>
+          <p>{service}</p>
+          <p>{native}</p>
+          <a href="#/welcome">Open setup checks</a>
+        </details>
       )}
     </div>
   );

@@ -22,16 +22,26 @@ uses fake providers and is not a substitute for this setup.
    [hosting runbook](GROUP_HOSTING.md). Human steps are sign-in, account/Free confirmation
    and the chosen HTTPS address. Fresh installations use no maintainer service or beta
    operator code. Existing saved Groups settings and memberships are preserved.
-3. Once configured, choose **New project**, enter project and display names, then
-   **Continue setup**. Open **Group controls → Invitations and approval → Create invitation**
-   and send the invitation privately. Invitations expire after 15 minutes; owner-hosted
+3. New/Join actions appear above setup help. The open Groups page detects completed configuration and collapses the setup prompt
+   automatically. Choose **New project**, enter project and display names, then
+   **Continue setup**. In the group header, choose **Invite people → Create invitation → Copy invitation**
+   and send it privately. The panel links the new-user setup guide and explains how to
+   approve the joining person's confirmation code. Invitations expire after 15 minutes; owner-hosted
    invitations carry routing configuration and join authority, never creator credentials.
+   New links open the shared service's `/join` page, which guides recipients into their own
+   app. A creator's private localhost/phone address is not a group login. For an older link
+   showing “Only the exact app host is allowed,” copy it into **Join by invitation** in
+   the recipient's own app after their setup agent configures the invitation's service.
 4. The member copies **join setup prompt** to their own setup agent with the invitation.
    It configures the creator's exact service in private host files; members do not deploy
    another Worker or need Cloudflare for Groups. Obtain a fresh invitation if setup outlasts
-   its expiry. Use **Join by invitation → Request to join**, then send the exact confirmation
-   code privately to the creator. The creator chooses **Approve exact enrollment** for that
-   request and code. Reopen the group after approval. Matching display names alone do not
+   its expiry. Use **Join by invitation → Request to join**. A **Request sent** receipt
+   confirms acceptance and offers **Copy confirmation code**; send it privately to the creator.
+   The creator's open group checks requests automatically and shows **Join requests · N**
+   in its header. Select the person, paste their code and choose **Approve exact enrollment**.
+   Both sides show approval; the recipient chooses **Open group**. Visible pages refresh
+   approval status every ten seconds and on focus/reconnection without model calls.
+   Matching display names alone do not
    prove identity.
 5. Group agents use the native agent installed on each person's own computer, with its
    existing provider sign-in, tools, skills, hooks and permissions. No Docker, Linux guest

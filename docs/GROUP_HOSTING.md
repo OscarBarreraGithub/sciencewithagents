@@ -92,11 +92,21 @@ node scripts/group-cloudflare-setup.mjs activate /absolute/app-data \
   /absolute/prepared/owner-service.json
 ```
 
-Configuration is read per request; reload Groups. Choose **New project**, supply display
+Configuration is read per request. An open Groups setup page checks every five seconds
+while visible and refreshes when you return to the tab or reconnect. Once configured,
+the setup prompt collapses automatically; existing form entries are kept. Choose **New project**, supply display
 and project names, and continue. No operator setup code is needed. If configuration exists,
 activation refuses to overwrite it. A reinstall/update must retain the same endpoint ID,
 capabilities and service origin. Keep the prepared files for future updates; redeploy their
 config, preserving the existing Durable Object migration and storage.
+
+The service includes a public `/join` invitation handoff page. It displays joining
+instructions and a copy control; it grants no app or group access and makes no membership
+or model call. The invitation stays in the browser fragment, is removed from the address
+bar after capture, and is not sent to the service or a third-party site. Existing creators
+must redeploy the updated Worker with their saved private configuration to enable this
+page; keep all credentials, bindings and migrations. Update the app frontend too so newly
+generated links use the service's `/join` address rather than the creator's app address.
 
 The private owner configuration has this schema (values below are explanatory placeholders):
 

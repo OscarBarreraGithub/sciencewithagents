@@ -755,6 +755,50 @@ it('real workerd create/join/approval, exact host mappings, private drafts and n
       .statusCode,
   ).toBe(409);
 }, 30000);
+it('distinguishes another owner’s hosted service from a malformed invitation before any network or saved intent', async () => {
+  const owned = (origin: string) => ({
+    version: 1 as const,
+    mode: 'hosted' as const,
+    endpoint: `${origin}/`,
+    endpointId: randomUUID(),
+    setupCapability: secret(),
+    hostingAuthorization: { origin, approvalCapability: secret(), freeApprovalId: randomUUID() },
+  });
+  const creatorService = owned('https://creator-groups.example.invalid');
+  const recipientService = owned('https://recipient-groups.example.invalid');
+  const http = vi.fn<typeof fetch>();
+  const recipient = await installation(undefined, { service: recipientService, http });
+  const configPath = join(recipient.host.directory, 'service.json');
+  const originalConfig = readFileSync(configPath, 'utf8');
+  const { setupCapability: _creatorCapability, ...service } = creatorService;
+  const fragment = `/groups?invite=${encodeURIComponent(
+    JSON.stringify({ groupId: randomUUID(), secret: secret(), name: 'Creator’s group', service }),
+  )}`;
+  const result = await recipient.post('join', {
+    key: randomUUID(),
+    invitation: `${creatorService.hostingAuthorization.origin}/join#${fragment}`,
+    displayName: 'Recipient',
+  });
+  expect(result.statusCode).toBe(400);
+  expect(result.json()).toMatchObject({
+    code: 'INVALID_INVITATION',
+    error:
+      'This invitation belongs to another Groups service. Your existing groups are unchanged. Ask your setup agent to check the invitation’s service and your saved Groups configuration before continuing.',
+  });
+  const malformed = await recipient.post('join', {
+    key: randomUUID(),
+    invitation: `${creatorService.hostingAuthorization.origin}/join#/groups?invite=broken`,
+    displayName: 'Recipient',
+  });
+  expect(malformed.statusCode).toBe(400);
+  expect(malformed.json().code).toBe('INVALID_INVITATION');
+  expect(malformed.json().error).not.toContain('belongs to another Groups service');
+  expect(http).not.toHaveBeenCalled();
+  expect(readFileSync(configPath, 'utf8')).toBe(originalConfig);
+  expect(recipient.host.configuration()).toEqual(recipientService);
+  expect(recipient.host.db.prepare('SELECT count(*) n FROM gh_operations').get()?.n).toBe(0);
+  expect((await recipient.host.list()).groups).toEqual([]);
+});
 it('lost create and join replies resume exact retained intents without invitation secrets in URL or browser authority', async () => {
   let lose = true;
   const http: typeof fetch = async (...args) => {

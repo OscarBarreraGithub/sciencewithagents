@@ -14,6 +14,7 @@ export function GroupsLanding({
   invitationRevision = 0,
   setupCodeRequired = false,
   onNewSetupCode,
+  joinReceipt,
 }: GroupsLandingProps) {
   const [mode, setMode] = useState<'create' | 'join' | null>(initialInvitation ? 'join' : null);
   const [name, setName] = useState('');
@@ -63,7 +64,11 @@ export function GroupsLanding({
           displayName: name,
           ...(setupCodeRequired ? { setupCode: setupCode.trim() } : {}),
         });
-      else await onJoin({ invitation, displayName: name });
+      else {
+        await onJoin({ invitation, displayName: name });
+        setMode(null);
+        setInvitation('');
+      }
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : 'Could not continue. Your entries are kept.',
@@ -92,6 +97,7 @@ export function GroupsLanding({
               Join by invitation
             </button>
           </div>
+          {joinReceipt}
           <h2>Your projects</h2>
           {groups.kind === 'loading' ? (
             <p role="status">Loading projects…</p>

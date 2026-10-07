@@ -35,6 +35,7 @@ import {
 } from './crypto.js';
 import { verifyWorkerBetaAdmission, betaGroupMatches } from './group-beta-admission.js';
 import type { GroupBetaAdmissionPayload } from '@dock/shared/dist/group-beta-admission.js';
+import { invitationPage } from './invite-page.js';
 export { GroupMembership } from './membership.js';
 
 const headers = {
@@ -112,6 +113,18 @@ export default {
     // approved this exact HTTPS origin and supplied a separate protected capability.
     const local = localTestMode(env.HOSTING_MODE);
     if (!hostingEnvironment(env)) return reply({ ok: false, error: 'hosting_disabled' });
+    // The public handoff is static: it never consumes capabilities or reaches a DO.
+    // Its invitation stays in the browser fragment and is not part of this request.
+    if (
+      !local &&
+      url.protocol === 'https:' &&
+      url.origin === env.HOSTING_ORIGIN &&
+      url.pathname === '/join' &&
+      url.search === '' &&
+      url.hash === '' &&
+      (request.method === 'GET' || request.method === 'HEAD')
+    )
+      return invitationPage(request.method === 'HEAD');
     const betaAdmission = request.headers.get('X-Group-Admission');
     let beta: GroupBetaAdmissionPayload | undefined;
     if (local) {

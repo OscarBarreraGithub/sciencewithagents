@@ -757,15 +757,6 @@ export class GroupHost {
       } else if (invitation.serviceId || invitation.admission) {
         throw new Error('protected service mismatch');
       }
-      if (invitation.service) {
-        if (
-          config.mode !== 'hosted' ||
-          serviceHash(invitation.service) !== serviceHash(config) ||
-          invitation.service.hostingAuthorization.approvalCapability !==
-            config.hostingAuthorization.approvalCapability
-        )
-          throw new Error('The setup agent must configure the invitation service first.');
-      }
     } catch {
       throw new GroupHostError(
         400,
@@ -773,6 +764,18 @@ export class GroupHost {
         'Paste the complete invitation for the Groups service on this computer. Invitations cannot change a protected service or choose an endpoint.',
       );
     }
+    if (
+      invitation.service &&
+      (config.mode !== 'hosted' ||
+        serviceHash(invitation.service) !== serviceHash(config) ||
+        invitation.service.hostingAuthorization.approvalCapability !==
+          config.hostingAuthorization.approvalCapability)
+    )
+      throw new GroupHostError(
+        400,
+        'INVALID_INVITATION',
+        'This invitation belongs to another Groups service. Your existing groups are unchanged. Ask your setup agent to check the invitation’s service and your saved Groups configuration before continuing.',
+      );
     return this.lock(`join:${input.key}`, async () => {
       const safeInput = {
         ...input,
