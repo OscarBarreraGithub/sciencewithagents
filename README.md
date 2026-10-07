@@ -95,10 +95,11 @@ report anything incomplete rather than claiming success.
 **Access:** ordinary project managers and workers use the selected provider's native tools
 and full-access execution by default. They can run commands and access files/network as your
 user; the project folder is an intended scope, not a filesystem or network sandbox. Explicit
-read-only or restricted choices remain enforced. Groups native agents use a separate,
-owner-authorized Linux environment with its own sign-in and tool tradeoffs; it does not
-confine ordinary project agents. Read [native access](docs/DECISIONS.md#native-agents-thin-supervision)
-and [Groups setup](docs/GROUP_NATIVE_OWNER_SETUP.md) before choosing those workflows.
+read-only or restricted choices remain enforced. Groups uses the same native tools and
+existing sign-in on each person’s computer, with separate shared and private conversations.
+This separates conversation history and publication; it is not a filesystem sandbox.
+Read [native access](docs/DECISIONS.md#native-agents-thin-supervision) and
+[Groups setup](docs/GROUP_NATIVE_OWNER_SETUP.md).
 
 **Requirements:** a coding agent, Node 24+, Git, and a working Codex CLI or Claude Code
 account. Your setup agent checks these. Apple Silicon macOS is the verified desktop target;
@@ -125,10 +126,10 @@ Find and preserve my existing installation, accounts, files and running work.
 Follow docs/CONTRIBUTOR_SETUP.md and docs/GROUP_WORKFLOW.md. Use my own Codex or
 Claude account. Handle the desktop setup and open Home → Groups. I will provide
 either a beta setup code to create one project or an invitation to join one.
-Help me complete the invitation and exact approval steps. Prepare the supported
-isolated group-agent environment, explain its separate sign-in and native-tool
-tradeoffs, and let me complete consent and provider sign-in myself. Keep phone
-access, VS Code sharing and Git optional. Ask only for necessary sign-in, consent
+Help me complete the invitation and exact approval steps. Explain which conversation
+is shared and which is private. Enable group agents on this computer using my existing
+provider sign-in and normal native tools; do not install Docker or set up a separate
+Linux account. Keep phone access, VS Code sharing and Git optional. Ask only for necessary sign-in, consent
 and preference steps. Preserve private work and report any remaining blocker.
 ```
 

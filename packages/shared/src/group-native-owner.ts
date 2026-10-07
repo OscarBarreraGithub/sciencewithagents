@@ -25,6 +25,8 @@ export const groupNativeOwnerInputSchema = z.discriminatedUnion('action', [
 ]);
 export type GroupNativeOwnerInput = z.infer<typeof groupNativeOwnerInputSchema>;
 export const groupNativeOwnerStatusSchema = z.strictObject({
+  executionMode: z.enum(['host', 'isolated']).optional(),
+  hostEnabled: z.boolean().optional(),
   configured: z.boolean(),
   productionReady: z.boolean(),
   provider: z.enum(['codex', 'claude']).nullable(),

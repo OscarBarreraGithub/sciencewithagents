@@ -1,5 +1,10 @@
 # Group native process isolation
 
+> Retained isolation implementation. Groups v1 now uses normal host-native agents with
+> separate shared/private conversations; this Linux route is not a setup prerequisite.
+> Existing isolated receipts remain separate and are never silently migrated. See
+> [current Groups setup](GROUP_NATIVE_OWNER_SETUP.md) and [status](STATUS.md#groups).
+
 Production group agents remain denied until independently reviewed real acceptance.
 The host-only full execution route is now `Runtime.queueGroupExecutionProbe` →
 `GroupNativeBridge.probeExecution` → existing Codex/Claude adapters in an owned

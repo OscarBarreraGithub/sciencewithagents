@@ -51,17 +51,20 @@ function GroupConversation({
   nativeControlsTarget,
   onAuthorizationRequired,
   sharedHandle,
+  executionMode,
 }: {
   slot: contracts.GroupHostSlot;
   onChanged: () => void;
   nativeControlsTarget: HTMLDivElement | null;
   onAuthorizationRequired: () => void;
   sharedHandle: string;
+  executionMode?: 'host' | 'isolated';
 }) {
   return (
     <GroupDocumentScope handle={slot.handle} sharedHandle={sharedHandle}>
       <GroupChat
         slot={slot}
+        executionMode={executionMode}
         request={request}
         onChanged={onChanged}
         nativeControlsTarget={nativeControlsTarget}
@@ -88,7 +91,7 @@ export function GroupsApp({ route }: { route: string }) {
   const [serviceConfigured, setServiceConfigured] = useState<boolean | null>(null);
   const [setupCodeRequired, setSetupCodeRequired] = useState(false);
   const [newSetupCodeAllowed, setNewSetupCodeAllowed] = useState(false);
-  const [native, setNative] = useState('Checking isolated agent availability…');
+  const [native, setNative] = useState('Checking agent availability…');
   const [selected, setSelected] = useState<contracts.GroupHostOpen | null>(null);
   const [error, setError] = useState('');
   const [joinNotice, setJoinNotice] = useState('');
@@ -482,12 +485,16 @@ export function GroupsApp({ route }: { route: string }) {
                 </>
               )}
             </details>
-            <details className="group-host-members group-host-actions">
-              <summary>Shared work and actions</summary>
-              <GroupActionsBoard key={selected.shared.handle} handle={selected.shared.handle} />
-            </details>
-            <GroupGitPanel key={selected.shared.handle} handle={selected.shared.handle} />
-            <GroupReports key={selected.shared.handle} handle={selected.shared.handle} />
+            {selected.native.executionMode !== 'host' && (
+              <>
+                <details className="group-host-members group-host-actions">
+                  <summary>Shared work and actions</summary>
+                  <GroupActionsBoard key={selected.shared.handle} handle={selected.shared.handle} />
+                </details>
+                <GroupGitPanel key={selected.shared.handle} handle={selected.shared.handle} />
+                <GroupReports key={selected.shared.handle} handle={selected.shared.handle} />
+              </>
+            )}
             <details className="group-host-members">
               <summary>Shared feed agent</summary>
               <p>
@@ -507,7 +514,7 @@ export function GroupsApp({ route }: { route: string }) {
                       });
                       operation.clear();
                       setFeedWriterNotice(
-                        'This computer is the shared feed writer. Native setup and admission still apply; sources remain pending while it is unavailable.',
+                        'This computer is the shared feed writer. Summaries wait while its agent is unavailable.',
                       );
                       setSelected(
                         contracts.groupHostOpenSchema.parse(
@@ -527,9 +534,9 @@ export function GroupsApp({ route }: { route: string }) {
           <div className="group-host-workspace">
             <GroupsWorkspace
               refreshableFeed
-              chatTitle="Your group agent"
-              privateDescription="Private to this computer; excluded from the shared feed."
-              sharedDescription="Messages you send are shared with this group."
+              chatTitle="Shared chat"
+              privateDescription="Saved on this computer. Private history, drafts and files are not automatically shared."
+              sharedDescription="Messages you send here are shared with this group. Each person uses their own agent."
               group={selected.group}
               memberId={selected.member.memberId}
               members={selected.members}
@@ -543,6 +550,7 @@ export function GroupsApp({ route }: { route: string }) {
                 content: (
                   <GroupConversation
                     slot={selected.shared}
+                    executionMode={selected.native.executionMode}
                     sharedHandle={selected.shared.handle}
                     onChanged={changed}
                     nativeControlsTarget={nativeControlsTarget}
@@ -559,6 +567,7 @@ export function GroupsApp({ route }: { route: string }) {
                 content: (
                   <GroupConversation
                     slot={selected.private}
+                    executionMode={selected.native.executionMode}
                     sharedHandle={selected.shared.handle}
                     onChanged={privateChanged}
                     nativeControlsTarget={nativeControlsTarget}

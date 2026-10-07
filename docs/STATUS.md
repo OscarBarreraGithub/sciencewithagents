@@ -175,36 +175,38 @@ and model choices remain. Active work is never discarded by an inactivity timer.
 
 ## Groups
 
-**Integrated and activated in the installed app:** normal Home → Groups enrollment,
-shared conversation/private asides, exact setup/send/draft recovery, original evidence reads,
-Ask versus explicit Work, owner-bound actions and feed-writer coordination. Protected native
-route setup, per-context consent/sign-in and proved pre-turn restart recovery are connected.
-Normal Git controls use protected saved repositories and explicit visibility/review choices;
-group reports reuse the scoped Reading/PDF interface. Native isolation and report compilation
-have actual local Engine checks; authenticated membership/delivery and document transport have
-controlled local Worker/SQLite checks. Browser checks use four headless viewports, including
-phone-sized emulation; this is not physical-device evidence.
+**Current v1 implementation:** Groups uses ordinary host-native agents with the
+existing Codex/Claude sign-in. Shared chat and Private to you have separate native sessions,
+requests, drafts and publication destinations. The owner enables native access on their
+computer; incoming group messages do not authorize local work. Ask is read-only and Work
+explicitly authorizes native writing. This is not an operating-system sandbox. Docker and
+a separate Linux sign-in are not required. Existing isolated history is retained without
+replaying its uncertain requests through the new runtime.
 
-**Controlled local acceptance:** the normal two-host HTTP/Worker report journey passes
-explicit sharing, exact PDF/Reading, lost-ack retry, restart, private-file exclusion and revocation of cached access. It uses a
-controlled native export hook with retained output from the actual isolated compiler check.
+The existing hosted membership, human messaging, invitation approval and recovery are reused.
+Native chat, scoped reading and feed summaries are connected. Protected Git export,
+isolated report capture and the older confirmed-action board depend on the retained isolated
+adapter and are not presented as available in local mode. Native Work still has ordinary
+provider tools.
 
 **Hosted service:** an approved HTTPS group service is deployed, with Workers Free directly
-observed in the operator account on 2026-10-07. Scoped beta onboarding is deployed. Two empty,
-independently authenticated profiles passed create/join approval, bidirectional human delivery,
-lost-response retries, private-note/draft exclusion and host restart against the real service.
-These were two profiles on one Mac, without provider turns. Same-tab invitation and stale
-delivery-label corrections are activated on the maintainer installation; the retained-profile
-replay passes without resending messages. Its chats, queues, pairings and phone tunnel survived
-the update. A first real native setup check found a pre-admission capability mismatch; the
-setup-only correction has a composed regression check and awaits real native acceptance.
+observed in the operator account on 2026-10-07. Two empty, independently authenticated profiles
+passed create/join approval, bidirectional human delivery, lost-response retries, private-note
+and draft exclusion, and host restart against the real service. These were two profiles on
+one Mac. A later native check completed private Ask and shared Work with both Codex and
+Claude using existing sign-ins, separate native threads and real local file writes. An
+attributed native reply and a human message reached the remote readable feed through real
+summary turns; their retained originals were checked. Private test messages stayed local.
+Feed summaries are asynchronous; this check does not establish a delivery-time guarantee.
+Focused runtime checks cover delegation, final replies, scoped cancellation and explicit
+recovery before provider input. Browser checks cover the four supported viewport sizes.
 
-**Still requires acceptance:** isolated provider sign-in/consent and real group-native readiness
-on the participating installations, plus the complete workflow between two unrelated people
-on their own installed computers. Local fixtures and automated fresh profiles do not establish
-those outcomes. Physical phone follow-up is deferred by the owner. There is no automatic paid
-fallback or provider-credential copying. See the [Groups workflow](GROUP_WORKFLOW.md),
-[native owner setup](GROUP_NATIVE_OWNER_SETUP.md) and [delivery limits](GROUP_DELIVERY.md).
+**Still requires acceptance:** the complete workflow between two unrelated people on their
+own installed computers. Each installation must update and reopen to use the new runtime.
+Local fixtures and automated fresh profiles do not establish that final outcome. Physical
+phone follow-up is deferred by the owner. No automatic paid hosting fallback or provider
+credential copying is used. See [Groups workflow](GROUP_WORKFLOW.md),
+[native setup](GROUP_NATIVE_OWNER_SETUP.md) and [delivery limits](GROUP_DELIVERY.md).
 
 ## Intentionally deferred
 

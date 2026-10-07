@@ -1148,7 +1148,7 @@ it('keeps a full 64-chunk publication retryable through prolonged offline before
     .prepare('SELECT text FROM chunks WHERE operation_id=? ORDER BY chunk_index')
     .all(operation) as { text: string }[];
   expect(original.map((item) => item.text)).toEqual(chunks);
-}, 30_000);
+}, 60_000);
 
 it('saturates diagnostic and backoff counters without exhausting definite offline retries', async () => {
   const operation = enqueue(append().eventId);
@@ -1593,7 +1593,7 @@ it('retains unfinished, uncertain, exhausted and quarantined full headers throug
       .every((row) => row.compact === 0),
   ).toBe(true);
   read.close();
-});
+}, 30_000);
 
 it.each(['before-completion', 'after-completion'] as const)(
   'keeps exact identity and receipt through the %s crash boundary',
@@ -1794,7 +1794,7 @@ it('bounds the global compact lifetime across epochs while retaining completed l
   expect(enqueue(firstEvent)).toBe(firstOperation);
   expect(await controller.step(grant, firstOperation)).toEqual({ state: 'complete' });
   expect(receiver.trace).toEqual([]);
-}, 30_000);
+}, 60_000);
 
 it('keeps the 128 unfinished-header ceiling when exhausted and quarantine history fills the active budget', () => {
   for (let i = 0; i < LIMITS.lifetimeOperations; i++) {

@@ -111,10 +111,11 @@ do not ask the person to deploy Cloudflare, configure Tailscale or copy private 
 files. Preserve any existing protected service configuration and reconcile a mismatch
 explicitly. Provider sign-in belongs to this person, never the operator or another member.
 
-Prepare requested group agents through [native owner setup](GROUP_NATIVE_OWNER_SETUP.md),
-including the isolated Linux environment, separate provider sign-in and explicit consent.
-The setup agent handles technical registration; account sign-in and required owner choices
-stay with the person. Missing native readiness must remain visible. Phone access, VS Code
+Enable requested group agents through [native owner setup](GROUP_NATIVE_OWNER_SETUP.md).
+They use the normal host runtime and this person’s existing provider sign-in. Explain the
+Shared chat / Private to you distinction and normal native computer access; conversation
+separation is not a filesystem sandbox. Do not require Docker, Linux or a duplicate provider
+sign-in. A missing or expired native sign-in must remain visible. Phone access, VS Code
 sharing and Git are optional and do not block desktop human group messages.
 
 ### First project and manager handoff

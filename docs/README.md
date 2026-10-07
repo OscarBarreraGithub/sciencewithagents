@@ -32,7 +32,7 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 - [Durable hosted receipts, exact source registration and Node transport](GROUP_DELIVERY.md)
 - [Durable group publication and journal limits](GROUP_PUBLICATION.md)
 - [Normal authenticated Groups workflow and current gates](GROUP_WORKFLOW.md)
-- [Native Groups owner setup and isolated sign-in](GROUP_NATIVE_OWNER_SETUP.md)
+- [Groups agents with existing native sign-in](GROUP_NATIVE_OWNER_SETUP.md)
 - [Persistent local Groups test workflow](GROUP_FIXTURE.md)
 - [Groups presentation and synthetic browser preview](GROUP_UI.md)
 - [Verification](VERIFICATION.md), [maintenance scripts](../scripts/README.md),

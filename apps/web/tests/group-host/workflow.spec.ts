@@ -97,7 +97,7 @@ async function create(page: Page, name: string) {
 }
 async function chat(page: Page) {
   await expect(page.locator('.groups-workspace')).toBeVisible();
-  const tab = page.getByRole('tab', { name: 'Your chat', exact: true });
+  const tab = page.getByRole('tab', { name: 'Shared chat', exact: true });
   if (await tab.count()) await tab.click();
 }
 async function feed(page: Page) {
@@ -136,7 +136,7 @@ test('normal Home navigation, authenticated create, saved private notes/drafts, 
   const shared = page.getByPlaceholder('Send a group message…');
   await expect(shared).toBeEnabled();
   await shared.fill('SHARED-UNSENT-DRAFT');
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
   const input = page.getByPlaceholder('Write a private note…');
   await expect(input).toBeEnabled();
@@ -158,7 +158,7 @@ test('normal Home navigation, authenticated create, saved private notes/drafts, 
   await chat(page);
   await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
   await expect(shared).toHaveValue('SHARED-UNSENT-DRAFT');
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
   await expect(input).toHaveValue('PRIVATE-DRAFT-RELOAD');
   await expect(page.locator('.conversation')).toContainText('PRIVATE-EXACT-NOTE');
@@ -407,7 +407,7 @@ test('fragment invitation joins a second authenticated host and exact creator ap
     await member.locator('.groups-projects button').filter({ hasText: 'Joined River' }).click();
     await expect(member.getByRole('heading', { name: 'Joined River', exact: true })).toBeVisible();
     await chat(member);
-    await member.getByRole('button', { name: 'Private aside', exact: true }).click();
+    await member.getByRole('button', { name: 'Private to you', exact: true }).click();
     await member.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
     const privateInput = member.getByPlaceholder('Write a private note…');
     await privateInput.fill('SECOND-HOST-PRIVATE-CANARY');
@@ -415,9 +415,9 @@ test('fragment invitation joins a second authenticated host and exact creator ap
     await expect(member.locator('.conversation')).toContainText('SECOND-HOST-PRIVATE-CANARY');
     await member.reload();
     await chat(member);
-    await member.getByRole('button', { name: 'Private aside', exact: true }).click();
+    await member.getByRole('button', { name: 'Private to you', exact: true }).click();
     await expect(member.locator('.conversation')).toContainText('SECOND-HOST-PRIVATE-CANARY');
-    await member.getByRole('button', { name: 'Back to group chat', exact: true }).click();
+    await member.getByRole('button', { name: 'Back to shared chat', exact: true }).click();
     await member.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
     const sharedInput = member.getByPlaceholder('Send a group message…');
     const original = '  SECOND-HOST-SHARED-EXACT\n🧬 original whitespace  ';
@@ -481,7 +481,7 @@ test('150% text keeps shared/private Conversation and Composer reachable with ne
   await shared.scrollIntoViewIfNeeded();
   await expect(shared).toBeVisible();
   await capture(page, 'large-shared-composer');
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
   const input = page.getByPlaceholder('Write a private note…');
   await input.fill('LARGE-PRIVATE-NOTE');

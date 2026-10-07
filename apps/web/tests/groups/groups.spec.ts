@@ -61,7 +61,7 @@ async function openGroup(page: Page) {
   await expect(page.locator('.groups-event').first()).toBeVisible();
 }
 async function chat(page: Page) {
-  const tab = page.getByRole('tab', { name: 'Your chat' });
+  const tab = page.getByRole('tab', { name: 'Shared chat' });
   if (await tab.count()) await tab.click();
 }
 async function feed(page: Page) {
@@ -152,8 +152,8 @@ test('private/shared draft separation, keyboard focus, notepad and failed send r
   await shared.fill('Shared draft stays here');
   await expect(shared).toBeInViewport();
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeInViewport();
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Private aside', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Private to you', exact: true })).toBeFocused();
   const privateText = page.getByRole('textbox', {
     name: 'Message Synthetic private session',
     exact: true,
@@ -162,7 +162,7 @@ test('private/shared draft separation, keyboard focus, notepad and failed send r
   await expect(shared).toHaveCount(0);
   await privateText.fill('Only private draft');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Private aside', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Private to you', exact: true })).toBeFocused();
   await expect(shared).toHaveValue('Shared draft stays here');
   await expect(privateText).toHaveCount(0);
   await feed(page);
@@ -185,7 +185,7 @@ test('private/shared draft separation, keyboard focus, notepad and failed send r
   await expect(shared).toHaveValue('');
   await expect(page.locator('.conversation')).toContainText('Shared draft stays here');
   await expect(shared).toBeFocused();
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await expect(privateText).toHaveValue('Only private draft');
   await expect(page.locator('.conversation')).not.toContainText('Shared draft stays here');
   await noOverflow(page);
@@ -199,7 +199,7 @@ test('private Notepad Escape dismisses only the nested dialog', async ({ page },
     exact: true,
   });
   await shared.fill('Shared draft before private Notepad');
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   const privateText = page.getByRole('textbox', {
     name: 'Message Synthetic private session',
     exact: true,
@@ -211,7 +211,7 @@ test('private Notepad Escape dismisses only the nested dialog', async ({ page },
   await dialog.getByRole('textbox').fill('Private draft edited inside Notepad');
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Private aside', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Private to you', exact: true })).toBeVisible();
   await expect(privateText).toHaveValue('Private draft edited inside Notepad');
   await expect(privateText).toBeFocused();
   await expect(shared).toHaveCount(0);
@@ -221,7 +221,7 @@ test('private Notepad Escape dismisses only the nested dialog', async ({ page },
     path: resolve(folder, `${info.project.name}-private-notepad-return.png`),
     fullPage: false,
   });
-  await page.getByRole('button', { name: 'Back to group chat' }).click();
+  await page.getByRole('button', { name: 'Back to shared chat' }).click();
   await expect(shared).toHaveValue('Shared draft before private Notepad');
 });
 
@@ -230,13 +230,13 @@ test('handled, composing and nested-dialog Escape events leave the private conte
 }) => {
   await openGroup(page);
   await chat(page);
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   const input = page.getByRole('textbox', {
     name: 'Message Synthetic private session',
     exact: true,
   });
   await input.fill('Private draft for event ownership');
-  const heading = page.getByRole('heading', { name: 'Private aside', exact: true });
+  const heading = page.getByRole('heading', { name: 'Private to you', exact: true });
   // Actual bubbling DOM events enter the React handler; each guard is tested separately.
   expect(
     await input.evaluate((element) => {
@@ -286,7 +286,7 @@ test('handled, composing and nested-dialog Escape events leave the private conte
   await input.focus();
   await page.keyboard.press('Escape');
   await expect(heading).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Private aside', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Private to you', exact: true })).toBeFocused();
 });
 
 test('catch-up retains mounted shared/private chat, reading position, draft selection and return focus', async ({
@@ -296,7 +296,7 @@ test('catch-up retains mounted shared/private chat, reading position, draft sele
   await chat(page);
   for (const context of ['group', 'private'] as const) {
     if (context === 'private')
-      await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+      await page.getByRole('button', { name: 'Private to you', exact: true }).click();
     const input = page.getByRole('textbox', {
       name: `Message Synthetic ${context} session`,
       exact: true,
@@ -342,7 +342,7 @@ test('catch-up retains mounted shared/private chat, reading position, draft sele
       await expect(opener).toBeFocused();
       await expect(
         page.getByRole('heading', {
-          name: context === 'private' ? 'Private aside' : 'Your group agent',
+          name: context === 'private' ? 'Private to you' : 'Shared chat',
           exact: true,
         }),
       ).toBeVisible();
@@ -357,7 +357,7 @@ test('catch-up retains mounted shared/private chat, reading position, draft sele
       await expect.poll(() => timeline.evaluate((element) => element.scrollTop)).toBe(readingTop);
     }
   }
-  await page.getByRole('button', { name: 'Back to group chat' }).click();
+  await page.getByRole('button', { name: 'Back to shared chat' }).click();
   await expect(
     page.getByRole('textbox', { name: 'Message Synthetic group session', exact: true }),
   ).toHaveValue('Retained group catch-up draft');
@@ -444,7 +444,7 @@ test('late source responses discarded on project and session switch; revocation 
   await page.waitForTimeout(1600);
   await expect(page.locator('pre[aria-label="Exact original"]')).toHaveCount(0);
   await chat(page);
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await page
     .getByRole('textbox', { name: 'Message Synthetic private session', exact: true })
     .fill('Private hidden after revocation');
@@ -505,8 +505,8 @@ test('feed empty/offline/error retry, private catch-up retry, phone tabs preserv
   if (await tab.count()) {
     await tab.focus();
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('tab', { name: 'Your chat' })).toBeFocused();
-    await expect(page.getByRole('tab', { name: 'Your chat' })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: 'Shared chat' })).toBeFocused();
+    await expect(page.getByRole('tab', { name: 'Shared chat' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -579,7 +579,7 @@ test('enlarged text, long originals and responsive screenshots', async ({ page }
     await page.keyboard.press('Home');
     await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(0);
     await expect(page.getByRole('button', { name: 'Decision', exact: true })).toBeInViewport();
-    await expect(page.getByRole('tab', { name: 'Your chat' })).toBeInViewport();
+    await expect(page.getByRole('tab', { name: 'Shared chat' })).toBeInViewport();
   }
   await chat(page);
   await page
@@ -653,7 +653,7 @@ test('source integrity failure retries; drafts persist across Back and browser r
     exact: true,
   });
   await shared.fill('Retained browser-only shared draft');
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await page
     .getByRole('textbox', { name: 'Message Synthetic private session', exact: true })
     .fill('Retained browser-only private draft');
@@ -665,7 +665,7 @@ test('source integrity failure retries; drafts persist across Back and browser r
   await openGroup(page);
   await chat(page);
   await expect(shared).toHaveValue('Retained browser-only shared draft');
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await expect(
     page.getByRole('textbox', { name: 'Message Synthetic private session', exact: true }),
   ).toHaveValue('Retained browser-only private draft');
@@ -696,8 +696,8 @@ test('conversation reading position survives panel and private/session navigatio
   await feed(page);
   await chat(page);
   expect(await timeline.evaluate((element) => element.scrollTop)).toBe(readingTop);
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
-  await page.getByRole('button', { name: 'Back to group chat' }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to shared chat' }).click();
   await expect.poll(() => timeline.evaluate((element) => element.scrollTop)).toBe(readingTop);
   await expect(input).toHaveValue('Draft while reading earlier messages');
   await expect(input).toBeInViewport();
@@ -719,8 +719,8 @@ test('backend-dependent upload and normal chat links fail visibly without networ
     'Uploads are unavailable in the synthetic preview',
   );
   await expect(input).toHaveValue('Draft retained through unavailable upload');
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
-  await page.getByRole('button', { name: 'Back to group chat' }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to shared chat' }).click();
   await expect(input).toHaveValue('Draft retained through unavailable upload');
   await input.fill('See https://example.invalid/synthetic-only for this synthetic note.');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
@@ -745,7 +745,7 @@ test('150% chat retains a readable transcript and scroll-reachable controls in b
   await mkdir(folder, { recursive: true });
   for (const context of ['group', 'private']) {
     if (context === 'private')
-      await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+      await page.getByRole('button', { name: 'Private to you', exact: true }).click();
     const timeline = page.locator('.conversation');
     expect(await timeline.evaluate((element) => element.clientHeight)).toBeGreaterThanOrEqual(120);
     const input = page.getByRole('textbox', {
@@ -842,7 +842,7 @@ test('150% chat retains a readable transcript and scroll-reachable controls in b
       path: resolve(folder, `${info.project.name}-large-${context}-composer.png`),
       fullPage: false,
     });
-    const tab = page.getByRole('tab', { name: 'Your chat' });
+    const tab = page.getByRole('tab', { name: 'Shared chat' });
     if (await tab.count()) {
       // Shift-Tab returns through the panel controls to the selected tab.
       for (
@@ -861,7 +861,7 @@ test('150% chat retains a readable transcript and scroll-reachable controls in b
     await expect(input).toHaveValue(`Retained ${context} enlarged draft`);
     await expect(
       page.getByRole('heading', {
-        name: context === 'private' ? 'Private aside' : 'Your group agent',
+        name: context === 'private' ? 'Private to you' : 'Shared chat',
         exact: true,
       }),
     ).toBeVisible();

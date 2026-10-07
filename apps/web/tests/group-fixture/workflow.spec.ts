@@ -93,7 +93,7 @@ async function create(page: Page, name: string) {
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 }
 async function chatTab(page: Page) {
-  const tab = page.getByRole('tab', { name: 'Your chat', exact: true });
+  const tab = page.getByRole('tab', { name: 'Shared chat', exact: true });
   if ((page.viewportSize()?.width ?? 1440) < 981) await tab.click();
 }
 async function feedTab(page: Page) {
@@ -144,7 +144,7 @@ test('persisted UI send/original/private draft and canaries survive reload and r
   ).toContainText('second line');
   await screenshot(page, 'shared-original');
   await chatTab(page);
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   const privateInput = page.getByPlaceholder('Message private test session…');
   await privateInput.fill('PRIVATE-ASIDE-CANARY');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
@@ -152,7 +152,7 @@ test('persisted UI send/original/private draft and canaries survive reload and r
   await privateInput.fill('PRIVATE-DRAFT-RETAINED');
   await page.getByRole('button', { name: 'Open notepad', exact: true }).click();
   await page.getByRole('dialog').getByRole('textbox').press('Escape');
-  await expect(page.getByRole('heading', { name: 'Private aside', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Private to you', exact: true })).toBeVisible();
   await expect(privateInput).toHaveValue('PRIVATE-DRAFT-RETAINED');
   await page.getByRole('button', { name: 'What mattered since last visit?' }).click();
   await expect(page.getByRole('region', { name: 'Private catch-up' })).toContainText(
@@ -164,7 +164,7 @@ test('persisted UI send/original/private draft and canaries survive reload and r
   await page.getByRole('button', { name: 'Back to conversation', exact: true }).click();
   await expect(privateInput).toHaveValue('PRIVATE-DRAFT-RETAINED');
   await screenshot(page, 'private-draft');
-  await page.getByRole('button', { name: 'Back to group chat' }).click();
+  await page.getByRole('button', { name: 'Back to shared chat' }).click();
   await expect(input).toHaveValue('');
   await input.fill('SHARED-DRAFT-RETAINED');
   await page.reload();
@@ -179,7 +179,7 @@ test('persisted UI send/original/private draft and canaries survive reload and r
   await chatTab(page);
   await expect(page.locator('.conversation')).toContainText('Shared exact original');
   await expect(input).toHaveValue('SHARED-DRAFT-RETAINED');
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await expect(privateInput).toHaveValue('PRIVATE-DRAFT-RETAINED');
   await expect(page.locator('.conversation')).toContainText('PRIVATE-ASIDE-CANARY');
   await feedTab(page);
@@ -259,7 +259,7 @@ test('150% text keeps transcript/last message and composer reachable with natura
   await page.locator('.group-fixture-status summary').click();
   for (const visibility of ['shared', 'private'] as const) {
     if (visibility === 'private')
-      await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+      await page.getByRole('button', { name: 'Private to you', exact: true }).click();
     const input = page.getByPlaceholder(`Message ${visibility} test session…`);
     await expect(input).toBeEnabled();
     const handle = visibility === 'shared' ? opened.shared.handle : opened.private.handle;
@@ -511,7 +511,7 @@ test('two pages retain their drafts and recover a definitive revision conflict',
       ),
     ).not.toContainEqual(expect.objectContaining({ key: expect.any(String) }));
   }
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   const privateInput = page.getByPlaceholder('Message private test session…');
   await privateInput.fill('CONFLICT-PRIVATE-CANARY');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
@@ -520,10 +520,10 @@ test('two pages retain their drafts and recover a definitive revision conflict',
   await expect
     .poll(async () => (await api('chat', { handle: opened.private.handle })).draft.text)
     .toBe('PRIVATE-DRAFT-ONLY-IN-FIRST-TAB');
-  await page.getByRole('button', { name: 'Back to group chat' }).click();
+  await page.getByRole('button', { name: 'Back to shared chat' }).click();
   await expect(first).toHaveValue('');
   await reopen(page);
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await expect(privateInput).toHaveValue('PRIVATE-DRAFT-ONLY-IN-FIRST-TAB');
   await page.getByRole('button', { name: 'What mattered since last visit?' }).click();
   await expect(page.getByRole('region', { name: 'Private catch-up' })).not.toContainText(
@@ -591,9 +591,9 @@ test('draft lost ack keeps exact key through typing, unmount, reload and restart
       await route.fulfill({ response });
     } else await route.continue();
   });
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await page.getByPlaceholder('Message private test session…').fill('SEPARATE-PRIVATE-DRAFT');
-  await page.getByRole('button', { name: 'Back to group chat' }).click();
+  await page.getByRole('button', { name: 'Back to shared chat' }).click();
   await expect(input).toHaveValue('NEW-TYPING-DURING-ACK');
   releaseRead();
   await page.unroute('**/api/group-fixture/chat');
@@ -629,11 +629,11 @@ test('draft lost ack keeps exact key through typing, unmount, reload and restart
     .toBe('NEW-TYPING-DURING-ACK');
   expect(replayed.find((r) => r.handle === opened.shared.handle)).toEqual(pending);
   expect((await api('chat', { handle: opened.shared.handle })).draft.revision).toBe(2);
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await expect(page.getByPlaceholder('Message private test session…')).toHaveValue(
     'SEPARATE-PRIVATE-DRAFT',
   );
-  await page.getByRole('button', { name: 'Back to group chat' }).click();
+  await page.getByRole('button', { name: 'Back to shared chat' }).click();
 
   // A browser upgraded with the old per-handle localStorage request can recover.
   const legacy = {
@@ -1004,7 +1004,7 @@ test('5xx and auth ambiguity retain exact draft identity until acknowledged; bou
         ),
       opened.private.handle,
     );
-    await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+    await page.getByRole('button', { name: 'Private to you', exact: true }).click();
     await expect(page.getByPlaceholder('Message private test session…')).toHaveValue(
       'PRIVATE-SAVED-PARSE-CANARY',
     );
@@ -1126,7 +1126,7 @@ test('damaged draft text recovers saved provenance and exact pending snapshots w
   await store({ text: {}, base: { revision: -1, text: 'BROKEN-BASE' }, pending: null });
   await expect(input).toHaveValue(saved.text);
   expect(requests).toHaveLength(0);
-  await page.getByRole('button', { name: 'Private aside', exact: true }).click();
+  await page.getByRole('button', { name: 'Private to you', exact: true }).click();
   await expect(page.getByPlaceholder('Message private test session…')).toHaveValue(
     privatePending.text,
   );

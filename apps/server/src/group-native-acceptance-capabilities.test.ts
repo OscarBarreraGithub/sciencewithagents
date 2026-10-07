@@ -26,7 +26,7 @@ it('composed owner acceptance retains native tools without collecting unrelated 
     runId: randomUUID(),
     admitted: new Promise<GroupNativeExecution>(() => {}),
   }));
-  const host = createProductionGroupHost(root, runtime);
+  const host = createProductionGroupHost(root, runtime, undefined, { executionMode: 'isolated' });
   const connector = vi.mocked(createGroupNativeConnector).mock.results.at(-1)!.value as ReturnType<
     typeof createGroupNativeConnector
   >;

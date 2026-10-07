@@ -1,4 +1,6 @@
 import { join } from 'node:path';
+import type { GroupContext } from '@dock/shared';
+import type { ClaudeHostTool } from './claude-session.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { GroupCatchupStore } from './group-catchup.js';
 import { GroupEvidenceIndex, type GroupEvidenceSourcePort } from './group-evidence.js';
@@ -6,6 +8,7 @@ import { registerGroupCatchupRoutes } from './group-catchup-routes.js';
 import type { GroupHost } from './group-host.js';
 import { privateGroupFile, protectGroupSidecars } from './group-host-storage.js';
 import { registerGroupNativeCapabilities } from './group-native-connector.js';
+import { registerGroupHostEvidence } from './group-host-native-tools.js';
 import {
   createGroupPrivateEvidenceQuery,
   GROUP_PRIVATE_EVIDENCE_TOOL,
@@ -90,7 +93,7 @@ export class GroupFeatureReading {
   }
 }
 export function registerGroupReadingCapabilities(runtime: Runtime, host: GroupHost) {
-  registerGroupNativeCapabilities(runtime, 'private-history', (context) =>
+  const tools = (context: GroupContext): ClaudeHostTool[] =>
     context.visibility === 'private'
       ? [
           {
@@ -107,6 +110,7 @@ export function registerGroupReadingCapabilities(runtime: Runtime, host: GroupHo
             },
           },
         ]
-      : [],
-  );
+      : [];
+  registerGroupNativeCapabilities(runtime, 'private-history', tools);
+  registerGroupHostEvidence(runtime, tools);
 }

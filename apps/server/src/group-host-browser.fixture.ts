@@ -17,6 +17,7 @@ import type { GroupNativeSnapshot } from './group-host-native.js';
 import { LocalAccess, prepareLocalAccess } from './local-access.js';
 import { deliveryResultSchema } from '@dock/shared/dist/group-delivery.js';
 import type { GroupPromotionSynthesis, GroupPromotionSynthesisResult } from './group-promotion.js';
+import { groupNativeOwnerInputSchema } from '@dock/shared/dist/group-native-owner.js';
 async function freePort() {
   const s = netServer();
   await new Promise<void>((r) => s.listen(0, '127.0.0.1', r));
@@ -108,6 +109,7 @@ async function launchInstallation(name: string, configured = true) {
   runtime = new Runtime(store, directory, join(root, 'unavailable-native'), async () => {
     throw new Error('Acceptance harness never launches a provider');
   });
+  const enabledEnrollments = new Set<string>();
   host = new GroupHost(directory, {
     betaProfile: null,
     ...(controlledAgent
@@ -116,10 +118,63 @@ async function launchInstallation(name: string, configured = true) {
             availability: () => ({
               available: true,
               productionReady: true,
-              authState: 'ready' as const,
+              executionMode: 'host' as const,
+              authState: 'inherited' as const,
               message: 'Controlled typed native port; no provider/account readiness claim.',
             }),
+            owner: {
+              async control(scope, raw) {
+                const input = groupNativeOwnerInputSchema.parse(raw);
+                if (input.action === 'prepare') enabledEnrollments.add(scope.enrollmentHandle);
+                const requestId = 'requestId' in input ? input.requestId : undefined;
+                if (input.action === 'reject' && requestId)
+                  nativeSnapshots.set(requestId, {
+                    requestId,
+                    state: 'blocked',
+                    message: 'Controlled saved request canceled; no provider turn.',
+                  });
+                if (
+                  input.action === 'continue' &&
+                  requestId &&
+                  enabledEnrollments.has(scope.enrollmentHandle) &&
+                  nativeSnapshots.get(requestId)?.state === 'pending-consent'
+                ) {
+                  nativeSubmits++;
+                  nativeSnapshots.set(requestId, {
+                    requestId,
+                    state: 'queued',
+                    message: 'Controlled saved request continued; no provider turn.',
+                  });
+                }
+                return {
+                  configured: true,
+                  productionReady: true,
+                  executionMode: 'host',
+                  hostEnabled: enabledEnrollments.has(scope.enrollmentHandle),
+                  provider: 'codex',
+                  setupId: null,
+                  state:
+                    input.action === 'reject'
+                      ? 'rejected'
+                      : requestId && nativeSnapshots.get(requestId)?.state === 'queued'
+                        ? 'pending'
+                        : 'not-started',
+                  message: enabledEnrollments.has(scope.enrollmentHandle)
+                    ? 'Local agent access enabled. Existing provider sign-in is checked on first turn.'
+                    : 'Enable local agent access for this group on this computer.',
+                };
+              },
+              close() {},
+            },
             submit: async (input: import('./group-host-native.js').GroupNativeRequest) => {
+              if (!enabledEnrollments.has(input.enrollmentHandle))
+                return nativeSnapshots
+                  .set(input.requestId, {
+                    requestId: input.requestId,
+                    state: 'pending-consent',
+                    message: 'Enable local access, then continue this exact saved request.',
+                  })
+                  .get(input.requestId)!;
               nativeSubmits++;
               const value: GroupNativeSnapshot = {
                 requestId: input.requestId,

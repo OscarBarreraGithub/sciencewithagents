@@ -15,17 +15,22 @@ export function GroupNativeOwner({
   requestId,
   request,
   onChanged,
+  executionMode,
+  requestPendingConsent,
 }: {
   handle: string;
   requestId?: string;
   request: GroupChatClient;
   onChanged: () => void;
+  executionMode?: 'host' | 'isolated';
+  requestPendingConsent?: boolean;
 }) {
   const [status, setStatus] = useState<GroupNativeOwnerStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [consent, setConsent] = useState(false);
   const [terminal, setTerminal] = useState<string | null>(null);
+  const hostMode = (status?.executionMode ?? executionMode) === 'host';
   const storageKey = `swa:${apiScope()}:native-owner:${handle}:${requestId ?? 'acceptance'}`;
   async function control(action: GroupNativeOwnerInput['action'], kind?: 'explicit' | 'crash') {
     setBusy(true);
@@ -77,6 +82,39 @@ export function GroupNativeOwner({
     setConsent(false);
     void control('status');
   }, [handle, requestId]);
+  if (hostMode)
+    return (
+      <details className="group-native-owner" open={Boolean(requestId)}>
+        <summary>{requestId ? 'Saved agent request' : 'Local agent access'}</summary>
+        <p role="status">{status?.message ?? 'Checking local agent access…'}</p>
+        <p>
+          Uses this computer’s existing sign-in and native tools. Shared and private chats keep
+          separate histories; agents retain normal access to this computer. Private content is not
+          automatically shared.
+        </p>
+        <div className="group-native-owner-actions">
+          <button disabled={busy} onClick={() => void control('status')}>
+            Check agent status
+          </button>
+          {status && !status.hostEnabled && (
+            <button disabled={busy} onClick={() => void control('prepare')}>
+              Enable agents on this computer
+            </button>
+          )}
+          {requestId && requestPendingConsent && status?.hostEnabled && (
+            <button disabled={busy} onClick={() => void control('continue')}>
+              Continue saved request
+            </button>
+          )}
+          {requestId && status && !['stopped', 'rejected', 'verified'].includes(status.state) && (
+            <button disabled={busy} onClick={() => void control('reject')}>
+              Cancel saved request
+            </button>
+          )}
+        </div>
+        {error && <p role="alert">{error}</p>}
+      </details>
+    );
   if (terminal)
     return (
       <OwnerTerminal
@@ -93,17 +131,21 @@ export function GroupNativeOwner({
     <details className="group-native-owner" open={Boolean(requestId)}>
       <summary>{requestId ? 'Authorize this saved agent request' : 'Native agent setup'}</summary>
       <p role="status">{status?.message ?? 'Checking this saved context…'}</p>
-      <p>
-        This chat runs in its own Linux workspace with separate provider sign-in. Native shell,
-        browser tools, skills, hooks and integrations configured there stay available. Personal
-        credentials are not copied; macOS desktop control and host-only tools are unavailable.
-        Shared and private chats authorize separately.
-      </p>
-      <label>
-        <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />I
-        authorize provider sign-in and{' '}
-        {requestId ? 'this saved request.' : 'the setup checks I choose.'}
-      </label>
+      {status && (
+        <p>
+          This chat runs in its own Linux workspace with separate provider sign-in. Native shell,
+          browser tools, skills, hooks and integrations configured there stay available. Personal
+          credentials are not copied; macOS desktop control and host-only tools are unavailable.
+          Shared and private chats authorize separately.
+        </p>
+      )}
+      {status && (
+        <label>
+          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+          I authorize provider sign-in and{' '}
+          {requestId ? 'this saved request.' : 'the setup checks I choose.'}
+        </label>
+      )}
       {status?.device && (
         <p>
           Open{' '}

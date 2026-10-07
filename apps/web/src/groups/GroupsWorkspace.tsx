@@ -176,7 +176,7 @@ function Workspace(props: GroupsWorkspaceProps) {
             aria-controls="groups-chat-panel"
             onClick={() => selectPanel('chat')}
           >
-            Your chat
+            {aside ? 'Private to you' : 'Shared chat'}
           </button>
         </div>
       )}
@@ -203,24 +203,23 @@ function Workspace(props: GroupsWorkspaceProps) {
           className="groups-chat-panel"
           hidden={!wide && panel !== 'chat'}
           role={wide ? 'region' : 'tabpanel'}
-          aria-label={wide ? 'Your chat' : undefined}
+          aria-label={wide ? (aside ? 'Private to you' : 'Shared chat') : undefined}
           aria-labelledby={wide ? undefined : 'groups-chat-tab'}
         >
           <header className="groups-panel-heading" hidden={catchingUp} inert={catchingUp}>
             <h2 ref={chatHeading} tabIndex={-1}>
-              {aside ? 'Private aside' : (props.chatTitle ?? 'Your group agent')}
+              {aside ? 'Private to you' : (props.chatTitle ?? 'Shared chat')}
             </h2>
             <p>
               {aside
                 ? (props.privateDescription ??
-                  'Separate provided session. Nothing is published from this panel; backend privacy requires host enforcement.')
-                : (props.sharedDescription ??
-                  'Your conversation about shared work. The host controls what is published to the feed.')}
+                  'Saved on this computer; excluded from the shared feed.')
+                : (props.sharedDescription ?? 'Messages you send here are shared with this group.')}
             </p>
             <div className="groups-actions">
               {aside ? (
                 <button className="secondary" onClick={closePrivate}>
-                  Back to group chat
+                  Back to shared chat
                 </button>
               ) : (
                 <button
@@ -232,7 +231,7 @@ function Workspace(props: GroupsWorkspaceProps) {
                     requestAnimationFrame(() => chatHeading.current?.focus());
                   }}
                 >
-                  Private aside
+                  Private to you
                 </button>
               )}
               <button
@@ -247,7 +246,7 @@ function Workspace(props: GroupsWorkspaceProps) {
               </button>
             </div>
             {!privateAside && (
-              <p>Private aside unavailable until a separate session is provided.</p>
+              <p>Private to you unavailable until a separate session is provided.</p>
             )}
           </header>
           {catchingUp &&

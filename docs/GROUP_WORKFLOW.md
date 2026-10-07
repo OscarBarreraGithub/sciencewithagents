@@ -1,7 +1,7 @@
 # Groups in the normal app
 
-Groups brings a shared conversation, evidence feed and work board into the ordinary app.
-Each person keeps their own installation, provider account and private asides. Start at
+Groups brings shared conversations and an evidence feed into the ordinary app.
+Each person keeps their own installation, provider account and private conversation. Start at
 **Home → Groups**, including from an authenticated paired phone or laptop. The selected
 computer must be awake, reachable and running the app.
 
@@ -21,19 +21,22 @@ uses fake providers and is not a substitute for this setup.
    requires no Cloudflare account, Tailscale or private operator configuration. Existing
    protected service settings are preserved; ask the setup agent to reconcile a different
    service explicitly. Human messaging can work without native-agent configuration.
-3. If you want group agents, have the setup agent register the reviewed isolated native
-   route on each worker computer, using [native owner setup](GROUP_NATIVE_OWNER_SETUP.md).
-   This includes the approved image, protected resources and provider network access.
-   Groups does not ask you to enter paths, executables, credentials or shell commands.
-4. In Groups, choose **New project**, enter the project and display names, then
+3. In Groups, choose **New project**, enter the project and display names, then
    paste the **Beta setup code**, then **Continue setup**. The creator opens **Group controls → Invitations and approval → Create invitation**
    and sends the invitation privately to the intended person. Invitations expire after
    15 minutes. They carry scoped group admission, never the creation capability or a
    selectable service URL.
-5. On the other installation, use **Join by invitation → Request to join**. Send the exact
+4. On the other installation, use **Join by invitation → Request to join**. Send the exact
    confirmation code privately to the creator. The creator selects the matching request,
    enters that code and chooses **Approve exact enrollment**. Matching display names alone
    do not prove identity. Reopen the group after approval.
+5. Group agents use the native agent installed on each person's own computer, with its
+   existing provider sign-in, tools, skills, hooks and permissions. No Docker, Linux guest
+   or separate provider account is required for local execution. Read **Group controls →
+   Local agent access**, then choose **Enable agents on this computer** once for your group
+   membership. This makes no model call. The provider checks its existing sign-in when a
+   request starts; use ordinary provider sign-in if needed. See [native owner
+   setup](GROUP_NATIVE_OWNER_SETUP.md) for the supported setup and retained isolated mode.
 6. On the creator's computer, choose **Group controls → Shared feed agent → Use this
    computer for the shared feed**. Keep that computer running. Send a short human message
    from each installation and confirm both people can open the originals in the shared
@@ -58,7 +61,11 @@ invitation instead.
 
 ## Conversation and work
 
-The ordinary composer defaults to **Group agent** and **Ask**. Choose **Work** only to
+**Shared chat** contains messages you choose to send to the group. **Private to you** opens
+your separate local conversation and draft. Each person requests their own enrolled local
+agent; another participant's message does not authorize work on your computer.
+
+The ordinary composer defaults to **Your agent** and **Ask**. Choose **Work** only to
 authorize shared work. Private agent requests always use Ask. **Send to** also offers an
 explicit human group message or private note. Failed, unknown or blocked agent requests
 retain their exact request ID, text, destination and intent across retry/reload, with no
@@ -71,56 +78,44 @@ The selected computer resumes pending summaries when it reconnects, even with it
 Longer summaries can need native setup and QUARK admission; originals remain retained while
 summaries wait.
 
-**Group controls** collects invitations, shared actions, Git, reports, the feed writer and
-native setup in one expandable area. Saved agent receipts are collapsed separately; a
-request needing authorization opens its existing setup controls.
+**Group controls** collects invitations, the feed writer and local agent access. The
+separately configured mode also offers shared actions, Git and reports. Saved agent
+receipts are collapsed separately; a request needing authorization opens its existing
+controls.
 
-Work records the exact
-shared instruction before native handoff; questions, private asides and native replies do
-not grant work authority. **Shared work and actions** shows verified tasks and owner controls.
-Start, Stop and retries stay bound to the original task and worker; they do not borrow a
-personal manager or silently create a new instruction.
+Work records the exact shared instruction before native handoff. Questions, private
+conversations and incoming group messages do not grant work authority. Cancellation and
+retries stay bound to the original local request; they do not borrow a personal manager
+or silently create a new instruction.
 
-A new isolated native context can require its own provider authorization. Expand **Native
-agent setup** or **Authorize this saved agent request**, read the tool and credential
-tradeoffs, then use **Sign in**. Codex offers native device authorization; Claude uses the
-fixed isolated owner-login terminal. A paired owner can authorize their selected computer.
-Existing personal credentials are not copied into the context. Check sign-in and choose
-**Continue saved request** after consent. Preparation and sign-in make no model turn;
-explicit native acceptance checks under **Advanced setup-agent checks** do use allowance.
-Production readiness still requires the actual reviewed artifact and isolation checks.
+If a saved request needs local access enabled, its controls open automatically. Enable
+access, then choose **Continue saved request** to authorize that exact request. **Cancel
+saved request** targets the saved local request. A lost reply or restart retains its
+identity; recovery inspects it instead of replaying tools. Agent availability does not
+mean provider sign-in has been verified, and a provider failure leaves the request saved.
 
-**Retry sign-in** recovers a canceled/expired Codex challenge without losing the saved text;
-retries are rate-limited, not a lifetime lockout. After an app restart, **Reconnect saved
-request** is available only when the journal proves no native input was submitted and the
-old owned runtime is stopped. It reopens the same account/state and requires explicit
-continuation. If input may already have started, recovery inspects the original request
-instead of replaying tools. See [native owner setup](GROUP_NATIVE_OWNER_SETUP.md) for details.
+Shared and private chats use separate native conversations. Local execution is not
+filesystem or credential isolation: the agent retains the computer's ordinary tools and
+account access. Existing isolated contexts remain separate and retain their own sign-in
+and acceptance controls; switching modes does not import their history or rebind a saved
+request. The separate action board, protected shared Git and captured-report sharing
+panels are unavailable in local mode; their saved records are retained. Native Ask and
+Work keep the agent's ordinary tools. These optional panels remain available only with
+their separately configured adapter.
 
 ## Private reading, files and Git
 
-Private asides, drafts and native history do not enter the shared feed. **What mattered
+Private conversations, drafts, files and native history are not automatically published to
+the shared feed. **What mattered
 since last visit?** opens private catch-up without replacing your draft. It reads bounded
 shared evidence and retains its exact acknowledged snapshot across reload; unknown facts
 remain unknown. Notepad/draft conflicts require choosing a version rather than silently
 replacing your text.
 
-Reports open in the existing **Reading** and **Original PDF** interface, scoped to the group
-and immutable version. They never fall back to your personal document library. A local
-report stays local until its owner explicitly chooses **Share this report → Share selected
-report files with group**. The other installation uses **Group controls → Shared reports → Load shared
-reports**, then opens a chosen report. Listing loads metadata; selected source/assets or PDF
-bytes transfer on demand. Removing a grant or enrollment refuses future authenticated reads;
-a recipient's already downloaded copy cannot be recalled. Native report capture/compilation
-and cross-installation sharing must be configured and accepted separately.
-
-**Shared Git workspace** shows a protected, setup-agent-configured repository and saved
-branch. Visibility defaults to private: choose metadata only or explicitly selected content
-files before sharing them. Edit intentions and working-tree warnings help people avoid
-collisions; they are not a file lock. Reviewed proposals and separate main/task views are
-explicit controls, not an automatic merge or account switch. A pending Git change retains
-its exact retry until acknowledged; an uncertain network failure does not authorize a new
-operation. Missing repository configuration shows a setup-agent notice.
+The protected shared Git, captured reports and confirmed-action board are not available
+in local-agent v1. Their older records are retained. Native agents can still use their
+ordinary Git, terminal and file tools; this does not automatically transfer files to
+other members. [Status](STATUS.md#groups) records the current scope.
 
 ## Setup-agent boundary and limits
 
@@ -131,7 +126,7 @@ creation capability is excluded from invitations and browser storage. Existing o
 `groups/service.json` configuration remains authoritative, with a same-owner `0700`
 directory and `0600` files; symlinks and hard links are refused. Redirects are refused. See
 [hosting](GROUP_HOSTING.md), [delivery contracts and limits](GROUP_DELIVERY.md),
-[native isolation](GROUP_ISOLATION.md) and [documents](GROUP_DOCUMENTS.md).
+[native owner setup](GROUP_NATIVE_OWNER_SETUP.md) and [documents](GROUP_DOCUMENTS.md).
 
 Storage is bounded beta storage. New work can be refused at capacity without deleting
 originals or changing their retry identities. Membership has 64 active members; local setup

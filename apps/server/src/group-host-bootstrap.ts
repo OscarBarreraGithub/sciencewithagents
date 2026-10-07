@@ -1,3 +1,4 @@
+import { createLocalProductionGroupHost } from './group-host-local-bootstrap.js';
 import { GroupFeatureGit } from './group-feature-git.js';
 import { GroupFeatureDocuments } from './group-feature-documents.js';
 import { groupHostNativeStatusSchema } from '@dock/shared/dist/group-host.js';
@@ -16,7 +17,9 @@ export function createProductionGroupHost(
   dataDir: string,
   runtime: Runtime,
   ownerTerminals?: OwnerTerminals,
+  options: { executionMode?: 'host' | 'isolated' } = {},
 ) {
+  if (options.executionMode !== 'isolated') return createLocalProductionGroupHost(dataDir, runtime);
   let config: GroupNativeOwnerConfig | null = null;
   let invalidConfig = false;
   try {
@@ -32,8 +35,8 @@ export function createProductionGroupHost(
     nativeFactory: (host) => {
       const connector = createGroupNativeConnector(runtime, host);
 
-      const availability = async () =>
-        groupHostNativeStatusSchema.parse(
+      const availability = async () => {
+        const value = groupHostNativeStatusSchema.parse(
           invalidConfig
             ? {
                 available: false,
@@ -44,6 +47,10 @@ export function createProductionGroupHost(
               }
             : await connector.availability(),
         );
+        if (value.authState === 'inherited')
+          throw new Error('Isolated route cannot inherit host authentication.');
+        return { ...value, authState: value.authState };
+      };
       const owner = new GroupNativeOwner(
         host.directory,
         { ...connector, availability },

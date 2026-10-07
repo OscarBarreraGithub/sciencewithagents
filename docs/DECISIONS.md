@@ -17,6 +17,25 @@ Routine unsupported operations should fail visibly rather than wait indefinitely
 Real account sign-in, human questions and external policy requirements remain meaningful.
 External MCP services are not made safe by a filesystem prompt instruction.
 
+## Groups v1: separate conversations, native local agents
+
+Each member uses their own computer, provider account and native tools. Group agents run
+through the ordinary local runtime and QUARK. Shared and private conversations have distinct
+persisted identities, native sessions, drafts and publication destinations. Personal chat
+history is not imported into either one. Only shared content enters the group feed; private
+asides and local files require explicit sharing.
+
+The owner enables local group agents once. Incoming group messages provide context; they
+do not authorize work on another member’s computer. Ask uses native read-only permissions;
+Work is an explicit local-owner instruction using normal native writing permissions.
+These are conversation and authority boundaries, not an operating-system sandbox around
+files, credentials, hardware or network access. Normal macOS tools remain available.
+
+Linux isolation is not a Groups v1 prerequisite. Existing isolated records remain retained
+and are never silently resumed as host-native work. A new host-native request receives a
+separate durable execution identity. The hosted service, membership and delivery protocols
+are reused; unrelated public setup and provider accounts are never copied between members.
+
 ## Durable project work
 
 Managers coordinate small assignments, with high-level plan review and atomic implementation

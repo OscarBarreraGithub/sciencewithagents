@@ -36,7 +36,9 @@ async function installation(directory?: string) {
     throw new Error('Real provider launch prohibited in bootstrap checks');
   });
   const runtime = new Runtime(store, directory, 'never-native', provider);
-  const host = createProductionGroupHost(directory, runtime);
+  const host = createProductionGroupHost(directory, runtime, undefined, {
+    executionMode: 'isolated',
+  });
   expect(createGroupNativeConnector).toHaveBeenLastCalledWith(runtime, {
     directory: host.directory,
     events: host.events,

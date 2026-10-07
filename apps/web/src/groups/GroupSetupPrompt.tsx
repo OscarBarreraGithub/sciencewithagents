@@ -9,9 +9,12 @@ Use the built-in hosted beta service for a fresh installation; preserve an exist
 protected service configuration. I will supply one beta setup code to create a project,
 or an invitation to join one. Help with the exact creator approval steps. Desktop Groups
 does not need my own Cloudflare account or Tailscale; phone access and Git stay optional.
-Follow the supported native isolated setup, explain its tool and credential tradeoffs,
-and let me complete any required sign-in and consent. Never copy credentials or put
-secrets in group messages. Keep private work private.
+Use the native agent already installed on this computer with its existing provider
+sign-in, tools, skills, hooks and permissions. Explain local agent access before I enable
+it; help with ordinary provider sign-in only if needed. Shared chat and Private to you
+use separate conversations, but local execution is not filesystem isolation. Never copy
+credentials or put secrets in group messages. Do not publish private history, drafts or
+files automatically; sharing files requires my explicit choice.
 Help me create a group or join an invitation, then show how to send a message.
 Do not start group agent work or allowance-using checks without my explicit approval.
 Ask only for necessary owner decisions and report any remaining setup blocker.`;

@@ -298,12 +298,14 @@ export function GroupChat({
   request,
   nativeControlsTarget,
   onAuthorizationRequired,
+  executionMode,
 }: {
   slot: GroupHostSlot;
   onChanged: () => void;
   request: GroupChatClient;
   nativeControlsTarget?: HTMLDivElement | null;
   onAuthorizationRequired?: () => void;
+  executionMode?: 'host' | 'isolated';
 }) {
   const fixture = location.pathname === '/group-fixture';
   const signature = useRef('');
@@ -464,16 +466,26 @@ export function GroupChat({
   };
   const renderReceipt = (receipt: NonNullable<GroupHostChat['nativeRequests']>[number]) => {
     const prompt = receipt.text;
+    const stateMessage = {
+      queued: 'Agent request saved.',
+      'pending-consent': 'Your authorization is needed.',
+      running: 'Your agent is working.',
+      completed: 'Agent request complete.',
+      unknown: 'Agent status is not yet confirmed.',
+      blocked: 'Agent request stopped or could not start.',
+    }[receipt.state];
     return (
       <div className="group-chat-cue" role="status" key={receipt.requestId}>
-        Agent request: {receipt.state}. {receipt.message}{' '}
+        {stateMessage} {receipt.message}{' '}
         {receipt.source && (
           <span>
-            Verified source {receipt.source.messageId}. Shared delivery: {receipt.delivery}.{' '}
+            {receipt.delivery === 'complete'
+              ? 'Shared feed delivery complete.'
+              : sharedDeliveryMessage(receipt.delivery)}{' '}
           </span>
         )}
         {receipt.state === 'completed' && receipt.delivery === 'private' && (
-          <span>Private result retained in this aside. </span>
+          <span>Private result saved on this computer. </span>
         )}
         {receipt.documentAvailable && (
           <GroupDocumentOfferButton
@@ -504,7 +516,12 @@ export function GroupChat({
       <GroupNativeOwner
         key={slot.handle}
         handle={slot.handle}
-        requestId={pendingAuthorization}
+        requestId={
+          pendingAuthorization ??
+          (executionMode === 'host' ? (currentReceipt?.requestId ?? undefined) : undefined)
+        }
+        executionMode={executionMode}
+        requestPendingConsent={Boolean(pendingAuthorization)}
         request={request}
         onChanged={onChanged}
       />
@@ -545,11 +562,13 @@ export function GroupChat({
         {slot.context.visibility === 'private'
           ? fixture
             ? 'Private test session · saved locally; excluded from shared feed'
-            : 'Private · saved on this computer; excluded from shared feed'
+            : 'Private to you · saved on this computer; excluded from shared feed'
           : fixture
             ? 'Shared test session · messages and fake replies enter the shared feed'
             : sendTarget === 'agent'
-              ? 'Shared group agent · native setup and admission apply'
+              ? executionMode === 'host'
+                ? 'Shared chat · your agent uses this computer’s existing sign-in and tools'
+                : 'Shared chat · isolated agent setup applies'
               : 'Human message · shared with this group'}
         {view.blocked && <strong> · Draft conflict: choose a version below.</strong>}
         {view.error === rejectedText && <strong> · Shorten or correct draft to save/send.</strong>}
@@ -599,7 +618,7 @@ export function GroupChat({
                 setSendTarget(event.target.value === 'message' ? 'message' : 'agent')
               }
             >
-              <option value="agent">Group agent</option>
+              <option value="agent">Your agent</option>
               <option value="message">
                 {slot.context.visibility === 'private' ? 'Private note' : 'Human group message'}
               </option>
@@ -675,11 +694,11 @@ export function GroupChat({
           setError('');
         }}
         onError={setError}
-        onCommand={() => setError('Native commands require the verified Groups execution adapter.')}
+        onCommand={() => setError('Use Ask or Work to send a saved request to your agent.')}
         onStop={() => setError('No native turn is running in this message context.')}
         onHelp={() =>
           setError(
-            'Human messages are saved separately from native execution. Your private aside is never published.',
+            'Human messages are saved separately from native execution. Your private conversation is excluded from the shared feed.',
           )
         }
         messagePlaceholder={

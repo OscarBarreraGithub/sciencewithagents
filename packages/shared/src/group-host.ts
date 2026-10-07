@@ -45,9 +45,12 @@ export const groupHostSlotSchema = z.strictObject({
   agent: agentSchema,
 });
 export const groupHostNativeStatusSchema = z.strictObject({
+  executionMode: z.enum(['host', 'isolated']).optional(),
   available: z.boolean(),
   productionReady: z.boolean().default(false),
-  authState: z.enum(['unavailable', 'signed-out', 'per-context', 'ready']).default('unavailable'),
+  authState: z
+    .enum(['unavailable', 'signed-out', 'per-context', 'ready', 'inherited'])
+    .default('unavailable'),
   message: z.string().max(1000),
 });
 export const groupHostOpenSchema = z.strictObject({
