@@ -137,7 +137,7 @@ test('archive and restore keep queued work, history and the composer; retries re
   await expect(page.getByText('Reading conversations…', { exact: true })).toHaveCount(0);
   const visibleManagers = await list.getByRole('link').count();
   await page.goto('/#/home');
-  await expect(page.locator('.destination-chats small')).toHaveText(
+  await expect(page.locator('.overview-destinations a[href="#/chats"] small')).toHaveText(
     new RegExp(`^${visibleManagers} project manager`),
   );
   await expect(page.locator('.destination-quark small')).toHaveText(
@@ -178,7 +178,9 @@ test('archive and restore keep queued work, history and the composer; retries re
   expect(mine.map((attempt) => attempt.archived)).toEqual([true, true, false, true, false]);
   expect(new Set(mine.map((attempt) => attempt.key)).size).toBe(4);
   await page.goto('/#/home');
-  await expect(page.locator('.destination-chats')).toContainText(/project manager/);
+  await expect(page.locator('.overview-destinations a[href="#/chats"]')).toContainText(
+    /project manager/,
+  );
   await expect(page.locator('.destination-quark')).toContainText(/queued/);
 });
 
@@ -520,7 +522,9 @@ for (const status of [404, 501]) {
     await page.evaluate(() => {
       location.hash = '#/home';
     });
-    await expect(page.locator('.destination-chats small')).toHaveText(/project manager/);
+    await expect(page.locator('.overview-destinations a[href="#/chats"] small')).toHaveText(
+      /project manager/,
+    );
     await page.evaluate(() => {
       location.hash = '#/chats';
     });
@@ -610,7 +614,7 @@ test('known archives survive an optional-route loss across Home/Chats and remain
   await page.evaluate(() => {
     location.hash = '#/home';
   });
-  const count = page.locator('.destination-chats small');
+  const count = page.locator('.overview-destinations a[href="#/chats"] small');
   await expect(count).toHaveText(/project manager/);
   const before = await count.textContent();
   await page.route('**/api/conversations/visibility', (route) =>

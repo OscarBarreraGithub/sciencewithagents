@@ -382,7 +382,12 @@ test('Home uses the alien brand and functional headings, and QUARK has no transc
   await expect(
     page.getByText(/One home for your agents|Your ideas, in good hands|Your agents, together/i),
   ).toHaveCount(0);
-  await expect(page.locator('.overview-destinations a')).toHaveText([/Chats/, /Apps/, /QUARK/]);
+  await expect(page.locator('.overview-destinations a')).toHaveText([
+    /Chats/,
+    /Groups/,
+    /Apps/,
+    /QUARK/,
+  ]);
   await noOverflow(page);
   await page.screenshot({ path: info.outputPath('home.png') });
   await page.goto('/#/work');

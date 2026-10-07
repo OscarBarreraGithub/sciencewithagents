@@ -281,7 +281,7 @@ test('connection failure has an explicit read-only retry and clears after recove
   fail = false;
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page.locator('.home-connection-note')).toHaveCount(0);
-  await expect(page.locator('.destination-chats')).toContainText('manager');
+  await expect(page.locator('.overview-destinations a[href="#/chats"]')).toContainText('manager');
 });
 
 test('Home shows window-specific rates and keeps a to-do after a lost save response', async ({

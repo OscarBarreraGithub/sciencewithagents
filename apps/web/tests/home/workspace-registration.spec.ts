@@ -193,9 +193,9 @@ test('a lost registration response reloads with the exact saved body and keeps a
   await expect.poll(() => recoveredReplies).toBeGreaterThan(0);
   expect(inputs.length).toBeGreaterThan(failedAttempts);
   expect(inputs).toEqual(Array.from({ length: inputs.length }, () => saved));
-  expect(await page.evaluate(() => localStorage.getItem('dock:local:workspace:client'))).toBe(
-    registeredClient,
-  );
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('dock:local:workspace:client')))
+    .toBe(registeredClient);
   await expect(page.locator('.composer textarea')).toHaveValue('Retained local draft');
   await expect(draftState).toHaveAttribute('data-draft', 'saved');
   await expect(send).toBeEnabled();
