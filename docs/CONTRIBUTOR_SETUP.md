@@ -101,6 +101,22 @@ be described as a failed core installation. Browser-test downloads are developer
    Other computer/account connections follow MULTI_COMPUTER_SETUP.md. Share that guide with
    the setup agent on each machine; the person should not need to type its technical steps.
 
+### Desktop Groups setup
+
+For a Groups request, continue from the authenticated app to **Home → Groups** instead of
+requiring a personal first project. Follow [Groups workflow](GROUP_WORKFLOW.md): the
+creator pastes one operator-issued beta setup code; another person uses the invitation
+and exact creator approval. Fresh installations already know the public beta service;
+do not ask the person to deploy Cloudflare, configure Tailscale or copy private operator
+files. Preserve any existing protected service configuration and reconcile a mismatch
+explicitly. Provider sign-in belongs to this person, never the operator or another member.
+
+Prepare requested group agents through [native owner setup](GROUP_NATIVE_OWNER_SETUP.md),
+including the isolated Linux environment, separate provider sign-in and explicit consent.
+The setup agent handles technical registration; account sign-in and required owner choices
+stay with the person. Missing native readiness must remain visible. Phone access, VS Code
+sharing and Git are optional and do not block desktop human group messages.
+
 ### First project and manager handoff
 
 Ask for the project name and description, a new folder or an existing local project, and

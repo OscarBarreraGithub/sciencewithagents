@@ -33,6 +33,8 @@ import {
   hostingEnvironment,
   hostingApprovalHash,
 } from './crypto.js';
+import { verifyWorkerBetaAdmission, betaGroupMatches } from './group-beta-admission.js';
+import type { GroupBetaAdmissionPayload } from '@dock/shared/dist/group-beta-admission.js';
 export { GroupMembership } from './membership.js';
 
 const headers = {
@@ -48,6 +50,7 @@ const status = {
   unavailable: 503,
   hosting_disabled: 503,
   stale: 409,
+  creation_expired: 410,
 } as const;
 function reply(
   result:
@@ -109,24 +112,43 @@ export default {
     // approved this exact HTTPS origin and supplied a separate protected capability.
     const local = localTestMode(env.HOSTING_MODE);
     if (!hostingEnvironment(env)) return reply({ ok: false, error: 'hosting_disabled' });
+    const betaAdmission = request.headers.get('X-Group-Admission');
+    let beta: GroupBetaAdmissionPayload | undefined;
     if (local) {
       if (
         url.protocol !== 'http:' ||
         !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
-        request.headers.has('X-Hosting-Approval')
+        request.headers.has('X-Hosting-Approval') ||
+        betaAdmission !== null
       )
         return reply({ ok: false, error: 'hosting_disabled' });
     } else {
-      const approval = membershipCapabilitySchema.safeParse(
-        request.headers.get('X-Hosting-Approval'),
-      );
-      if (
-        url.protocol !== 'https:' ||
-        url.origin !== env.HOSTING_ORIGIN ||
-        !approval.success ||
-        !equalHash(await hostingApprovalHash(approval.data), env.HOSTING_APPROVAL_HASH)
-      )
-        return reply({ ok: false, error: 'hosting_disabled' });
+      if (betaAdmission !== null) {
+        // Never fall through from invalid/mixed beta authority to the operator path.
+        if (
+          url.protocol !== 'https:' ||
+          url.origin !== env.HOSTING_ORIGIN ||
+          request.headers.has('X-Hosting-Approval') ||
+          request.headers.has('Origin')
+        )
+          return reply({ ok: false, error: 'denied' });
+        try {
+          beta = (await verifyWorkerBetaAdmission(betaAdmission, env)).payload;
+        } catch {
+          return reply({ ok: false, error: 'denied' });
+        }
+      } else {
+        const approval = membershipCapabilitySchema.safeParse(
+          request.headers.get('X-Hosting-Approval'),
+        );
+        if (
+          url.protocol !== 'https:' ||
+          url.origin !== env.HOSTING_ORIGIN ||
+          !approval.success ||
+          !equalHash(await hostingApprovalHash(approval.data), env.HOSTING_APPROVAL_HASH)
+        )
+          return reply({ ok: false, error: 'hosting_disabled' });
+      }
     }
     if (
       request.method !== 'POST' ||
@@ -143,7 +165,12 @@ export default {
     const documentsRoute = /^\/v1\/groups\/([a-f0-9-]+)\/documents$/.exec(url.pathname);
     if (documentsRoute) {
       const id = groupIdSchema.safeParse(documentsRoute[1]);
-      if (!id.success || request.headers.has('X-Group-Setup') || request.headers.has('Origin'))
+      if (
+        !id.success ||
+        !betaGroupMatches(beta, id.data) ||
+        request.headers.has('X-Group-Setup') ||
+        request.headers.has('Origin')
+      )
         return reply({ ok: false, error: 'denied' });
       try {
         const command = documentTransportCommandSchema.safeParse(
@@ -164,7 +191,12 @@ export default {
     const promotionRoute = /^\/v1\/groups\/([a-f0-9-]+)\/promotion$/.exec(url.pathname);
     if (promotionRoute) {
       const id = groupIdSchema.safeParse(promotionRoute[1]);
-      if (!id.success || request.headers.has('X-Group-Setup') || request.headers.has('Origin'))
+      if (
+        !id.success ||
+        !betaGroupMatches(beta, id.data) ||
+        request.headers.has('X-Group-Setup') ||
+        request.headers.has('Origin')
+      )
         return reply({ ok: false, error: 'denied' });
       try {
         const command = groupPromotionHostCommandSchema.safeParse(
@@ -185,7 +217,12 @@ export default {
     const actionsRoute = /^\/v1\/groups\/([a-f0-9-]+)\/actions$/.exec(url.pathname);
     if (actionsRoute) {
       const id = groupIdSchema.safeParse(actionsRoute[1]);
-      if (!id.success || request.headers.has('X-Group-Setup') || request.headers.has('Origin'))
+      if (
+        !id.success ||
+        !betaGroupMatches(beta, id.data) ||
+        request.headers.has('X-Group-Setup') ||
+        request.headers.has('Origin')
+      )
         return reply({ ok: false, error: 'denied' });
       try {
         const command = groupActionCommandSchema.safeParse(await boundedBody(request, 12_000));
@@ -204,7 +241,12 @@ export default {
     const deliveryRoute = /^\/v1\/groups\/([a-f0-9-]+)\/delivery$/.exec(url.pathname);
     if (deliveryRoute) {
       const id = groupIdSchema.safeParse(deliveryRoute[1]);
-      if (!id.success || request.headers.has('X-Group-Setup') || request.headers.has('Origin'))
+      if (
+        !id.success ||
+        !betaGroupMatches(beta, id.data) ||
+        request.headers.has('X-Group-Setup') ||
+        request.headers.has('Origin')
+      )
         return reply({ ok: false, error: 'denied' });
       try {
         const parsed = deliveryCommandSchema.safeParse(
@@ -235,13 +277,26 @@ export default {
       const setup = membershipCapabilitySchema.safeParse(request.headers.get('X-Group-Setup'));
       if (!setup.success) return reply({ ok: false, error: 'denied' });
       const hashed = await setupHash(setup.data);
-      if (!equalHash(hashed, env.GROUP_SETUP_HASH)) return reply({ ok: false, error: 'denied' });
       groupId = groupIdSchema.parse(await creationGroupId(hashed, command.data.operationId));
+      if (
+        beta
+          ? !equalHash(hashed, beta.createCapabilityHash) ||
+            command.data.operationId !== beta.createOperationId ||
+            groupId !== beta.groupId
+          : !equalHash(hashed, env.GROUP_SETUP_HASH)
+      )
+        return reply({ ok: false, error: 'denied' });
+      // No expiry/key-retirement precheck: the DO first recovers a committed exact receipt.
       setupCapability = setup.data;
     } else {
       const route = /^\/v1\/groups\/([a-f0-9-]+)$/.exec(url.pathname);
       const id = groupIdSchema.safeParse(route?.[1]);
-      if (!id.success || command.data.kind === 'initialize' || request.headers.has('X-Group-Setup'))
+      if (
+        !id.success ||
+        !betaGroupMatches(beta, id.data) ||
+        command.data.kind === 'initialize' ||
+        request.headers.has('X-Group-Setup')
+      )
         return reply({ ok: false, error: 'denied' });
       groupId = id.data;
     }
@@ -250,6 +305,7 @@ export default {
       credential: credential.data,
       command: command.data,
       ...(setupCapability === undefined ? {} : { setupCapability }),
+      ...(betaAdmission === null ? {} : { betaAdmission }),
     };
     try {
       return reply(await env.GROUPS.getByName(groupId).execute(envelope));

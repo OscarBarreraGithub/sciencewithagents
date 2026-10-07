@@ -189,11 +189,15 @@ phone-sized emulation; this is not physical-device evidence.
 explicit sharing, exact PDF/Reading, lost-ack retry, restart, private-file exclusion and revocation of cached access. It uses a
 controlled native export hook with retained output from the actual isolated compiler check.
 
-**Still requires owner/platform acceptance:** actual Workers Free entitlement and an approved,
-deployed HTTPS group service; isolated provider sign-in/consent and real group-native readiness
-on the participating installations; and the complete workflow between two installed computers.
-Physical phone follow-up is deferred by the owner. Local tests, configuration fields and fake-provider fixtures
-supply none of those approvals. Hosting remains disabled by default, with no automatic paid
+**Hosted service:** an approved HTTPS group service is deployed, with Workers Free directly
+observed in the operator account on 2026-10-07. Fresh-install beta onboarding is implemented
+using the pinned service identity and signed group setup codes; activation of the composed
+beta source and its live two-fresh-installation acceptance remain pending.
+
+**Still requires acceptance:** isolated provider sign-in/consent and real group-native readiness
+on the participating installations, plus the complete workflow between two unrelated people
+on their own installed computers. Local fixtures and automated fresh profiles do not establish
+those outcomes. Physical phone follow-up is deferred by the owner. There is no automatic paid
 fallback or provider-credential copying. See the [Groups workflow](GROUP_WORKFLOW.md),
 [native owner setup](GROUP_NATIVE_OWNER_SETUP.md) and [delivery limits](GROUP_DELIVERY.md).
 

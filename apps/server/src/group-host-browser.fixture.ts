@@ -75,6 +75,7 @@ async function launchInstallation(name: string, configured = true) {
   });
   let loseCommit = name === 'primary' && !controlledAgent;
   host = new GroupHost(directory, {
+    betaProfile: null,
     ...(controlledAgent
       ? {
           native: {

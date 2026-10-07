@@ -128,6 +128,7 @@ interface BoundPath {
   canonical: string;
   dev: number;
   ino: number;
+  birthtimeNs: string;
 }
 function bindPath(path: string, kind?: 'directory' | 'file' | 'socket'): BoundPath {
   if (!isAbsolute(path) || /[\u0000-\u001f\u007f]/u.test(path))
@@ -135,18 +136,33 @@ function bindPath(path: string, kind?: 'directory' | 'file' | 'socket'): BoundPa
   // Native resolution returns filesystem casing/Unicode spelling on the supported Mac.
   // Do not fold case or normalize Unicode independently of filesystem resolution.
   const canonical = realpathSync.native(path);
-  const stat = lstatSync(canonical);
+  const stat = lstatSync(canonical, { bigint: true });
   if (
     (kind === 'directory' && !stat.isDirectory()) ||
     (kind === 'file' && !stat.isFile()) ||
     (kind === 'socket' && !stat.isSocket())
   )
     blocked(`Wrong resource type: ${path}`);
-  return { original: path, canonical, dev: stat.dev, ino: stat.ino };
+  // Inodes can be immediately reused after unlink on Linux. Birth time is stable
+  // under ordinary edits on supported APFS/ext4, distinguishing a replacement.
+  // Keep the exact timestamp as decimal data: bindings are included in the JSON
+  // manifest, and raw bigint values cannot be serialized there.
+  return {
+    original: path,
+    canonical,
+    dev: Number(stat.dev),
+    ino: Number(stat.ino),
+    birthtimeNs: stat.birthtimeNs.toString(),
+  };
 }
 function unchanged(bound: BoundPath) {
   const now = bindPath(bound.original);
-  if (now.canonical !== bound.canonical || now.dev !== bound.dev || now.ino !== bound.ino)
+  if (
+    now.canonical !== bound.canonical ||
+    now.dev !== bound.dev ||
+    now.ino !== bound.ino ||
+    now.birthtimeNs !== bound.birthtimeNs
+  )
     blocked('A granted path changed identity; request a new grant.');
 }
 // Metadata-only inspection: never reads file contents, including native credentials.

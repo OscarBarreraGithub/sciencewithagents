@@ -137,6 +137,7 @@ async function installation(
     throw new Error('Native launch prohibited in host checks');
   });
   const host = new GroupHost(directory, {
+    betaProfile: null,
     http: options.http,
     native: options.native,
     nativeFactory: options.nativeFactory,

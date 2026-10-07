@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { groupBetaProfileSchema } from '@dock/shared/dist/group-beta-admission.js';
 
 const common = {
   version: z.literal(1),
@@ -69,11 +70,32 @@ export const groupServiceConfigurationSchema = z.discriminatedUnion('mode', [
   local,
   hosted,
 ]);
-export type GroupServiceConfiguration = z.infer<typeof groupServiceConfigurationSchema>;
+export type BetaGroupServiceConfiguration = {
+  version: 1;
+  mode: 'beta';
+  endpoint: string;
+  endpointId: string;
+  profile: z.infer<typeof groupBetaProfileSchema>;
+};
+export type GroupServiceConfiguration =
+  | z.infer<typeof groupServiceConfigurationSchema>
+  | BetaGroupServiceConfiguration;
 export type ActiveGroupServiceConfiguration = Exclude<
   GroupServiceConfiguration,
   { mode: 'disabled' }
 >;
+export function betaGroupServiceConfiguration(
+  profile: z.infer<typeof groupBetaProfileSchema>,
+): BetaGroupServiceConfiguration {
+  const parsed = groupBetaProfileSchema.parse(profile);
+  return {
+    version: 1,
+    mode: 'beta',
+    endpoint: `${parsed.origin}/`,
+    endpointId: parsed.endpointId,
+    profile: parsed,
+  };
+}
 export function privateGroupDirectory(root: string) {
   const directory = join(root, 'groups');
   mkdirSync(directory, { recursive: true, mode: 0o700 });

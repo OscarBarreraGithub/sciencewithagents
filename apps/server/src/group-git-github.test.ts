@@ -1,3 +1,4 @@
+import { fixtureGitExecutable } from './git-executable.fixture.js';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer, type Server } from 'node:https';
@@ -37,7 +38,7 @@ import type { GitNativeExports, GitNativeExportLease } from './group-git-native-
 import { pack, unpack } from './group-git-pack.js';
 
 const exec = promisify(execFile);
-const bin = '/opt/homebrew/bin/git';
+const bin = fixtureGitExecutable();
 const env = {
   PATH: '/usr/bin:/bin',
   HOME: '/nonexistent',

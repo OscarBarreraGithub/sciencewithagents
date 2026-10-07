@@ -108,5 +108,29 @@ see [other platforms](docs/CONTRIBUTOR_SETUP.md#check-the-machine-first).
 [current status](docs/STATUS.md). This is source installation, not a one-click installer.
 The computer must stay awake and running the app for work and phone access.
 
+## Groups beta
+
+Each person installs the app on their own computer and uses their own Codex or Claude
+account. The creator needs one beta setup code from the operator; everyone else joins
+with an invitation and the creator's approval. Desktop Groups uses the built-in beta
+service. It needs no Cloudflare account or Tailscale setup. Phone access and Git sharing
+are optional. See [Groups setup](docs/GROUP_WORKFLOW.md).
+
+Paste this into your setup agent:
+
+```text
+Set up sciencewithagents for Groups from
+https://github.com/OscarBarreraGithub/sciencewithagents.
+Find and preserve my existing installation, accounts, files and running work.
+Follow docs/CONTRIBUTOR_SETUP.md and docs/GROUP_WORKFLOW.md. Use my own Codex or
+Claude account. Handle the desktop setup and open Home → Groups. I will provide
+either a beta setup code to create one project or an invitation to join one.
+Help me complete the invitation and exact approval steps. Prepare the supported
+isolated group-agent environment, explain its separate sign-in and native-tool
+tradeoffs, and let me complete consent and provider sign-in myself. Keep phone
+access, VS Code sharing and Git optional. Ask only for necessary sign-in, consent
+and preference steps. Preserve private work and report any remaining blocker.
+```
+
 [Features](docs/FEATURES.md) · [Setup details](docs/CONTRIBUTOR_SETUP.md) ·
 [Documentation](docs/README.md) · [MIT licence](LICENSE)

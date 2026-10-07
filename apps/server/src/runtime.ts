@@ -351,6 +351,7 @@ export class Runtime {
     this.pulsar = new Pulsar(store, () => this.capacity.status().machine);
     this.quark = new Quark(store, this.pulsar);
     this.pulsar.statusRead = (read) => this.quark.withDemandSnapshot(read);
+    this.pulsar.decisionRead = (read, fresh) => this.quark.withDemandSnapshot(read, fresh);
     this.quark.executing = () => this.executing;
     this.pulsar.allowanceDecision = (run, protectedChat = false) => {
       const goalReason = this.managedGoals.admissionReason(run);

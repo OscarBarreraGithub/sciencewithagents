@@ -22,6 +22,8 @@ assert.equal(config.vars.HOSTING_MODE, 'disabled');
 assert.equal(config.vars.GROUP_SETUP_HASH, '');
 assert.equal(config.vars.HOSTING_ORIGIN, '');
 assert.equal(config.vars.HOSTING_APPROVAL_HASH, '');
+assert.equal(config.vars.GROUP_BETA_SERVICE_ID, '');
+assert.equal(config.vars.GROUP_BETA_KEYS, '');
 assert.equal(config.workers_dev, false);
 assert.equal(config.preview_urls, false);
 assert.equal(config.dev.ip, '127.0.0.1');

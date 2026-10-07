@@ -11,15 +11,19 @@ export function GroupsLanding({
   onJoin,
   onRetry,
   initialInvitation,
+  setupCodeRequired = false,
+  onNewSetupCode,
 }: GroupsLandingProps) {
   const [mode, setMode] = useState<'create' | 'join' | null>(initialInvitation ? 'join' : null);
   const [name, setName] = useState('');
   const [project, setProject] = useState('');
+  const [setupCode, setSetupCode] = useState('');
   const [invitation, setInvitation] = useState(initialInvitation ?? '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const active = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
+  const setupCodeInput = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, []);
@@ -37,12 +41,21 @@ export function GroupsLanding({
       setError('Paste your invitation link.');
       return;
     }
+    if (mode === 'create' && setupCodeRequired && !setupCode.trim()) {
+      setError('Paste your beta setup code. Members join later with your invitation.');
+      return;
+    }
     active.current = true;
     setBusy(true);
     setError('');
     try {
       // The host owns validation/authentication and the resulting navigation.
-      if (mode === 'create') await onCreate({ projectName: project, displayName: name });
+      if (mode === 'create')
+        await onCreate({
+          projectName: project,
+          displayName: name,
+          ...(setupCodeRequired ? { setupCode: setupCode.trim() } : {}),
+        });
       else await onJoin({ invitation, displayName: name });
     } catch (reason) {
       setError(
@@ -137,14 +150,39 @@ export function GroupsLanding({
             Type the name members should see. A display name does not verify identity.
           </p>
           {mode === 'create' ? (
-            <label>
-              Project name
-              <input
-                value={project}
-                maxLength={120}
-                onChange={(event) => setProject(event.target.value)}
-              />
-            </label>
+            <>
+              <label>
+                Project name
+                <input
+                  value={project}
+                  maxLength={120}
+                  onChange={(event) => setProject(event.target.value)}
+                />
+              </label>
+              {setupCodeRequired && (
+                <>
+                  <label>
+                    Beta setup code
+                    <textarea
+                      ref={setupCodeInput}
+                      aria-label="Beta setup code"
+                      value={setupCode}
+                      maxLength={4096}
+                      rows={3}
+                      autoComplete="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      onChange={(event) => setSetupCode(event.target.value)}
+                      aria-describedby="groups-code-note"
+                    />
+                  </label>
+                  <p id="groups-code-note">
+                    Use the code from the beta operator to create one project. Members need only
+                    your invitation.
+                  </p>
+                </>
+              )}
+            </>
           ) : (
             <label>
               Invitation link
@@ -158,6 +196,21 @@ export function GroupsLanding({
             </label>
           )}
           {error && <p role="alert">{error}</p>}
+          {mode === 'create' && setupCodeRequired && onNewSetupCode && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={() => {
+                onNewSetupCode();
+                setSetupCode('');
+                setError('');
+                requestAnimationFrame(() => setupCodeInput.current?.focus());
+              }}
+            >
+              Use a new setup code
+            </button>
+          )}
           <button className="primary" disabled={busy}>
             {busy ? 'Waiting…' : mode === 'create' ? 'Continue setup' : 'Request to join'}
           </button>

@@ -106,15 +106,19 @@ const windowTotalSchema = z.object({
 /** One host-owned ledger. Provider counters are evidence; allowance shares are estimates. */
 export class Quark {
   executing: () => ReadonlySet<string> = () => new Set();
-  private demandSnapshot: { value?: ReturnType<typeof materialDemand> } | null = null;
-  /** Synchronous display reads share demand, never an admission decision or an async turn. */
-  withDemandSnapshot<T>(read: () => T): T {
-    if (this.demandSnapshot) return read();
+  private demandSnapshot: {
+    value?: ReturnType<typeof materialDemand>;
+    holds?: QuotaHold[];
+  } | null = null;
+  /** Share immutable inputs only within one synchronous, read-only decision batch. */
+  withDemandSnapshot<T>(read: () => T, fresh = false): T {
+    if (this.demandSnapshot && !fresh) return read();
+    const previous = this.demandSnapshot;
     this.demandSnapshot = {};
     try {
       return read();
     } finally {
-      this.demandSnapshot = null;
+      this.demandSnapshot = previous;
     }
   }
   // A process-local signer fences old leases on restart. This key never enters a
@@ -1024,12 +1028,14 @@ export class Quark {
       cause,
     };
   }
-  holds() {
-    return this.store.db
-      .prepare("SELECT value FROM settings WHERE key LIKE 'quark:hold:%'")
-      .all()
-      .map((r) => quotaHoldSchema.parse(JSON.parse(String(r.value))))
-      .filter((h) => !h.releasedAt);
+  holds(): QuotaHold[] {
+    const read = () =>
+      this.store.db
+        .prepare('SELECT value FROM settings WHERE key >= ? AND key < ?')
+        .all('quark:hold:', 'quark:hold;')
+        .map((r) => quotaHoldSchema.parse(JSON.parse(String(r.value))))
+        .filter((h) => !h.releasedAt);
+    return this.demandSnapshot ? (this.demandSnapshot.holds ??= read()) : read();
   }
   private usableReading(cap: ReturnType<typeof readCapacity>, allowRecent: boolean) {
     return (

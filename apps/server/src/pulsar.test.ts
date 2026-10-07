@@ -187,6 +187,78 @@ it('bounds allowance lookups across an 82-job queue with unrelated project budge
     'project is paused',
   );
 });
+it('shares demand and indexed holds only inside a synchronous decision batch', () => {
+  const quark = new Quark(store, pulsar, () => clock);
+  pulsar.statusRead = (read) => quark.withDemandSnapshot(read);
+  pulsar.decisionRead = (read, fresh) => quark.withDemandSnapshot(read, fresh);
+  pulsar.allowanceDecision = (run) => quark.reason(run, run.status === 'queued');
+  const jobs = Array.from({ length: 24 }, (_, index) => job(`Demand ${index}`, 'normal', 100));
+  for (const candidate of jobs) store.updateAgent(candidate.worker.id, { model: null });
+  quark.sync();
+  const reset = clock + 300 * 60_000;
+  for (let index = 1; index <= 6; index++) {
+    clock += 60_000;
+    usage(10 + index * 2, reset);
+    quark.sync();
+  }
+  expect(quark.utilization().find((window) => window.provider === 'claude')?.state).toBe('fast');
+  const tasks = vi.spyOn(store, 'tasks');
+  const blocks = vi.spyOn(quark, 'block');
+  const prepare = vi.spyOn(store.db, 'prepare');
+  const holdReads = () =>
+    prepare.mock.calls.filter(
+      ([sql]) => sql === 'SELECT value FROM settings WHERE key >= ? AND key < ?',
+    ).length;
+  // All 24 candidates reach pacing, then fail ordinary allowance headroom.
+  expect(pulsar.wantsForeground(new Set())).toBe(false);
+  expect(tasks).toHaveBeenCalledTimes(1);
+  expect(holdReads()).toBe(1);
+  expect(
+    blocks.mock.calls.filter(([, , , , , paced]) => paced === false).length,
+  ).toBeGreaterThanOrEqual(24);
+  const plan = store.db
+    .prepare('EXPLAIN QUERY PLAN SELECT value FROM settings WHERE key >= ? AND key < ?')
+    .all('quark:hold:', 'quark:hold;');
+  expect(plan.map((row) => row.detail).join(' ')).toContain('SEARCH settings USING INDEX');
+  // A separate batch reads a newly saved hold and newly queued material work.
+  quark.hold(jobs[0]!.run, 'Owner hold', false, 'manual');
+  const next = job('New demand', 'normal', 100);
+  store.updateAgent(next.worker.id, { model: null });
+  tasks.mockClear();
+  blocks.mockClear();
+  prepare.mockClear();
+  expect(pulsar.wantsForeground(new Set())).toBe(false);
+  expect(tasks).toHaveBeenCalledTimes(1);
+  expect(holdReads()).toBe(1);
+  expect(
+    blocks.mock.calls.some(([run, , , , , paced]) => run.id === next.run.id && paced === false),
+  ).toBe(true);
+  expect(pulsar.decision(jobs[0]!.run).reason).toContain('Owner hold');
+  // Admission is a new batch after a prior read; the new hold must deny it.
+  const decide = vi.spyOn(pulsar, 'decision');
+  expect(pulsar.reserve(jobs[0]!.run, new Set())).toBe(false);
+  expect(decide.mock.results.at(-1)?.value.reason).toContain('Owner hold');
+  expect(pulsar.lease(jobs[0]!.run.id)).toBeNull();
+  quark.withDemandSnapshot(() => {
+    quark.holds();
+    quark.hold(next.run, 'New hold after display', false, 'manual');
+    expect(pulsar.reserve(next.run, new Set())).toBe(false);
+    expect(decide.mock.results.at(-1)?.value.reason).toContain('New hold after display');
+    expect(
+      pulsar.decisionRead(() => quark.holds(), true).some((hold) => hold.runId === next.run.id),
+    ).toBe(true);
+  });
+  tasks.mockClear();
+  expect(() =>
+    quark.withDemandSnapshot(() => {
+      pulsar.wantsForeground(new Set());
+      throw new Error('Aborted decision read');
+    }),
+  ).toThrow('Aborted decision read');
+  tasks.mockClear();
+  expect(pulsar.wantsForeground(new Set())).toBe(false);
+  expect(tasks).toHaveBeenCalledTimes(1);
+});
 it('reads a saved job without a lease and bounds previews while retaining exact-run evidence', () => {
   const old = job('Saved job fixture');
   store.updateRun(old.run.id, { status: 'completed', text: 'Request ' + 'x'.repeat(9000) });

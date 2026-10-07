@@ -117,6 +117,10 @@ function fixture(provider: 'codex' | 'claude' = 'codex') {
       state: 'running' as const,
       message: 'Same request',
     })),
+    beforeTurn: vi.fn(),
+    documents: vi.fn(() => ({ describe: vi.fn(), export: vi.fn() })),
+    promotionSynthesis: vi.fn(() => ({ synthesize: vi.fn() })),
+    coordination: { identity: vi.fn() },
     close: vi.fn(async () => {}),
     submit: vi.fn(),
   } as unknown as GroupNativeConnector;
@@ -418,6 +422,7 @@ it('explicit owner reconnect uses only the exact saved host request and denies d
 it('normal host reconnect reopens blocked receipt inspection with the retained original, never native resubmission', async () => {
   const f = fixture();
   const host = new GroupHost(f.directory, {
+    betaProfile: null,
     native: {
       availability: () => ({ available: true, message: 'Fixture only' }),
       submit: vi.fn(),
@@ -527,6 +532,7 @@ it.each(['running', 'unknown'] as const)(
 it('owner HTTP rejects unauthenticated callers and allows paired owner with opaque request-scope validation', async () => {
   const f = fixture();
   const host = new GroupHost(f.directory, {
+    betaProfile: null,
     native: {
       availability: () => ({ available: true, message: 'Fixture only' }),
       submit: vi.fn(),
@@ -589,7 +595,7 @@ it('setup-agent registration validates private config and production startup app
 it('a malformed private route fails closed for native readiness while preserving the human Groups host', async () => {
   const f = fixture();
   const directory = join(f.directory, 'groups');
-  const seed = new GroupHost(f.directory);
+  const seed = new GroupHost(f.directory, { betaProfile: null });
   await seed.close();
   writeFileSync(join(directory, 'native-route.json'), '{"unsupported":true}', { mode: 0o600 });
   vi.spyOn(nativeConnector, 'createGroupNativeConnector').mockReturnValue(f.connector);

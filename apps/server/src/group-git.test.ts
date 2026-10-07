@@ -1655,7 +1655,7 @@ it('does not recover a killed executor lease while its actual descendant Git pro
     const [file, owner, copy, release] = process.argv.slice(1);
     const sql = new DatabaseSync(file);
     sql.prepare('INSERT INTO leases VALUES (?,?)').run('repo1', owner);
-    const git = spawn('git', ['-c', 'alias.fixture-hold=!while test ! -f "$1"; do sleep 0.05; done',
+    const git = spawn('git', ['-c', 'alias.fixture-hold=!f() { while test ! -f "$1"; do sleep 0.05; done; }; f',
       'fixture-hold', release], {cwd: copy, env: process.env, stdio: 'ignore'});
     git.once('spawn', () => process.send({pid: git.pid}));
     setInterval(() => {}, 1000);

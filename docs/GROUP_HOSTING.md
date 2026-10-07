@@ -7,16 +7,57 @@ Workers Free entitlement or two installed computers. See [current acceptance](ST
 
 ## Hosted activation remains explicit
 
-`apps/group-service/wrangler.jsonc` disables HTTP activation, workers.dev, preview URLs
-and request observability. No account, login, token, secret or deployment command is
-part of this package. There is no deploy script or paid fallback. A plan string, Free
-DNS zone, absent subscription, or account usage model cannot activate this service.
-The explicit test-harness `local-test` value permits only HTTP loopback requests; never
-configure it on a deployed Worker. The `hosted` path additionally
-requires a configured exact HTTPS origin and a separate protected hosting-approval capability
-hash; the host resolves its approved endpoint and headers out of band. Defaults remain empty
-and disabled until the owner verifies actual Free entitlement and authorizes the endpoint.
-A hostname alone is not an authorization boundary. See [HTTPS configuration](GROUP_DELIVERY.md).
+`apps/group-service/wrangler.jsonc` remains disabled by default, with workers.dev,
+preview URLs and request observability off. The operator first verifies Workers Free
+entitlement and approves the exact HTTPS origin. A plan string, Free DNS zone, absent
+subscription or usage model is not approval. Opening Groups never deploys a service.
+
+Two explicit host modes share the same membership/quota boundary:
+
+- Protected hosting retains its operator setup/hosting capabilities in private host files.
+- Closed beta pins a public service profile (service/endpoint identity, exact origin and
+  up to four Ed25519 verification keys). The operator privately issues one setup code for
+  one fixed group and creation operation. This code contains a per-group create capability;
+  it never contains the global setup/hosting capability, signing key or an operator account.
+  The second person joins an ordinary invitation carrying only the signed group admission,
+  group identity and invitation secret. No Cloudflare or Tailscale account is needed for
+  desktop Groups messaging through the approved HTTPS service.
+
+`X-Group-Admission` is verified before Durable Object lookup and bound to the exact service
+and routed group. It admits routing only; existing enrollment Bearers, invitation expiry,
+exact confirmation/approval and revocation still authorize all membership and feature work.
+Mixed beta/global hosting authority is refused. `/v1/create` also proves the fixed operation,
+per-group create hash and recomputed group identity. Creation expiry is enforced in the DO
+transaction **after** checking the original creator/body receipt. Identical retries recover
+that receipt after expiry; a never-created expired code refuses definitively. Another bearer
+or changed body cannot redeem the code or learn the original identity.
+
+The ticket's signed `kid` selects a public key in `create+route` or `route-only` state.
+Retiring a key to route-only blocks new initialization while retaining committed retries
+and established group routing. Member routing does not expire when creation permission ends.
+Do not remove a routing key while its groups must remain reachable. A leaked routing ticket
+still requires current membership or a valid invitation; a leaked signing key can issue
+unbounded group tickets until retired. This is an operator-issued closed beta, not anonymous
+registration or a global abuse/billing guarantee.
+
+The offline operator tool runs only after building shared contracts:
+
+```sh
+node scripts/group-beta-operator.mjs keygen <new-private-directory> <approved-https-origin> <service-uuid>
+node scripts/group-beta-operator.mjs issue <private-operator-key.json> <new-private-code-file> [valid-minutes]
+```
+
+Use an ignored, same-owner `0700` parent. Keys and setup codes are saved `0600`, with no
+overwrite; stdout contains paths/public metadata only. Publish/deploy only the public
+profile and its key states. The issuer makes no network call, deploy or model turn.
+Creation validity defaults to one day and is bounded to ninety days. Deliver codes privately;
+whoever first redeems one becomes that group's creator. Neither code nor invitation may
+switch an existing explicit disabled, local-test or protected service mapping.
+
+The harness-only `local-test` mode accepts HTTP loopback and no hosted/beta headers; never
+configure it on a deployed Worker. Hosted activation always retains the exact HTTPS origin
+and verified operator approval. A hostname alone is not authorization. See
+[HTTPS configuration](GROUP_DELIVERY.md) and the [normal workflow](GROUP_WORKFLOW.md).
 
 Cloudflare currently offers SQLite Durable Objects on Workers Free, with errors on
 Free allowance exhaustion. Actual account entitlement mapping, permitted setup,

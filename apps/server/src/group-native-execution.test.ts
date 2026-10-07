@@ -134,7 +134,8 @@ it.each(['shared', 'private'] as const)(
     const f = fixture(visibility);
     await f.execution.initialize();
     expect(calls[0]?.[8]).toBe(true);
-    const boundary = calls[0]?.[9] as NativeProviderBoundary;
+    expect(calls[0]?.[9]).toBeUndefined(); // Optional socket timing; native boundary follows it.
+    const boundary = calls[0]?.[10] as NativeProviderBoundary;
     expect(boundary.codexArgs).toEqual(['-c', 'cli_auth_credentials_store="file"']);
     expect(boundary.codexSocketManaged).toBe(true);
     expect((vi.mocked(f.container.nativeJson).mock.calls[1]?.[0] as string[]).at(-1)).toBe(

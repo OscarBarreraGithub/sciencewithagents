@@ -42,6 +42,7 @@ import {
 import type { GroupActionResult } from '@dock/shared/dist/group-actions.js';
 import { GroupPromotionHost, GroupPromotionHostCapacity } from './group-promotion-host.js';
 import type { GroupPromotionHostResult } from '@dock/shared/dist/group-promotion-host.js';
+import { verifyWorkerBetaAdmission } from './group-beta-admission.js';
 
 type Enrollment = {
   position: number;
@@ -78,6 +79,12 @@ export class GroupMembership extends DurableObject<Env> {
   }
 
   async deliver(input: DeliveryEnvelope): Promise<DeliveryResult> {
+    try {
+      if (!this.rows('SELECT singleton FROM metadata WHERE singleton=1')[0])
+        return { ok: false, error: 'denied' };
+    } catch {
+      return { ok: false, error: 'unavailable' };
+    }
     return this.deliveryStorage.execute(input, this.ctx, this.env);
   }
 
@@ -92,6 +99,8 @@ export class GroupMembership extends DurableObject<Env> {
     )
       return { ok: false, error: 'denied' };
     try {
+      if (!this.rows('SELECT singleton FROM metadata WHERE singleton=1')[0])
+        return { ok: false, error: 'denied' };
       this.documentsService ??= new GroupDocumentTransport(this.ctx.storage, {
         probe: () => this.deliveryStorage.probe(),
         admitMutation: () => {
@@ -133,6 +142,8 @@ export class GroupMembership extends DurableObject<Env> {
     )
       return { ok: false, error: 'denied' };
     try {
+      if (!this.rows('SELECT singleton FROM metadata WHERE singleton=1')[0])
+        return { ok: false, error: 'denied' };
       this.promotionService ??= new GroupPromotionHost(this.ctx.storage, {
         probe: () => this.deliveryStorage.probe(),
         checkCapacity: () => {
@@ -176,6 +187,8 @@ export class GroupMembership extends DurableObject<Env> {
     if (!hostingEnvironment(this.env) || !this.ctx.id.equals(this.env.GROUPS.idFromName(groupId)))
       return { ok: false, error: 'denied' };
     try {
+      if (!this.rows('SELECT singleton FROM metadata WHERE singleton=1')[0])
+        return { ok: false, error: 'denied' };
       if (!this.actionsService) {
         const sql: GroupActionsSql = {
           rows: <T>(query: string, ...bindings: (string | number | null)[]) =>
@@ -238,8 +251,13 @@ export class GroupMembership extends DurableObject<Env> {
       if (new TextEncoder().encode(JSON.stringify(input)).length > L.bodyBytes) reject('invalid');
       const parsed = membershipEnvelopeSchema.safeParse(input);
       if (!parsed.success) reject('invalid');
-      const { groupId, credential, setupCapability, command } = parsed.data;
+      const { groupId, credential, setupCapability, betaAdmission, command } = parsed.data;
       if (!this.ctx.id.equals(this.env.GROUPS.idFromName(groupId))) reject('denied');
+      const beta =
+        betaAdmission === undefined
+          ? undefined
+          : await verifyWorkerBetaAdmission(betaAdmission, this.env).catch(() => reject('denied'));
+      if (beta && beta.payload.groupId !== groupId) reject('denied');
       const credentialHash = await capabilityHash(groupId, 'installation', credential);
       const secretHash =
         'inviteSecret' in command
@@ -250,7 +268,13 @@ export class GroupMembership extends DurableObject<Env> {
           ? await capabilityHash(groupId, 'confirmation', command.confirmation)
           : null;
       const setupDigest = setupCapability === undefined ? null : await setupHash(setupCapability);
-      const setupValid = setupDigest !== null && equalHash(setupDigest, this.env.GROUP_SETUP_HASH);
+      const setupValid =
+        setupDigest !== null &&
+        (beta
+          ? equalHash(setupDigest, beta.payload.createCapabilityHash) &&
+            command.kind === 'initialize' &&
+            command.operationId === beta.payload.createOperationId
+          : equalHash(setupDigest, this.env.GROUP_SETUP_HASH));
       if (
         command.kind === 'initialize' &&
         (!setupValid || groupId !== (await creationGroupId(setupDigest!, command.operationId)))
@@ -263,6 +287,9 @@ export class GroupMembership extends DurableObject<Env> {
       if ('confirmation' in sanitized) sanitized.confirmation = confirmationHash!;
       const requestHash = await digest(JSON.stringify([groupId, sanitized]));
       const now = Date.now();
+      // Recovery may initialize/migrate delivery and cache its ready state. Commit
+      // that schema independently so a later rejected membership transaction
+      // cannot roll it back while leaving the in-memory cache ready.
       if (command.kind !== 'revoke') this.deliveryStorage.recover();
       const result = this.ctx.storage.transactionSync(() => {
         const meta = this.rows<Metadata>(
@@ -275,14 +302,17 @@ export class GroupMembership extends DurableObject<Env> {
         )[0];
         // Recheck authorization inside the transaction BEFORE considering a receipt.
         if (command.kind === 'initialize') {
-          if (meta && actor?.state !== 'active') reject('denied');
+          if (meta && actor?.state !== 'active') reject(beta ? 'conflict' : 'denied');
         } else if (command.kind === 'join') {
           if (!meta || actor?.state === 'revoked') reject('denied');
         } else if (command.kind === 'status') {
           if (!meta || !actor || actor.state === 'revoked') reject('denied');
         } else if (!meta || actor?.state !== 'active') reject('denied');
 
-        if (command.kind !== 'revoke') this.deliveryStorage.probe();
+        if (command.kind !== 'revoke') {
+          // Authorization is still checked before the transactional write probe.
+          this.deliveryStorage.probe();
+        }
 
         if ('operationId' in command) {
           const receipt = this.rows<{ request_hash: string; response: string }>(
@@ -305,6 +335,12 @@ export class GroupMembership extends DurableObject<Env> {
             return { ok: true as const, value: response };
           }
           if (command.kind === 'initialize' && meta) reject('denied');
+          if (command.kind === 'initialize' && beta) {
+            // Existing exact creator/body receipts above survive expiry and key retirement.
+            if (beta.state !== 'create+route') reject('creation_expired');
+            if (now < beta.payload.issuedAt) reject('unavailable');
+            if (now > beta.payload.createExpiresAt) reject('creation_expired');
+          }
           if (command.kind === 'join' && actor) reject('denied');
           // Only a new join authenticates its invitation. An authenticated same-ID
           // receipt above must remain recoverable after single-use consumption.

@@ -10,6 +10,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { z } from 'zod';
 import {
+  groupBetaProfileSchema,
+  parseGroupBetaSetupCode,
+  verifyGroupBetaAdmission,
+} from '@dock/shared/dist/group-beta-admission.js';
+import {
   GROUP_LIMITS,
   agentSchema,
   groupContextSchema,
@@ -45,9 +50,11 @@ import {
   privateGroupFile,
   protectGroupSidecars,
   readGroupServiceConfiguration,
+  betaGroupServiceConfiguration,
   type ActiveGroupServiceConfiguration,
   type GroupServiceConfiguration,
 } from './group-host-storage.js';
+import { publicGroupBetaProfile } from './group-beta-profile.js';
 import {
   unavailableGroupNative,
   groupNativeSnapshotSchema,
@@ -95,6 +102,17 @@ const recordSchema = z.strictObject({
     .regex(/^[a-f0-9]{64}$/)
     .nullable(),
   serviceHash: z.string().regex(/^[a-f0-9]{64}$/),
+  beta: z
+    .strictObject({
+      admission: z.string().min(1).max(1024),
+      creation: z
+        .strictObject({
+          capability: z.string().regex(/^[a-f0-9]{64}$/),
+          operationId: z.uuid(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 type Record = z.infer<typeof recordSchema>;
 type Slot = z.infer<typeof slotSchema>;
@@ -111,6 +129,7 @@ const serviceHash = (value: ActiveGroupServiceConfiguration) =>
               freeApprovalId: value.hostingAuthorization.freeApprovalId,
             }
           : {}),
+        ...(value.mode === 'beta' ? { serviceId: value.profile.serviceId } : {}),
       }),
     )
     .digest('hex');
@@ -181,10 +200,15 @@ export class GroupHost {
       native?: GroupNativeConnector;
       nativeFactory?: GroupNativeConnectorFactory;
       http?: typeof fetch;
+      /** Internal test seam; a browser/setup code cannot select a profile. */
+      betaProfile?: z.infer<typeof groupBetaProfileSchema> | null;
     } = {},
   ) {
     this.directory = privateGroupDirectory(root);
     this.http = options.http ?? fetch;
+    const profile =
+      options.betaProfile === undefined ? publicGroupBetaProfile : options.betaProfile;
+    this.betaConfiguration = profile ? betaGroupServiceConfiguration(profile) : null;
     const path = join(this.directory, 'host.sqlite');
     privateGroupFile(path);
     this.db = new DatabaseSync(path);
@@ -212,6 +236,7 @@ export class GroupHost {
     this.promotion = new GroupFeaturePromotion(this);
   }
   private readonly http: typeof fetch;
+  private readonly betaConfiguration: ReturnType<typeof betaGroupServiceConfiguration> | null;
   async close() {
     await this.promotion.close();
     await this.native.close?.();
@@ -242,7 +267,7 @@ export class GroupHost {
     }
   }
   configuration(): GroupServiceConfiguration | null {
-    return readGroupServiceConfiguration(this.directory);
+    return readGroupServiceConfiguration(this.directory) ?? this.betaConfiguration;
   }
   private configured() {
     const value = this.configuration();
@@ -299,7 +324,37 @@ export class GroupHost {
       reader.releaseLock();
     }
   }
-  private async membership(credential: string, command: MembershipCommand, groupId?: string) {
+  private serviceHeaders(
+    value: Record,
+    create = false,
+    config = this.configured(),
+  ): { [name: string]: string } {
+    if (serviceHash(config) !== value.serviceHash || (config.mode === 'beta') !== !!value.beta)
+      throw new GroupHostError(
+        503,
+        'GROUP_SERVICE_CHANGED',
+        'Restore the original Groups service mapping before retrying this saved request.',
+      );
+    if (config.mode === 'beta') {
+      if (!value.beta || (create && !value.beta.creation))
+        throw new GroupHostError(
+          403,
+          'GROUP_BETA_SETUP_REQUIRED',
+          'Use a beta setup code to create a group, or join with a complete invitation.',
+        );
+      return {
+        'X-Group-Admission': value.beta.admission,
+        ...(create ? { 'X-Group-Setup': value.beta.creation!.capability } : {}),
+      };
+    }
+    return {
+      ...(create ? { 'X-Group-Setup': config.setupCapability } : {}),
+      ...(config.mode === 'hosted'
+        ? { 'X-Hosting-Approval': config.hostingAuthorization.approvalCapability }
+        : {}),
+    };
+  }
+  private async membership(value: Record, command: MembershipCommand, groupId?: string) {
     const config = this.configured();
     const create = command.kind === 'initialize';
     try {
@@ -309,13 +364,8 @@ export class GroupHost {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${credential}`,
-            ...(create ? { 'X-Group-Setup': config.setupCapability } : {}),
-            ...(config.mode === 'hosted'
-              ? {
-                  'X-Hosting-Approval': config.hostingAuthorization.approvalCapability,
-                }
-              : {}),
+            Authorization: `Bearer ${value.credential}`,
+            ...this.serviceHeaders(value, create, config),
           },
           body: JSON.stringify(membershipCommandSchema.parse(command)),
           redirect: 'error',
@@ -337,16 +387,29 @@ export class GroupHost {
               'limit',
               'unavailable',
               'hosting_disabled',
+              'creation_expired',
             ]),
           }),
         ])
         .parse(await this.bounded(response, 64000));
       if (!parsed.ok) {
+        if (parsed.error === 'creation_expired')
+          throw new GroupHostError(
+            410,
+            'GROUP_BETA_CREATION_EXPIRED',
+            'This beta code expired before its group was created. The original setup request is retained. Ask the beta operator for a new code; established groups continue to work.',
+          );
         if (parsed.error === 'denied')
           throw new GroupHostError(
             403,
             'GROUP_ACCESS_DENIED',
             'Group access is pending, revoked or unavailable. Ask the creator to confirm enrollment.',
+          );
+        if (parsed.error === 'conflict' && create && value.beta)
+          throw new GroupHostError(
+            409,
+            'GROUP_BETA_CODE_USED',
+            'This beta setup code has already been used. The original setup request is retained. Ask the beta operator for a new code, or join the existing group by invitation.',
           );
         if (parsed.error === 'conflict')
           throw new Conflict(
@@ -360,7 +423,24 @@ export class GroupHost {
       throw unavailable();
     }
   }
+  private async initialize(value: Record, operationId: string) {
+    if (value.beta) {
+      if (!value.beta.creation) throw unavailable();
+      // The service checks its exact initialization receipt before code expiry.
+      // Retry the retained request even after expiry; never race it with a read
+      // or generate another operation/credential after an ambiguous response.
+      operationId = value.beta.creation.operationId;
+    }
+    return this.membership(value, {
+      kind: 'initialize',
+      operationId: groupOperationIdSchema.parse(operationId),
+      groupName: host.groupHostCreateSchema.shape.projectName.parse(value.name),
+      displayName: value.identity.displayName,
+    });
+  }
   private provision(value: Record, identity: MembershipIdentity) {
+    const config = this.configured();
+    this.serviceHeaders(value, false, config);
     if (
       identity.groupId !== value.identity.groupId ||
       value.identity.memberId !== identity.memberId ||
@@ -412,7 +492,6 @@ export class GroupHost {
       });
       value.shared = slot('shared');
       value.private = slot('private');
-      const config = this.configured();
       value.binding = publicationBindingSchema.parse({
         groupId: identity.groupId,
         installationId: identity.installationId,
@@ -435,7 +514,7 @@ export class GroupHost {
       );
     let status;
     try {
-      status = await this.membership(value.credential, { kind: 'status' }, value.identity.groupId);
+      status = await this.membership(value, { kind: 'status' }, value.identity.groupId);
     } catch (error) {
       if (error instanceof GroupHostError && error.status === 403)
         throw new GroupHostError(
@@ -475,20 +554,24 @@ export class GroupHost {
     let configured = false,
       message =
         'Connect a Groups service on the selected computer. Ask your setup agent to configure protected delivery. Workers Free eligibility and live deployment remain separate checks.';
+    let setupCodeRequired = false;
     try {
       const value = this.configuration();
       configured = !!value && value.mode !== 'disabled';
       if (configured)
         message =
-          value!.mode === 'hosted'
-            ? 'Protected HTTPS service configured. Actual deployment, Workers Free eligibility and live sharing acceptance remain separate checks.'
-            : 'Configured owned loopback service. No deployed or two-installation completion is claimed.';
+          value!.mode === 'beta'
+            ? 'Hosted Groups beta is available. Creating a project needs one beta setup code; joining needs only an invitation. Your provider sign-in stays on this computer.'
+            : value!.mode === 'hosted'
+              ? 'Protected HTTPS service configured. Actual deployment, Workers Free eligibility and live sharing acceptance remain separate checks.'
+              : 'Configured owned loopback service. No deployed or two-installation completion is claimed.';
+      setupCodeRequired = value?.mode === 'beta';
     } catch (error) {
       message = (error as Error).message;
     }
     return host.groupHostListSchema.parse({
       groups: this.records().map((v) => this.summary(v)),
-      service: { configured, message },
+      service: { configured, message, setupCodeRequired },
       native: await this.nativeAvailability(),
     });
   }
@@ -514,10 +597,48 @@ export class GroupHost {
   }
   async create(raw: unknown) {
     const input = host.groupHostCreateSchema.parse(raw);
-    this.configured();
-    return this.lock(`create:${input.key}`, async () => {
-      const value = recordSchema.parse(
-        this.intent(`create:${input.key}`, input, () => {
+    const config = this.configured();
+    let beta: Record['beta'], groupId: string | undefined;
+    if (config.mode === 'beta') {
+      try {
+        const code = parseGroupBetaSetupCode(input.setupCode ?? '');
+        const payload = await verifyGroupBetaAdmission(code.admission, config.profile);
+        if (
+          payload.createCapabilityHash !==
+          createHash('sha256').update(`dock-group-setup-v1:${code.createCapability}`).digest('hex')
+        )
+          throw new Error('capability mismatch');
+        beta = {
+          admission: code.admission,
+          creation: { capability: code.createCapability, operationId: payload.createOperationId },
+        };
+        groupId = payload.groupId;
+      } catch {
+        throw new GroupHostError(
+          400,
+          'GROUP_BETA_SETUP_INVALID',
+          'Paste the complete beta setup code issued for this Groups service. Ask the beta operator for a code if you do not have one.',
+        );
+      }
+    } else if (input.setupCode) {
+      throw new GroupHostError(
+        409,
+        'GROUP_SERVICE_CHANGED',
+        'This computer already uses another protected Groups service. Ask your setup agent to reconcile it before using a beta setup code.',
+      );
+    }
+    const safeInput = {
+      key: input.key,
+      projectName: input.projectName,
+      displayName: input.displayName,
+      ...(input.setupCode
+        ? { setupCodeHash: createHash('sha256').update(input.setupCode).digest('hex') }
+        : {}),
+    };
+    return this.lock(
+      beta ? `beta-create:${beta.creation!.operationId}` : `create:${input.key}`,
+      async () => {
+        const make = () => {
           if (this.records().length >= 32) throw new Conflict('Groups limit reached.');
           return {
             handle: randomUUID(),
@@ -525,7 +646,7 @@ export class GroupHost {
             credential: capability(),
             confirmation: capability(),
             identity: {
-              groupId: randomUUID(),
+              groupId: groupId ?? randomUUID(),
               memberId: randomUUID(),
               installationId: randomUUID(),
               displayName: input.displayName,
@@ -536,35 +657,56 @@ export class GroupHost {
             private: null,
             creator: true,
             invitationSecret: null,
-            serviceHash: serviceHash(this.configured()),
+            serviceHash: serviceHash(config),
+            ...(beta ? { beta } : {}),
           };
-        }),
-      );
-      if (serviceHash(this.configured()) !== value.serviceHash)
-        throw new GroupHostError(
-          503,
-          'GROUP_SERVICE_CHANGED',
-          'Restore the original Groups service mapping before retrying this request.',
+        };
+        // The operator fixes one creation identity. Re-entering its code after tab
+        // storage loss must reuse the original local bearer and exact request.
+        const fixed = beta
+          ? this.intent(
+              `beta-create:${beta.creation!.operationId}`,
+              {
+                projectName: safeInput.projectName,
+                displayName: safeInput.displayName,
+                setupCodeHash: safeInput.setupCodeHash,
+              },
+              make,
+            )
+          : undefined;
+        const value = recordSchema.parse(
+          this.intent(`create:${input.key}`, safeInput, () => fixed ?? make()),
         );
-      const reply = await this.membership(value.credential, {
-        kind: 'initialize',
-        operationId: groupOperationIdSchema.parse(input.key),
-        groupName: input.projectName,
-        displayName: input.displayName,
-      });
-      if (reply.kind !== 'identity' || reply.identity.state !== 'active') throw unavailable();
-      const saved = this.db.prepare('SELECT body FROM gh_groups WHERE handle=?').get(value.handle);
-      const current = saved
-        ? recordSchema.parse(JSON.parse(String(saved.body)))
-        : { ...value, identity: reply.identity };
-      this.provision(current, reply.identity);
-      return this.open({ handle: value.handle });
-    });
+        if (serviceHash(this.configured()) !== value.serviceHash)
+          throw new GroupHostError(
+            503,
+            'GROUP_SERVICE_CHANGED',
+            'Restore the original Groups service mapping before retrying this request.',
+          );
+        const reply = await this.initialize(value, input.key);
+        if (reply.kind !== 'identity' || reply.identity.state !== 'active') throw unavailable();
+        const saved = this.db
+          .prepare('SELECT body FROM gh_groups WHERE handle=?')
+          .get(value.handle);
+        const current = saved
+          ? recordSchema.parse(JSON.parse(String(saved.body)))
+          : { ...value, identity: reply.identity };
+        this.provision(current, reply.identity);
+        return this.open({ handle: value.handle });
+      },
+    );
   }
   async join(raw: unknown) {
     const input = host.groupHostJoinSchema.parse(raw);
-    this.configured();
-    let invitation: { groupId: string; secret: string; name: string };
+    const config = this.configured();
+    let invitation: {
+      groupId: string;
+      secret: string;
+      name: string;
+      serviceId?: string;
+      admission?: string;
+    };
+    let beta: Record['beta'];
     try {
       const url = new URL(input.invitation);
       if (!['http:', 'https:'].includes(url.protocol) || url.search || url.username || url.password)
@@ -575,13 +717,24 @@ export class GroupHost {
           groupId: z.uuid(),
           secret: z.string().regex(/^[a-f0-9]{64}$/),
           name: z.string().min(1).max(120),
+          serviceId: z.uuid().optional(),
+          admission: z.string().min(1).max(1024).optional(),
         })
         .parse(JSON.parse(encoded.get('invite') ?? ''));
+      if (config.mode === 'beta') {
+        if (invitation.serviceId !== config.profile.serviceId || !invitation.admission)
+          throw new Error('service mismatch');
+        const payload = await verifyGroupBetaAdmission(invitation.admission, config.profile);
+        if (payload.groupId !== invitation.groupId) throw new Error('group mismatch');
+        beta = { admission: invitation.admission };
+      } else if (invitation.serviceId || invitation.admission) {
+        throw new Error('protected service mismatch');
+      }
     } catch {
       throw new GroupHostError(
         400,
         'INVALID_INVITATION',
-        'Paste the complete invitation with its fragment. Invitations never choose a service endpoint.',
+        'Paste the complete invitation for the Groups service on this computer. Invitations cannot change a protected service or choose an endpoint.',
       );
     }
     return this.lock(`join:${input.key}`, async () => {
@@ -607,7 +760,8 @@ export class GroupHost {
           private: null,
           creator: false,
           invitationSecret: invitation.secret,
-          serviceHash: serviceHash(this.configured()),
+          serviceHash: serviceHash(config),
+          ...(beta ? { beta } : {}),
         })),
       );
       if (serviceHash(this.configured()) !== value.serviceHash)
@@ -617,7 +771,7 @@ export class GroupHost {
           'Restore the original Groups service mapping before retrying this request.',
         );
       const reply = await this.membership(
-        value.credential,
+        value,
         {
           kind: 'join',
           operationId: groupOperationIdSchema.parse(input.key),
@@ -668,11 +822,10 @@ export class GroupHost {
               confirmation: value.confirmation,
               displayName: value.identity.displayName,
             };
-      const reply = await this.membership(
-        value.credential,
-        command,
-        input.kind === 'join' ? value.identity.groupId : undefined,
-      );
+      const reply =
+        input.kind === 'create'
+          ? await this.initialize(value, input.key)
+          : await this.membership(value, command, value.identity.groupId);
       if (reply.kind !== 'identity') throw unavailable();
       const saved = this.db.prepare('SELECT body FROM gh_groups WHERE handle=?').get(value.handle);
       const current = saved
@@ -710,7 +863,7 @@ export class GroupHost {
     const { handle } = host.groupHostSelectSchema.parse(raw);
     const value = await this.active(handle);
     const roster = await this.membership(
-      value.credential,
+      value,
       { kind: 'roster', after: 0, limit: 50 },
       value.identity.groupId,
     );
@@ -827,9 +980,7 @@ export class GroupHost {
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${value.credential}`,
-              ...(config.mode === 'hosted'
-                ? { 'X-Hosting-Approval': config.hostingAuthorization.approvalCapability }
-                : {}),
+              ...this.serviceHeaders(value, false, config),
             },
             body: JSON.stringify(command),
             redirect: 'error',
@@ -890,9 +1041,7 @@ export class GroupHost {
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${value.credential}`,
-              ...(config.mode === 'hosted'
-                ? { 'X-Hosting-Approval': config.hostingAuthorization.approvalCapability }
-                : {}),
+              ...this.serviceHeaders(value, false, config),
             },
             body: JSON.stringify(command),
             redirect: 'error',
@@ -930,9 +1079,7 @@ export class GroupHost {
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${value.credential}`,
-              ...(config.mode === 'hosted'
-                ? { 'X-Hosting-Approval': config.hostingAuthorization.approvalCapability }
-                : {}),
+              ...this.serviceHeaders(value, false, config),
             },
             body: JSON.stringify(command),
             redirect: 'error',
@@ -1239,6 +1386,7 @@ export class GroupHost {
           !config ||
           config.mode === 'disabled' ||
           config.endpointId !== b.endpointId ||
+          (config.mode === 'beta' && !current.beta) ||
           serviceHash(config) !== current.serviceHash ||
           publicationCanonical(current.binding) !== publicationCanonical(b)
         )
@@ -1252,6 +1400,9 @@ export class GroupHost {
           remoteMemberId: current.identity.memberId,
           ...(config.mode === 'hosted'
             ? { hostingAuthorization: config.hostingAuthorization }
+            : {}),
+          ...(config.mode === 'beta'
+            ? { betaAuthorization: { profile: config.profile, admission: current.beta!.admission } }
             : {}),
         };
       },
@@ -1790,7 +1941,7 @@ export class GroupHost {
       );
     const secret = z.string().parse(this.intent(`invite:${input.key}`, input, capability));
     const reply = await this.membership(
-      value.credential,
+      value,
       {
         kind: 'invite',
         operationId: groupOperationIdSchema.parse(input.key),
@@ -1800,8 +1951,18 @@ export class GroupHost {
       value.identity.groupId,
     );
     if (reply.kind !== 'invitation') throw unavailable();
+    const config = this.configured();
     return {
-      fragment: `/groups?invite=${encodeURIComponent(JSON.stringify({ groupId: value.identity.groupId, secret, name: value.name }))}`,
+      fragment: `/groups?invite=${encodeURIComponent(
+        JSON.stringify({
+          groupId: value.identity.groupId,
+          secret,
+          name: value.name,
+          ...(config.mode === 'beta' && value.beta
+            ? { serviceId: config.profile.serviceId, admission: value.beta.admission }
+            : {}),
+        }),
+      )}`,
       expiresAt: reply.expiresAt,
     };
   }
@@ -1811,7 +1972,7 @@ export class GroupHost {
     if (!value.creator)
       throw new GroupHostError(403, 'CREATOR_REQUIRED', 'Only the creator can approve members.');
     const reply = await this.membership(
-      value.credential,
+      value,
       { kind: 'pending', after: 0, limit: 32 },
       value.identity.groupId,
     );
@@ -1853,7 +2014,7 @@ export class GroupHost {
       () => true,
     );
     const reply = await this.membership(
-      value.credential,
+      value,
       {
         kind: 'approve',
         operationId: groupOperationIdSchema.parse(input.key),
@@ -1883,7 +2044,7 @@ export class GroupHost {
         throw new Conflict('Revocation retry identity changed.');
     } else {
       const roster = await this.membership(
-        value.credential,
+        value,
         { kind: 'roster', after: 0, limit: 50 },
         value.identity.groupId,
       );
@@ -1899,7 +2060,7 @@ export class GroupHost {
       this.intent(`revoke:${input.key}`, input, () => true);
     }
     return this.membership(
-      value.credential,
+      value,
       {
         kind: 'revoke',
         operationId: groupOperationIdSchema.parse(input.key),

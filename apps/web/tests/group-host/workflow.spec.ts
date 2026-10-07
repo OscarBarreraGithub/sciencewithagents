@@ -157,6 +157,105 @@ test('normal Groups refuses unauthenticated requests and explains missing host s
   );
   await expect(page.locator('.groups-workspace')).toHaveCount(0);
 });
+test('beta setup code validation, definitive expiry/used replacement and ambiguous retry retain the right request', async ({
+  page,
+}) => {
+  const host = connection.unconfigured;
+  await authenticate(page, host);
+  await page.route('**/api/groups', (route) =>
+    route.fulfill({
+      json: {
+        groups: [],
+        service: {
+          configured: true,
+          setupCodeRequired: true,
+          message: 'Hosted Groups beta is available.',
+        },
+        native: {
+          available: false,
+          productionReady: false,
+          authState: 'unavailable',
+          message: 'Native setup remains separate.',
+        },
+      },
+    }),
+  );
+  const attempts: { key: string; setupCode: string }[] = [];
+  await page.route('**/api/groups/create', (route) => {
+    attempts.push(route.request().postDataJSON());
+    const code =
+      attempts.length === 1
+        ? 'GROUP_BETA_SETUP_INVALID'
+        : attempts.length === 2
+          ? 'GROUP_BETA_CREATION_EXPIRED'
+          : attempts.length === 3
+            ? 'GROUP_BETA_CODE_USED'
+            : 'GROUP_SERVICE_UNAVAILABLE';
+    return route.fulfill({
+      status:
+        attempts.length === 1
+          ? 400
+          : attempts.length === 2
+            ? 410
+            : attempts.length === 3
+              ? 409
+              : 503,
+      json: {
+        code,
+        error:
+          code === 'GROUP_BETA_CREATION_EXPIRED'
+            ? 'This beta code expired before its group was created.'
+            : code === 'GROUP_BETA_CODE_USED'
+              ? 'This beta setup code has already been used.'
+              : 'Controlled setup failure; your entries are retained.',
+      },
+    });
+  });
+  await page.goto(`${host.origin}/#/groups`);
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.getByLabel('Your display name', { exact: true }).fill('Amina');
+  await page.getByLabel('Project name', { exact: true }).fill('Fresh beta setup');
+  await page.getByRole('button', { name: 'Continue setup', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Paste your beta setup code');
+  expect(attempts).toHaveLength(0);
+  await page.getByLabel('Beta setup code', { exact: true }).fill('invalid-code-kept-in-memory');
+  await page.getByRole('button', { name: 'Continue setup', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Controlled setup failure');
+  await page.getByLabel('Beta setup code', { exact: true }).fill('expired-code-kept-in-memory');
+  await page.getByRole('button', { name: 'Continue setup', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Use a new setup code', exact: true }),
+  ).toBeVisible();
+  expect(attempts[1].key).not.toBe(attempts[0].key);
+  await capture(page, 'beta-code-expired');
+  await page.getByRole('button', { name: 'Use a new setup code', exact: true }).click();
+  await expect(page.getByLabel('Beta setup code', { exact: true })).toBeEmpty();
+  await expect(page.getByLabel('Beta setup code', { exact: true })).toBeFocused();
+  await page.getByLabel('Beta setup code', { exact: true }).fill('used-code-kept-in-memory');
+  await page.getByRole('button', { name: 'Continue setup', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('already been used');
+  await expect(
+    page.getByRole('button', { name: 'Use a new setup code', exact: true }),
+  ).toBeVisible();
+  expect(attempts[2].key).not.toBe(attempts[1].key);
+  await page.getByRole('button', { name: 'Use a new setup code', exact: true }).click();
+  await expect(page.getByLabel('Beta setup code', { exact: true })).toBeEmpty();
+  await page.getByLabel('Beta setup code', { exact: true }).fill('new-code-kept-in-memory');
+  await page.getByRole('button', { name: 'Continue setup', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Controlled setup failure');
+  await expect(page.getByRole('button', { name: 'Use a new setup code', exact: true })).toHaveCount(
+    0,
+  );
+  await page.getByRole('button', { name: 'Continue setup', exact: true }).click();
+  await expect.poll(() => attempts.length).toBe(5);
+  await expect(page.getByRole('button', { name: 'Continue setup', exact: true })).toBeEnabled();
+  await expect(page.getByRole('alert')).toContainText('Controlled setup failure');
+  expect(attempts[3].key).not.toBe(attempts[2].key);
+  expect(attempts[3].key).toBe(attempts[4].key);
+  const storage = await page.evaluate(() => JSON.stringify(sessionStorage));
+  for (const attempt of attempts) expect(storage).not.toContain(attempt.setupCode);
+  await capture(page, 'beta-code-retry');
+});
 test('fragment invitation joins a second authenticated host and exact creator approval opens its private context', async ({
   page,
   browser,

@@ -11,6 +11,8 @@
     "GROUP_SETUP_HASH": "",
     "HOSTING_ORIGIN": "",
     "HOSTING_APPROVAL_HASH": "",
+    "GROUP_BETA_SERVICE_ID": "",
+    "GROUP_BETA_KEYS": "",
   },
   "durable_objects": {
     "bindings": [

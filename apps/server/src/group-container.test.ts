@@ -151,6 +151,10 @@ it('real metadata guards deny external symlink, hardlink and replaced root', () 
   expect(() => groupResourceMounts(workspace, [], state, [privateRoot])).toThrow(/Hard-linked/);
   rmSync(join(workspace, 'alias'));
   const admitted = groupResourceMounts(workspace, [], state, [privateRoot]);
+  writeFileSync(join(workspace, 'ordinary-edit'), 'still the admitted directory');
+  expect(() => admitted.check()).not.toThrow();
+  // Linux may immediately reuse the deleted directory's inode. Its creation
+  // generation must still differ, while ordinary directory edits remain valid.
   rmSync(workspace, { recursive: true });
   mkdirSync(workspace);
   expect(() => admitted.check()).toThrow(/identity/);

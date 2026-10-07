@@ -2,8 +2,76 @@
 
 Your setup agent registers the host resources; Groups never asks a browser to select
 executables, filesystem paths, Docker commands or arbitrary native RPC methods.
-Human Groups messages require the separate protected service configuration described in
-[Group workflow](GROUP_WORKFLOW.md).
+Human Groups messages use the built-in beta service or an existing protected service
+configuration, as described in [Group workflow](GROUP_WORKFLOW.md).
+
+The current native route targets **Apple Silicon macOS with an existing Docker Desktop
+Linux ARM64 Engine** and `/usr/local/bin/docker`. Other platforms are not qualified for
+native Groups. The person starts Docker Desktop and makes its licence choice; the setup
+agent must not install or reconfigure a runtime silently. Native agents run Linux tools;
+macOS app control and browser-extension bridges are unavailable. Each isolated context
+needs this person's own Codex or Claude subscription sign-in, even if their personal
+host CLI is already signed in. Human group messages need none of this native setup.
+
+## Resolve the local route
+
+Work from the installed clone and its usual data directory. If the launcher uses an
+explicit `DOCK_DATA_DIR`, use that same value for these CLI commands.
+
+1. Use the final clean source checkout and build it through
+   `sh scripts/pnpm build`. Record `git rev-parse HEAD` and obtain an independent review
+   of that exact source before registering its `reviewedCommit`. A commit hash or passing
+   fixture alone is not a review; never copy another installation's private receipts.
+2. Run `sh scripts/pnpm dock list`. Use an existing local project, or register this clone
+   with `sh scripts/pnpm dock add "$PWD" --name "Groups native host" --provider codex`
+   (choose `claude` for Claude). Run `sh scripts/pnpm dock list` again and copy the project's
+   UUID, not its manager UUID. Registration starts no model work. Keeping `workspace: null` below
+   grants no project files to the guest; the local project supplies the existing policy
+   and accounting context. No GitHub account or new personal work brief is required.
+3. After source review and owner runtime startup, build only the public image context.
+   This invokes the shipped recipe and inspects its resulting **local immutable image ID**
+   through the same fixed Engine, without using the owner's Docker configuration:
+
+   ```sh
+   node --input-type=module <<'NODE'
+   import { execFileSync } from 'node:child_process';
+   import { chmodSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+   import { join } from 'node:path';
+   import {
+     groupContainerBuildRecipe, groupEngineSockets,
+   } from './apps/server/dist/group-container.js';
+   const config = mkdtempSync(join(process.cwd(), 'data', 'group-native-build-'));
+   chmodSync(config, 0o700);
+   const socket = existsSync(groupEngineSockets[1])
+     ? groupEngineSockets[1] : groupEngineSockets[0];
+   const recipe = groupContainerBuildRecipe(config, socket);
+   try {
+     execFileSync(recipe.executable, recipe.args, {
+       env: recipe.environment, stdio: 'inherit',
+     });
+     const image = execFileSync(recipe.executable, [
+       '--host', `unix://${socket}`, '--config', config,
+       'image', 'inspect', '--format', '{{.Id}}', recipe.tag,
+     ], { env: recipe.environment, encoding: 'utf8' }).trim();
+     if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Image ID missing');
+     console.log(JSON.stringify({ image, sourceDigest: recipe.sourceDigest }, null, 2));
+   } finally {
+     rmSync(config, { recursive: true });
+   }
+   NODE
+   ```
+
+   Retain build provenance and resolved package versions locally as described in
+   [native isolation](GROUP_ISOLATION.md#full-native-execution-route-and-owner-acceptance).
+   Use the returned image ID below, never a mutable tag or a maintainer's private path.
+
+4. Review the chosen provider's current official sign-in/service endpoint requirements
+   and fill the exact DNS-name/port grants in `outbound`. This source does **not** ship a
+   complete accepted provider host list. The three OpenAI hosts in the retained macOS
+   authentication-only section of GROUP_ISOLATION are not full native acceptance. Do not
+   guess, grant wildcard hosts or disable the network boundary; leave native readiness
+   pending until the chosen provider's real sign-in and tool checks pass with the grants.
+   Additional remote MCP, browser or Git destinations require their own explicit grants.
 
 On the owning installation, prepare a same-owner `0600` JSON file with no credentials:
 

@@ -24,6 +24,7 @@ export const groupHostCreateSchema = z.strictObject({
   key: z.uuid(),
   projectName: groupDisplayNameSchema,
   displayName: groupDisplayNameSchema,
+  setupCode: z.string().min(1).max(4096).optional(),
 });
 export const groupHostJoinSchema = z.strictObject({
   key: z.uuid(),
@@ -62,7 +63,11 @@ export const groupHostOpenSchema = z.strictObject({
 });
 export const groupHostListSchema = z.strictObject({
   groups: z.array(groupHostSummarySchema).max(32),
-  service: z.strictObject({ configured: z.boolean(), message: z.string().max(1000) }),
+  service: z.strictObject({
+    configured: z.boolean(),
+    message: z.string().max(1000),
+    setupCodeRequired: z.boolean().optional(),
+  }),
   native: groupHostNativeStatusSchema,
 });
 export const groupHostSendSchema = groupHostSelectSchema.extend({

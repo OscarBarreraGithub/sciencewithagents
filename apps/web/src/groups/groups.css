@@ -63,7 +63,8 @@
   flex-direction: column;
   gap: 8px;
 }
-.groups-form input {
+.groups-form input,
+.groups-form textarea {
   min-width: 0;
   width: 100%;
   padding: 12px;

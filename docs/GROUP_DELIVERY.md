@@ -12,6 +12,14 @@ two installed computers. See [Status](STATUS.md#groups) and the [normal workflow
 
 ## Hosting and enrollment authority
 
+Fresh installations use the pinned public beta service. One operator-issued signed code
+authorizes creation of one fixed group; invitations carry only its scoped admission ticket
+and a single-use join secret. Each installation generates its own membership bearer. Every
+beta membership/delivery/document/action/promotion request carries the group-scoped ticket
+and its own bearer, without a global hosting or setup capability. Creation expiry closes
+only unused creation: exact initialization receipts and established membership still route,
+including when a signing key is retained as `route-only`.
+
 Repository hosting defaults remain disabled. `local-test` accepts explicit HTTP loopback
 configuration for owned tests. `hosted` requires the exact approved HTTPS root origin,
 protected approval capability and a saved verified-Free approval identity. The Worker checks
@@ -22,7 +30,7 @@ verification remains enabled. No service is deployed or purchased by opening Gro
 Protected configuration stays in same-owner private host files. Credentials use headers,
 never URLs, event JSON, receipts or logs. Delivery rejects browser Origin, setup headers,
 queries and non-POST requests. Creation has its separate protected setup capability.
-Invitations do not select a service. Changing the saved endpoint, endpoint identity or
+Invitations cannot supply a service URL or override existing protected configuration. Changing the saved endpoint, endpoint identity or
 binding refuses reconciliation against a different service; no automatic migration/reset
 rewrites history. Secret rotation preserves the saved enrollment ownership.
 

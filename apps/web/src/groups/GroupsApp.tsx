@@ -19,6 +19,9 @@ const request = (path: string, body?: unknown, signal?: AbortSignal) =>
   api(path === 'groups' ? '/groups' : `/groups/${path}`, body, signal);
 const message = (reason: unknown) =>
   reason instanceof Error ? reason.message : 'Groups unavailable. Reconnect and retry.';
+const canReplaceSetupCode = (reason: unknown) =>
+  reason instanceof ApiError &&
+  (reason.code === 'GROUP_BETA_CREATION_EXPIRED' || reason.code === 'GROUP_BETA_CODE_USED');
 const readError = (reason: unknown): GroupRead<never> => ({
   kind: reason instanceof ApiError && reason.code === 'GROUP_REVOKED' ? 'revoked' : 'error',
   message: message(reason),
@@ -68,6 +71,8 @@ export function GroupsApp({ route }: { route: string }) {
   const [list, setList] = useState<contracts.GroupHostSummary[] | null>(null);
   const [service, setService] = useState('Loading Groups configuration…');
   const [serviceConfigured, setServiceConfigured] = useState<boolean | null>(null);
+  const [setupCodeRequired, setSetupCodeRequired] = useState(false);
+  const [newSetupCodeAllowed, setNewSetupCodeAllowed] = useState(false);
   const [native, setNative] = useState('Checking isolated agent availability…');
   const [selected, setSelected] = useState<contracts.GroupHostOpen | null>(null);
   const [error, setError] = useState('');
@@ -90,6 +95,7 @@ export function GroupsApp({ route }: { route: string }) {
       setList(value.groups);
       setService(value.service.message);
       setServiceConfigured(value.service.configured);
+      setSetupCodeRequired(value.service.setupCodeRequired ?? false);
       setNative(
         value.native.authState === 'per-context'
           ? `${value.native.message} Sign-in is checked separately for each isolated group context.`
@@ -129,6 +135,7 @@ export function GroupsApp({ route }: { route: string }) {
     try {
       await fn();
     } catch (reason) {
+      if (canReplaceSetupCode(reason)) setNewSetupCodeAllowed(true);
       setError(message(reason));
     } finally {
       setBusy(false);
@@ -229,6 +236,18 @@ export function GroupsApp({ route }: { route: string }) {
       )}
       {!selected ? (
         <GroupsLanding
+          setupCodeRequired={setupCodeRequired}
+          onNewSetupCode={
+            newSetupCodeAllowed
+              ? () => {
+                  // Offered only after a definitive service creation rejection.
+                  // The old host receipt and bearer remain retained.
+                  sessionStorage.removeItem(`swa:groups:${apiScope()}:create`);
+                  setNewSetupCodeAllowed(false);
+                  setError('');
+                }
+              : undefined
+          }
           groups={
             list
               ? { kind: 'ready', value: list }
@@ -242,10 +261,39 @@ export function GroupsApp({ route }: { route: string }) {
             if (group) location.hash = `#/groups/${group.handle}`;
           }}
           onCreate={async (input) => {
-            const operation = pending('create', input);
-            const value = contracts.groupHostOpenSchema.parse(
-              await request('create', { ...input, key: operation.key }),
-            );
+            setNewSetupCodeAllowed(false);
+            // Creation capabilities stay in memory until the authenticated host
+            // receives them; tab recovery stores only the code's fingerprint.
+            const setupCodeHash = input.setupCode
+              ? Array.from(
+                  new Uint8Array(
+                    await crypto.subtle.digest(
+                      'SHA-256',
+                      new TextEncoder().encode(input.setupCode),
+                    ),
+                  ),
+                )
+                  .map((v) => v.toString(16).padStart(2, '0'))
+                  .join('')
+              : undefined;
+            const operation = pending('create', {
+              projectName: input.projectName,
+              displayName: input.displayName,
+              ...(setupCodeHash ? { setupCodeHash } : {}),
+            });
+            let value: contracts.GroupHostOpen;
+            try {
+              value = contracts.groupHostOpenSchema.parse(
+                await request('create', { ...input, key: operation.key }),
+              );
+            } catch (reason) {
+              // Local validation failed before any durable/network operation.
+              // Correcting an invalid code can safely start a fresh attempt.
+              if (reason instanceof ApiError && reason.code === 'GROUP_BETA_SETUP_INVALID')
+                operation.clear();
+              if (canReplaceSetupCode(reason)) setNewSetupCodeAllowed(true);
+              throw reason;
+            }
             operation.clear();
             location.hash = `#/groups/${value.group.handle}`;
             void load();

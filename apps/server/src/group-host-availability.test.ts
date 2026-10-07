@@ -42,6 +42,7 @@ function fixture(availability: GroupNativeConnector['availability']) {
     message: 'Controlled adapter refused execution.',
   }));
   const host = new GroupHost(directory, {
+    betaProfile: null,
     native: {
       availability,
       submit,
@@ -67,6 +68,7 @@ function fixture(availability: GroupNativeConnector['availability']) {
   const value = {
     handle: randomUUID(),
     name: 'Availability seam',
+    creator: false,
     shared: slot,
     private: slot,
     identity: { ...context, displayName: 'Owner', state: 'active' },

@@ -25,7 +25,7 @@ it('shares reading stores across authenticated entries, failed phone starts, ret
   const runtime = new Runtime(store, directory, 'codex', async () => {
     throw new Error('Native launches are not part of this listener check.');
   });
-  const host = new GroupHost(directory);
+  const host = new GroupHost(directory, { betaProfile: null });
   const terminals = new Terminals(runtime);
   const apps = new Set<FastifyInstance>();
   const localPort = 4999;

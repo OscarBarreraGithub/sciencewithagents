@@ -1,3 +1,6 @@
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { fixtureGitExecutable } from './git-executable.fixture.js';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
@@ -33,6 +36,7 @@ import { HostGitExecutor } from './group-git-executor.js';
 import { SqliteGitJournal } from './group-git-journal.js';
 
 const exec = promisify(execFile);
+const binary = fixtureGitExecutable();
 const env = {
   PATH: '/opt/homebrew/bin:/usr/bin:/bin',
   HOME: '/nonexistent',
@@ -45,7 +49,7 @@ const env = {
 };
 const git = async (cwd: string, ...argv: string[]) =>
   (
-    await exec('/opt/homebrew/bin/git', argv, {
+    await exec(binary, argv, {
       cwd,
       env,
       timeout: 15000,
@@ -81,7 +85,7 @@ async function reopen(): Promise<void> {
   service.close();
   service = await GroupGitService.open({
     hostRoot: host,
-    gitExecutable: '/opt/homebrew/bin/git',
+    gitExecutable: binary,
     events,
   });
   access = service.authority.issue(scope);
@@ -186,7 +190,7 @@ beforeEach(async () => {
   );
   service = await GroupGitService.open({
     hostRoot: host,
-    gitExecutable: '/opt/homebrew/bin/git',
+    gitExecutable: binary,
     events,
   });
   access = service.authority.issue(scope);
@@ -524,7 +528,7 @@ it('exports granted full history as a create-only proposal, preserving main and 
 });
 
 it('uses atomic create-only endpoint publication under an actual concurrent race', async () => {
-  const executor = await HostGitExecutor.open(join(root, 'race.sqlite'), '/opt/homebrew/bin/git');
+  const executor = await HostGitExecutor.open(join(root, 'race.sqlite'), binary);
   try {
     const endpoint = new LocalGitObjectEndpoint(
       'local',
@@ -559,7 +563,7 @@ it('uses atomic create-only endpoint publication under an actual concurrent race
 
 it('retains durable exclusion until an actual surviving child is quiescent and fences unknown spawns', async () => {
   const path = join(root, 'fencing.sqlite');
-  const executor = await HostGitExecutor.open(path, '/opt/homebrew/bin/git');
+  const executor = await HostGitExecutor.open(path, binary);
   const journal = new SqliteGitJournal(path, executor);
   const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], {
     detached: true,
@@ -757,10 +761,7 @@ it('executes configured HTTPS object reads with TLS, fixed-origin credentials, h
     ],
     { timeout: 15000 },
   );
-  const executor = await HostGitExecutor.open(
-    join(root, 'https-source.sqlite'),
-    '/opt/homebrew/bin/git',
-  );
+  const executor = await HostGitExecutor.open(join(root, 'https-source.sqlite'), binary);
   const endpoint = new LocalGitObjectEndpoint(
     'local',
     await pinGitResource('remote', remote, true),
@@ -807,7 +808,7 @@ it('executes configured HTTPS object reads with TLS, fixed-origin credentials, h
   const script = join(root, 'https-check.mjs');
   await writeFile(
     script,
-    `import {HttpsGitObjectEndpoint,metadataClosure} from ${JSON.stringify(join(process.cwd(), 'apps/server/src/group-git-endpoint.ts'))};
+    `import {HttpsGitObjectEndpoint,metadataClosure} from ${JSON.stringify(fileURLToPath(new URL('./group-git-endpoint.ts', import.meta.url)))};
     const endpoint=new HttpsGitObjectEndpoint('configured',process.argv[2],async()=>'owned-test-secret');
     const budget=()=>({remaining:Number(process.argv[4]),objects:0,maxObjects:4096,deadline:Date.now()+10000});
     const tip=await endpoint.ref('refs/heads/main',budget());
@@ -819,7 +820,7 @@ it('executes configured HTTPS object reads with TLS, fixed-origin credentials, h
       process.execPath,
       [
         '--import',
-        join(process.cwd(), 'apps/server/node_modules/tsx/dist/loader.mjs'),
+        createRequire(import.meta.url).resolve('tsx'),
         script,
         `https://127.0.0.1:${port}/group-git/v1/`,
         'unused',

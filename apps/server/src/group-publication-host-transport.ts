@@ -20,6 +20,11 @@ import {
   type PublicationEffectReply,
   type PublicationAvailability,
 } from './group-publication-protocol.js';
+import {
+  groupBetaProfileSchema,
+  verifyGroupBetaAdmission,
+} from '@dock/shared/dist/group-beta-admission.js';
+import type { z } from 'zod';
 
 /** Host-owned enrollment/secret lookup. Never expose this resolver as a browser route. */
 export type HostedPublicationResolution =
@@ -32,6 +37,7 @@ export type HostedPublicationResolution =
       remoteInstallationId: string;
       remoteMemberId: string;
       hostingAuthorization?: { origin: string; approvalCapability: string; freeApprovalId: string };
+      betaAuthorization?: { profile: z.infer<typeof groupBetaProfileSchema>; admission: string };
     };
 export type HostedPublicationResolver = (
   binding: PublicationBinding,
@@ -46,10 +52,10 @@ export class HostedPublicationError extends Error {
 export class HostedPublicationTransport implements PublicationTransport {
   constructor(
     private readonly resolve: HostedPublicationResolver,
-    private readonly mode: 'disabled' | 'local-test' | 'hosted' = 'disabled',
+    private readonly mode: 'disabled' | 'local-test' | 'hosted' | 'beta' = 'disabled',
     private readonly http: typeof fetch = fetch,
   ) {}
-  private resolution(binding: PublicationBinding): HostedPublicationResolution {
+  private async resolution(binding: PublicationBinding): Promise<HostedPublicationResolution> {
     try {
       if (this.mode === 'disabled') return { kind: 'unavailable', reason: 'offline' };
       const value = this.resolve(publicationBindingSchema.parse(binding));
@@ -70,18 +76,36 @@ export class HostedPublicationTransport implements PublicationTransport {
       if (url.username || url.password || url.search || url.hash || url.pathname !== '/')
         throw new HostedPublicationError();
       if (this.mode === 'local-test') {
-        if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || value.hostingAuthorization)
+        if (
+          url.protocol !== 'http:' ||
+          url.hostname !== '127.0.0.1' ||
+          value.hostingAuthorization ||
+          value.betaAuthorization
+        )
           throw new HostedPublicationError();
-      } else {
+      } else if (this.mode === 'hosted') {
         const approved = value.hostingAuthorization;
         if (
           url.protocol !== 'https:' ||
           !approved ||
+          value.betaAuthorization ||
           url.origin !== approved.origin ||
           !/^[a-f0-9]{64}$/.test(approved.approvalCapability) ||
           !publicationBindingSchema.shape.endpointId.safeParse(approved.freeApprovalId).success
         )
           throw new HostedPublicationError();
+      } else {
+        if (!value.betaAuthorization || value.hostingAuthorization)
+          throw new HostedPublicationError();
+        const profile = groupBetaProfileSchema.parse(value.betaAuthorization.profile);
+        if (
+          url.protocol !== 'https:' ||
+          url.origin !== profile.origin ||
+          binding.endpointId !== profile.endpointId
+        )
+          throw new HostedPublicationError();
+        const payload = await verifyGroupBetaAdmission(value.betaAuthorization.admission, profile);
+        if (payload.groupId !== binding.remoteGroupId) throw new HostedPublicationError();
       }
       return value;
     } catch {
@@ -109,6 +133,9 @@ export class HostedPublicationTransport implements PublicationTransport {
             'Content-Type': 'application/json',
             ...(resolved.hostingAuthorization
               ? { 'X-Hosting-Approval': resolved.hostingAuthorization.approvalCapability }
+              : {}),
+            ...(resolved.betaAuthorization
+              ? { 'X-Group-Admission': resolved.betaAuthorization.admission }
               : {}),
           },
           body,
@@ -204,7 +231,7 @@ export class HostedPublicationTransport implements PublicationTransport {
   async receipt(key: PublicationKey, signal: AbortSignal): Promise<PublicationReply> {
     try {
       const checked = publicationKeySchema.parse(key);
-      const resolved = this.resolution(checked.binding);
+      const resolved = await this.resolution(checked.binding);
       if (resolved.kind === 'unavailable') return resolved;
       const reply = await this.request(
         checked.binding,
@@ -221,7 +248,7 @@ export class HostedPublicationTransport implements PublicationTransport {
     try {
       const checked = publicationEffectSchema.parse(packet);
       const key = checked.kind === 'begin' ? checked.header : checked.key;
-      const resolved = this.resolution(key.binding);
+      const resolved = await this.resolution(key.binding);
       if (resolved.kind === 'unavailable') return { kind: 'not_sent', reason: resolved.reason };
       if (signal.aborted) return { kind: 'not_sent', reason: 'offline' };
       const reply = await this.request(
@@ -270,7 +297,7 @@ export class HostedPublicationTransport implements PublicationTransport {
         publicationCanonical(checked.binding) !== publicationCanonical(binding)
       )
         throw new HostedPublicationError();
-      const resolved = this.resolution(binding);
+      const resolved = await this.resolution(binding);
       if (resolved.kind === 'unavailable') throw new HostedPublicationError();
       const reply = await this.request(binding, checked, signal, resolved);
       if (checked.kind === 'feed') {

@@ -16,19 +16,20 @@ uses fake providers and is not a substitute for this setup.
    computer from your phone or laptop, complete [owner pairing](PHONE_WORKFLOW.md) and select
    that computer first. Pairing gives owner access to that installation; a group invitation
    gives group membership instead.
-2. Ask your setup agent to configure the same approved group service on each participating
-   installation. Groups displays a readiness message and a copyable **Set up Groups** prompt when configuration is missing. Opening
-   Groups does not deploy a service or supply a public endpoint. The setup agent must verify
-   actual Workers Free eligibility and the exact HTTPS endpoint before enabling hosted use;
-   there is no paid fallback. Human messaging can work without native-agent configuration.
+2. Fresh installations use the built-in hosted beta service. The creator obtains one beta
+   setup code from the operator; other members need only an invitation. Desktop Groups
+   requires no Cloudflare account, Tailscale or private operator configuration. Existing
+   protected service settings are preserved; ask the setup agent to reconcile a different
+   service explicitly. Human messaging can work without native-agent configuration.
 3. If you want group agents, have the setup agent register the reviewed isolated native
    route on each worker computer, using [native owner setup](GROUP_NATIVE_OWNER_SETUP.md).
    This includes the approved image, protected resources and provider network access.
    Groups does not ask you to enter paths, executables, credentials or shell commands.
 4. In Groups, choose **New project**, enter the project and display names, then
-   **Continue setup**. The creator opens **Group controls → Invitations and approval → Create invitation**
+   paste the **Beta setup code**, then **Continue setup**. The creator opens **Group controls → Invitations and approval → Create invitation**
    and sends the invitation privately to the intended person. Invitations expire after
-   15 minutes and cannot select a service.
+   15 minutes. They carry scoped group admission, never the creation capability or a
+   selectable service URL.
 5. On the other installation, use **Join by invitation → Request to join**. Send the exact
    confirmation code privately to the creator. The creator selects the matching request,
    enters that code and chooses **Approve exact enrollment**. Matching display names alone
@@ -39,6 +40,12 @@ request. Use **Recover pending setup** on the original installation; it reconcil
 request and identity after reload or restart. If the service is unavailable, leave the
 request saved and retry when it returns. Do not change the service mapping to evade a pending
 request. A setup agent must reconcile changed endpoints or installation identities explicitly.
+Creation codes have a creation deadline; established groups and memberships do not expire
+with that deadline. An exact lost-acknowledgement create retry can recover the original
+group after it. If the service confirms that an expired code never created a group or
+that the code was already used by another installation, **Use a new setup code** starts
+a fresh request and retains the old host receipt. To join an existing group, use its
+invitation instead.
 
 ## Conversation and work
 
@@ -109,11 +116,12 @@ operation. Missing repository configuration shows a setup-agent notice.
 
 ## Setup-agent boundary and limits
 
-Private service configuration lives in the installation's `groups/service.json`, with a
-same-owner `0700` directory and `0600` files; symlinks and hard links are refused. It contains
-the protected endpoint identity and credentials. Browser responses expose readiness and
-opaque saved handles only. Hosted requests use the exact approved HTTPS origin, protected
-hosting approval and current enrollment credentials; redirects are refused. See
+The built-in beta service pins its public identity, HTTPS origin and verification keys in
+source. Setup codes and invitations cannot change them. Each installation generates its
+own membership bearer and retains exact setup requests in private host storage. The
+creation capability is excluded from invitations and browser storage. Existing optional
+`groups/service.json` configuration remains authoritative, with a same-owner `0700`
+directory and `0600` files; symlinks and hard links are refused. Redirects are refused. See
 [hosting](GROUP_HOSTING.md), [delivery contracts and limits](GROUP_DELIVERY.md),
 [native isolation](GROUP_ISOLATION.md) and [documents](GROUP_DOCUMENTS.md).
 

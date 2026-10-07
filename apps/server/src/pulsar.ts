@@ -59,6 +59,8 @@ export function initializeScheduling(store: Store) {
 export class Pulsar {
   /** Host supplies a synchronous read scope; admission/reservation always rechecks live state. */
   statusRead: <T>(read: () => T) => T = (read) => read();
+  /** A synchronous read batch ends before reserve writes its lease. */
+  decisionRead: <T>(read: () => T, fresh?: boolean) => T = (read) => read();
   allowanceDecision: (
     run: PrivateRun,
     protectedChat?: boolean,
@@ -387,20 +389,22 @@ export class Pulsar {
   }
   private foregroundWork(except?: string, executing: ReadonlySet<string> = new Set()) {
     const agentId = except ? this.store.run(except).agentId : null;
-    return this.store.runs(['queued', 'running']).some((run) => {
-      if (run.id === except || this.estimate(run).priority === 'background') return false;
-      if (run.status === 'running') return true;
-      // Runtime selects one input per conversation; queued peers cannot contend
-      // with that input for foreground admission. Global demand still sees them.
-      if (run.agentId === agentId) return false;
-      if (
-        run.status !== 'queued' ||
-        ['waiting', 'interrupted', 'failed'].includes(this.store.agent(run.agentId).status)
-      )
-        return false;
-      // Non-background decisions never call foregroundWork; this cannot recurse.
-      return this.decision(run, executing, true).eligible;
-    });
+    return this.decisionRead(() =>
+      this.store.runs(['queued', 'running']).some((run) => {
+        if (run.id === except || this.estimate(run).priority === 'background') return false;
+        if (run.status === 'running') return true;
+        // Runtime selects one input per conversation; queued peers cannot contend
+        // with that input for foreground admission. Global demand still sees them.
+        if (run.agentId === agentId) return false;
+        if (
+          run.status !== 'queued' ||
+          ['waiting', 'interrupted', 'failed'].includes(this.store.agent(run.agentId).status)
+        )
+          return false;
+        // Non-background decisions never call foregroundWork; this cannot recurse.
+        return this.decision(run, executing, true).eligible;
+      }),
+    );
   }
   wantsForeground(executing: ReadonlySet<string>) {
     return this.foregroundWork(undefined, executing) || this.hasForegroundLocal();
@@ -415,6 +419,16 @@ export class Pulsar {
     reason: string;
     budgetBlock?: PulsarStatus['jobs'][number]['budgetBlock'];
   } {
+    return this.decisionRead(() =>
+      this.readDecision(run, executing, preparingPreemption, protectedChat),
+    );
+  }
+  private readDecision(
+    run: PrivateRun,
+    executing: ReadonlySet<string>,
+    preparingPreemption: boolean,
+    protectedChat: boolean,
+  ): ReturnType<Pulsar['decision']> {
     const estimate = this.estimate(run),
       policy = this.policy();
     const agent = this.store.agent(run.agentId);
@@ -579,7 +593,8 @@ export class Pulsar {
   }
   reserve(run: PrivateRun, executing: ReadonlySet<string>, withinTransaction = false) {
     const save = () => {
-      if (!this.decision(run, executing).eligible) return false;
+      // Never borrow a preceding display/decision snapshot for admission.
+      if (!this.decisionRead(() => this.decision(run, executing), true).eligible) return false;
       if (this.lease(run.id)) return true;
       const agent = this.store.agent(run.agentId),
         estimate = this.estimate(run);

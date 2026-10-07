@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { groupBetaAdmissionSchema } from './group-beta-admission.js';
 import {
   groupIdSchema,
   groupDisplayNameSchema,
@@ -79,6 +80,7 @@ export const membershipEnvelopeSchema = z.strictObject({
   groupId: groupIdSchema,
   credential: membershipCapabilitySchema,
   setupCapability: membershipCapabilitySchema.optional(),
+  betaAdmission: groupBetaAdmissionSchema.optional(),
   command: membershipCommandSchema,
 });
 export const membershipIdentitySchema = z.strictObject({
@@ -131,6 +133,7 @@ export const membershipFailureSchema = z.enum([
   'limit',
   'unavailable',
   'hosting_disabled',
+  'creation_expired',
 ]);
 export type MembershipCommand = z.infer<typeof membershipCommandSchema>;
 export type MembershipEnvelope = z.infer<typeof membershipEnvelopeSchema>;

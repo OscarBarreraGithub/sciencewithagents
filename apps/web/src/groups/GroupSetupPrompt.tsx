@@ -5,9 +5,10 @@ import '../setup-prompt.css';
 const setupPrompt = `Help me set up Groups in my existing sciencewithagents installation.
 Read docs/GROUP_WORKFLOW.md and docs/GROUP_NATIVE_OWNER_SETUP.md first.
 Preserve my installation, accounts, files, saved work and running jobs.
-Use an existing approved group service if available. Otherwise verify Workers Free
-eligibility and obtain my deployment approval before creating or deploying a service;
-do not enable paid hosting or treat a usage-model setting as Free-plan proof.
+Use the built-in hosted beta service for a fresh installation; preserve an existing
+protected service configuration. I will supply one beta setup code to create a project,
+or an invitation to join one. Help with the exact creator approval steps. Desktop Groups
+does not need my own Cloudflare account or Tailscale; phone access and Git stay optional.
 Follow the supported native isolated setup, explain its tool and credential tradeoffs,
 and let me complete any required sign-in and consent. Never copy credentials or put
 secrets in group messages. Keep private work private.

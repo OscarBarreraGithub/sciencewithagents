@@ -1,3 +1,4 @@
+import { fixtureGitExecutable } from './git-executable.fixture.js';
 import Fastify from 'fastify';
 import { GroupFeatureGit } from './group-feature-git.js';
 import { registerGroupHostRoutes } from './group-host-routes.js';
@@ -89,7 +90,7 @@ beforeAll(async () => {
 });
 
 const exec = promisify(execFile);
-const binary = process.env.GROUP_GIT_TEST_EXECUTABLE ?? '/opt/homebrew/bin/git';
+const binary = fixtureGitExecutable();
 const env = {
   PATH: '/usr/bin:/bin',
   HOME: '/nonexistent',

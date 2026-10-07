@@ -17,9 +17,15 @@ export type GroupRead<T> =
 export type GroupSummary = { id: GroupId; name: string; members: number; sync: string };
 export type GroupsLandingProps = {
   initialInvitation?: string;
+  setupCodeRequired?: boolean;
+  onNewSetupCode?: () => void;
   groups: GroupRead<readonly GroupSummary[]> | { kind: 'loading' };
   onOpen: (id: GroupId) => void;
-  onCreate: (input: { projectName: string; displayName: string }) => Promise<void>;
+  onCreate: (input: {
+    projectName: string;
+    displayName: string;
+    setupCode?: string;
+  }) => Promise<void>;
   onJoin: (input: { invitation: string; displayName: string }) => Promise<void>;
   onRetry: () => void;
 };
