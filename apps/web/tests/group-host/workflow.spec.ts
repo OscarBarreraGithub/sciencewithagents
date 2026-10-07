@@ -178,12 +178,14 @@ test('normal Groups refuses unauthenticated requests and explains missing host s
   await page.goto(`${host.origin}/#/home`);
   await page.getByRole('link', { name: /Groups Shared work/ }).click();
   await page.getByText('Groups delivery and agent setup', { exact: true }).click();
-  await expect(page.locator('.group-host-status')).toContainText('Connect a Groups service');
+  await expect(page.locator('.group-host-status').first()).toContainText(
+    'creator’s own Cloudflare',
+  );
   await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByLabel('Your display name', { exact: true }).fill('Amina');
   await page.getByLabel('Project name', { exact: true }).fill('Retained setup intent');
   await page.getByRole('button', { name: 'Continue setup', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('configure protected Groups delivery');
+  await expect(page.getByRole('alert')).toContainText('Copy the Cloudflare setup prompt');
   await expect(page.getByLabel('Project name', { exact: true })).toHaveValue(
     'Retained setup intent',
   );

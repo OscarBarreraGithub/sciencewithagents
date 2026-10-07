@@ -26,27 +26,63 @@ report anything incomplete rather than claiming success.
 ## Groups beta
 
 Each person installs the app on their own computer and uses their own Codex or Claude
-account. The creator needs one beta setup code from the operator; everyone else joins
-with an invitation and the creator's approval. Desktop Groups uses the built-in beta
-service. It needs no Cloudflare account or Tailscale setup. Phone access and Git sharing
-are optional. See [Groups setup](docs/GROUP_WORKFLOW.md).
+account. **The group creator hosts the shared service in their own Cloudflare account.**
+Other people join that service by invitation; they do not need to deploy another copy.
+There is no maintainer-issued setup code. GitHub is optional for sharing code, not required
+for group chat. See [Groups setup](docs/GROUP_WORKFLOW.md).
 
-Send new members a link to this section and their invitation privately. They can paste
-this into Codex or Claude on their own computer:
+**Create a group — paste into your setup agent:**
 
 ```text
 Set up sciencewithagents for Groups from
 https://github.com/OscarBarreraGithub/sciencewithagents.
 Find and preserve my existing installation, accounts, files and running work.
-Follow docs/CONTRIBUTOR_SETUP.md and docs/GROUP_WORKFLOW.md. Use my own Codex or
-Claude account. Handle the desktop setup and open Home → Groups. I will provide
-either a beta setup code to create one project or an invitation to join one.
-If joining, give me the confirmation code to send privately to the inviter for approval.
-Explain Shared chat and Private to you. Enable group agents using my existing provider
-sign-in and normal native tools; do not install Docker or set up a separate Linux
-account. Keep phone access, VS Code sharing and Git optional. Verify a shared
-message in both directions and a private Ask with me. Ask only for necessary sign-in,
-consent and preference steps. Preserve private work and report any remaining blocker.
+Follow docs/CONTRIBUTOR_SETUP.md and docs/GROUP_WORKFLOW.md. Use my own Codex or Claude
+sign-in. Follow the owner-hosted deployment instructions in docs/GROUP_HOSTING.md to
+deploy the group service to MY Cloudflare account on Workers Free. Do not use the
+maintainer's service, require a beta code, buy a domain, or enable paid services.
+Handle deployment and private local configuration; leave account sign-in and account
+selection to me. Open Groups, help me create a group and invite another person, and
+explain Shared chat versus Private to you. Use native local agents, without Docker.
+Give me a short checklist of the remaining human steps. Verify messages in both
+directions and a private Ask once the other person joins. Report what remains untested.
+```
+
+**Join a group — send this prompt and the invitation privately to the new member:**
+
+```text
+Set up sciencewithagents from https://github.com/OscarBarreraGithub/sciencewithagents
+to join the group in my invitation. Preserve my installation, accounts and files.
+Follow docs/CONTRIBUTOR_SETUP.md and docs/GROUP_WORKFLOW.md. Use my own Codex or Claude
+sign-in and native tools. Configure the invitation's group service using the documented
+setup-agent process, without deploying a separate service or using the maintainer's
+account. Open Groups and help me join. Give me the confirmation code to send privately
+to the inviter. Verify shared messaging and my separate private chat after approval.
+Keep phone access and GitHub optional; list only the human steps I still need to do.
+```
+
+**Your steps:** sign in to your agent provider; if creating the group, sign in to Cloudflare
+and choose your account; exchange the invitation and approve the joining member. Your
+setup agent handles the commands and configuration. GitHub sign-in is needed only for
+optional repository sharing or submitting a public issue.
+
+## Phone or laptop access
+
+Use your own Cloudflare account and a domain you control to reach your running computer.
+Groups hosting can use a free `workers.dev` address; this phone connection uses a separate
+named tunnel and your domain. The phone itself needs no Cloudflare sign-in or Tailscale.
+Paste this into the setup agent on the computer that runs your projects:
+
+```text
+Set up phone and browser-only laptop access for this sciencewithagents installation.
+Follow docs/CLOUDFLARE_SETUP.md and docs/PHONE_WORKFLOW.md. Use MY Cloudflare account
+and a hostname under a domain I control. Preserve existing tunnels, pairings, projects
+and running work. Tell me if I need to supply a domain; do not buy anything. Handle the
+named tunnel and private configuration, exposing only the authenticated paired-device
+listener, never the local owner listener. Do not set up Tailscale. Coordinate any
+necessary restart with active work. Give me the short human checklist: account sign-in,
+hostname choice, phone passkey and matching-number confirmation. Verify the phone
+connection and reconnection with me; keep passwords and tunnel tokens out of chat.
 ```
 
 [Phone or laptop access](docs/PHONE_WORKFLOW.md) · [Another worker computer](docs/MULTI_COMPUTER_SETUP.md) · [Update an installation](docs/UPDATE_APP.md)

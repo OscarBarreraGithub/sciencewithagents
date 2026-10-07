@@ -214,7 +214,7 @@ export function GroupsApp({ route }: { route: string }) {
         <p>{native}</p>
         <a href="#/welcome">Open setup checks</a>
       </details>
-      {!selected && serviceConfigured === false && <GroupSetupPrompt />}
+      {!selected && <GroupSetupPrompt initiallyOpen={serviceConfigured === false} />}
       {error && <p role="alert">{error}</p>}
       {joinNotice && (
         <p role="status" className="group-host-notice">

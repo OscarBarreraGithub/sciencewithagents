@@ -5,72 +5,171 @@ The protected group service implements authenticated membership and
 independently enrolled hosts, restart and revocation; they do not prove a deployed service,
 Workers Free entitlement or two installed computers. See [current acceptance](STATUS.md#groups).
 
-## Hosted activation remains explicit
+## Creator-owned Cloudflare setup
 
-`apps/group-service/wrangler.jsonc` remains disabled by default, with workers.dev,
-preview URLs and request observability off. The operator first verifies Workers Free
-entitlement and approves the exact HTTPS origin. A plan string, Free DNS zone, absent
-subscription or usage model is not approval. Opening Groups never deploys a service.
+The group creator deploys the service in **their own Cloudflare account**. Fresh app
+installations have no default maintainer-hosted service and require no beta operator or
+operator-issued creation code. Joining members use the creator's service; they do not each
+deploy a Worker. Existing configured services, memberships and pending beta requests remain
+retained. Opening Groups only displays the copyable prompts and human checklist.
 
-Two explicit host modes share the same membership/quota boundary:
+Cloudflare documents SQLite Durable Objects on Workers Free, with operations failing when
+Free limits are exhausted. Check the actual signed-in account and current entitlement;
+never upgrade a plan or assume that a Free DNS zone proves Workers Free. Application limits
+are not an account-wide quota reservation or billing guarantee.
+[Cloudflare pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
 
-- Protected hosting retains its operator setup/hosting capabilities in private host files.
-- Closed beta pins a public service profile (service/endpoint identity, exact origin and
-  up to four Ed25519 verification keys). The operator privately issues one setup code for
-  one fixed group and creation operation. This code contains a per-group create capability;
-  it never contains the global setup/hosting capability, signing key or an operator account.
-  The second person joins an ordinary invitation carrying only the signed group admission,
-  group identity and invitation secret. No Cloudflare or Tailscale account is needed for
-  desktop Groups messaging through the approved HTTPS service.
+### Human steps
 
-`X-Group-Admission` is verified before Durable Object lookup and bound to the exact service
-and routed group. It admits routing only; existing enrollment Bearers, invitation expiry,
-exact confirmation/approval and revocation still authorize all membership and feature work.
-Mixed beta/global hosting authority is refused. `/v1/create` also proves the fixed operation,
-per-group create hash and recomputed group identity. Creation expiry is enforced in the DO
-transaction **after** checking the original creator/body receipt. Identical retries recover
-that receipt after expiry; a never-created expired code refuses definitively. Another bearer
-or changed body cannot redeem the code or learn the original identity.
+1. Creator: sign in to **your** Cloudflare account, confirm the account and Workers Free,
+   and approve your service's HTTPS address. The setup agent handles the commands below.
+2. Members: give the external setup agent the creator's invitation privately, then send the
+   exact enrollment confirmation code privately to the creator for approval.
+3. Enable native local agents when ready. Verify one shared message in each direction.
+4. For phone access, use the separate [Cloudflare phone setup](CLOUDFLARE_SETUP.md), in your
+   own account, and authenticated device pairing. Groups delivery and phone access to the
+   running computer are separate services.
+5. GitHub is optional for code/files and backup; it is not a Groups messaging prerequisite.
+   If wanted, sign in, choose the repository/visibility and accept collaborator invitations.
 
-The ticket's signed `kid` selects a public key in `create+route` or `route-only` state.
-Retiring a key to route-only blocks new initialization while retaining committed retries
-and established group routing. Member routing does not expire when creation permission ends.
-Do not remove a routing key while its groups must remain reachable. A leaked routing ticket
-still requires current membership or a valid invitation; a leaked signing key can issue
-unbounded group tickets until retired. This is an operator-issued closed beta, not anonymous
-registration or a global abuse/billing guarantee.
+### Exact external setup-agent runbook
 
-The offline operator tool runs only after building shared contracts:
+Preserve the existing app and running jobs. Follow [contributor setup](CONTRIBUTOR_SETUP.md)
+first. Locate its actual data directory (`DOCK_DATA_DIR`, otherwise the installation's
+`data/`); do not create a second installation or use a fixture. Inspect existing
+`groups/service.json` and saved membership before changing anything. If a mapping exists,
+retain it and reconcile an explicitly requested change instead of overwriting it.
+
+Each installation currently has one Groups service mapping. It can join multiple groups
+on that service. Concurrent membership across different creators' service endpoints is
+not supported; changing the mapping leaves older receipts intact but refuses their use
+until their original mapping is restored. The helper preserves an existing mapping
+rather than silently disconnecting those groups.
+
+From the installation checkout, use the pinned project tools:
 
 ```sh
-node scripts/group-beta-operator.mjs keygen <new-private-directory> <approved-https-origin> <service-uuid>
-node scripts/group-beta-operator.mjs issue <private-operator-key.json> <new-private-code-file> [valid-minutes]
+sh scripts/pnpm --filter @dock/group-service exec wrangler whoami
 ```
 
-Use an ignored, same-owner `0700` parent. Keys and setup codes are saved `0600`, with no
-overwrite; stdout contains paths/public metadata only. Publish/deploy only the public
-profile and its key states. The issuer makes no network call, deploy or model turn.
-Creation validity defaults to one day and is bounded to ninety days. Deliver codes privately;
-whoever first redeems one becomes that group's creator. Neither code nor invitation may
-switch an existing explicit disabled, local-test or protected service mapping.
+If necessary, run `sh scripts/pnpm --filter @dock/group-service exec wrangler login` and
+let the person sign in. Verify the selected account ID and Workers Free in that person's
+Cloudflare dashboard. Obtain their workers.dev subdomain and choose a fresh Worker name
+that does not replace an existing Worker. A custom domain is unnecessary for Groups.
 
-The harness-only `local-test` mode accepts HTTP loopback and no hosted/beta headers; never
-configure it on a deployed Worker. Hosted activation always retains the exact HTTPS origin
-and verified operator approval. A hostname alone is not authorization. See
-[HTTPS configuration](GROUP_DELIVERY.md) and the [normal workflow](GROUP_WORKFLOW.md).
+Prepare local private files after the person confirms the account and origin:
 
-Cloudflare currently offers SQLite Durable Objects on Workers Free, with errors on
-Free allowance exhaustion. Actual account entitlement mapping, permitted setup,
-account-wide budget allocation and live validation are still required before a separate
-production activation change. This package's per-group guards do not prove account-wide
-quota protection or an absolute billing cap. **A separate production enablement gate must
-verify fail-closed authorization under actual Workers Free storage/write exhaustion:** if
-a revocation write cannot commit while credential reads still work, access must be denied
-by a verified mechanism before activation. The current integration implements a write probe,
-durability barrier and recoverable request-specific failed-revocation markers, checked under local SQLite faults; it does not prove
-actual platform-exhaustion or unwritable-outage recovery behavior. See [delivery](GROUP_DELIVERY.md). Local storage reservations cannot
-reserve account write/request allowance or prevent other objects exhausting it. An account
-administrator can change plans or buy unrelated services. [Cloudflare pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
+```sh
+node scripts/group-cloudflare-setup.mjs prepare /absolute/app-data \
+  https://chosen-worker.their-subdomain.workers.dev chosen-worker THEIR_32_HEX_ACCOUNT_ID \
+  --verified-workers-free
+```
+
+The script prints only a new private directory path under `groups/cloudflare-deploy-UUID/`.
+Call that path `/absolute/prepared`. It creates `wrangler.json` with the explicit account ID,
+SQLite Durable Object binding/migration, matching approved origin and capability hashes;
+`owner-service.json` contains private creator/routing capabilities. The files are `0600`
+inside a same-owner `0700` directory. It performs no network call or deployment, and never
+replaces the app's existing mapping. Keep these files outside source control and chat.
+
+Build only the shared package needed by this Worker, validate the prepared deployment, then
+deploy to the verified account. This step is explicitly part of the creator setup request:
+
+```sh
+sh scripts/pnpm --filter @dock/shared build
+sh scripts/pnpm --filter @dock/group-service exec wrangler deploy \
+  --config /absolute/prepared/wrangler.json --dry-run
+sh scripts/pnpm --filter @dock/group-service exec wrangler deploy \
+  --config /absolute/prepared/wrangler.json
+```
+
+Verify Wrangler reports the expected Worker name, account and exact HTTPS origin. If it
+fails, leave the existing app configuration intact and retry the **same** prepared config;
+do not generate new credentials or silently choose a different account. On success:
+
+```sh
+node scripts/group-cloudflare-setup.mjs activate /absolute/app-data \
+  /absolute/prepared/owner-service.json
+```
+
+Configuration is read per request; reload Groups. Choose **New project**, supply display
+and project names, and continue. No operator setup code is needed. If configuration exists,
+activation refuses to overwrite it. A reinstall/update must retain the same endpoint ID,
+capabilities and service origin. Keep the prepared files for future updates; redeploy their
+config, preserving the existing Durable Object migration and storage.
+
+The private owner configuration has this schema (values below are explanatory placeholders):
+
+```json
+{
+  "version": 1,
+  "mode": "hosted",
+  "endpoint": "https://chosen-worker.their-subdomain.workers.dev/",
+  "endpointId": "generated-uuid",
+  "setupCapability": "64-lowercase-hex-private-creator-capability",
+  "hostingAuthorization": {
+    "origin": "https://chosen-worker.their-subdomain.workers.dev",
+    "approvalCapability": "64-lowercase-hex-routing-capability",
+    "freeApprovalId": "generated-uuid-recording-owner-confirmed-free-setup"
+  }
+}
+```
+
+The setup capability creates groups and stays only on the creator's computer. The routing
+capability admits requests to the configured Worker; it never substitutes for an independently
+generated membership bearer, invitation or exact approval. Hashes rather than raw capabilities
+are deployed to the Worker. The approval UUID records the setup decision; it is not automated
+proof of Free entitlement.
+
+### Invitation handoff to a fresh member installation
+
+The creator opens **Group controls → Invitations and approval → Create invitation** and
+sends the invitation privately. It expires after 15 minutes. In owner-hosted mode, its
+fragment includes the exact service descriptor (the schema above **without**
+`setupCapability`), group identity and single-use invitation secret. The fragment is removed
+from the browser address immediately. Do not paste it into public issues, logs or source.
+
+On the joining computer, the external setup agent saves the invitation in a temporary
+same-owner `0600` file, then runs:
+
+```sh
+node scripts/group-cloudflare-setup.mjs join /absolute/member-app-data \
+  /absolute/private-invitation.txt
+```
+
+This validates the descriptor and writes a join-only private configuration; it makes no
+network request. The person verifies the service belongs to the intended creator. Arbitrary
+browser invitations cannot choose a host, trigger a fetch or override an existing mapping.
+The setup agent is the explicit trusted configuration boundary. Remove the temporary
+invitation file after handoff. If setup took longer than 15 minutes, obtain a fresh invitation
+from the same creator; the saved service mapping stays valid.
+
+Reload Groups, choose **Join by invitation**, and paste a current invitation. Send the exact
+confirmation code privately to the creator; they approve that exact enrollment. The joining
+host holds its own generated credential and no creation capability. Attempting to create a
+group on a join-only host refuses before network handoff. To host an independent service,
+reconcile the current mapping and retained groups explicitly rather than replacing it.
+
+### Verify completion and recovery
+
+Verify a human message from each installation appears at the other, and each original opens.
+Choose the creator's computer as shared feed writer. Verify local agent access separately
+using each person's own provider sign-in; model calls require their ordinary instruction.
+Reload/reconnect and confirm membership and saved messages persist. A lost acknowledgement
+uses **Recover pending setup** / the original request identity; never create another group
+to evade uncertainty. Service failures retain requests for retry. A failed deployment is not
+a completed setup. Own-account live deployment and real-device acceptance must be checked
+for each installation; local tests do not certify them.
+
+### Retained compatibility
+
+Existing beta records retain their original pinned service, scoped signed admission and
+exact create retry receipts. Existing protected/local-test/disabled mappings remain
+authoritative. The offline beta issuer is retained for existing installations; it is not
+part of new owner-hosted onboarding. `local-test` permits only explicit owned loopback tests
+and must never be deployed. Existing beta key retirement and creation-expiry semantics stay
+unchanged. HTTP redirects remain refused, TLS verification remains enabled, and setup/routing
+capabilities are never accepted from arbitrary browser endpoint fields.
 
 ## Protocol and authority
 

@@ -12,27 +12,32 @@ two installed computers. See [Status](STATUS.md#groups) and the [normal workflow
 
 ## Hosting and enrollment authority
 
-Fresh installations use the pinned public beta service. One operator-issued signed code
-authorizes creation of one fixed group; invitations carry only its scoped admission ticket
-and a single-use join secret. Each installation generates its own membership bearer. Every
-beta membership/delivery/document/action/promotion request carries the group-scoped ticket
-and its own bearer, without a global hosting or setup capability. Creation expiry closes
-only unused creation: exact initialization receipts and established membership still route,
-including when a signing key is retained as `route-only`.
+Fresh installations have no maintainer service default. The creator's external setup agent
+deploys the protected Worker to the creator's own verified Cloudflare Workers Free account,
+following the exact commands in [hosting setup](GROUP_HOSTING.md). Members configure that
+same exact HTTPS service from the creator's invitation through their trusted setup agent;
+they do not need their own Worker or Cloudflare account for Groups.
 
-Repository hosting defaults remain disabled. `local-test` accepts explicit HTTP loopback
+Repository deployment defaults remain disabled. `local-test` accepts explicit HTTP loopback
 configuration for owned tests. `hosted` requires the exact approved HTTPS root origin,
-protected approval capability and a saved verified-Free approval identity. The Worker checks
+protected routing capability and a saved verified-Free setup identity. The Worker checks
 its matching origin and approval hash as well as enrollment Bearer authentication. A value
 in a configuration file is not proof of Free entitlement. Redirects are refused; native TLS
 verification remains enabled. No service is deployed or purchased by opening Groups.
 
-Protected configuration stays in same-owner private host files. Credentials use headers,
+Protected configuration stays in same-owner private host files. The creator alone retains
+`setupCapability`; member hosts omit it. Invitations include a routing-only service descriptor
+in their fragment. The external setup script validates and saves that descriptor without
+fetching it; browser invitation requests cannot select a URL or replace configuration.
+Membership credentials are independently generated on each installation. They use headers,
 never URLs, event JSON, receipts or logs. Delivery rejects browser Origin, setup headers,
-queries and non-POST requests. Creation has its separate protected setup capability.
-Invitations cannot supply a service URL or override existing protected configuration. Changing the saved endpoint, endpoint identity or
-binding refuses reconciliation against a different service; no automatic migration/reset
-rewrites history. Secret rotation preserves the saved enrollment ownership.
+queries and non-POST requests. Changing the saved endpoint, endpoint identity or binding
+refuses reconciliation against a different service; no automatic reset rewrites history.
+Secret rotation preserves saved enrollment ownership.
+
+Existing beta memberships and pending receipts retain their pinned service and signed
+admission tickets; creation expiry still closes only unused creation. This compatibility
+path does not enroll fresh installations in the maintainer's account.
 
 ## Exact sources, receipts and reads
 

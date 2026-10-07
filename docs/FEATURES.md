@@ -19,7 +19,7 @@ This describes connected source behavior, not a blanket release certification.
 | Slurm cluster        | Shared cached queue, pending reasons, fairshare, native limits, recent efficiency and submitted-job tracking     | Advisory only: no app cluster limits; native SSH sign-in and site rules apply                       |
 | Cluster notebooks    | Open running compute-node Jupyter notebooks through the existing private SSH connection                          | Phone/selected-computer access needs that worker's separately configured notebook HTTPS address     |
 | Computer health      | Current pressure, charts, project/job attribution, grouped apps/processes and full-screen Ask                    | Detailed probes are macOS-specific; automatic checks are bounded and off on fresh installs          |
-| Phone                | Optional private Tailscale or configured domain, one-time passkey pairing and computer confirmation              | No recurring app lock; physical retention/reconnect needs device acceptance                         |
+| Phone                | Agent-led tunnel/domain setup in your own Cloudflare account, one-time passkey pairing and computer confirmation | Existing connections preserved; physical retention/reconnect needs device acceptance                |
 | Notifications        | Opt-in push per device and project when approvals, decisions or failed runs stop work                            | Simulated checks only; physical iPhone delivery needs acceptance                                    |
 | Multiple computers   | Select configured hosts with separate accounts/projects/history; two copyable setup prompts                      | Connection is agent-assisted over a verified private route, not automatic discovery                 |
 | Updates and recovery | GitHub update check, automatic pre-update database copy, maintenance-agent assignment and source backups         | Agent handles customizations; quit/reopen is explicit. Source backup excludes private conversations |
@@ -28,7 +28,17 @@ This describes connected source behavior, not a blanket release certification.
 **Computers → Open terminal** runs your own shell on the selected computer even at zero AI
 allowance; the app must remain running. See [local access](LOCAL_ACCESS.md#run-your-own-commands).
 
-## Report a bug
+## Report an issue
+
+Open **? → Report an issue**, enter a summary and what happened, then **Open GitHub issue
+draft**. Review and submit it on GitHub to reach the sciencewithagents maintainers. Issues
+are public and require GitHub sign-in. The draft includes only your entered text and the
+app screen name; it does not attach logs, conversations or account details. Closing the
+dialog or reloading keeps the draft in that browser, and **Clear draft** removes it.
+Long reports offer **Copy report** and a plain new-issue link so the text can be pasted
+on GitHub. If clipboard access is blocked, the original fields remain selectable.
+
+### Private maintenance reports
 
 Open **? → Report a bug**, describe the problem, then **Save and assign**. The selected
 computer saves a private report under `data/bug-reports/<id>/report.md`, with the page and

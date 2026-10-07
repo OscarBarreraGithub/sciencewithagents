@@ -58,8 +58,10 @@ must retain their original answer semantics. [Worker tools](WORKER_TOOLS.md), [C
 
 ## Phone and other computers
 
-[Phone setup](PHONE_SETUP.md) offers private Tailscale or an agent-configured domain. Pair a
-browser using the temporary code, passkey creation and matching computer confirmation. There
+[Phone setup](PHONE_SETUP.md) supplies a copyable prompt for an external agent to configure
+a domain and named tunnel in the person's own Cloudflare account, with a human to-do list.
+Existing connections are retained. Pair a browser using the temporary code, passkey creation
+and matching computer confirmation. There
 is no repeat lock. Turning access off blocks connections while preserving approved devices;
 Remove device revokes approval. Browser storage loss or a changed trusted origin may need pairing.
 A working browser and an installed Home Screen icon have separate storage/acceptance limits.

@@ -53,18 +53,25 @@ const local = z.strictObject({
       );
     }),
 });
-const hosted = z
-  .strictObject({
-    ...common,
-    mode: z.literal('hosted'),
-    endpoint: safeEndpoint('https:'),
-    hostingAuthorization: z.strictObject({
-      origin: safeEndpoint('https:').refine((v) => new URL(v).origin === v),
-      approvalCapability: z.string().regex(/^[a-f0-9]{64}$/),
-      freeApprovalId: z.uuid(),
-    }),
-  })
-  .refine((v) => new URL(v.endpoint).origin === v.hostingAuthorization.origin);
+const hostedShape = z.strictObject({
+  ...common,
+  // Only the creator's installation holds creation authority. Joining hosts
+  // retain routing approval plus their independently generated membership bearer.
+  setupCapability: common.setupCapability.optional(),
+  mode: z.literal('hosted'),
+  endpoint: safeEndpoint('https:'),
+  hostingAuthorization: z.strictObject({
+    origin: safeEndpoint('https:').refine((v) => new URL(v).origin === v),
+    approvalCapability: z.string().regex(/^[a-f0-9]{64}$/),
+    freeApprovalId: z.uuid(),
+  }),
+});
+const sameHostedOrigin = (v: { endpoint: string; hostingAuthorization: { origin: string } }) =>
+  new URL(v.endpoint).origin === v.hostingAuthorization.origin;
+const hosted = hostedShape.refine(sameHostedOrigin);
+export const groupHostedInvitationServiceSchema = hostedShape
+  .omit({ setupCapability: true })
+  .refine(sameHostedOrigin);
 export const groupServiceConfigurationSchema = z.discriminatedUnion('mode', [
   z.strictObject({ version: z.literal(1), mode: z.literal('disabled') }),
   local,

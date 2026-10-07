@@ -1,0 +1,49 @@
+.issue-report-dialog {
+  width: min(680px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 22px;
+  overflow-y: auto;
+}
+.issue-report-form,
+.issue-report-field {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.issue-report-form {
+  gap: 16px;
+}
+.issue-report-field > label {
+  font-weight: 650;
+}
+.issue-report-form input,
+.issue-report-form textarea {
+  width: 100%;
+  min-width: 0;
+  font-size: var(--text-reading);
+}
+.issue-report-form textarea {
+  min-height: 150px;
+  max-height: 40dvh;
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+.issue-report-note {
+  color: var(--home-muted);
+  font-size: var(--text-small);
+}
+.issue-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.issue-report-actions > :is(a, button) {
+  min-height: 44px;
+  white-space: normal;
+  text-align: center;
+}
+@media (max-width: 600px) {
+  .issue-report-dialog {
+    padding: 16px;
+  }
+}

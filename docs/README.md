@@ -7,7 +7,7 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 
 - [Install with your coding agent](CONTRIBUTOR_SETUP.md)
 - [Open the app and connect VS Code](LOCAL_ACCESS.md)
-- [Phone connection choices](PHONE_SETUP.md) and [pairing workflow](PHONE_WORKFLOW.md)
+- [Cloudflare phone setup prompt](PHONE_SETUP.md) and [pairing workflow](PHONE_WORKFLOW.md)
 - [Connect another computer](MULTI_COMPUTER_SETUP.md)
 - [Choose managers, workers and model defaults](MODEL_POLICY.md)
 - [QUARK queue and budgets](QUARK.md) and [its coordinator](QUARK_COORDINATOR.md)

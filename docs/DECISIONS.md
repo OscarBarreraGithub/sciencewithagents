@@ -19,6 +19,14 @@ External MCP services are not made safe by a filesystem prompt instruction.
 
 ## Groups v1: separate conversations, native local agents
 
+New group creators host the group service in their own Cloudflare account. The app supplies
+copyable setup-agent prompts and a short human checklist; the agent handles deployment and
+private configuration. Joining members connect to that creator's service by invitation.
+No maintainer-issued beta code or automatic maintainer endpoint is part of new setup.
+Existing service records and groups remain intact. GitHub is optional for code sharing.
+Phone/browser-only laptop setup likewise uses the owner's Cloudflare account and domain;
+Tailscale is not offered in new phone onboarding. Existing connections are preserved.
+
 Each member uses their own computer, provider account and native tools. Group agents run
 through the ordinary local runtime and QUARK. Shared and private conversations have distinct
 persisted identities, native sessions, drafts and publication destinations. Personal chat

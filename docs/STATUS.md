@@ -183,13 +183,22 @@ explicitly authorizes native writing. This is not an operating-system sandbox. D
 a separate Linux sign-in are not required. Existing isolated history is retained without
 replaying its uncertain requests through the new runtime.
 
+**New installation setup:** the group creator's external setup agent deploys the service
+to the creator's own Cloudflare Workers Free account, following the copyable Groups prompt
+and [hosting runbook](GROUP_HOSTING.md). Fresh installs no longer default to the maintainer's
+service or require a maintainer-issued beta code. Invitations carry the creator's service
+handoff for the joining setup agent; creator credentials stay private. Existing groups and
+explicit service settings remain intact. GitHub is optional for shared code, not messaging.
+Phone setup likewise provides a Cloudflare prompt and human checklist, using the person's
+own account/domain. Existing paired connections are preserved.
+
 The existing hosted membership, human messaging, invitation approval and recovery are reused.
 Native chat, scoped reading and feed summaries are connected. Protected Git export,
 isolated report capture and the older confirmed-action board depend on the retained isolated
 adapter and are not presented as available in local mode. Native Work still has ordinary
 provider tools.
 
-**Hosted service:** an approved HTTPS group service is deployed, with Workers Free directly
+**Previous hosted acceptance:** an approved HTTPS group service was deployed, with Workers Free directly
 observed in the operator account on 2026-10-07. Two empty, independently authenticated profiles
 passed create/join approval, bidirectional human delivery, lost-response retries, private-note
 and draft exclusion, and host restart against the real service. These were two profiles on
@@ -201,12 +210,17 @@ Feed summaries are asynchronous; this check does not establish a delivery-time g
 Focused runtime checks cover delegation, final replies, scoped cancellation and explicit
 recovery before provider input. Browser checks cover the four supported viewport sizes.
 
-**Still requires acceptance:** the complete workflow between two unrelated people on their
-own installed computers. Each installation must update and reopen to use the new runtime.
+**Still requires acceptance:** deployment in a new creator's own Cloudflare account and the
+complete workflow between two unrelated people on their own installed computers. Previous
+central-service checks do not establish that outcome. Each installation must update and reopen.
 Local fixtures and automated fresh profiles do not establish that final outcome. Physical
 phone follow-up is deferred by the owner. No automatic paid hosting fallback or provider
 credential copying is used. See [Groups workflow](GROUP_WORKFLOW.md),
 [native setup](GROUP_NATIVE_OWNER_SETUP.md) and [delivery limits](GROUP_DELIVERY.md).
+
+**Help → Report an issue** opens a public GitHub issue draft for user review and submission.
+It sends only the entered report and the screen name; private chats/logs are not attached.
+The separate **Report a bug** flow remains a private local report.
 
 ## Intentionally deferred
 

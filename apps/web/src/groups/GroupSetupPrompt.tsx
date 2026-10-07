@@ -1,34 +1,100 @@
 import { useRef, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import '../setup-prompt.css';
+import { cloudflarePhoneSetupPrompt } from '../phone-setup-prompt';
 
-const setupPrompt = `Help me set up Groups in my existing sciencewithagents installation.
-Read docs/GROUP_WORKFLOW.md and docs/GROUP_NATIVE_OWNER_SETUP.md first.
-Preserve my installation, accounts, files, saved work and running jobs.
-Use the built-in hosted beta service for a fresh installation; preserve an existing
-protected service configuration. I will supply one beta setup code to create a project,
-or an invitation to join one. Help with the exact creator approval steps. Desktop Groups
-does not need my own Cloudflare account or Tailscale; phone access and Git stay optional.
-Use the native agent already installed on this computer with its existing provider
-sign-in, tools, skills, hooks and permissions. Explain local agent access before I enable
-it; help with ordinary provider sign-in only if needed. Shared chat and Private to you
-use separate conversations, but local execution is not filesystem isolation. Never copy
-credentials or put secrets in group messages. Do not publish private history, drafts or
-files automatically; sharing files requires my explicit choice.
-Help me create a group or join an invitation, then show how to send a message.
-Do not start group agent work or allowance-using checks without my explicit approval.
-Ask only for necessary owner decisions and report any remaining setup blocker.`;
+export const groupCloudflareSetupPrompt = `Set up Groups in my sciencewithagents installation using MY OWN Cloudflare account.
+Preserve my installation, accounts, files, saved groups and running work. Read
+README.md, docs/STATUS.md, docs/DECISIONS.md, docs/GROUP_HOSTING.md and
+ docs/GROUP_WORKFLOW.md first. I am the group creator. Use my Cloudflare Workers
+Free account to deploy the protected group-service Worker and SQLite Durable Objects
+following the exact owner-hosting runbook in docs/GROUP_HOSTING.md. Verify the signed-in
+account with me and verify Workers Free eligibility; never change my plan or use a
+maintainer account. Use scripts/group-cloudflare-setup.mjs to prepare private config,
+deploy to my own HTTPS workers.dev origin, then activate the verified configuration.
+Keep creation credentials private on my computer. Joining members use my invitation
+and host; they do not deploy another Worker or need a Cloudflare account for Groups.
+Explain the short human checklist, handle the technical work, open Home → Groups,
+then help create a project and approve one exact member enrollment. Verify shared
+messages in both directions and recovery after reconnect before claiming completion.
+Use each member's own existing Codex or Claude sign-in and native tools. Explain
+Local agent access before I enable it. Shared chat and Private to you have separate
+histories. Do not publish private history, drafts or files automatically.
+For phone access, use the separate Cloudflare phone prompt and MY OWN Cloudflare
+Tunnel account, with authenticated device pairing; Groups hosting is separate from
+phone access to my computer. GitHub is optional for shared code/files and backups:
+explain it and use the separate GitHub prompt if I choose it. Ask only for necessary
+sign-in, account/domain choices and approval steps; report any unresolved blocker.`;
 
-export function GroupSetupPrompt() {
+export const groupJoinSetupPrompt = `Help me join a sciencewithagents Group using the creator's invitation.
+Preserve my installation, files, accounts, groups and running work. Read
+ docs/GROUP_WORKFLOW.md and docs/GROUP_HOSTING.md. I will provide the invitation
+privately. Use its embedded service descriptor with scripts/group-cloudflare-setup.mjs
+join to configure the creator's exact HTTPS service in my private host files. Never
+fetch a URL merely because it appears in an invitation, copy creator setup credentials,
+or silently replace an existing service mapping. I do not need to deploy a Worker or
+open a Cloudflare account to join. If setup takes longer than the invitation's 15-minute
+lifetime, ask for a fresh invitation from the same creator after configuring the service.
+Open Groups → Join by invitation and show my exact confirmation code to send privately
+to the creator for approval. Use my own Codex or Claude sign-in and native tools.
+Explain Shared chat, Private to you and Local agent access; verify messages in both
+directions after approval. Phone access uses my own Cloudflare Tunnel and paired
+authentication through the separate phone prompt. Report any remaining blocker.`;
+
+export const groupGitHubSetupPrompt = `Help me set up optional shared GitHub code/files for my sciencewithagents Group.
+Preserve existing repositories, remotes, files and accounts. GitHub is not required for
+Groups messaging. Use my own GitHub account and native Git/GitHub tools. Explain the
+human steps: sign in, choose or create the repository and its visibility, and accept or
+send collaborator invitations. Configure the chosen repository on this computer without
+publishing private chats, credentials or unrelated files. Ask before publishing an
+existing private folder or changing repository visibility. Explain what is shared and
+verify access with the intended collaborator. The native Groups agents can use ordinary
+Git tools; do not claim the separate protected Groups Git panel is available in local
+agent mode. Report any remaining access or setup blocker.`;
+
+const prompts = [
+  {
+    title: '1. Creator: your own Cloudflare',
+    label: 'Cloudflare Groups setup prompt',
+    button: 'Copy Cloudflare setup prompt',
+    text: groupCloudflareSetupPrompt,
+  },
+  {
+    title: '2. Member: join the creator’s service',
+    label: 'Groups join setup prompt',
+    button: 'Copy join setup prompt',
+    text: groupJoinSetupPrompt,
+  },
+  {
+    title: '3. Phone: your own Cloudflare Tunnel',
+    label: 'Groups Cloudflare phone setup prompt',
+    button: 'Copy phone setup prompt',
+    text: cloudflarePhoneSetupPrompt,
+  },
+  {
+    title: '4. GitHub for shared code and files (optional)',
+    label: 'Groups GitHub setup prompt',
+    button: 'Copy GitHub setup prompt',
+    text: groupGitHubSetupPrompt,
+  },
+];
+
+function CopyPrompt({
+  label,
+  button,
+  text: prompt,
+}: {
+  label: string;
+  button: string;
+  text: string;
+}) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const text = useRef<HTMLPreElement>(null);
-
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(setupPrompt);
+      await navigator.clipboard.writeText(prompt);
       setCopyState('copied');
     } catch {
-      // The prompt remains selectable even when clipboard access is unavailable.
       if (text.current) {
         const range = document.createRange();
         range.selectNodeContents(text.current);
@@ -39,33 +105,69 @@ export function GroupSetupPrompt() {
       setCopyState('failed');
     }
   };
-
   return (
-    <details className="group-host-status">
-      <summary>Set up Groups</summary>
-      <p>Copy this prompt into Codex or Claude on the computer you want to set up.</p>
-      <div className="setup-prompt">
-        <div className="setup-prompt-head">
-          <button type="button" onClick={() => void copy()}>
-            {copyState === 'copied' ? (
-              <Check size={16} aria-hidden />
-            ) : (
-              <Copy size={16} aria-hidden />
-            )}
-            {copyState === 'copied' ? 'Copied' : 'Copy setup prompt'}
-          </button>
-        </div>
-        <pre ref={text} tabIndex={0} aria-label="Groups setup prompt">
-          {setupPrompt}
-        </pre>
-        <p className="setup-prompt-status" role="status">
-          {copyState === 'failed'
-            ? 'Copy did not work in this browser. Select the prompt and copy it by hand.'
-            : copyState === 'copied'
-              ? 'Setup prompt copied.'
-              : ''}
-        </p>
+    <div className="setup-prompt">
+      <div className="setup-prompt-head">
+        <button type="button" onClick={() => void copy()}>
+          {copyState === 'copied' ? (
+            <Check size={16} aria-hidden />
+          ) : (
+            <Copy size={16} aria-hidden />
+          )}
+          {copyState === 'copied' ? 'Copied' : button}
+        </button>
       </div>
+      <pre ref={text} tabIndex={0} aria-label={label}>
+        {prompt}
+      </pre>
+      <p className="setup-prompt-status" role="status">
+        {copyState === 'failed'
+          ? 'Copy did not work. Select the prompt and copy it by hand.'
+          : copyState === 'copied'
+            ? 'Setup prompt copied.'
+            : ''}
+      </p>
+    </div>
+  );
+}
+
+export function GroupSetupPrompt({ initiallyOpen = false }: { initiallyOpen?: boolean }) {
+  return (
+    <details className="group-host-status" open={initiallyOpen}>
+      <summary>Set up Groups with your agent</summary>
+      <p>
+        The creator hosts Groups in their own Cloudflare account. Members join that service by
+        invitation.
+      </p>
+      <p>Copy the relevant prompt into Codex or Claude on the computer being set up.</p>
+      <p>
+        <strong>Your human checklist</strong>
+      </p>
+      <ol>
+        <li>
+          Creator: sign in to your Cloudflare account and confirm Workers Free; let your setup agent
+          handle deployment.
+        </li>
+        <li>
+          Members: give your setup agent the creator’s invitation, then privately send the creator
+          your confirmation code for approval.
+        </li>
+        <li>Enable local agents when ready and verify a shared message in each direction.</li>
+        <li>
+          For phone access, use the Cloudflare phone setup prompt in setup checks and pair your
+          phone.
+        </li>
+        <li>
+          If sharing code/files, sign in to GitHub and choose a repository and collaborators. GitHub
+          is optional for messaging.
+        </li>
+      </ol>
+      {prompts.map((prompt) => (
+        <details key={prompt.label} open={prompt.label === 'Cloudflare Groups setup prompt'}>
+          <summary>{prompt.title}</summary>
+          <CopyPrompt label={prompt.label} button={prompt.button} text={prompt.text} />
+        </details>
+      ))}
     </details>
   );
 }

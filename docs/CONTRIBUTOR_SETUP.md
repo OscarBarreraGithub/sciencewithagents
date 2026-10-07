@@ -6,8 +6,8 @@ Your agent handles the technical steps below. You complete your own account sign
 the provider asks and, if pairing a phone, save its passkey and confirm the matching number
 on the computer. Never send passwords or codes through chat.
 
-Private GitHub backup, phone access and the phone connection (no-domain Tailscale or
-Cloudflare with your own domain) are optional choices; local use needs none of them.
+Private GitHub backup and phone access through your own Cloudflare account/domain
+are optional choices; local use needs neither.
 The phone never requires a GitHub or Cloudflare account login.
 
 ## Setup agent
@@ -17,7 +17,7 @@ usage/QUARK, advanced controls and configured phone/recovery settings. Use the n
 those journeys. Welcome/setup checks native sign-in/models and provides native Codex device-code
 sign-in. On Mac, Welcome also opens Claude’s native Terminal/browser sign-in after confirming
 it is signed out; account details stay with Claude. Initial source setup uses this guide.
-Phone access offers optional Tailscale setup inside the app; see [PHONE_SETUP.md](PHONE_SETUP.md),
+Phone access provides a copyable Cloudflare setup-agent prompt; see [PHONE_SETUP.md](PHONE_SETUP.md),
 [STATUS.md](STATUS.md).
 The retained `/?workspace=classic` interface is an optional maintenance surface. Private
 runtime and browser-test output remain under ignored `data/`; never copy them into another
@@ -96,7 +96,7 @@ be described as a failed core installation. Browser-test downloads are developer
    choice, return to **Check accounts and setup**, then **Check this computer → Create first
    project**. If the saved defaults already match their provider, continue directly to the
    check. Do not replace this journey with package-manager commands.
-   Phone setup follows PHONE_SETUP.md (optional Tailscale) or CLOUDFLARE_SETUP.md, with a verified
+   Phone setup follows PHONE_SETUP.md and CLOUDFLARE_SETUP.md, with a verified
    remote authentication boundary before exposure. Private source backups follow SOURCE_BACKUPS.md.
    Other computer/account connections follow MULTI_COMPUTER_SETUP.md. Share that guide with
    the setup agent on each machine; the person should not need to type its technical steps.
@@ -104,12 +104,16 @@ be described as a failed core installation. Browser-test downloads are developer
 ### Desktop Groups setup
 
 For a Groups request, continue from the authenticated app to **Home → Groups** instead of
-requiring a personal first project. Follow [Groups workflow](GROUP_WORKFLOW.md): the
-creator pastes one operator-issued beta setup code; another person uses the invitation
-and exact creator approval. Fresh installations already know the public beta service;
-do not ask the person to deploy Cloudflare, configure Tailscale or copy private operator
-files. Preserve any existing protected service configuration and reconcile a mismatch
-explicitly. Provider sign-in belongs to this person, never the operator or another member.
+requiring a personal first project. Follow [Groups workflow](GROUP_WORKFLOW.md): the creator's
+setup agent deploys the shared service to that person's own Cloudflare account, following
+[hosting](GROUP_HOSTING.md), then configures their installation. No maintainer-issued beta
+code or maintainer service is part of fresh setup. Joining members use an invitation and
+the documented service-configuration handoff; they do not each deploy another service.
+Keep a short human checklist for native sign-in, Cloudflare sign-in/account selection for
+the creator, invitation exchange and membership approval. Handle the technical commands
+for the person. GitHub is optional for repository sharing, not required for messaging.
+Preserve existing service configuration, groups and membership; reconcile a mismatch
+explicitly. Provider sign-in belongs to this person, never the maintainer or another member.
 
 Enable requested group agents through [native owner setup](GROUP_NATIVE_OWNER_SETUP.md).
 They use the normal host runtime and this person’s existing provider sign-in. Explain the
@@ -165,7 +169,7 @@ changing network/security controls or collecting another person's credentials.
 | Run native agents         | The chosen Codex/Claude installation's own sign-in and service endpoints. The app uses native sign-in; it does not offer an offline substitute or move work to a paid API.                  |
 | Read allowances           | The installed Codex usage reader's service access; Claude's native reader calls `api.anthropic.com`. A blocked or failed reading remains unknown/stale, not unused allowance.               |
 | Transcribe a public video | YouTube and its media hosts; `huggingface.co` and its download redirects for the checked Whisper model on first use. Python/package repositories are needed when installing the downloader. |
-| Optional phone access     | The selected Cloudflare or Tailscale connection's service endpoints and the configured private app address. Local desktop use needs neither connection.                                     |
+| Optional phone access     | The owner's Cloudflare tunnel service and configured private app address. Local desktop use needs no phone connection. Existing private-network pairings are preserved.                     |
 | Optional source backup    | GitHub access for the native GitHub CLI and Git transport to the selected private destination.                                                                                              |
 
 Do not disable TLS verification, extract browser cookies or bypass sign-in to fix a blocked

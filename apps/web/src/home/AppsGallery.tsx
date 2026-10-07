@@ -73,7 +73,7 @@ const setupSteps = [
       'Needed for apps hosted on Cloudflare and for the Cloudflare phone connection. Create a Cloudflare account first if you do not have one.',
     label: 'Prompt for your setup agent',
     prompt:
-      'Set up Cloudflare sign-in on this computer using the official Wrangler CLI. Check for an existing installation and working account first, and preserve them. Handle any required CLI setup yourself, then open the native browser sign-in only if needed and tell me when I need to complete it. Never ask me to paste credentials into chat. This step does not create, change or deploy a project, domain, tunnel or DNS record. Finish by checking the connected account. For sciencewithagents phone access, continue through docs/CLOUDFLARE_SETUP.md only if I choose that route; local use and the no-domain phone option do not require Cloudflare.',
+      'Set up Cloudflare sign-in on this computer using my own Cloudflare account and the official Wrangler CLI. Check for an existing installation and working account first, and preserve them. Handle any required CLI setup yourself, then open the native browser sign-in only if needed and tell me when I need to complete it. Never ask me to paste credentials into chat. Finish by checking the connected account. This account check alone does not deploy a project or configure phone access. For Groups, follow docs/GROUP_HOSTING.md to deploy the creator’s shared service in their own Cloudflare account. For phone access, follow the complete docs/CLOUDFLARE_SETUP.md runbook using my own account and domain, and walk me through necessary sign-in, domain choices and device pairing. Local desktop chats do not require Cloudflare.',
   },
 ] as const;
 

@@ -2,8 +2,9 @@
 
 Groups v1 uses the normal Codex or Claude runtime on each person’s computer, with their
 existing provider sign-in, model defaults and native tools. Docker, Linux and a second
-provider sign-in are not required. Each person installs sciencewithagents; desktop group
-membership needs no Cloudflare account or Tailscale connection.
+provider sign-in are not required. Each person installs sciencewithagents. The creator's
+setup agent hosts the shared service in the creator's Cloudflare account; invited members
+need no Cloudflare account to join. Tailscale is not part of Groups setup.
 
 ## Set up
 

@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer as netServer } from 'node:net';
 import { join } from 'node:path';
 import { repoRoot } from './paths.js';
@@ -537,10 +537,12 @@ it('protected hosted configuration routes approval only in server headers for al
   ])
     expect(groupServiceConfigurationSchema.safeParse(invalid).success).toBe(false);
   const kinds = new Set<string>();
+  let networkCalls = 0;
   // A fixed test-only relay verifies the protected HTTPS intent/headers then
   // sends the same request to actual owned local workerd. TLS itself is covered
   // by the dependency's native HTTPS suite; this is not deployed service proof.
   const http: typeof fetch = async (...args) => {
+    networkCalls++;
     const url = new URL(String(args[0]));
     expect(url.origin).toBe(origin);
     expect(url.search).toBe('');
@@ -554,8 +556,47 @@ it('protected hosted configuration routes approval only in server headers for al
     return fetch(`${endpoint.replace(/\/$/, '')}${url.pathname}`, { ...args[1], headers });
   };
   const a = await installation(undefined, { service, http }),
-    b = await installation(undefined, { service: { ...service, endpointId: randomUUID() }, http });
+    b = await installation(undefined, {
+      configured: false,
+      http,
+    });
   const { open } = await create(a, 'Protected hosted routing');
+  expect((await b.host.list()).service.configured).toBe(false);
+  const handoff = await a.host.invite({ handle: open.group.handle, key: randomUUID() });
+  const invitation = `http://127.0.0.1:4330/#${handoff.fragment}`;
+  const descriptor = JSON.parse(
+    new URLSearchParams(handoff.fragment.slice('/groups?'.length)).get('invite')!,
+  );
+  expect(descriptor.service).toEqual({
+    version: service.version,
+    mode: service.mode,
+    endpoint: service.endpoint,
+    endpointId: service.endpointId,
+    hostingAuthorization: service.hostingAuthorization,
+  });
+  expect(JSON.stringify(descriptor)).not.toContain(setup);
+  const invitationFile = join(root, `invitation-${randomUUID()}.txt`);
+  writeFileSync(invitationFile, invitation, { mode: 0o600 });
+  const configure = spawnSync(
+    process.execPath,
+    [join(repoRoot, 'scripts/group-cloudflare-setup.mjs'), 'join', b.directory, invitationFile],
+    { encoding: 'utf8' },
+  );
+  expect(configure.status, configure.stderr).toBe(0);
+  expect(b.host.configuration()).not.toHaveProperty('setupCapability');
+  expect((await b.host.list()).service.configured).toBe(true);
+  const beforeRefused = networkCalls;
+  expect(
+    (await b.post('create', { key: randomUUID(), projectName: 'Refused', displayName: 'B' })).json()
+      .code,
+  ).toBe('GROUP_CREATOR_SETUP_REQUIRED');
+  const changed = { ...descriptor, service: { ...descriptor.service, endpointId: randomUUID() } };
+  const changedInvitation = `http://127.0.0.1:4330/#/groups?invite=${encodeURIComponent(JSON.stringify(changed))}`;
+  expect(
+    (await b.post('join', { key: randomUUID(), invitation: changedInvitation, displayName: 'B' }))
+      .statusCode,
+  ).toBe(400);
+  expect(networkCalls).toBe(beforeRefused);
   const joined = await joinMember(a, b, open.group.handle);
   const input = {
     handle: open.shared.handle,

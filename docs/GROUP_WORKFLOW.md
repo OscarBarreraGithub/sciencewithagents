@@ -16,20 +16,23 @@ uses fake providers and is not a substitute for this setup.
    computer from your phone or laptop, complete [owner pairing](PHONE_WORKFLOW.md) and select
    that computer first. Pairing gives owner access to that installation; a group invitation
    gives group membership instead.
-2. Fresh installations use the built-in hosted beta service. The creator obtains one beta
-   setup code from the operator; other members need only an invitation. Desktop Groups
-   requires no Cloudflare account, Tailscale or private operator configuration. Existing
-   protected service settings are preserved; ask the setup agent to reconcile a different
-   service explicitly. Human messaging can work without native-agent configuration.
-3. In Groups, choose **New project**, enter the project and display names, then
-   paste the **Beta setup code**, then **Continue setup**. The creator opens **Group controls → Invitations and approval → Create invitation**
-   and sends the invitation privately to the intended person. Invitations expire after
-   15 minutes. They carry scoped group admission, never the creation capability or a
-   selectable service URL.
-4. On the other installation, use **Join by invitation → Request to join**. Send the exact
-   confirmation code privately to the creator. The creator selects the matching request,
-   enters that code and chooses **Approve exact enrollment**. Matching display names alone
-   do not prove identity. Reopen the group after approval.
+2. In Groups, expand **Set up Groups with your agent**. The creator copies **Cloudflare
+   setup prompt** into their external Codex or Claude setup agent. It deploys Groups in
+   the creator's **own Cloudflare Workers Free account**, following the concrete
+   [hosting runbook](GROUP_HOSTING.md). Human steps are sign-in, account/Free confirmation
+   and the chosen HTTPS address. Fresh installations use no maintainer service or beta
+   operator code. Existing saved Groups settings and memberships are preserved.
+3. Once configured, choose **New project**, enter project and display names, then
+   **Continue setup**. Open **Group controls → Invitations and approval → Create invitation**
+   and send the invitation privately. Invitations expire after 15 minutes; owner-hosted
+   invitations carry routing configuration and join authority, never creator credentials.
+4. The member copies **join setup prompt** to their own setup agent with the invitation.
+   It configures the creator's exact service in private host files; members do not deploy
+   another Worker or need Cloudflare for Groups. Obtain a fresh invitation if setup outlasts
+   its expiry. Use **Join by invitation → Request to join**, then send the exact confirmation
+   code privately to the creator. The creator chooses **Approve exact enrollment** for that
+   request and code. Reopen the group after approval. Matching display names alone do not
+   prove identity.
 5. Group agents use the native agent installed on each person's own computer, with its
    existing provider sign-in, tools, skills, hooks and permissions. No Docker, Linux guest
    or separate provider account is required for local execution. Read **Group controls →
@@ -52,12 +55,9 @@ request. Use **Recover pending setup** on the original installation; it reconcil
 request and identity after reload or restart. If the service is unavailable, leave the
 request saved and retry when it returns. Do not change the service mapping to evade a pending
 request. A setup agent must reconcile changed endpoints or installation identities explicitly.
-Creation codes have a creation deadline; established groups and memberships do not expire
-with that deadline. An exact lost-acknowledgement create retry can recover the original
-group after it. If the service confirms that an expired code never created a group or
-that the code was already used by another installation, **Use a new setup code** starts
-a fresh request and retains the old host receipt. To join an existing group, use its
-invitation instead.
+Existing beta installations retain their original creation-code recovery controls. New
+owner-hosted setup requires no operator code. Use the creator's invitation to join an
+existing group; never copy their creation capability to a member host.
 
 ## Conversation and work
 
@@ -105,6 +105,11 @@ their separately configured adapter.
 
 ## Private reading, files and Git
 
+GitHub is optional for messaging. For shared code/files, copy the optional **GitHub setup
+prompt** in Groups into your external setup agent. It helps sign in, choose the repository
+and visibility, and invite collaborators through native Git/GitHub tools. It does not
+enable the separate protected Git panel or automatically publish local files.
+
 Private conversations, drafts, files and native history are not automatically published to
 the shared feed. **What mattered
 since last visit?** opens private catch-up without replacing your draft. It reads bounded
@@ -119,14 +124,15 @@ other members. [Status](STATUS.md#groups) records the current scope.
 
 ## Setup-agent boundary and limits
 
-The built-in beta service pins its public identity, HTTPS origin and verification keys in
-source. Setup codes and invitations cannot change them. Each installation generates its
-own membership bearer and retains exact setup requests in private host storage. The
-creation capability is excluded from invitations and browser storage. Existing optional
-`groups/service.json` configuration remains authoritative, with a same-owner `0700`
-directory and `0600` files; symlinks and hard links are refused. Redirects are refused. See
-[hosting](GROUP_HOSTING.md), [delivery contracts and limits](GROUP_DELIVERY.md),
-[native owner setup](GROUP_NATIVE_OWNER_SETUP.md) and [documents](GROUP_DOCUMENTS.md).
+The creator's own Cloudflare service is configured by the external setup agent, following
+[hosting](GROUP_HOSTING.md). Each installation generates its own membership bearer and
+retains exact setup requests in private host storage. Invitations can carry routing-only
+configuration for the setup agent, but cannot change browser-selected endpoints or overwrite
+existing mappings. Creation credentials stay on the creator's computer. Private
+`groups/service.json` uses a same-owner `0700` directory and `0600` files; symlinks and hard
+links are refused. Redirects are refused. Existing pinned beta groups remain compatible.
+See [delivery contracts and limits](GROUP_DELIVERY.md), [native owner setup](GROUP_NATIVE_OWNER_SETUP.md)
+and [documents](GROUP_DOCUMENTS.md).
 
 Storage is bounded beta storage. New work can be refused at capacity without deleting
 originals or changing their retry identities. Membership has 64 active members; local setup

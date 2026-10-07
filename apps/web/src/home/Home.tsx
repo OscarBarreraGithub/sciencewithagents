@@ -1,6 +1,7 @@
 import { GroupsApp } from '../groups/GroupsApp';
 import { OwnerTerminal } from '../OwnerTerminal';
 import { BugReport } from './BugReport';
+import { IssueReport } from './IssueReport';
 import { LatexApp } from '../Documents';
 import { ProviderActions } from './ProviderActions';
 import { ModelSettings } from './ModelSettings';
@@ -331,7 +332,7 @@ export function Home() {
   }, []);
   const page = currentRoute.split('/')[0]!;
   const [now, setNow] = useState(Date.now);
-  const [dialog, setDialog] = useState<'help' | 'phone' | 'bug' | null>(null);
+  const [dialog, setDialog] = useState<'help' | 'phone' | 'bug' | 'issue' | null>(null);
   const main = useRef<HTMLElement>(null);
   const back = useNavigation(currentRoute, main);
   const scrollHint = useScrollHints(main, currentRoute);
@@ -551,6 +552,12 @@ export function Home() {
           <Modal title="Help and setup" close={() => setDialog(null)} className="home-help-dialog">
             <div className="home-help" onClickCapture={closeOnLink}>
               <section>
+                <button type="button" className="setup-link" onClick={() => setDialog('issue')}>
+                  Report an issue
+                </button>
+                <p>Describe a problem and open a public GitHub issue draft for the maintainers.</p>
+              </section>
+              <section>
                 <button type="button" className="setup-link" onClick={() => setDialog('bug')}>
                   Report a bug
                 </button>
@@ -593,6 +600,9 @@ export function Home() {
         )}
         {dialog === 'bug' && (
           <BugReport key={apiScope()} page={currentRoute} close={() => setDialog(null)} />
+        )}
+        {dialog === 'issue' && (
+          <IssueReport key={apiScope()} page={currentRoute} close={() => setDialog(null)} />
         )}
         {dialog === 'phone' && (
           <PhoneSettings

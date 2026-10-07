@@ -6,10 +6,12 @@ Actual runs belong in [Verification](VERIFICATION.md); person-only checks are in
 
 ## The normal journey
 
-1. Choose a connection in **Phone access**: a private Tailscale address without a domain,
-   or an agent-configured domain. The computer stays awake, online and running the app.
-   Local-only use needs neither. Phone use does not require GitHub/Cloudflare sign-in;
-   the Tailscale route needs Tailscale connected on both devices. See [phone setup](PHONE_SETUP.md).
+1. In **Phone access**, copy the Cloudflare setup prompt into an external agent on the
+   computer. The agent sets up a named tunnel and domain in that person's own Cloudflare
+   account, following [the runbook](CLOUDFLARE_SETUP.md), and walks them through necessary
+   sign-in, domain choices and pairing. The phone has no separate Cloudflare/GitHub sign-in;
+   GitHub is not a phone prerequisite. The computer stays awake, online and running the app.
+   Existing connections and approved devices are preserved. See [phone setup](PHONE_SETUP.md).
 2. On the computer, **Phone access → Create a new code** opens one 15-minute invitation.
    The QR appears only while the connection and invitation are usable. Scanning opens
    **Name your phone** directly with one blank **Phone nickname** field. Manual fallback

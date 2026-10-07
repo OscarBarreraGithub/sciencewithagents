@@ -1,66 +1,27 @@
-import { useRef, useState } from 'react';
-import { phoneSetupStatusSchema, phoneStatusSchema, type PhoneSetupStatus } from '@dock/shared';
+import { useState } from 'react';
+import { phoneStatusSchema } from '@dock/shared';
 import { api } from './api';
+import { PromptCard } from './SetupPrompt';
+import { cloudflarePhoneSetupPrompt } from './phone-setup-prompt';
 import './phone-connection-setup.css';
 
 export function PhoneConnectionSetup({ connected }: { connected: () => Promise<void> }) {
-  const [choice, setChoice] = useState('private');
-  const [status, setStatus] = useState<PhoneSetupStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const key = useRef(crypto.randomUUID());
-  async function checkExisting() {
-    setBusy(true);
-    setError('');
-    try {
-      await connected();
-      setError('If setup is still in progress, finish with your setup agent, then check again.');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not check the connection. Try again.');
-    } finally {
-      setBusy(false);
-    }
-  }
   async function check() {
     setBusy(true);
+    setMessage('');
     setError('');
     try {
-      const value = phoneSetupStatusSchema.parse(await api('/phone/setup/check', {}));
-      key.current = crypto.randomUUID();
-      setStatus(value);
-      if (value.state === 'configured') await connected();
+      const status = phoneStatusSchema.parse(await api('/phone/status'));
+      if (status.configured || status.setupIssue) await connected();
+      else
+        setMessage(
+          'Cloudflare setup is not ready yet. Finish with your setup agent, including safely reopening the app, then check again.',
+        );
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not check this computer. Try again.');
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function confirm() {
-    if (!status?.previewId || busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      await api('/phone/setup/confirm', {
-        key: key.current,
-        previewId: status.previewId,
-        confirm: true,
-      });
-      await connected();
-    } catch (e) {
-      // A lost response can follow successful setup. Read before offering another write.
-      try {
-        if (phoneStatusSchema.parse(await api('/phone/status')).configured) {
-          await connected();
-          return;
-        }
-      } catch {
-        /* Keep the original attempt key for a deliberate retry. */
-      }
-      setError(
-        e instanceof Error
-          ? e.message
-          : 'Could not finish setup. Check the connection and try again.',
-      );
+      setError(e instanceof Error ? e.message : 'Could not check the connection. Try again.');
     } finally {
       setBusy(false);
     }
@@ -70,112 +31,46 @@ export function PhoneConnectionSetup({ connected }: { connected: () => Promise<v
       <div className="phone-settings-panel">
         <h3>Set up a phone connection</h3>
         <p>
-          Your computer keeps the work. Choose a connection, then pair your phone with a passkey.
+          Your phone connects through your own Cloudflare account. Your computer keeps running your
+          agents and holds your work. Give the prompt below to Codex or Claude on that computer;
+          your setup agent handles the technical work.
         </p>
-        <fieldset disabled={busy}>
-          <legend>How would you like to connect?</legend>
-          <label>
-            <input
-              type="radio"
-              name="phone-connection"
-              value="private"
-              checked={choice === 'private'}
-              onChange={() => setChoice('private')}
-            />{' '}
-            Private connection · no domain needed
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="phone-connection"
-              value="domain"
-              checked={choice === 'domain'}
-              onChange={() => setChoice('domain')}
-            />{' '}
-            Use a domain I already have
-          </label>
-        </fieldset>
+        <h4>Your to-do list</h4>
+        <ol>
+          <li>
+            Create or sign in to your own{' '}
+            <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noreferrer">
+              Cloudflare account
+            </a>{' '}
+            when your agent opens the sign-in page. Complete any account verification yourself.
+          </li>
+          <li>
+            Choose a domain you control and approve the phone address. Your agent checks the domain
+            and guides any required ownership or nameserver step. A new domain may cost money.
+          </li>
+          <li>
+            After setup, turn on phone access here, scan the pairing code, save the passkey on your
+            phone and confirm its matching number on this computer.
+          </li>
+        </ol>
+        <p className="muted">
+          Keep this computer awake, online and running the app. GitHub is not required for phone
+          access. Your phone uses the app’s pairing; it needs no separate Cloudflare sign-in.
+        </p>
       </div>
       <div className="phone-settings-panel">
-        {choice === 'private' ? (
-          <>
-            <h3>Private connection</h3>
-            <p>
-              Tailscale connects your devices privately. It offers a free personal plan; workplace
-              plans may differ.
-            </p>
-            <ol>
-              <li>
-                Install or open Tailscale on this computer and your phone.{' '}
-                <a href="https://tailscale.com/download" target="_blank" rel="noreferrer">
-                  Get Tailscale
-                </a>
-              </li>
-              <li>Connect both devices to the same Tailscale account or private network.</li>
-              <li>Check this computer below. If HTTPS needs enabling, we’ll show you where.</li>
-            </ol>
-            <p className="muted">
-              Your device’s HTTPS address appears in a public certificate log. The app remains
-              reachable only through your private network, and still requires phone pairing.
-            </p>
-            {status && (
-              <div className="phone-setup-result" role="status">
-                <p>{status.message}</p>
-                {status.state === 'https' && (
-                  <a href="https://login.tailscale.com/admin/dns" target="_blank" rel="noreferrer">
-                    Open Tailscale HTTPS settings
-                  </a>
-                )}
-                {status.state === 'ready' && (
-                  <>
-                    <p>Your private app address</p>
-                    <code>{status.origin}</code>
-                    <p>
-                      Save this address, then turn on phone access to connect. Tailscale stays in
-                      charge of its own sign-in.
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
-            {error && (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            )}
-            <div className="phone-setup-actions">
-              <button className="secondary" disabled={busy} onClick={() => void check()}>
-                {busy ? 'Working…' : status ? 'Check again' : 'Check this computer'}
-              </button>
-              {status?.state === 'ready' && (
-                <button disabled={busy} onClick={() => void confirm()}>
-                  Use this private address
-                </button>
-              )}
-            </div>
-          </>
-        ) : (
-          <>
-            <h3>Connect an existing domain</h3>
-            <p>
-              Your setup agent can connect a domain you control through Cloudflare. You complete its
-              account sign-in and consent; the agent handles the connection. A new domain may cost
-              money.
-            </p>
-            <p>
-              Ask your setup agent to follow the sciencewithagents phone setup guide for your
-              existing domain. When it has finished, check the connection here.
-            </p>
-            {error && (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            )}
-            <button className="secondary" disabled={busy} onClick={() => void checkExisting()}>
-              {busy ? 'Checking…' : 'Check existing-domain setup'}
-            </button>
-          </>
+        <h3>Give this to your setup agent</h3>
+        <p>Copy this prompt into Codex or Claude on the computer you want to reach.</p>
+        <PromptCard label="Cloudflare phone setup prompt" prompt={cloudflarePhoneSetupPrompt} />
+        {message && <p role="status">{message}</p>}
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
         )}
+        <button className="secondary" disabled={busy} onClick={() => void check()}>
+          {busy ? 'Checking…' : 'Check phone setup'}
+        </button>
       </div>
     </section>
   );

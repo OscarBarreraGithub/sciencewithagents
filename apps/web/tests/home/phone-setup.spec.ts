@@ -12,6 +12,7 @@ async function expectPhoneLayout(page: Page) {
       const card = panel.getBoundingClientRect();
       for (const item of panel.querySelectorAll('h3, p, button, fieldset, svg')) {
         const rect = item.getBoundingClientRect();
+        if (!rect.width && !rect.height) continue;
         if (rect.left < card.left + 10 || rect.right > card.right - 10)
           problems.push(`${item.tagName}: outside card padding`);
         if (item.tagName === 'BUTTON' && rect.height < 43.9)
@@ -31,11 +32,11 @@ async function expectPhoneLayout(page: Page) {
   expect(geometry.problems).toEqual([]);
 }
 
-test('first phone setup previews the private address, recovers lost confirmation and reaches pairing', async ({
+test('first phone setup copies the owner Cloudflare prompt, retries checks and reaches pairing', async ({
   page,
 }, info) => {
   const original = await (await page.request.get('/api/phone/status')).json();
-  const status = {
+  const status: PhoneStatus = {
     ...original,
     configured: false,
     transport: null,
@@ -49,37 +50,17 @@ test('first phone setup previews the private address, recovers lost confirmation
   page.on('request', (request) => {
     if (request.method() === 'POST') writes.push(request.url());
   });
-  await page.route('**/api/phone/status', (route) => route.fulfill({ json: status }));
-  let checks = 0;
-  const previewId = randomUUID();
-  const origin = 'https://my-computer.private-network.ts.net';
-  await page.route('**/api/phone/setup/check', (route) =>
-    route.fulfill({
-      json:
-        ++checks === 1
-          ? {
-              state: 'https',
-              message: 'Enable HTTPS certificates in Tailscale, then check again.',
-              origin,
-              previewId: null,
-            }
-          : {
-              state: 'ready',
-              message: 'This computer is ready for a private phone connection.',
-              origin,
-              previewId,
-            },
-    }),
-  );
-  await page.route('**/api/phone/setup/confirm', (route) => {
-    expect(route.request().postDataJSON()).toEqual({
-      key: expect.any(String),
-      previewId,
-      confirm: true,
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          document.documentElement.dataset.copiedSetupPrompt = text;
+        },
+      },
     });
-    Object.assign(status, { configured: true, transport: 'tailscale', origin });
-    return route.abort('failed');
   });
+  await page.route('**/api/phone/status', (route) => route.fulfill({ json: status }));
   await page.route('**/api/phone/enabled', (route) => {
     expect(route.request().postDataJSON()).toEqual({ enabled: true });
     Object.assign(status, { enabled: true, connection: 'connected' });
@@ -87,36 +68,51 @@ test('first phone setup previews the private address, recovers lost confirmation
   });
   await page.goto('/#/phone');
   await expect(page.getByRole('heading', { name: 'Set up a phone connection' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your to-do list' })).toBeVisible();
+  await expect(page.locator('.phone-connection-setup')).toContainText(
+    'your own Cloudflare account',
+  );
+  await expect(page.locator('.phone-connection-setup')).not.toContainText('Tailscale');
+  await expect(page.getByRole('radio')).toHaveCount(0);
   expect(writes).toEqual([]);
   await expectPhoneLayout(page);
   await page.screenshot({
-    path: `../../data/screenshots/phone-setup/${info.project.name}-choose.png`,
+    path: `../../data/screenshots/phone-setup/${info.project.name}-cloudflare.png`,
   });
   await page.evaluate(() => (document.documentElement.style.fontSize = '200%'));
   await expectPhoneLayout(page);
   await page.evaluate(() => (document.documentElement.style.fontSize = ''));
-  await page.getByRole('button', { name: 'Check this computer', exact: true }).click();
-  await expect(page.getByRole('link', { name: 'Open Tailscale HTTPS settings' })).toHaveAttribute(
-    'href',
-    'https://login.tailscale.com/admin/dns',
+  const prompt = page.locator('.phone-connection-setup .setup-prompt');
+  await expect(prompt).toContainText('MY OWN Cloudflare account');
+  await expect(prompt).toContainText('docs/CLOUDFLARE_SETUP.md');
+  await expect(prompt).toContainText(
+    'Never expose the local owner/development listener on port 4330',
   );
-  await expect(page.getByRole('button', { name: 'Use this private address' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Check again', exact: true }).click();
-  await expect(page.locator('.phone-setup-result code')).toHaveText(origin);
-  await page.getByRole('button', { name: 'Use this private address' }).scrollIntoViewIfNeeded();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({
-    path: `../../data/screenshots/phone-setup/${info.project.name}-preview.png`,
+  await prompt.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect(prompt.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
+  expect(await page.locator('html').getAttribute('data-copied-setup-prompt')).toBe(
+    await prompt.locator('pre').textContent(),
+  );
+  await page.getByRole('button', { name: 'Check phone setup', exact: true }).click();
+  await expect(page.locator('.phone-connection-setup')).toContainText(
+    'Cloudflare setup is not ready yet',
+  );
+  expect(writes).toEqual([]);
+
+  // The external setup agent has saved the private config and safely relaunched the app.
+  Object.assign(status, {
+    configured: true,
+    transport: 'cloudflare',
+    origin: 'https://phone.example.test',
   });
-  await page.getByRole('button', { name: 'Use this private address' }).click();
+  await page.getByRole('button', { name: 'Check phone setup', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Turn on phone access' })).toBeVisible();
-  expect(writes.filter((url) => url.endsWith('/phone/setup/confirm'))).toHaveLength(1);
   await page.getByRole('button', { name: 'Turn on phone access' }).click();
   await expect(page.getByText('Your phone connection is ready.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create a new code', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'Create a new code', exact: true })).toBeVisible();
-  expect(writes.filter((url) => url.includes('/phone/setup/'))).toHaveLength(3);
+  expect(writes).toEqual([expect.stringContaining('/phone/enabled')]);
 });
 
 test('existing connections retain their settings and listener failure retries inside the app', async ({

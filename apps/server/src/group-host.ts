@@ -51,6 +51,7 @@ import {
   protectGroupSidecars,
   readGroupServiceConfiguration,
   betaGroupServiceConfiguration,
+  groupHostedInvitationServiceSchema,
   type ActiveGroupServiceConfiguration,
   type GroupServiceConfiguration,
 } from './group-host-storage.js';
@@ -209,6 +210,7 @@ export class GroupHost {
     const profile =
       options.betaProfile === undefined ? publicGroupBetaProfile : options.betaProfile;
     this.betaConfiguration = profile ? betaGroupServiceConfiguration(profile) : null;
+    this.explicitBetaDefault = options.betaProfile !== undefined && options.betaProfile !== null;
     const path = join(this.directory, 'host.sqlite');
     privateGroupFile(path);
     this.db = new DatabaseSync(path);
@@ -237,6 +239,7 @@ export class GroupHost {
   }
   private readonly http: typeof fetch;
   private readonly betaConfiguration: ReturnType<typeof betaGroupServiceConfiguration> | null;
+  private readonly explicitBetaDefault: boolean;
   async close() {
     await this.promotion.close();
     await this.native.close?.();
@@ -267,7 +270,17 @@ export class GroupHost {
     }
   }
   configuration(): GroupServiceConfiguration | null {
-    return readGroupServiceConfiguration(this.directory) ?? this.betaConfiguration;
+    const saved = readGroupServiceConfiguration(this.directory);
+    if (saved) return saved;
+    // Retain already enrolled/pending beta work, without enrolling fresh installs
+    // in the maintainer's account merely by opening Groups.
+    const retainedBeta = this.db
+      .prepare(
+        `SELECT 1 FROM gh_groups WHERE json_extract(body,'$.beta') IS NOT NULL
+        UNION ALL SELECT 1 FROM gh_operations WHERE json_extract(body,'$.beta') IS NOT NULL LIMIT 1`,
+      )
+      .get();
+    return this.explicitBetaDefault || retainedBeta ? this.betaConfiguration : null;
   }
   private configured() {
     const value = this.configuration();
@@ -275,7 +288,7 @@ export class GroupHost {
       throw new GroupHostError(
         503,
         'GROUP_SETUP_REQUIRED',
-        'Connect a Groups service on the selected computer. Ask your setup agent to configure protected Groups delivery; deployed sharing also requires verified Workers Free eligibility.',
+        'Copy the Cloudflare setup prompt in Groups into your setup agent. The group creator hosts delivery in their own Cloudflare account; joining members use the creator’s invitation and service.',
       );
     return value;
   }
@@ -347,8 +360,14 @@ export class GroupHost {
         ...(create ? { 'X-Group-Setup': value.beta.creation!.capability } : {}),
       };
     }
+    if (create && !config.setupCapability)
+      throw new GroupHostError(
+        403,
+        'GROUP_CREATOR_SETUP_REQUIRED',
+        'This computer is configured to join the creator’s service. To create your own groups, give your setup agent the Cloudflare creator prompt.',
+      );
     return {
-      ...(create ? { 'X-Group-Setup': config.setupCapability } : {}),
+      ...(create ? { 'X-Group-Setup': config.setupCapability! } : {}),
       ...(config.mode === 'hosted'
         ? { 'X-Hosting-Approval': config.hostingAuthorization.approvalCapability }
         : {}),
@@ -553,7 +572,7 @@ export class GroupHost {
   async list() {
     let configured = false,
       message =
-        'Connect a Groups service on the selected computer. Ask your setup agent to configure protected delivery. Workers Free eligibility and live deployment remain separate checks.';
+        'Set up the creator’s own Cloudflare service with the copyable prompt below, or use the join prompt with their invitation.';
     let setupCodeRequired = false;
     try {
       const value = this.configuration();
@@ -563,7 +582,7 @@ export class GroupHost {
           value!.mode === 'beta'
             ? 'Hosted Groups beta is available. Creating a project needs one beta setup code; joining needs only an invitation. Your provider sign-in stays on this computer.'
             : value!.mode === 'hosted'
-              ? 'Protected HTTPS service configured. Actual deployment, Workers Free eligibility and live sharing acceptance remain separate checks.'
+              ? 'Your configured Cloudflare group service is ready for connection checks. Your setup agent must verify live sharing; provider sign-in stays on this computer.'
               : 'Configured owned loopback service. No deployed or two-installation completion is claimed.';
       setupCodeRequired = value?.mode === 'beta';
     } catch (error) {
@@ -598,6 +617,12 @@ export class GroupHost {
   async create(raw: unknown) {
     const input = host.groupHostCreateSchema.parse(raw);
     const config = this.configured();
+    if (config.mode === 'hosted' && !config.setupCapability)
+      throw new GroupHostError(
+        403,
+        'GROUP_CREATOR_SETUP_REQUIRED',
+        'This computer is configured to join the creator’s service. Use an invitation, or give your setup agent the Cloudflare creator prompt to host your own groups.',
+      );
     let beta: Record['beta'], groupId: string | undefined;
     if (config.mode === 'beta') {
       try {
@@ -705,6 +730,7 @@ export class GroupHost {
       name: string;
       serviceId?: string;
       admission?: string;
+      service?: z.infer<typeof groupHostedInvitationServiceSchema>;
     };
     let beta: Record['beta'];
     try {
@@ -719,6 +745,7 @@ export class GroupHost {
           name: z.string().min(1).max(120),
           serviceId: z.uuid().optional(),
           admission: z.string().min(1).max(1024).optional(),
+          service: groupHostedInvitationServiceSchema.optional(),
         })
         .parse(JSON.parse(encoded.get('invite') ?? ''));
       if (config.mode === 'beta') {
@@ -729,6 +756,15 @@ export class GroupHost {
         beta = { admission: invitation.admission };
       } else if (invitation.serviceId || invitation.admission) {
         throw new Error('protected service mismatch');
+      }
+      if (invitation.service) {
+        if (
+          config.mode !== 'hosted' ||
+          serviceHash(invitation.service) !== serviceHash(config) ||
+          invitation.service.hostingAuthorization.approvalCapability !==
+            config.hostingAuthorization.approvalCapability
+        )
+          throw new Error('The setup agent must configure the invitation service first.');
       }
     } catch {
       throw new GroupHostError(
@@ -1966,6 +2002,17 @@ export class GroupHost {
           name: value.name,
           ...(config.mode === 'beta' && value.beta
             ? { serviceId: config.profile.serviceId, admission: value.beta.admission }
+            : {}),
+          ...(config.mode === 'hosted'
+            ? {
+                service: groupHostedInvitationServiceSchema.parse({
+                  version: config.version,
+                  mode: config.mode,
+                  endpoint: config.endpoint,
+                  endpointId: config.endpointId,
+                  hostingAuthorization: config.hostingAuthorization,
+                }),
+              }
             : {}),
         }),
       )}`,
