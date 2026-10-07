@@ -7,6 +7,7 @@ import {
   jobEstimateSchema,
   jobPrioritySchema,
   pulsarPolicySchema,
+  quarkCoordinatorSettingsSchema,
   providerReservePolicy,
   effectiveProviderReserve,
   pulsarPolicyUpdateSchema,
@@ -51,9 +52,14 @@ export function initializeScheduling(store: Store) {
   )
     return;
   store.transaction(() => {
-    const policy = pulsarPolicySchema.parse({ enabled: true });
+    const policy = pulsarPolicySchema.parse({ enabled: false });
     store.setSetting('pulsar:policy', policy);
-    store.event('pulsar.initialized', null, null, { enabled: true });
+    if (!store.getSetting('quark:coordinator:settings'))
+      store.setSetting(
+        'quark:coordinator:settings',
+        quarkCoordinatorSettingsSchema.parse({ automatic: false }),
+      );
+    store.event('pulsar.initialized', null, null, { enabled: false });
   });
 }
 export class Pulsar {

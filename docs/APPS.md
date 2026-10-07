@@ -1,7 +1,9 @@
 # Apps
 
-**Apps** holds the [LaTeX/PDF reader](LATEX.md) and web apps that your project managers
-build and register. It follows the selected computer.
+**Apps** starts empty and shows only web apps explicitly registered on the selected
+computer. Updates preserve existing registered apps; no examples or built-in tiles are added.
+The [LaTeX/PDF reader](LATEX.md) remains available through **? → LaTeX / PDF reader** and
+saved document links.
 
 ## Project apps
 

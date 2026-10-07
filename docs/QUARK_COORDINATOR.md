@@ -73,7 +73,8 @@ up the conversation database. Never delete original prompts merely because the U
 
 Open Work, then Open QUARK conversation. Creating it does not spend a model turn. It wakes
 for your messages or relevant changes in active work. Model & settings selects a current
-catalog model/provider and can disable automatic checks. A provider change retains the old
+catalog model/provider and can enable or disable automatic checks. New installations leave
+these checks off until the owner chooses them. Existing settings are preserved. A provider change retains the old
 conversation; project instructions stay in the host database. The default follows Opus;
 select an exact catalog entry to pin a different available model. Missing models fail visibly.
 

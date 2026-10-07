@@ -421,7 +421,9 @@ test('setup makes pacing and stale usage visible without changing saved choices'
   mode = 'off';
   await page.goto('/#/welcome');
   await expect(card).toContainText('Shared pacing off');
+  await expect(card).toContainText('Off by default');
   await expect(card).toContainText('Tasks still obey saved allowance caps');
+  await expect(card).not.toContainText('readings are missing or out of date');
   await card.getByRole('link', { name: 'Open QUARK' }).click();
   await expect(page).toHaveURL(/#\/work$/);
   mode = 'error';

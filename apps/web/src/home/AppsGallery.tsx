@@ -240,7 +240,7 @@ function SetupGuideView({
   );
 }
 
-/** Apps registered by this computer's project managers, plus the built-in LaTeX reader. */
+/** Only apps explicitly registered on this computer; fresh installations start empty. */
 export function AppsGallery({ route, computer }: { route: string; computer: string }) {
   const reading = useAppsReading();
   const id = route.split('/')[1];
@@ -285,14 +285,6 @@ function Gallery({ reading, computer }: { reading: AppsReading; computer: string
         <p>Tools for your projects.</p>
       </header>
       <ul className="apps-grid">
-        <li>
-          <a href="#/latex" className="apps-tile">
-            <span className="latex-app-icon" aria-hidden="true">
-              T<span>E</span>X
-            </span>
-            LaTeX
-          </a>
-        </li>
         {apps.map((app) => (
           <li key={app.id}>
             <a
@@ -326,7 +318,8 @@ function Gallery({ reading, computer }: { reading: AppsReading; computer: string
       ) : (
         !apps.length && (
           <p className="apps-note">
-            Web apps your project managers build appear here after they register them.
+            No apps added yet. Web apps your project managers build appear here after they register
+            them.
           </p>
         )
       )}

@@ -157,7 +157,10 @@ and model choices remain. Active work is never discarded by an inactivity timer.
   durable goals, memories and jobs. Native configuration and pre-existing history were preserved.
   See [shared native conversations](VSCODE_MIRROR.md).
 
-- **Apps:** LaTeX/PDF reading and manager-owned project-app registration are connected.
+- **Fresh installs:** QUARK pacing and automatic coordinator checks start off. Existing
+  saved choices are preserved.
+- **Apps:** the gallery starts empty and contains only registered project apps. Existing
+  apps are retained. LaTeX/PDF reading remains in Help and through document links.
   Local app ports and optional published HTTPS links are recorded; registration does not
   publish or tunnel a project site. Remote devices need a reachable published address.
 - **Setup progress:** GitHub/Cloudflare status checks detect native sign-in and collapse

@@ -564,6 +564,12 @@ export function Home() {
                 <p>Save an issue locally and assign it to the app’s maintenance manager.</p>
               </section>
               <section>
+                <h3>Read documents</h3>
+                <a className="setup-link" href={href('latex')}>
+                  LaTeX / PDF reader <ArrowRight size={16} />
+                </a>
+              </section>
+              <section>
                 <h3>App updates</h3>
                 <p>Check GitHub and update with an agent, preserving your workspace.</p>
                 <a className="setup-link" href={href('updates')}>

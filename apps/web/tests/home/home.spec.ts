@@ -245,10 +245,13 @@ test('unknown and stale allowances remain honest and destinations survive reload
   await codex.click();
   await page.locator('.overview-destinations a[href="#/apps"]').click();
   await page.reload();
-  await expect(page.getByRole('link', { name: 'LaTeX', exact: true })).toHaveAttribute(
+  await expect(page.locator('.apps-grid .apps-tile[href="#/latex"]')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Help and setup', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'LaTeX / PDF reader', exact: true })).toHaveAttribute(
     'href',
     '#/latex',
   );
+  await page.getByRole('link', { name: 'LaTeX / PDF reader', exact: true }).click();
   await page.goto('/#/home');
   await page.unroute('**/api/capacity');
   await readings(page, { stale: true });

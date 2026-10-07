@@ -223,7 +223,7 @@ export class Documents {
       }
     }
     throw new Conflict(
-      'The linked document is unavailable or outside this conversation’s project and workspace. Find it through Apps → LaTeX instead.',
+      'The linked document is unavailable or outside this conversation’s project and workspace. Find it through Help → LaTeX / PDF reader instead.',
     );
   }
   async formattingSource(id: string) {

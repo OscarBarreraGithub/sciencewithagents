@@ -69,15 +69,14 @@ test('registered apps show their state, retry failed reads and open on this comp
   await expect(page.getByText('Project apps could not be read')).toBeVisible();
   await page.getByRole('button', { name: 'Try again' }).click();
   const tiles = page.locator('.apps-grid .apps-tile');
-  await expect(tiles).toHaveCount(4);
-  await expect(tiles.first()).toHaveText('TEXLaTeX');
-  await expect(tiles.nth(1)).toHaveAccessibleName('AI News, Research feeds: Running');
-  await expect(tiles.nth(2)).toContainText('Stopped');
-  await expect(tiles.nth(3)).toContainText('Not responding');
+  await expect(tiles).toHaveCount(3);
+  await expect(tiles.nth(0)).toHaveAccessibleName('AI News, Research feeds: Running');
+  await expect(tiles.nth(1)).toContainText('Stopped');
+  await expect(tiles.nth(2)).toContainText('Not responding');
   await noHorizontalOverflow(page);
   await page.screenshot({ path: info.outputPath('apps-gallery.png'), fullPage: true });
 
-  await tiles.nth(1).click();
+  await tiles.nth(0).click();
   await expect(page.getByRole('heading', { name: 'AI News', level: 1 })).toBeVisible();
   const open = page.getByRole('link', { name: 'Open app' });
   await expect(open).toHaveAttribute('href', 'http://localhost:5173/');
@@ -135,6 +134,8 @@ test('a manager-registered app runs, opens, stops and is removed on the real hos
   const response = page.waitForResponse('**/api/apps');
   await page.goto('/#/apps');
   expect(await (await response).json()).toMatchObject({ apps: [], openHere: true });
+  await expect(page.locator('.apps-grid .apps-tile')).toHaveCount(0);
+  await expect(page.getByText('No apps added yet.', { exact: false })).toBeVisible();
   await expect(page.getByText('Web apps your project managers build appear here')).toBeVisible();
   const snapshot = await (await page.request.get('/api/snapshot')).json();
   const project = snapshot.projects.find((p: { internal?: boolean }) => !p.internal);

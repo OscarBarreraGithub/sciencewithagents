@@ -81,10 +81,10 @@ Compute ratings are relative queue hints, not provider allowance or CPU entitlem
 
 ## New-install setup
 
-A new empty installation starts with shared pacing enabled. Existing workspaces and saved
-choices are preserved. Welcome shows the current setting and missing/stale usage readings,
-with a link to QUARK. Unknown usage may hold protected work; inspect the reason
-there. Merely opening setup does not change policy or start a conversation. Explicit caps
+A new empty installation starts with shared pacing and automatic coordinator checks off.
+Enable these deliberately in QUARK when wanted. Existing workspaces and saved choices are
+preserved. Welcome shows the current setting; when pacing is enabled, it also points out
+missing/stale usage readings. Unknown usage may hold protected work; inspect its reason in QUARK. Merely opening setup does not change policy or start a conversation. Explicit caps
 and manager leases remain active even if the owner turns optional shared pacing off.
 
 ## Outside agents
@@ -288,7 +288,7 @@ Expected finish times are estimates and waiting jobs can explicitly have no know
 
 Upgrades keep the saved pacing choice. Older workspaces with no saved policy retain their
 previous off default; the owner can enable it from Work after inspecting old queued jobs.
-New empty installations start with pacing on. Native approvals, task writer exclusion, independent review and exact integration validation
+New empty installations start with pacing and automatic coordinator checks off. Native approvals, task writer exclusion, independent review and exact integration validation
 remain. Managers apply by default; the human-review policy requires confirmation. See
 [verification](VERIFICATION.md) and [status](STATUS.md).
 

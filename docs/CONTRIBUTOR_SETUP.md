@@ -273,6 +273,10 @@ downloads and checks the multilingual Whisper base model. Do not extract browser
 or request account credentials to bypass a restricted video. Source tools remain under
 ignored data/, outside the distributable repository.
 
+New installations leave QUARK pacing and automatic coordinator checks off, and Apps empty.
+Do not enable scheduling or seed example/personal apps during ordinary setup. The owner can
+opt in later; LaTeX/PDF reading remains under Help. Preserve existing settings and apps.
+
 When upgrading, inspect old queued work before enabling QUARK through Work queue. Fresh
 managers inherit scheduling instructions automatically; preserve existing provider contexts
 and use their supported next-turn/context controls, never silently reset them for new tools.

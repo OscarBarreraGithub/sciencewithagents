@@ -433,10 +433,11 @@ export function Welcome({ data }: { data: HomeData }) {
                 </p>
                 <p>
                   {data.work.data.policy.enabled
-                    ? 'New work waits for fresh usage readings and enough computer capacity. New installations start with this protection enabled.'
-                    : 'Tasks still obey saved allowance caps and manager leases. Automatic sharing of provider and computer capacity is off. You can turn it on in Work.'}
+                    ? 'New work waits for fresh usage readings and enough computer capacity.'
+                    : 'Off by default. Turn on shared pacing in QUARK when you want it. Tasks still obey saved allowance caps and manager leases.'}
                 </p>
-                {state &&
+                {data.work.data.policy.enabled &&
+                  state &&
                   state.policy.policy.enabledProviders.some((provider) => {
                     const reading = data.capacity.data?.providers.find(
                       (item) => item.provider === provider,

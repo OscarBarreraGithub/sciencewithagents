@@ -295,18 +295,21 @@ it('provider loss removes a pending sign-in code without reporting success or re
   expect(connect).toHaveBeenCalledOnce();
 });
 
-it('a new app starts with shared pacing enabled and retains an explicit later choice', () => {
+it('a new app starts with QUARK pacing and automatic checks off, retaining later choices', () => {
   initializeScheduling(store);
   const scheduler = new Pulsar(store, () => null);
-  expect(scheduler.policy().enabled).toBe(true);
+  expect(scheduler.policy().enabled).toBe(false);
+  expect(store.getSetting('quark:coordinator:settings')).toMatchObject({ automatic: false });
   expect(store.projects()).toHaveLength(0);
   expect(store.runs()).toHaveLength(0);
-  scheduler.savePolicy({ key: randomUUID(), policy: { ...scheduler.policy(), enabled: false } });
+  scheduler.savePolicy({ key: randomUUID(), policy: { ...scheduler.policy(), enabled: true } });
+  store.setSetting('quark:coordinator:settings', { automatic: true });
   const previous = JSON.stringify(store.getSetting('pulsar:policy'));
   store.close();
   store = new Store(join(root, 'dock.sqlite'));
   initializeScheduling(store);
   expect(JSON.stringify(store.getSetting('pulsar:policy'))).toBe(previous);
+  expect(store.getSetting('quark:coordinator:settings')).toEqual({ automatic: true });
 });
 
 it('default initialization preserves older workspaces and already configured model policies', () => {

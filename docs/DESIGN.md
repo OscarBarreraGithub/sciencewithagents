@@ -181,7 +181,8 @@ QUARK opens cluster notebooks in a separate tab on their configured private note
 Phone and selected-computer launches retain the QUARK view; blocked popups offer a short-lived
 link and explicit fresh launch when it expires. Notebook handoffs never enter app draft storage.
 
-Apps uses rounded icons and titles. LaTeX opens a simple file/recent-document library and
+Apps starts empty and uses rounded icons and titles only for registered apps. The LaTeX/PDF
+reader remains in Help and opens a simple file/recent-document library and
 a full-screen PDF reader. Fit width, pinch/button zoom and page navigation must remain usable
 on phones. Document links open over mounted chats; closing or swiping out preserves the exact
 reading position and draft. Managers register project web apps; tiles show whether each is
