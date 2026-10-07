@@ -21,11 +21,23 @@ export function groupFeatureReading(host: GroupHost) {
   return reading;
 }
 
+/** Both authenticated HTTP entries lease the same host-owned reading stores. */
+export function registerGroupFeatureReading(
+  app: FastifyInstance,
+  host: GroupHost,
+  authenticated: (request: FastifyRequest) => boolean,
+) {
+  const reading = readers.get(host) ?? new GroupFeatureReading(host);
+  reading.register(app, authenticated);
+}
+
 /** Normal host lifecycle owns the finite private reading stores. Their pages
  * come from authenticated hosted remote positions, never Store/SSE history. */
 export class GroupFeatureReading {
   readonly catchup: GroupCatchupStore;
   readonly evidence: GroupEvidenceIndex;
+  private registrations = 0;
+  private closed = false;
   constructor(
     readonly host: GroupHost,
     source?: GroupEvidenceSourcePort,
@@ -45,22 +57,34 @@ export class GroupFeatureReading {
     protectGroupSidecars(evidencePath);
   }
   register(app: FastifyInstance, authenticated: (request: FastifyRequest) => boolean) {
-    if (readers.has(this.host)) throw new Error('Group reading lifecycle already registered.');
-    readers.set(this.host, this);
-    registerGroupCatchupRoutes(app, {
-      authenticated,
-      resolve: async (handle) => {
-        const reader = await this.host.authenticatedContext({ handle });
-        if (reader.context.visibility !== 'private')
-          throw new GroupCatchupError('private_required', 'Open catch-up in your private aside.');
-        return reader;
-      },
-      catchup: this.catchup,
-      evidence: this.evidence,
-    });
+    if (this.closed || (readers.has(this.host) && readers.get(this.host) !== this))
+      throw new Error('Group reading lifecycle already registered or closed.');
+    try {
+      registerGroupCatchupRoutes(app, {
+        authenticated,
+        resolve: async (handle) => {
+          const reader = await this.host.authenticatedContext({ handle });
+          if (reader.context.visibility !== 'private')
+            throw new GroupCatchupError('private_required', 'Open catch-up in your private aside.');
+          return reader;
+        },
+        catchup: this.catchup,
+        evidence: this.evidence,
+      });
+      app.addHook('onClose', async () => {
+        if (--this.registrations === 0) this.close();
+      });
+      this.registrations++;
+      readers.set(this.host, this);
+    } catch (error) {
+      if (this.registrations === 0) this.close();
+      throw error;
+    }
   }
   close() {
-    readers.delete(this.host);
+    if (this.closed) return;
+    this.closed = true;
+    if (readers.get(this.host) === this) readers.delete(this.host);
     this.evidence.close();
     this.catchup.close();
   }

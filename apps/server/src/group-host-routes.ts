@@ -7,7 +7,7 @@ import { groupFeatureCoordination } from './group-feature-coordination.js';
 import { GroupHost, GroupHostError } from './group-host.js';
 import { HostedPublicationError } from './group-publication-host-transport.js';
 import { registerGroupActionsRoutes } from './group-actions-routes.js';
-import { GroupFeatureReading } from './group-features-reading.js';
+import { registerGroupFeatureReading } from './group-features-reading.js';
 /** Registration deliberately requires an auth predicate even on loopback. */
 export function registerGroupHostRoutes(
   app: FastifyInstance,
@@ -21,9 +21,7 @@ export function registerGroupHostRoutes(
     );
     registerGroupReportRoutes(app, documents.sharing, authenticated);
   }
-  const reading = new GroupFeatureReading(host);
-  reading.register(app, authenticated);
-  app.addHook('onClose', async () => reading.close());
+  registerGroupFeatureReading(app, host, authenticated);
   registerGroupActionsRoutes(
     app,
     {

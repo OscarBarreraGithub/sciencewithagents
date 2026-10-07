@@ -18,6 +18,10 @@ diagnostics for sustained resource changes, with cooldowns and a daily attempt l
 Opt-in push notifications (source, 2026-10-06) reach both the local and paired-phone entries;
 fixtures and emulated browsers cover routes, typed quiet pauses and entry-scoped taps.
 Physical iPhone delivery and tap acceptance are pending.
+Local and paired-device listeners now share the Groups reading lifecycle without duplicate
+registration. The startup correction is active on the maintainer installation; both listeners
+and the phone tunnel reconnect with saved pairings intact. Real phone reconnection remains
+separate from server and authenticated-listener checks.
 
 The October follow-up source adds an immediate first-project notepad, general file uploads,
 held queued-message editing, Ideas/To-dos with completion recovery, direct owner-authored

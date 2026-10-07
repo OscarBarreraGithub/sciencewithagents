@@ -1,10 +1,9 @@
 # Verified shared activity promotion
 
-The promotion slice supplies strict source/receipt contracts, a bounded host
-controller, a same-object service adapter and a durable verified evidence index.
-It does not yet replace the normal Groups send/result hooks. Normal integration,
-hosted authorization/capacity composition and independent review remain required;
-module tests do not establish B1–B5 or a working two-installation journey.
+Normal Groups send/result hooks use the bounded promotion controller, same-object service
+adapter and durable verified evidence index. Membership and storage authority stay with
+the existing group service. Local module/integration checks do not establish deployed
+hosting, real provider readiness or two installed computers; see [Status](STATUS.md#groups).
 
 ## Source and summary boundary
 
@@ -40,8 +39,8 @@ selection, classification, receipt processing and file/job plumbing use no model
 Object. Membership, immutable shared-source/version authorization and allocation
 checks run synchronously in its transaction. It must not receive a separate
 per-installation database or a second storage allowance. The existing service
-owner supplies protected routing and these policies; they are not implemented
-by this standalone adapter.
+owner supplies protected routing and these policies through `GroupPromotionHost`;
+the standalone handler does not create another authorization or storage boundary.
 
 Explicit policy designates one installation with a renewable 60-second lease.
 Expired leases return `writer_unavailable`; there is no automatic takeover.
@@ -110,9 +109,8 @@ the existing durable publication outbox, one-shot admitted synthesis intent,
 evidence persistence and bounded receipts. The same-DO adapter is tested with a
 synchronous local SQLite emulation. This is not actual workerd, real native
 execution, a deployed service, two installed applications or physical-device
-acceptance. This slice changes no UI; the normal consumer must perform its own
-four-viewport checks. Fixtures close their owned databases/processes and remove
-their temporary data.
+acceptance. Normal UI/host and same-DO composition have separate controlled integration
+checks. Fixtures close their owned databases/processes and remove their temporary data.
 
 The native synthesis adapter is `createGroupPromotionNativeSynthesis({path,
 runtime, journal, bridge, events, authorize, availability, route})`; it calls the
@@ -125,13 +123,12 @@ already-consented shared native account**. For source B promoted by writer A,
 The adapter checks both identities separately and never opens/imports B's HOME.
 Exact authorized input, including evidence metadata, is limited to 32KiB; output
 must parse as a strict decision with exactly the authorized evidence refs. Invalid
-output remains inspectable without another model turn. The committed
-`group-promotion-native-hooks.patch` supplies the concrete native bridge/execution
-changes against exact normal-native source `30d7505f`: fresh synthesis thread/empty temporary cwd,
+output remains inspectable without another model turn. The native bridge/execution
+uses a fresh synthesis thread and empty temporary cwd,
 A's existing group account volume, no work/read mounts or coordination tools,
 provider capability overrides scoped only to synthesis, and no chat/feed source
-alias on completion or recovery. The normal production composition applies these three native hunks, exposes
-`promotionSynthesis` on the SAME connector retained by bootstrap, and injects it
+alias on completion or recovery. The normal production composition exposes
+`promotionSynthesis` on the same connector retained by bootstrap and injects it
 into the single normal `GroupFeaturePromotion`. The host revalidates its exact
 retained writer projection, current same-DO writer lease and fixed synthesis
 receipt before resolving the writer’s already-existing shared native account. Without the reviewed synthesis execution hooks, submission
@@ -140,8 +137,8 @@ fails closed before a model turn. Normal verified producer hooks must exclude
 results are saved before promotion; one finite background pass owns writer renewal
 and source adoption. Adapter SQLite tests and actual native execution/journal
 protocol tests use synthetic provider/namespace fixtures: real provider/account,
-shared-HOME concurrency, normal mounts, and independent review remain root-owned
-acceptance, with no readiness claim from these local checks.
+shared-HOME concurrency and the full two-installed-computer journey remain separate
+acceptance, with no readiness claim from those fixtures.
 
 Serialized authorized source and evidence metadata are limited to 32KiB; this is
 not a total provider prompt limit. Native system/account startup instructions,

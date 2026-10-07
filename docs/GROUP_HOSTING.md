@@ -51,15 +51,14 @@ The shared `group-membership.ts` contracts allow only membership fields and requ
 names. The browser-portable `groups.ts` module supplies UUID/name contracts directly;
 membership imports the narrow membership contracts; delivery separately imports its Node/Worker wire module.
 Membership adds no Unicode normalization or control/bidirectional-character filtering.
-Future UI work must define safe name rendering (text escaping and direction isolation)
-and an explicit input policy, preserving legitimate international text and originals under
-the existing name contract. That UI obligation is not delivered by this package.
+Browser clients must use safe name rendering (text escaping and direction isolation) and
+an explicit input policy, preserving legitimate international text and originals. Storage
+alone does not provide that presentation boundary; see [Groups UI](GROUP_UI.md).
 
 All HTTP calls are explicit JSON POSTs. Installation auth is `Authorization: Bearer …`.
-No capability goes into a path/query. This slice builds no invitation URL or landing
-page: a future client must place the invitation secret in a URL **fragment**, remove it
-before further navigation, and redeem only after an explicit user action. GET/prefetch
-cannot initialize or enroll. Responses use `no-store` and `no-referrer`; errors are fixed
+No capability goes into a path/query. The normal client places invitation secrets in a URL
+**fragment**, removes it before further navigation, and redeems only after an explicit
+user action. GET/prefetch cannot initialize or enroll. Responses use `no-store` and `no-referrer`; errors are fixed
 codes, with no input, SQL exceptions or stacks. Callers must not log requests/secrets.
 
 | Route/command                          | Required authority and result                                                                                                                                 |

@@ -33,7 +33,8 @@ shared feed/evidence, but cannot access another private session, another member'
 records or another group. Shared contexts cannot read private evidence. `sharedPublication`
 returns only a bounded allowlisted batch of shared records and exact originals; it rejects
 all private handles and private/unrelated records. It is a local publication boundary, not
-an implemented network outbox. No private-to-shared promotion is provided.
+an implemented network outbox by itself. The normal host uses the separate publication and
+promotion adapters; they do not make private evidence shared automatically.
 
 ## Immutable evidence and retry
 
@@ -53,8 +54,9 @@ are group-wide; private revisions belong to the exact private context. Two concu
 connections cannot both append against the same expected revision. References must already
 exist and be visible to the caller; future, private and cross-group references are rejected.
 One exact source message stores one event and its complete original. A message containing
-both a Decision and an Action still has one original evidence event here; producing multiple
-derived feed items remains a requirement for the later projector.
+both a Decision and an Action still has one original evidence event here. The separate
+promotion controller handles classification/synthesis; this repository does not split a
+source into multiple derived feed items.
 
 Reads intentionally use `BEGIN IMMEDIATE`, as writes do, to keep membership checks and
 retrieval in one serialized transaction for this small-group foundation. This trades read
@@ -78,8 +80,8 @@ Private, other-group and other-private-session appends cannot change that stream
 positions, watermark or continuation. All event responses (including append/replay,
 expansion and publication) use these scoped positions. Feeds retrieve positions through
 the unique `(stream_key, position)` index, then check the authorized event predicate.
-Durable per-member
-catch-up cursors and richer evidence-backed query helpers are later work.
+The normal host supplies durable per-member catch-up snapshots and verified evidence
+queries through [catch-up](GROUP_CATCHUP.md), separately from these repository cursors.
 
 Schema version 2 adds an immutable position table and version marker. Opening the prior
 unversioned schema backfills scoped positions in the original insertion order atomically;
@@ -89,20 +91,19 @@ project the scoped position into `sequence`, including for legacy receipt replay
 Version 2 cursors are explicit; old unversioned cursors are rejected and callers must
 start a fresh snapshot. Unsupported schema versions fail closed without resetting history.
 
-## Remaining delivery gates
+## Normal composition and acceptance
 
-The future central feed executor needs a renewable single-writer lease, durable projection
-receipts and the creator-selected member's executor/provider allowance. Private provider
-contexts must be fresh and separate, never fork/resume a shared native session. Neither
-executor leasing nor native context preparation is implemented here.
+The normal feed controller uses a designated writer with a renewable lease and durable
+projection/synthesis receipts. It uses the selected installation's own admitted provider
+account; it cannot borrow another member's credentials. Private native contexts retain
+separate fresh identities. See [promotion](GROUP_PROMOTION.md) and [native isolation](GROUP_ISOLATION.md).
 
-Remaining slices include whole-process isolation and broker wiring, invitations/revocation
-transport, a private authenticated Cloudflare backend with verified free-only entitlement,
-resumable quota/offline delivery, deterministic Git collaboration, action ownership and
-arbitration, shared/private UI, and two-installation desktop/phone acceptance. SQL tables and
-indexes use ordinary SQLite so a future Durable Object adapter can reuse the model; this
-slice does not claim a tested Cloudflare backend or portability adapter. The installed app
-and its runtime are unchanged.
+The normal host/service integrate invitations and revocation, quota/offline delivery,
+shared/private UI, Git controls and owner-bound actions. The group service uses actual
+SQLite Durable Objects, with controlled local workerd checks. These are implemented source
+and local tests, not proof of Workers Free entitlement, a deployed HTTPS endpoint, real
+provider readiness or two installed computers collaborating. Current release acceptance is
+tracked in [Status](STATUS.md#groups); this repository's unit tests cannot establish it.
 
 Focused verification builds shared/server TypeScript and runs only
 `apps/server/src/group-events.test.ts` under Node 24. Tests cover privacy and cross-group

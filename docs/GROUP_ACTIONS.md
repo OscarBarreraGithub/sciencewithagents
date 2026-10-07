@@ -1,10 +1,9 @@
-# Shared start/stop actions: candidate implementation
+# Shared start/stop actions
 
-This candidate contains typed shared instructions, work registrations, proposals,
-confirmation, an owner-bound coordination adapter and board controls. **The normal
-Groups entry, authoritative hosted route and admitted native manager lane are not
-mounted yet. D1–D5 remain open.** Local SQL and browser checks are not production
-or two-installation acceptance. No provider, cluster or account action is performed.
+Normal Groups integrates typed shared instructions, work registrations, proposals,
+confirmation, the owner-bound native coordination lane and board controls. Local SQL,
+Worker and browser checks do not prove real-provider or two-installed-computer acceptance.
+See [current release limits](STATUS.md#groups).
 
 ## Behavior in the bounded modules
 
@@ -42,7 +41,7 @@ known stale confirmations can be discarded and replaced after refresh. It shows
 requester/time, original owner, override notification and pending/uncertain outcome.
 The separate browser fixture checks these controls with simulated API responses.
 
-## Original-owner runtime adapter (source candidate)
+## Original-owner runtime adapter
 
 `group-coordination-runtime` binds normal Store tasks, immutable shared native task
 attestations and durable action receipts to the original group manager. An idle
@@ -64,51 +63,33 @@ Focused controlled checks cover idle-owner leases, actual connector queue bindin
 lost publication/action acknowledgements, immutable delegation input, original stop
 target recovery, scope/grant rejection, explicit process cwd and independent shared
 HOME container stopping. These are source regressions, not real-provider, shared
-HOME concurrency, two-installation or normal GUI acceptance. Consumer mounting and
-exact independent composition review remain separate.
+HOME concurrency or two-installed-computer acceptance. The normal UI and protected
+consumer mounts have separate local integration checks.
 
-## Concrete wiring still required
+## Normal composition
 
-- **Hosted membership owner:** install `GroupActionsService` with the same DO SQL
-  storage, existing credential hash, hosting/object checks, revocation failure guard
-  and bounded mutation/storage admission; expose authenticated
-  `/v1/groups/:groupId/actions`. Supply verified normal owner-task and autonomous
-  manager-source bindings. These required ports cannot be stubbed in production.
-- **Normal host/UI owner:** provide the saved-handle, current-enrollment protected
-  command transport, retaining exact service configuration/credential/hosting approval.
-  Mount `registerGroupActionsRoutes` in normal authenticated routes and
-  `GroupActionsBoard` in the selected shared Groups view. The existing
-  `GroupHost.authenticatedContext` read port alone is insufficient for this transport.
-- **Native/normal coordination owners:** register `groupCoordinationTools` with the
-  existing native coordination capability factory. Implement the narrow normal task,
-  approved work-resource and original owner's manager operation receipt/QUARK lane.
-  Run owner reconnect draining through `dispatchGroupAction`; reconcile retained
-  dispatch state before any resubmission. No alternative member executor is permitted.
-- **Promotion/query owners:** consume authenticated `evidence` pages. Each immutable
-  source has `group-action:<groupId>:<sequence>` identity and version 1; exact JSON and
-  explicit instruction/proposal/action/goal/task/manager/worker/outcome and supplied job/Git evidence links are retained.
-  Only nullable absent links are allowed. Publish/deliver override notices and action
-  outcomes through their existing source receipt lane. A stored notice is not proof
-  of successful cross-installation notification.
+The existing membership Durable Object owns `GroupActionsService` and the authenticated
+`/v1/groups/:groupId/actions` route. Membership, verified owner-task/autonomous-source
+bindings, revocation guards and capacity admission run in the same service transaction.
+`GroupHost.actionContext` retains the protected endpoint/enrollment authority; the normal
+`registerGroupActionsRoutes` and `GroupActionsBoard` use saved opaque handles.
 
-These hook requests were sent to their owners before edits. This candidate changes
-only new feature-prefixed files. No peer-owned entry file, native module, shared index,
-installed checkout, main source or hosting dependency is changed/imported. Interface
-reading used frozen normal `e876ba7`, corrected hosted `6c32d54` and native `eb591a6`;
-that is interface evidence, not approval or dependency integration.
+`GroupFeatureCoordination` registers the native coordination capability and dispatches
+confirmed actions through the original manager's ordinary signed lease/QUARK lane.
+Reconnect draining reconciles the retained action receipt before resubmission. No alternate
+member executor or provider queue is introduced.
 
-## Focused checks
+Promotion and private queries consume authenticated evidence pages. Each immutable source
+has `group-action:<groupId>:<sequence>` identity and version 1; exact JSON and supplied
+instruction/proposal/action/goal/task/manager/worker/outcome/job/Git links remain retained.
+A stored override notice or outcome is not proof of successful cross-installation delivery;
+the original publication receipt must confirm it.
 
-Use Node 24, build shared contracts, then run
-`vitest run apps/server/src/group-actions.test.ts`. Tests cover persisted confirmation,
-competing proposals, stale CAS, override notice, revocation, original-owner/offline
-routing, lost acknowledgement, concurrent receipt retries, restart, SQL failure,
-immutable evidence, autonomous attribution, typed normal tools and private authority.
-The hosted adapter is exercised with Node SQLite and current enrollment rows;
-**no workerd, hosted HTTP or actual native execution is tested here**.
+## Focused verification
 
-From `apps/web`, run Playwright with `playwright.group-actions.config.ts`. Its owned
-loopback preview closes after checks. Desktop, 412×915, 360×800 and 915×412 exercise
-conflict confirmation, lost-ack reload, exact retry identity, stale recovery and width.
-Screenshots are control-only browser emulation with default fixture styling; normal
-Groups styling/mounting, physical phones and two installations remain unverified.
+With Node 24 and built shared contracts, run
+`vitest run apps/server/src/group-actions.test.ts`. Persisted confirmation, competing
+proposals, stale CAS, revocation, original-owner routing and exact retries are covered.
+From `apps/web`, `playwright test --config playwright.group-actions.config.ts` checks the
+control fixture at desktop, 412×915, 360×800 and 915×412. Its runner owns the loopback
+preview and browser. These fixtures do not establish real-provider or physical-device acceptance.

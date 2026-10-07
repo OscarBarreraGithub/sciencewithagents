@@ -1,10 +1,9 @@
 # Group reports and scoped document access
 
-This source slice supplies scoped document contracts, storage, handlers and UI components.
-**F7 is still open:** this slice now implements the concrete native adapter, but the normal
-integrator must connect its completion hook and routes/reader. The reviewed compiler image and
-real native report journey have not yet been built or accepted. No runtime, account, installed
-checkout or hosted service is changed by this slice.
+Normal Groups connects scoped document storage, native completion capture, explicit grants
+and the existing Reading/PDF interface. The reviewed compiler recipe and controlled two-host
+report journey have local acceptance checks. Real provider-generated reports, deployed hosting
+and two installed computers remain separate acceptance; see [Status](STATUS.md#groups).
 
 ## Authority and exact grants
 
@@ -95,7 +94,8 @@ PDFTeX inside another Bubblewrap user/mount/PID/network namespace, with compiler
 read-only, selected inputs read-only and a new writable output directory. It leaves `/proc` absent:
 the supported Docker masked-proc layout rejects a nested proc mount with EPERM, and PDFTeX
 requires no proc filesystem. It never binds the outer guest proc/root view or widens outer
-capabilities. Actual kernel and PDF checks are still required. It clears environment,
+capabilities. Each accepted image requires actual kernel and PDF checks, separately from
+unit tests. It clears environment,
 uses paranoid Kpathsea input/output policy, disables shell escape and passes a literal entry
 filename. Two passes share a 110-second compiler deadline, 16 MiB log bound, 50 MiB PDF bound
 and 128 output-file bound. The enclosing guest has one CPU, 768 MiB and a 120-second deadline.
@@ -103,9 +103,9 @@ Path checks alone are not the compiler confinement. No `latexmk` shell or provid
 
 The Dockerfile adds Debian `texlive-latex-base`, `texlive-latex-recommended` and
 `texlive-fonts-recommended`, then copies the fixed helper. Its public source digest includes
-that helper. This recipe is prepared for the root's bounded public build; this worker has not
-installed packages, built an image or changed live configuration. Root must record the exact
-built image checksum/source label and test the real compiler boundary before enabling it.
+that helper. Setup records the exact built image checksum/source label and verifies the real
+compiler boundary before enabling it. Local checks of the reviewed recipe are described below;
+a changed image needs its own matching acceptance evidence.
 
 Operation keys/receipt IDs and exact namespace reservations are durable. Timeout or unverified
 stop returns the same unknown receipt. Retry first retires every exact prior namespace, then
@@ -117,32 +117,19 @@ The 512 MiB logical envelope counts retained snapshot/cache bytes and metadata, 
 pending capture/export/PDF reservations; at most 128 unresolved captures and 128 unresolved
 export/build operations may be reserved. New work fails before guest execution when capacity is unavailable.
 
-Remaining integrator hooks:
+## Normal host and reader composition
 
-- Normal host owner: use `createGroupDocumentsAuthority` with
-  `GroupHost.authenticatedContext({handle})` and add `revalidateDocumentOwner(context)` against
-  exact persisted source enrollment/context plus current authenticated remote membership.
-  Register `registerGroupDocumentsRoutes` with the normal owner/paired authentication predicate.
-  Its routes are `/api/groups/documents/:handle/:id/:version` plus source/PDF/Reading/assets,
-  open/build/share/revoke; explicit grants POST to `:handle/grants`.
-- Normal result projection: offer artifacts only in their owning result/aside; persist granted
-  scoped references as auditable link projections without modifying exact original replies.
-  A shared link is projected only after the explicit shared transition.
-- Existing reader/renderer hooks are owned by the normal integrator: extend `PdfReader` with a scoped `endpoint` and
-  `scoped` prop. Every metadata/open/build/reading/PDF/asset request must use that endpoint;
-  scoped mode must suppress the installation-global formatting controls. Extend `DocumentReading`
-  with an exact asset base prop. `ChatMarkdown` must recognize `groupDocumentReference` and
-  call `GroupDocumentLink` before ordinary `DocumentLink`, under `GroupDocumentScope`.
-  Mount `GroupDocumentHost` with that existing reader inside the normal Conversation scope.
-  No second reader, generic attachment bypass or synthetic agent mapping is supplied.
+The normal document authority resolves `GroupHost.authenticatedContext({handle})` and
+revalidates the exact persisted owner/context and current remote membership. Authenticated
+`registerGroupDocumentsRoutes` exposes scoped metadata, source/PDF/Reading/assets and
+explicit open/build/share/revoke grants. Result offers and granted links remain separate
+projections; they never replace the exact original native reply.
 
-These new modules import shared contracts through `@dock/shared/dist/group-documents.js`.
-They need no shared-index edit. Source ancestry preserves `6123301` on original base `cbf503a`.
-Separate provenance imports `731ad10` (12 exact native boundary/public image paths from frozen
-`e29c8dd`) and `0a06e4f` (three exact paths from `0a28b9c`, including the `3cf799d` volume fix)
-are dependencies, not independently approved by this worker. The feature changes the imported
-container only to include the fixed document helper in its source digest; it does not import
-mutable peer source or restore earlier hosted candidates.
+`GroupDocumentHost` reuses the existing `PdfReader` and `DocumentReading` with a scoped
+endpoint and asset base. Scoped requests never fall back to the personal document library
+or its global formatting controls. `ChatMarkdown` resolves `groupDocumentReference` under
+`GroupDocumentScope` before ordinary personal-document links. No second reader or generic
+attachment bypass is introduced.
 
 ## Local verification, separate from acceptance
 
@@ -160,8 +147,10 @@ Guest tests check safe descriptor-relative reads/writes, symlink/traversal/mixed
 compiler namespace arguments, prelaunch build digest denial and owned timeout/output cleanup.
 The builder transport in these local tests emits an explicitly fabricated PDF; it does not
 claim a Linux compiler execution. A scoped service test reaches the existing real Reading
-parser/Pandoc using the concrete capture/export provider. The real Linux compiler, its escape
-canaries, normal PDF reader and native result acceptance remain root/integrator checks. After exact image review/build, the root can run:
+parser/Pandoc using the concrete capture/export provider. Separate actual local Engine
+compiler and normal two-host PDF/Reading checks also pass. They do not establish an actual
+provider-generated artifact or two installed computers. To reproduce the isolated compiler
+check after exact image review/build, the setup agent can run:
 
 ```sh
 pnpm --filter @dock/server exec tsx src/group-documents-native-runtime-compiler-check.ts sha256:<reviewed-image> <absolute-private-ignored-data-directory>
@@ -178,7 +167,7 @@ fixture is not a production result/export or the required real native artifact a
 The synthetic UI fixture reuses **DocumentReading** and tests the scoped reader contract, grant
 retry and draft preservation at 1440×1000, 412×915, 360×800 and 915×412 with 30px Reading text.
 360/412 screenshots were inspected. This is Chromium viewport emulation, not physical phone,
-normal Groups wiring, PDF-viewer integration or real native export/build acceptance.
+real-provider, deployed-service or two-installed-computer acceptance.
 Run focused checks with:
 
 ```sh
@@ -190,9 +179,9 @@ pnpm --filter @dock/web exec playwright test --config playwright.group-documents
 ```
 
 The preview binds `127.0.0.1:5199` and is a test fixture only. Its runner owns and closes the
-server/browser; artifacts stay ignored under `data/group-documents-ui/`. Independent Opus review,
-exact integration, scoped existing-reader hooks and actual native .tex/PDF/phone acceptance remain
-required before F7 can close. Private source backup remains unconfigured; no remote backup occurred.
+server/browser; artifacts stay ignored under `data/group-documents-ui/`. Actual provider
+artifact/consent and physical-device acceptance remain separate from source integration
+and local compiler/reader checks. [Status](STATUS.md#groups) retains the current release gates.
 
 ### Explicit cross-installation publication
 

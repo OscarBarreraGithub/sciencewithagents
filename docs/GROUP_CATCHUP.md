@@ -1,10 +1,9 @@
 # Private incremental catch-up and evidence
 
-This slice supplies concrete authenticated routes, a React catch-up/query view and a native
-private-query handler. It does **not** mount itself in normal Groups or register a native tool.
-The normal integration owner must mount the routes/view and provide the verified promotion
-source adapter; native registration remains with its owner. E1–E3 stay open until those normal
-paths and the two-installation/native journey are verified. No production hosting is activated.
+The normal Groups host mounts authenticated catch-up/query routes, the React view and the
+private native query capability through `GroupFeatureReading`. The verified source adapter
+reads current authorized group-service evidence. Local route/browser checks do not prove
+real provider, deployed hosting or two-installed-computer acceptance; see [Status](STATUS.md#groups).
 
 `GroupCatchupStore` stores last-read by group/member/installation/enrollment, independently
 of shared/private session. It resumes the saved snapshot rather than starting at zero. Pages
@@ -63,8 +62,8 @@ Private read stores have finite retained capacity: 128 member-enrollments, 512 s
 member, 8192 delivered pages, 8192 indexed shared records, 4096 query requests/continuations,
 and a 64 MiB SQLite page limit for each store. Exhaustion refuses new work without resetting
 last-read or deleting uncertain identities; exact retained retries remain available. These local
-limits do not create a second hosted allocation. Normal composition must include source work
-in the hosted authority's existing membership/source/quota transaction.
+limits do not create a second hosted allocation. Normal source reads use the hosted
+authority's existing membership/source/quota transaction.
 
 ## Local verification
 

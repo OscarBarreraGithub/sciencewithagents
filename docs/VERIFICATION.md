@@ -5,6 +5,15 @@ How to check this source, and what the collected evidence does and does not show
 for the source actually checked. Historical passing runs do not certify a newer revision.
 Private logs, screenshots, disposable databases and native-session receipts stay under `data/`.
 
+## Groups listener correction — 2026-10-07
+
+A real-listener integration check covers concurrent local and paired-device entries,
+authenticated Groups reads, occupied-port failure and retry, both shutdown orders and saved
+catch-up state after reopening. The check and 21 focused existing tests pass, along with
+server TypeScript checking and independent Opus review. Installed activation restored both
+listeners and the phone tunnel with saved pairings and configuration intact. The public
+origin reaches app authentication; actual paired-device reconnection is a separate check.
+
 ## Historical evidence — recorded through 2026-10-05
 
 This summarizes the beta verification notes recorded through October 5, 2026, including

@@ -1,7 +1,8 @@
 # sciencewithagents
 
 Run Codex and Claude project teams from your computer or phone. QUARK coordinates their
-queue, shared allowance and computer resources; conversations and worker records stay local.
+queue, shared allowance and computer resources. Personal conversations and worker records
+stay local; Groups publishes explicitly shared content to its configured group service.
 
 ## Beta demo
 
@@ -90,6 +91,14 @@ optional. Ask me only for necessary sign-in, device and preference steps. Do not
 the full developer test suite for ordinary setup. Explain how to reopen the app and
 report anything incomplete rather than claiming success.
 ```
+
+**Access:** ordinary project managers and workers use the selected provider's native tools
+and full-access execution by default. They can run commands and access files/network as your
+user; the project folder is an intended scope, not a filesystem or network sandbox. Explicit
+read-only or restricted choices remain enforced. Groups native agents use a separate,
+owner-authorized Linux environment with its own sign-in and tool tradeoffs; it does not
+confine ordinary project agents. Read [native access](docs/DECISIONS.md#native-agents-thin-supervision)
+and [Groups setup](docs/GROUP_NATIVE_OWNER_SETUP.md) before choosing those workflows.
 
 **Requirements:** a coding agent, Node 24+, Git, and a working Codex CLI or Claude Code
 account. Your setup agent checks these. Apple Silicon macOS is the verified desktop target;
