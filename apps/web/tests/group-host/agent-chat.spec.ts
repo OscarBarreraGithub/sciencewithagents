@@ -105,7 +105,7 @@ test('local agents keep shared and private chats distinct, retain exact retries 
   await chat(page);
   const controls = page.locator('.group-host-controls');
   await expect(controls).toHaveJSProperty('open', false);
-  await expect(page.getByText('Invitations and approval', { exact: true })).toBeHidden();
+  await expect(page.locator('.group-host-controls')).toBeHidden();
   await expect(page.getByRole('heading', { name: 'Shared chat', exact: true })).toBeVisible();
   await expect(page.getByText('Local agent access', { exact: true })).toBeHidden();
   await expect(page.getByRole('combobox', { name: 'Send to', exact: true })).toHaveValue('agent');
@@ -113,22 +113,17 @@ test('local agents keep shared and private chats distinct, retain exact retries 
     'ask',
   );
   await capture(page, 'compact-default');
-  await page.getByText('Group controls', { exact: true }).click();
-  for (const text of ['Invitations and approval', 'Shared feed agent', 'Local agent access'])
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  for (const text of ['Invite people', 'Shared feed agent', 'Local agent access'])
     await expect(page.getByText(text, { exact: true })).toBeVisible();
   await expect(page.getByText('Shared Git workspace', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Shared work and actions', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Shared reports', { exact: true })).toHaveCount(0);
-  await expect(controls).toContainText('Saved records are retained');
   await page.getByText('Local agent access', { exact: true }).click();
   const owner = page.locator('.group-native-owner');
-  await expect(owner).toContainText(
-    'existing provider sign-in, tools, skills, hooks and permissions',
-  );
-  await expect(owner).toContainText('Local execution does not isolate files or account access');
-  await expect(owner).toContainText(
-    'Private history, drafts and files are not automatically published',
-  );
+  await expect(owner).toContainText('existing sign-in and native tools');
+  await expect(owner).toContainText('agents retain normal access to this computer');
+  await expect(owner).toContainText('Private content is not automatically shared');
   await expect(page.getByRole('button', { name: 'Prepare isolated context' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Sign in to/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Enable agents on this computer', exact: true }).click();
@@ -136,7 +131,7 @@ test('local agents keep shared and private chats distinct, retain exact retries 
   await expect(page.getByRole('button', { name: 'Enable agents on this computer' })).toHaveCount(0);
   await capture(page, 'local-agent-access');
   await page.getByText('Local agent access', { exact: true }).click();
-  await page.getByText('Group controls', { exact: true }).click();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   const posts: Array<{ path: string; body: Record<string, unknown> }> = [];
   const ownerPosts: Array<Record<string, unknown>> = [];
   page.on('request', (request) => {
@@ -203,7 +198,7 @@ test('local agents keep shared and private chats distinct, retain exact retries 
   expect(posts.at(-1)!.body.intent).toBe('ask');
   expect(posts.at(-1)!.body.handle).not.toBe(posts[0]!.body.handle);
   const privateHandle = posts.at(-1)!.body.handle;
-  await page.getByText('Group controls', { exact: true }).click();
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Cancel saved request', exact: true }),
   ).toBeVisible();
@@ -221,7 +216,7 @@ test('local agents keep shared and private chats distinct, retain exact retries 
     handle: privateHandle,
     requestId: savedPrivateRequest!.requestId,
   });
-  await page.getByText('Group controls', { exact: true }).click();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
   await page.getByPlaceholder('Write a private note…').fill('Explicit human private note');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();

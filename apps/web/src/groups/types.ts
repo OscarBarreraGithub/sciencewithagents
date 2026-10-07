@@ -42,6 +42,7 @@ export type GroupChatSlot = {
 };
 export type GroupsWorkspaceProps = {
   onInvite?: () => void;
+  onManage?: () => void;
   chatTitle?: string;
   privateDescription?: string;
   sharedDescription?: string;

@@ -107,6 +107,8 @@ export function GroupsApp({ route }: { route: string }) {
   const [feedWriterNotice, setFeedWriterNotice] = useState('');
   const [feedRevision, setFeedRevision] = useState(0);
   const [invite, setInvite] = useState('');
+  const [inviteExpiresAt, setInviteExpiresAt] = useState<number | null>(null);
+  const controlsDialog = useRef<HTMLDialogElement>(null);
   const [inviteCopy, setInviteCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const inviteText = useRef<HTMLTextAreaElement>(null);
   const membersPanel = useRef<HTMLDetailsElement>(null);
@@ -114,6 +116,12 @@ export function GroupsApp({ route }: { route: string }) {
   const [busy, setBusy] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [nativeControlsTarget, setNativeControlsTarget] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const dialog = controlsDialog.current;
+    if (!dialog) return;
+    if (controlsOpen && !dialog.open) dialog.showModal();
+    else if (!controlsOpen && dialog.open) dialog.close();
+  }, [controlsOpen, selected?.group.handle]);
   const authorizationRequired = useCallback(() => setControlsOpen(true), []);
   const changed = useCallback(() => setFeedRevision((n) => n + 1), []);
   const privateChanged = useCallback(() => {}, []);
@@ -288,7 +296,7 @@ export function GroupsApp({ route }: { route: string }) {
   return (
     <div className="group-host-root">
       {!selected && listError && <p role="alert">{listError}</p>}
-      {error && <p role="alert">{error}</p>}
+      {error && !controlsOpen && <p role="alert">{error}</p>}
       {selected && membershipError && (
         <p role="status">Members could not refresh: {membershipError}</p>
       )}
@@ -410,13 +418,21 @@ export function GroupsApp({ route }: { route: string }) {
         />
       ) : (
         <>
-          <details
+          <dialog
             key={selected.group.handle}
+            ref={controlsDialog}
             className="group-host-controls"
-            open={controlsOpen}
-            onToggle={(event) => setControlsOpen(event.currentTarget.open)}
+            aria-labelledby="group-controls-title"
+            onCancel={() => setControlsOpen(false)}
+            onClose={() => setControlsOpen(false)}
           >
-            <summary>Group controls</summary>
+            <div className="modal-heading">
+              <h2 id="group-controls-title">Manage group</h2>
+              <button className="secondary" onClick={() => setControlsOpen(false)}>
+                Done
+              </button>
+            </div>
+            {controlsOpen && error && <p role="alert">{error}</p>}
             <details className="group-host-members" ref={membersPanel} hidden={!creatorHandle}>
               <summary>Invite people</summary>
               <p>
@@ -444,6 +460,7 @@ export function GroupsApp({ route }: { route: string }) {
                     );
                     operation.clear();
                     setInvite(groupInvitationUrl(value.fragment, location.origin));
+                    setInviteExpiresAt(value.expiresAt);
                     setInviteCopy('idle');
                   })
                 }
@@ -453,10 +470,10 @@ export function GroupsApp({ route }: { route: string }) {
               {invite && (
                 <>
                   <label>
-                    Invitation (expires in 15 minutes)
+                    Invitation link
                     <textarea
                       ref={inviteText}
-                      aria-label="Invitation (expires in 15 minutes)"
+                      aria-label="Invitation link"
                       readOnly
                       value={invite}
                       rows={2}
@@ -480,6 +497,9 @@ export function GroupsApp({ route }: { route: string }) {
                     <p role="status">
                       Copy did not work. The invitation is selected; copy it by hand.
                     </p>
+                  )}
+                  {inviteExpiresAt && (
+                    <p>Valid until {new Date(inviteExpiresAt).toLocaleString()}.</p>
                   )}
                   <p>
                     They give this invitation to their setup agent, then open{' '}
@@ -515,7 +535,7 @@ export function GroupsApp({ route }: { route: string }) {
                       })
                     }
                   >
-                    Remove enrollment: {m.displayName}
+                    Remove {m.displayName}
                   </button>
                 ))}
             </details>
@@ -564,9 +584,10 @@ export function GroupsApp({ route }: { route: string }) {
               {feedWriterNotice && <p role="status">{feedWriterNotice}</p>}
             </details>
             <div ref={setNativeControlsTarget} />
-          </details>
+          </dialog>
           <div className="group-host-workspace">
             <GroupsWorkspace
+              onManage={() => setControlsOpen(true)}
               onInvite={
                 creatorHandle
                   ? () => {

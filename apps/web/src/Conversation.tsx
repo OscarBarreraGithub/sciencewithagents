@@ -4,7 +4,7 @@ import { AppMessageQueue } from './AppMessageQueue';
 import { ConversationStatus } from './ConversationStatus';
 import { ChatMarkdown } from './ChatMarkdown';
 import { ChatAttachmentPicker, useChatAttachmentUpload } from './ChatImages';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowUp,
   Check,
@@ -547,6 +547,7 @@ export function Composer({
   messagePlaceholder,
   onSent,
   onDraftReady,
+  extraTools,
 }: {
   agent: Agent;
   workspace: WorkspaceSnapshot | null;
@@ -584,6 +585,8 @@ export function Composer({
   onSent?: (remainingDraft: string) => void;
   /** Uses the existing draft owner; callers must not replace conflicting typing. */
   onDraftReady?: (draft: SharedDraft) => void;
+  /** Controls for a specialized conversation, sharing the ordinary compact toolbar. */
+  extraTools?: ReactNode;
 }) {
   const messageText = (value: string) => (preserveWhitespace ? value : value.trim());
   const managedDraft = useSharedDraft(draftOverride ? null : workspace, agent.id);
@@ -1232,6 +1235,7 @@ export function Composer({
       )}
       <div className="composer-toolbar">
         <div ref={tools} role="group" aria-label="Message tools; scroll horizontally for more">
+          {extraTools}
           {canSteer && <SendTiming steer={steer} disabled={sending} onChange={setSteer} />}
           <button
             className="composer-notepad"

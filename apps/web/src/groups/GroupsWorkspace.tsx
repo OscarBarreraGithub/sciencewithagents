@@ -13,8 +13,7 @@ function Workspace(props: GroupsWorkspaceProps) {
   const { group, memberId, sharedChat, privateAside, access, onBack } = props;
   const [revoked, setRevoked] = useState('');
   const onRevoked = useCallback((message: string) => setRevoked(message), []);
-  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 981px)').matches);
-  const [panel, setPanel] = useState<'feed' | 'chat'>('feed');
+  const [panel, setPanel] = useState<'feed' | 'chat'>('chat');
   const [aside, setAside] = useState(false);
   const [catchingUp, setCatchingUp] = useState(false);
   const [catchReading, setCatchReading] = useState<GroupRead<string> | { kind: 'loading' }>({
@@ -27,12 +26,6 @@ function Workspace(props: GroupsWorkspaceProps) {
   const catchHeading = useRef<HTMLHeadingElement>(null);
   const feedTab = useRef<HTMLButtonElement>(null);
   const chatTab = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const media = window.matchMedia('(min-width: 981px)');
-    const update = () => setWide(media.matches);
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
   useEffect(() => {
     if (!catchingUp || props.catchUpView) return;
     const controller = new AbortController();
@@ -124,7 +117,7 @@ function Workspace(props: GroupsWorkspaceProps) {
     >
       <header className="groups-workspace-heading">
         <button className="secondary" onClick={onBack} aria-label="Back to groups">
-          ← Groups
+          ←
         </button>
         <div>
           <h1>
@@ -143,13 +136,23 @@ function Workspace(props: GroupsWorkspaceProps) {
             </ul>
           </details>
         </div>
+        {props.onManage && (
+          <button
+            className="secondary"
+            aria-label="Manage"
+            title="Manage group"
+            onClick={props.onManage}
+          >
+            ⋯
+          </button>
+        )}
         {props.onInvite && (
-          <button className="secondary" onClick={props.onInvite}>
-            Invite people
+          <button className="secondary" aria-label="Invite people" onClick={props.onInvite}>
+            Invite
           </button>
         )}
       </header>
-      {!wide && (
+      <div className="groups-navigation">
         <div
           className="groups-tabs"
           role="tablist"
@@ -193,15 +196,43 @@ function Workspace(props: GroupsWorkspaceProps) {
             {aside ? 'Private to you' : 'Shared chat'}
           </button>
         </div>
-      )}
+        <div className="groups-actions" hidden={panel !== 'chat' || catchingUp}>
+          {aside ? (
+            <button className="secondary" onClick={closePrivate}>
+              Back to shared chat
+            </button>
+          ) : (
+            <button
+              ref={privateButton}
+              className="secondary"
+              disabled={!privateAside}
+              onClick={() => {
+                setAside(true);
+                requestAnimationFrame(() => chatHeading.current?.focus());
+              }}
+            >
+              Private to you
+            </button>
+          )}
+          <button
+            ref={catchButton}
+            aria-label="What mattered since last visit?"
+            className="secondary"
+            onClick={() => {
+              setCatchingUp(true);
+            }}
+          >
+            Catch up
+          </button>
+        </div>
+      </div>
       <div className="groups-columns">
         <section
           id="groups-feed-panel"
           className="groups-feed-panel"
-          hidden={!wide && panel !== 'feed'}
-          role={wide ? 'region' : 'tabpanel'}
-          aria-label={wide ? 'Shared feed' : undefined}
-          aria-labelledby={wide ? undefined : 'groups-feed-tab'}
+          hidden={panel !== 'feed'}
+          role="tabpanel"
+          aria-labelledby="groups-feed-tab"
         >
           <GroupFeed
             group={group}
@@ -214,11 +245,10 @@ function Workspace(props: GroupsWorkspaceProps) {
         </section>
         <section
           id="groups-chat-panel"
-          className="groups-chat-panel"
-          hidden={!wide && panel !== 'chat'}
-          role={wide ? 'region' : 'tabpanel'}
-          aria-label={wide ? (aside ? 'Private to you' : 'Shared chat') : undefined}
-          aria-labelledby={wide ? undefined : 'groups-chat-tab'}
+          className="groups-chat-panel chat-pane"
+          hidden={panel !== 'chat'}
+          role="tabpanel"
+          aria-labelledby="groups-chat-tab"
         >
           <header className="groups-panel-heading" hidden={catchingUp} inert={catchingUp}>
             <h2 ref={chatHeading} tabIndex={-1}>
@@ -230,35 +260,6 @@ function Workspace(props: GroupsWorkspaceProps) {
                   'Saved on this computer; excluded from the shared feed.')
                 : (props.sharedDescription ?? 'Messages you send here are shared with this group.')}
             </p>
-            <div className="groups-actions">
-              {aside ? (
-                <button className="secondary" onClick={closePrivate}>
-                  Back to shared chat
-                </button>
-              ) : (
-                <button
-                  ref={privateButton}
-                  className="secondary"
-                  disabled={!privateAside}
-                  onClick={() => {
-                    setAside(true);
-                    requestAnimationFrame(() => chatHeading.current?.focus());
-                  }}
-                >
-                  Private to you
-                </button>
-              )}
-              <button
-                ref={catchButton}
-                aria-label="What mattered since last visit?"
-                className="secondary"
-                onClick={() => {
-                  setCatchingUp(true);
-                }}
-              >
-                Catch up
-              </button>
-            </div>
             {!privateAside && (
               <p>Private to you unavailable until a separate session is provided.</p>
             )}

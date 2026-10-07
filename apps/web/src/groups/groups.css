@@ -105,7 +105,7 @@
 }
 .groups-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
   flex: 1;
 }
@@ -320,37 +320,19 @@
     margin-bottom: 4px;
   }
 }
-/* Propagate the composed chat's minimum through its host wrapper. Keep replies
-   readable; surplus height scrolls with the panel instead of crushing the timeline. */
+/* The transcript owns scrolling; controls and composer keep their natural height. */
 .groups-chat-slot,
 .groups-chat-slot > * {
-  min-height: min-content;
-  flex-shrink: 0;
+  min-height: 0;
 }
 .groups-chat-slot .conversation {
   min-height: 120px;
-  flex: 1 0 120px;
+  flex: 1 1 0;
 }
 .groups-chat-slot .composer {
   flex: 0 0 auto;
 }
-@media (max-height: 500px) {
-  .groups-chat-panel .groups-panel-heading {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 14px;
-  }
-  .groups-chat-panel .groups-panel-heading h2 {
-    margin: 0;
-  }
-  .groups-chat-panel .groups-panel-heading p {
-    display: none;
-  }
-  .groups-tabs {
-    padding-block: 4px;
-  }
-}
+
 .groups-chat-slot .conversation-scroll-hint {
   pointer-events: none;
   position: sticky;

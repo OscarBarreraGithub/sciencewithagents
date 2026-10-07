@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { evictDurableObject, reset, runInDurableObject } from 'cloudflare:test';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import {
   MEMBERSHIP_LIMITS,
   membershipEnvelopeSchema,
@@ -49,7 +49,7 @@ async function fixture() {
       kind: 'invite',
       operationId: uuid(),
       inviteSecret,
-      ttlSeconds: 900,
+      ttlSeconds: MEMBERSHIP_LIMITS.inviteSeconds,
     });
     if (!result.ok || result.value.kind !== 'invitation') throw new Error('Expected invitation');
     return { inviteSecret, ...result.value };
@@ -92,8 +92,37 @@ async function fixture() {
   return { groupId, stub, credential, creator, call, issue, enroll, legacy };
 }
 afterEach(async () => {
+  vi.useRealTimers();
   await reset();
   Object.assign(env, { HOSTING_MODE: 'disabled', GROUP_SETUP_HASH: '' });
+});
+
+it('keeps a normal invitation usable after fifteen minutes and expires it after seven days', async () => {
+  const f = await fixture();
+  const started = Date.now();
+  vi.setSystemTime(started);
+  const invite = await f.issue();
+  expect(invite.expiresAt).toBe(started + 7 * 24 * 60 * 60 * 1000);
+  expect(
+    membershipEnvelopeSchema.safeParse({
+      groupId: f.groupId,
+      credential: f.credential,
+      command: {
+        kind: 'invite',
+        operationId: uuid(),
+        inviteSecret: secret(),
+        ttlSeconds: 7 * 24 * 60 * 60 + 1,
+      },
+    }).success,
+  ).toBe(false);
+  vi.setSystemTime(started + 16 * 60 * 1000);
+  const member = await f.enroll(invite.inviteSecret);
+  expect(member.identity.state).toBe('active');
+  vi.setSystemTime(invite.expiresAt - 1);
+  expect((await f.enroll(invite.inviteSecret)).identity.state).toBe('active');
+  vi.setSystemTime(invite.expiresAt + 1);
+  expect(await f.call({ ...member.command, operationId: uuid() }, secret())).toEqual(denied);
+  expect(identity(await f.call({ kind: 'status' }, member.bearer)).state).toBe('active');
 });
 
 it('counts unexpired legacy consumed grants against the reusable invitation limit', async () => {

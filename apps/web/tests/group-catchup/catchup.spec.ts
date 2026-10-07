@@ -6,13 +6,28 @@ test('explicit paged acknowledgement, lost-ack retry, reload snapshot and privat
 }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
+  let acknowledgements = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/groups/catchup/ack') acknowledgements++;
+  });
+  await page.request.get('/');
   await page.request.post('/__test/control', {
     data: { reset: true, offline: false, loseAck: false },
   });
+  await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Private catch-up' })).toBeFocused();
-  await page.getByRole('button', { name: 'Read since my last acknowledgement' }).click();
   await expect(page.getByRole('status')).toContainText('Positions 1–8');
+  expect(acknowledgements).toBe(0);
+  await expect(page.getByLabel('Question', { exact: true })).toBeHidden();
+  await expect(page.locator('.group-catchup')).toHaveCSS('background-color', 'rgb(255, 254, 250)');
+  expect(
+    await page
+      .locator('.group-catchup-scroll')
+      .evaluate((element) => element.scrollHeight > element.clientHeight),
+  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
   await expect(page.getByRole('button', { name: 'Continue catch-up' })).toBeDisabled();
   await mkdir(resolve('../../data/group-catchup-ui/screenshots'), { recursive: true });
   await page.screenshot({
@@ -32,24 +47,25 @@ test('explicit paged acknowledgement, lost-ack retry, reload snapshot and privat
   await page.getByRole('button', { name: 'Continue catch-up' }).click();
   await expect(page.getByRole('status')).toContainText('Positions 9–16');
   await page.reload();
-  await page.getByRole('button', { name: 'Read since my last acknowledgement' }).click();
   await expect(page.getByRole('status')).toContainText('Positions 9–16');
+  await page.getByText('Explore shared evidence', { exact: true }).click();
   await page.getByLabel('Question', { exact: true }).selectOption('file_changes');
   await page.getByLabel('Exact group file path').fill('src/river.ts');
   await page.request.post('/__test/control', { data: { loseQuery: true } });
   await page.getByRole('button', { name: 'Query evidence', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('lost private query response');
   await page.reload();
+  await page.getByText('Explore shared evidence', { exact: true }).click();
   await page.getByRole('button', { name: 'Resume saved evidence query' }).click();
   await expect(page.getByLabel('Private evidence result')).toContainText('indexed shared evidence');
   await expect(page.getByRole('button', { name: 'Continue evidence query' })).toBeVisible();
   await page.getByRole('button', { name: 'Continue evidence query' }).click();
   await page.reload();
+  await page.getByText('Explore shared evidence', { exact: true }).click();
   await page.getByRole('button', { name: 'Resume saved evidence query' }).click();
   await expect(page.getByLabel('Private evidence result')).toContainText(
     'Indexed shared sources through position 37',
   );
-  await page.getByRole('button', { name: 'Read since my last acknowledgement' }).click();
   for (const end of [16, 24, 32, 37]) {
     await expect(page.getByRole('status')).toContainText(`–${end}`);
     await page.getByRole('button', { name: 'Mark this page read' }).click();

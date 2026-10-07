@@ -120,40 +120,15 @@
   flex: 1;
   min-width: min(100%, 220px);
 }
-@media (max-height: 500px) {
-  .home-shell:has(.group-host-workspace) .group-host-root {
-    overflow: auto;
-  }
-  .group-host-workspace {
-    flex-shrink: 0;
-    min-height: 24rem;
-  }
-  .home-shell:has(.group-host-workspace) .home-content {
-    padding-inline: 0;
-  }
-  .group-host-workspace .groups-workspace-heading {
-    padding: 4px 12px;
-  }
-  .group-host-members {
-    padding-block: 0;
-  }
-}
-
 /* Management stays available without displacing the conversation by default. */
 .group-host-controls {
-  flex: 0 0 auto;
-  min-width: 0;
-  border-bottom: 1px solid var(--line);
-}
-.group-host-controls > summary {
-  padding: 6px 12px;
-  min-height: 36px;
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-.group-host-controls[open] {
-  max-height: 65%;
+  width: min(640px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  padding: 16px;
   overflow: auto;
+}
+.group-host-controls .modal-heading {
+  margin-bottom: 12px;
 }
 .group-host-controls .group-host-members[open] {
   max-height: none;
@@ -190,8 +165,8 @@
   display: flex;
   flex: 1 1 0;
   min-width: 0;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
   font-size: 0.75rem;
 }
 .group-host-workspace .group-agent-request select {
@@ -221,4 +196,147 @@
   padding-left: 20px;
   max-height: 160px;
   overflow: auto;
+}
+
+.group-host-workspace .groups-panel-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-block: 4px;
+}
+.group-host-workspace .groups-panel-heading > h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.group-host-workspace .groups-tabs {
+  padding-block: 4px;
+}
+.group-host-workspace .group-agent-request select {
+  min-width: 0;
+  flex: 1;
+}
+.group-host-workspace .groups-member-list ul {
+  position: absolute;
+  z-index: 5;
+  min-width: 160px;
+  max-width: min(280px, 70vw);
+  padding: 10px 10px 10px 26px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px #0002;
+}
+@media (max-height: 500px) {
+  .group-host-workspace .groups-workspace-heading {
+    padding-block: 2px;
+  }
+  .group-host-workspace .groups-member-list {
+    display: inline-block;
+  }
+  .group-host-workspace .groups-workspace-heading > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .group-host-workspace .groups-tabs,
+  .group-host-workspace .groups-panel-heading,
+  .group-host-workspace .group-agent-request {
+    padding-block: 0;
+  }
+}
+
+.group-host-workspace .groups-workspace-heading {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+  gap: 6px;
+}
+.group-host-workspace .groups-workspace-heading > button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 10px;
+}
+.group-host-workspace .groups-workspace-heading h1 {
+  overflow-wrap: break-word;
+}
+.group-host-workspace .groups-member-list summary {
+  white-space: nowrap;
+}
+
+.group-host-workspace .group-agent-request label {
+  margin: 0;
+  flex-direction: row;
+}
+.group-host-workspace .groups-navigation {
+  flex: 0 0 auto;
+}
+.group-host-workspace .groups-navigation > .groups-actions {
+  padding: 4px 12px;
+}
+.group-host-workspace .groups-chat-panel > .groups-panel-heading {
+  padding: 0;
+}
+@media (max-height: 500px) {
+  .group-host-workspace .groups-navigation {
+    display: flex;
+    align-items: center;
+  }
+  .group-host-workspace .groups-navigation > .groups-tabs {
+    flex: 1;
+    border: 0;
+  }
+  .group-host-workspace .groups-navigation > .groups-actions {
+    padding-block: 0;
+    flex-wrap: nowrap;
+  }
+  .group-host-workspace .group-chat-cue {
+    padding-block: 2px;
+  }
+}
+
+/* Use the ordinary chat's bubbles, composer and viewport fitting rules. */
+.group-host-workspace .groups-chat-panel.chat-pane {
+  border: 0;
+  border-radius: 0;
+}
+.group-host-workspace .group-chat > .composer {
+  max-height: none;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+}
+.group-host-workspace .group-chat .conversation-inner {
+  max-width: 880px;
+}
+@media (max-height: 500px) {
+  .group-host-workspace .group-chat .composer textarea {
+    max-height: 80px;
+  }
+  .group-host-workspace .group-chat .composer.draft-steady > .draft-handoff > p.muted:first-child {
+    display: none;
+  }
+  .group-host-workspace .group-chat .conversation {
+    min-height: 80px;
+  }
+}
+
+.group-host-workspace .composer .group-agent-request {
+  display: contents;
+}
+.group-host-workspace .composer .group-agent-request label {
+  flex: 0 0 auto;
+}
+.group-host-workspace .composer .group-agent-request select {
+  min-height: 44px;
+  width: auto;
+  max-width: 150px;
+  padding: 6px 28px 6px 8px;
+  font-size: var(--text-caption);
+}
+/* On a short screen the group's own back/header replaces duplicate app navigation. */
+@media (max-height: 500px) {
+  .home-shell:has(.group-host-workspace) > .home-header {
+    display: none;
+  }
 }

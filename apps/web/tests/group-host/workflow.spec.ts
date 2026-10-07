@@ -123,7 +123,7 @@ test('normal Home navigation, authenticated create, saved private notes/drafts, 
   await page.getByRole('combobox', { name: 'Agent request' }).selectOption('work');
   await expect(page.getByPlaceholder('Message your group agent…')).toBeEnabled();
   await page.getByRole('combobox', { name: 'Agent request' }).selectOption('ask');
-  await page.getByText('Group controls', { exact: true }).click();
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
   await page.getByText('Shared work and actions', { exact: true }).click();
   await expect(page.getByRole('region', { name: 'Shared work board' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Shared work board' })).toContainText(
@@ -131,7 +131,7 @@ test('normal Home navigation, authenticated create, saved private notes/drafts, 
   );
   await capture(page, 'actions');
   await page.getByText('Shared work and actions', { exact: true }).click();
-  await page.getByText('Group controls', { exact: true }).click();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
   const shared = page.getByPlaceholder('Send a group message…');
   await expect(shared).toBeEnabled();
@@ -145,9 +145,6 @@ test('normal Home navigation, authenticated create, saved private notes/drafts, 
   await expect(page.locator('.conversation')).toContainText('PRIVATE-EXACT-NOTE');
   await page.getByRole('button', { name: 'What mattered since last visit?', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Private catch-up', exact: true })).toBeVisible();
-  await page
-    .getByRole('button', { name: 'Read since my last acknowledgement', exact: true })
-    .click();
   await expect(page.locator('.group-catchup')).toContainText('No new shared events');
   await capture(page, 'catchup');
   await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
@@ -368,9 +365,7 @@ test('hosted invitations use the shared service instead of the creator private a
   });
   await page.getByRole('button', { name: 'Invite people', exact: true }).click();
   await page.getByRole('button', { name: 'Create invitation', exact: true }).click();
-  const link = await page
-    .getByLabel('Invitation (expires in 15 minutes)', { exact: true })
-    .inputValue();
+  const link = await page.getByLabel('Invitation link', { exact: true }).inputValue();
   expect(new URL(link).origin).toBe('https://groups.example.test');
   expect(new URL(link).pathname).toBe('/join');
   expect(new URL(link).search).toBe('');
@@ -388,9 +383,7 @@ test('invitation directly joins a second authenticated host and opens its privat
   await page.getByRole('button', { name: 'Invite people', exact: true }).click();
   await expect(page.getByRole('link', { name: 'setup guide', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Create invitation', exact: true }).click();
-  const link = await page
-    .getByLabel('Invitation (expires in 15 minutes)', { exact: true })
-    .inputValue();
+  const link = await page.getByLabel('Invitation link', { exact: true }).inputValue();
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -406,6 +399,7 @@ test('invitation directly joins a second authenticated host and opens its privat
   expect(
     await page.evaluate(() => (window as Window & { copiedInvitation?: string }).copiedInvitation),
   ).toBe(link);
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   const fragment = new URL(link).hash;
   const invitationSecret = JSON.parse(
     new URLSearchParams(fragment.replace(/^#\/?groups\??/, '')).get('invite')!,
@@ -434,6 +428,7 @@ test('invitation directly joins a second authenticated host and opens its privat
     await expect(page.locator('.groups-member-list')).toContainText('Li Ming');
     await capture(member, 'joined-directly');
     await capture(page, 'joined-members');
+    await page.getByRole('button', { name: 'Manage', exact: true }).click();
     await page.getByText('Shared feed agent', { exact: true }).click();
     await page
       .getByRole('button', { name: 'Use this computer for the shared feed', exact: true })
@@ -441,7 +436,7 @@ test('invitation directly joins a second authenticated host and opens its privat
     await expect(
       page.getByText('This computer is the shared feed writer.', { exact: false }),
     ).toBeVisible();
-    await page.getByText('Group controls', { exact: true }).click();
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
     await chat(member);
     await member.getByRole('button', { name: 'Private to you', exact: true }).click();
     await member.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
@@ -502,9 +497,7 @@ test('invitation directly joins a second authenticated host and opens its privat
     await context.close().catch(() => {});
   }
 });
-test('150% text keeps shared/private Conversation and Composer reachable with nested scrolling', async ({
-  page,
-}) => {
+test('150% text keeps shared/private Conversation and Composer reachable', async ({ page }) => {
   await enter(page);
   await create(page, 'Large text River');
   await page.evaluate(() => {
@@ -541,4 +534,35 @@ test('150% text keeps shared/private Conversation and Composer reachable with ne
   await expect(input).toBeVisible();
   await page.getByRole('button', { name: 'Send message', exact: true }).scrollIntoViewIfNeeded();
   await capture(page, 'large-private-composer');
+});
+
+test('chat starts full-width with readable transcript and management preserves its space', async ({
+  page,
+}) => {
+  await enter(page);
+  await create(page, 'Room to read');
+  await expect(page.getByRole('tab', { name: 'Shared chat', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
+  const draft = page.getByPlaceholder('Send a group message…');
+  await draft.fill('Keep this draft while managing the group');
+  const transcript = page.locator('.conversation');
+  const before = await transcript.boundingBox();
+  const composer = await page.locator('.composer').boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(before!.width).toBeGreaterThan(viewport.width * 0.7);
+  expect(before!.height).toBeGreaterThanOrEqual(
+    viewport.height > 500 ? viewport.height * 0.4 : 100,
+  );
+  expect(before!.y).toBeGreaterThanOrEqual(0);
+  expect(composer!.y + composer!.height).toBeLessThanOrEqual(viewport.height + 2);
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Manage group' })).toBeVisible();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(draft).toHaveValue('Keep this draft while managing the group');
+  const after = await transcript.boundingBox();
+  expect(after!.height).toBeCloseTo(before!.height, 0);
+  await capture(page, 'room-to-read');
 });

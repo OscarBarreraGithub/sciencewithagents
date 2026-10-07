@@ -198,10 +198,11 @@ Groups API access, upload/download, SSE, bidirectional WebSockets and connector 
 using a disposable local fixture. This did not enroll a physical phone or configure another
 person’s account. An older installed prompt requires a safe update before recopying.
 
-Invitation links now admit multiple people directly before their deadline, without a
+New invitation links last seven days and admit multiple people directly before their deadline, without a
 confirmation-code exchange or creator approval. Previously accepted pending requests are
 reconciled by the updated service if their invitation and issuer remain authorized.
-The app opens joined groups directly and refreshes the member list automatically. Existing
+The app opens joined groups into full-width chat, with a separate feed tab and a management
+dialog. The member list refreshes automatically. Existing
 creators must update their Worker as well as the app; private configuration and memberships
 are preserved. Human messaging and interrupted-request recovery remain available.
 Native chat, scoped reading and feed summaries are connected. Protected Git export,

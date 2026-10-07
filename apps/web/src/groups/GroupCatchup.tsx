@@ -57,7 +57,8 @@ export function GroupCatchup({
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     generation.current++;
-    setBusy(false);
+    const current = generation.current;
+    setBusy(true);
     setPage(null);
     setResult(null);
     setError('');
@@ -77,10 +78,25 @@ export function GroupCatchup({
       setError('Saved private query could not be read. Its saved data was preserved.');
     }
     heading.current?.focus();
+    // Opening is a private read: the service retains a snapshot, without a
+    // model call or advancing the explicit read acknowledgement. Defer until
+    // after effect cleanup so StrictMode does not start two snapshot requests.
+    void Promise.resolve().then(async () => {
+      if (current !== generation.current) return;
+      try {
+        const value = groupCatchupPageSchema.parse(await post('catchup/start', { handle }));
+        if (current === generation.current) setPage(value);
+      } catch (e) {
+        if (current === generation.current)
+          setError(e instanceof Error ? e.message : 'Shared reading unavailable. Retry.');
+      } finally {
+        if (current === generation.current) setBusy(false);
+      }
+    });
     return () => {
       generation.current++;
     };
-  }, [handle]);
+  }, [handle, storageKey]);
   const run = async (action: () => Promise<void>) => {
     if (busy) return;
     const current = generation.current;
@@ -218,10 +234,11 @@ export function GroupCatchup({
     members.find((m) => m.id === id)?.name ?? `Member ${id.slice(0, 8)}`;
   const renderRecord = ({ event, facts }: GroupEvidenceRecord) => (
     <li key={event.eventId} className="group-catchup-record">
-      <p>
-        <strong>{event.category}</strong> · {memberName(event.scope.memberId)}
+      <p className="group-catchup-record-heading">
+        <strong>{memberName(event.scope.memberId)}</strong>
+        <span>{event.category}</span>
       </p>
-      <p>{event.condensedText}</p>
+      <p className="group-catchup-record-text">{event.condensedText}</p>
       <button type="button" disabled={busy} onClick={() => readOriginal(event)}>
         Read exact original
       </button>
@@ -291,131 +308,151 @@ export function GroupCatchup({
           }));
   return (
     <section className="group-catchup" aria-labelledby="group-catchup-title" aria-busy={busy}>
-      <header>
+      <header className="group-catchup-heading">
+        <button type="button" onClick={onClose} aria-label="Back to chat">
+          <span aria-hidden="true">←</span> Back
+        </button>
         <h2 id="group-catchup-title" tabIndex={-1} ref={heading}>
           Private catch-up
         </h2>
-        <button type="button" onClick={onClose}>
-          Back to chat
-        </button>
       </header>
-      <p>This reading and your questions stay private. Fetching a page does not mark it read.</p>
-      {error && <p role="alert">{error}</p>}
-      <button type="button" disabled={busy} onClick={start}>
-        {page ? 'Resume saved catch-up' : 'Read since my last acknowledgement'}
-      </button>
-      {page && (
-        <div>
-          <p role="status">
-            {page.entries.length
-              ? `Positions ${page.after + 1}–${page.through} of snapshot ${page.watermark}`
-              : `No new shared events through position ${page.watermark}.`}
-          </p>
-          <ol aria-label="Catch-up page">
-            {page.entries.map((event) =>
-              renderRecord({
-                event,
-                facts: page.sourceFacts?.find((f) => f.eventId === event.eventId)?.facts ?? null,
-              }),
-            )}
-          </ol>
-          {page.entries.length > 0 && (
-            <button type="button" disabled={busy || page.acknowledged} onClick={ack}>
-              {page.acknowledged ? 'Page marked read' : 'Mark this page read'}
-            </button>
-          )}
-          {page.continuation && (
-            <button type="button" disabled={busy || !page.acknowledged} onClick={next}>
-              Continue catch-up
-            </button>
-          )}
-          {!page.continuation && page.acknowledged && (
-            <button type="button" disabled={busy} onClick={start}>
-              Check for newer changes
-            </button>
-          )}
-        </div>
-      )}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void query();
-        }}
-      >
-        <h3>Ask shared evidence privately</h3>
-        <label>
-          Question
-          <select
-            aria-label="Question"
-            value={queryType}
-            disabled={busy}
-            onChange={(e) => {
-              setQueryType(e.target.value as QueryType);
-              setTarget('');
-            }}
-          >
-            {Object.entries(queryLabels).map(([type, label]) => (
-              <option value={type} key={type}>
-                {label}
-              </option>
+      <div className="group-catchup-scroll">
+        <div className="group-catchup-inner">
+          <p className="group-catchup-cue">Only you can see your reading and questions.</p>
+          {error && <p role="alert">{error}</p>}
+          {!page &&
+            (busy ? (
+              <p role="status">Loading shared updates…</p>
+            ) : (
+              <button type="button" onClick={start}>
+                Retry catch-up
+              </button>
             ))}
-          </select>
-        </label>
-        {queryType === 'file_changes' ? (
-          <label>
-            Exact group file path
-            <input
-              value={target}
-              disabled={busy}
-              onChange={(e) => setTarget(e.target.value)}
-              placeholder="src/example.ts"
-            />
-          </label>
-        ) : (
-          ['who_working', 'why_stopped', 'who_decided', 'instruction_actions'].includes(
-            queryType,
-          ) && (
-            <label>
-              Original source
-              <select
-                aria-label="Original source"
-                disabled={busy}
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-              >
-                <option value="">Choose a member or original from this page</option>
-                {targets.map((t, i) => (
-                  <option key={`${t.id}:${i}`} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )
-        )}
-        <button disabled={busy} type="submit">
-          Query evidence
-        </button>
-      </form>
-      {savedQuery && (
-        <button type="button" disabled={busy} onClick={resumeQuery}>
-          Resume saved evidence query
-        </button>
-      )}
-      {result && (
-        <div aria-label="Private evidence result">
-          <p>Indexed shared sources through position {result.watermark}</p>
-          {result.unknown.map((text, i) => (
-            <p key={i}>{text}</p>
-          ))}
-          <ol>{result.records.map(renderRecord)}</ol>
-          {result.continuation && (
-            <button disabled={busy} type="button" onClick={more}>
-              Continue evidence query
-            </button>
+          {page && (
+            <div className="group-catchup-page">
+              <p role="status" className="group-catchup-position">
+                {page.entries.length
+                  ? `Positions ${page.after + 1}–${page.through} of snapshot ${page.watermark}`
+                  : `No new shared events through position ${page.watermark}.`}
+              </p>
+              <ol aria-label="Catch-up page">
+                {page.entries.map((event) =>
+                  renderRecord({
+                    event,
+                    facts:
+                      page.sourceFacts?.find((f) => f.eventId === event.eventId)?.facts ?? null,
+                  }),
+                )}
+              </ol>
+              <div className="group-catchup-actions">
+                {page.entries.length > 0 && (
+                  <button type="button" disabled={busy || page.acknowledged} onClick={ack}>
+                    {page.acknowledged ? 'Page marked read' : 'Mark this page read'}
+                  </button>
+                )}
+                {page.continuation && (
+                  <button type="button" disabled={busy || !page.acknowledged} onClick={next}>
+                    Continue catch-up
+                  </button>
+                )}
+                {!page.continuation && page.acknowledged && (
+                  <button type="button" disabled={busy} onClick={start}>
+                    Check for newer changes
+                  </button>
+                )}
+                {page.entries.length === 0 && (
+                  <button type="button" disabled={busy} onClick={start}>
+                    Check for newer changes
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          <details className="group-catchup-query">
+            <summary>Explore shared evidence</summary>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void query();
+              }}
+            >
+              <h3>Ask shared evidence privately</h3>
+              <label>
+                Question
+                <select
+                  aria-label="Question"
+                  value={queryType}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setQueryType(e.target.value as QueryType);
+                    setTarget('');
+                  }}
+                >
+                  {Object.entries(queryLabels).map(([type, label]) => (
+                    <option value={type} key={type}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {queryType === 'file_changes' ? (
+                <label>
+                  Exact group file path
+                  <input
+                    value={target}
+                    disabled={busy}
+                    onChange={(e) => setTarget(e.target.value)}
+                    placeholder="src/example.ts"
+                  />
+                </label>
+              ) : (
+                ['who_working', 'why_stopped', 'who_decided', 'instruction_actions'].includes(
+                  queryType,
+                ) && (
+                  <label>
+                    Original source
+                    <select
+                      aria-label="Original source"
+                      disabled={busy}
+                      value={target}
+                      onChange={(e) => setTarget(e.target.value)}
+                    >
+                      <option value="">Choose a member or original from this page</option>
+                      {targets.map((t, i) => (
+                        <option key={`${t.id}:${i}`} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )
+              )}
+              <button disabled={busy} type="submit">
+                Query evidence
+              </button>
+            </form>
+            {savedQuery && (
+              <button type="button" disabled={busy} onClick={resumeQuery}>
+                Resume saved evidence query
+              </button>
+            )}
+          </details>
+          {result && (
+            <div aria-label="Private evidence result">
+              <p>Indexed shared sources through position {result.watermark}</p>
+              {result.unknown.map((text, i) => (
+                <p key={i}>{text}</p>
+              ))}
+              <ol>{result.records.map(renderRecord)}</ol>
+              {result.continuation && (
+                <button disabled={busy} type="button" onClick={more}>
+                  Continue evidence query
+                </button>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </div>
     </section>
   );
 }

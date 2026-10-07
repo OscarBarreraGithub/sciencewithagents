@@ -30,6 +30,7 @@ import {
 } from '@dock/shared';
 import * as host from '@dock/shared/dist/group-host.js';
 import {
+  MEMBERSHIP_LIMITS,
   membershipReplySchema,
   membershipCommandSchema,
   membershipIdentitySchema,
@@ -2009,7 +2010,7 @@ export class GroupHost {
         kind: 'invite',
         operationId: groupOperationIdSchema.parse(input.key),
         inviteSecret: secret,
-        ttlSeconds: 900,
+        ttlSeconds: MEMBERSHIP_LIMITS.inviteSeconds,
       },
       value.identity.groupId,
     );

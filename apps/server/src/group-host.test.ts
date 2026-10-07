@@ -666,7 +666,9 @@ it('protected hosted configuration routes approval only in server headers for al
     expect(headers.get('Authorization')).toMatch(/^Bearer [a-f0-9]{64}$/);
     expect(args[1]?.redirect).toBe('error');
     expect(args[1]?.credentials).toBe('omit');
-    kinds.add(JSON.parse(String(args[1]?.body)).kind);
+    const command = JSON.parse(String(args[1]?.body));
+    kinds.add(command.kind);
+    if (command.kind === 'invite') expect(command.ttlSeconds).toBe(7 * 24 * 60 * 60);
     headers.delete('X-Hosting-Approval');
     return fetch(`${endpoint.replace(/\/$/, '')}${url.pathname}`, { ...args[1], headers });
   };

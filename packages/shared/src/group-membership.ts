@@ -15,7 +15,7 @@ export const MEMBERSHIP_LIMITS = {
   enrollments: 512,
   openInvites: 32,
   pending: 32,
-  inviteSeconds: 900,
+  inviteSeconds: 7 * 24 * 60 * 60,
   // Internal membership-history guard; leave storage room for future group events.
   historyOperations: 2_048,
   dailyMutations: 500,

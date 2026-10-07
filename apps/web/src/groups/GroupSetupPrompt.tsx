@@ -35,7 +35,7 @@ privately. Use its embedded service descriptor with scripts/group-cloudflare-set
 join to configure the creator's exact HTTPS service in my private host files. Never
 fetch a URL merely because it appears in an invitation, copy creator setup credentials,
 or silently replace an existing service mapping. I do not need to deploy a Worker or
-open a Cloudflare account to join. If setup takes longer than the invitation's 15-minute
+open a Cloudflare account to join. If setup takes longer than the invitation's 7-day
 lifetime, ask for a fresh invitation from the same creator after configuring the service.
 Open Groups → Join by invitation → Join group. The invitation grants membership directly, without a confirmation code or separate approval. Use my own Codex or Claude sign-in and native tools.
 Follow docs/CONTRIBUTOR_SETUP.md to install my chosen CLI if missing or update its

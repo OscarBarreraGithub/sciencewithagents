@@ -25,7 +25,7 @@ uses fake providers and is not a substitute for this setup.
 3. New/Join actions appear above setup help. The open Groups page detects completed configuration and collapses the setup prompt
    automatically. Choose **New project**, enter project and display names, then
    **Continue setup**. In the group header, choose **Invite people → Create invitation → Copy invitation**
-   and send it privately. The same link can invite multiple people for 15 minutes. Each
+   and send it privately. The same link can invite multiple people for 7 days. Each
    recipient joins directly with the link; no confirmation code or creator approval.
    New links open the service's `/join` page, which guides recipients into their own app.
    A creator's private localhost/phone address is not a group login. Older links can be
@@ -41,12 +41,12 @@ uses fake providers and is not a substitute for this setup.
    and the creator's existing Worker redeployment, preserving configuration and memberships.
 5. Group agents use the native agent installed on each person's own computer, with its
    existing provider sign-in, tools, skills, hooks and permissions. No Docker, Linux guest
-   or separate provider account is required for local execution. Read **Group controls →
+   or separate provider account is required for local execution. Read **Manage →
    Local agent access**, then choose **Enable agents on this computer** once for your group
    membership. This makes no model call. The provider checks its existing sign-in when a
    request starts; use ordinary provider sign-in if needed. See [native owner
    setup](GROUP_NATIVE_OWNER_SETUP.md) for the supported setup and retained isolated mode.
-6. On the creator's computer, choose **Group controls → Shared feed agent → Use this
+6. On the creator's computer, choose **Manage → Shared feed agent → Use this
    computer for the shared feed**. Keep that computer running. Send a short human message
    from each installation and confirm both people can open the originals in the shared
    feed before calling messaging setup complete. Feed updates happen in background batches;
@@ -67,6 +67,12 @@ existing group; never copy their creation capability to a member host.
 
 ## Conversation and work
 
+Groups opens a full-width **Shared chat**. Switch to **Shared feed** for the condensed record;
+**Manage** opens group settings without shrinking the conversation. **Invite people** opens
+the invitation controls directly. The invitation shows its actual expiry date.
+Catch up uses the same reading surface, loads the unread page when opened and keeps detailed
+evidence queries collapsed. Opening it does not mark anything read.
+
 **Shared chat** contains messages you choose to send to the group. **Private to you** opens
 your separate local conversation and draft. Each person requests their own enrolled local
 agent; another participant's message does not authorize work on your computer.
@@ -84,7 +90,7 @@ The selected computer resumes pending summaries when it reconnects, even with it
 Longer summaries can need native setup and QUARK admission; originals remain retained while
 summaries wait.
 
-**Group controls** collects invitations, the feed writer and local agent access. The
+**Manage** collects invitations, the feed writer and local agent access. The
 separately configured mode also offers shared actions, Git and reports. Saved agent
 receipts are collapsed separately; a request needing authorization opens its existing
 controls.

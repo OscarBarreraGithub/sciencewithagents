@@ -527,7 +527,10 @@ export function GroupChat({
       />
     ) : null;
   return (
-    <div className={`group-chat ${fixture ? 'group-fixture-chat' : ''}`} ref={container}>
+    <div
+      className={`group-chat flow-chat-main ${fixture ? 'group-fixture-chat' : ''}`}
+      ref={container}
+    >
       {nativeControlsTarget ? createPortal(nativeOwner, nativeControlsTarget) : nativeOwner}
       {!refused && chat ? (
         <Conversation
@@ -562,14 +565,14 @@ export function GroupChat({
         {slot.context.visibility === 'private'
           ? fixture
             ? 'Private test session · saved locally; excluded from shared feed'
-            : 'Private to you · saved on this computer; excluded from shared feed'
+            : 'Private to you'
           : fixture
             ? 'Shared test session · messages and fake replies enter the shared feed'
             : sendTarget === 'agent'
               ? executionMode === 'host'
-                ? 'Shared chat · your agent uses this computer’s existing sign-in and tools'
+                ? 'Shared with this group · your agent runs on this computer'
                 : 'Shared chat · isolated agent setup applies'
-              : 'Human message · shared with this group'}
+              : 'Shared with this group'}
         {view.blocked && <strong> · Draft conflict: choose a version below.</strong>}
         {view.error === rejectedText && <strong> · Shorten or correct draft to save/send.</strong>}
       </p>
@@ -607,39 +610,44 @@ export function GroupChat({
           {olderReceipts.map(renderReceipt)}
         </details>
       )}
-      {!fixture && !refused && (
-        <div className="group-agent-request">
-          <label>
-            Send to
-            <select
-              value={sendTarget}
-              disabled={deliveryBusy}
-              onChange={(event) =>
-                setSendTarget(event.target.value === 'message' ? 'message' : 'agent')
-              }
-            >
-              <option value="agent">Your agent</option>
-              <option value="message">
-                {slot.context.visibility === 'private' ? 'Private note' : 'Human group message'}
-              </option>
-            </select>
-          </label>
-          {sendTarget === 'agent' && slot.context.visibility === 'shared' && (
-            <label>
-              Agent request
-              <select
-                value={agentIntent}
-                disabled={deliveryBusy}
-                onChange={(event) => setAgentIntent(event.target.value === 'work' ? 'work' : 'ask')}
-              >
-                <option value="ask">Ask</option>
-                <option value="work">Work</option>
-              </select>
-            </label>
-          )}
-        </div>
-      )}
       <Composer
+        extraTools={
+          !fixture &&
+          !refused && (
+            <div className="group-agent-request">
+              <label>
+                <select
+                  aria-label="Send to"
+                  value={sendTarget}
+                  disabled={deliveryBusy}
+                  onChange={(event) =>
+                    setSendTarget(event.target.value === 'message' ? 'message' : 'agent')
+                  }
+                >
+                  <option value="agent">Your agent</option>
+                  <option value="message">
+                    {slot.context.visibility === 'private' ? 'Private note' : 'Group message'}
+                  </option>
+                </select>
+              </label>
+              {sendTarget === 'agent' && slot.context.visibility === 'shared' && (
+                <label>
+                  <select
+                    aria-label="Agent request"
+                    value={agentIntent}
+                    disabled={deliveryBusy}
+                    onChange={(event) =>
+                      setAgentIntent(event.target.value === 'work' ? 'work' : 'ask')
+                    }
+                  >
+                    <option value="ask">Ask</option>
+                    <option value="work">Work</option>
+                  </select>
+                </label>
+              )}
+            </div>
+          )
+        }
         key={slot.context.sessionId}
         agent={chat?.detail.agent ?? slot.agent}
         workspace={null}

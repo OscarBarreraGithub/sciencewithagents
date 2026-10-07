@@ -134,7 +134,7 @@ proof of Free entitlement.
 ### Invitation handoff to a fresh member installation
 
 The creator opens **Invite people → Create invitation** and
-sends the invitation privately. It expires after 15 minutes. In owner-hosted mode, its
+sends the invitation privately. It expires after 7 days. In owner-hosted mode, its
 fragment includes the exact service descriptor (the schema above **without**
 `setupCapability`), group identity and invitation secret. The same link can enroll multiple people before expiry. The fragment is removed
 from the browser address immediately. Do not paste it into public issues, logs or source.
@@ -151,7 +151,7 @@ This validates the descriptor and writes a join-only private configuration; it m
 network request. The person verifies the service belongs to the intended creator. Arbitrary
 browser invitations cannot choose a host, trigger a fetch or override an existing mapping.
 The setup agent is the explicit trusted configuration boundary. Remove the temporary
-invitation file after handoff. If setup took longer than 15 minutes, obtain a fresh invitation
+invitation file after handoff. If setup took longer than 7 days, obtain a fresh invitation
 from the same creator; the saved service mapping stays valid.
 
 Reload Groups, choose **Join by invitation**, paste a current invitation and choose **Join group**.
@@ -215,7 +215,7 @@ codes, with no input, SQL exceptions or stacks. Callers must not log requests/se
 | Route/command                          | Required authority and result                                                                                                                  |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/v1/create`, `initialize`             | Separate setup header plus client installation credential, operation UUID, group name and member name. Returns creator identity.               |
-| `/v1/groups/{uuid}`, `invite`          | Active installation; client-generated invite secret, operation UUID and TTL (1–900 seconds). Returns invite UUID/deadline.                     |
+| `/v1/groups/{uuid}`, `invite`          | Active installation; client-generated invite secret, operation UUID and TTL (1–604800 seconds). Returns invite UUID/deadline.                  |
 | Same route, `join`                     | New installation credential, reusable unexpired invite secret, legacy compatibility value, operation UUID and name. Returns active membership. |
 | Same route, `approve`                  | Legacy compatibility command; the current app does not use an approval step. Already-active exact enrollments can be acknowledged again.       |
 | Same route, `status`                   | Existing pending/active credential; revoked and unknown credentials fail uniformly.                                                            |
@@ -269,7 +269,7 @@ indexed. Lifetime bounds also bound stored-row scans (including historical invit
 | Page                                                         | 1–50 entries; indexed keyset continuation                    |
 | Active installations / lifetime enrollments                  | 64 / 512                                                     |
 | Open unexpired invitations / pending enrollments             | 32 / 32                                                      |
-| Invitation lifetime                                          | Up to 15 minutes for new joins; existing memberships persist |
+| Invitation lifetime                                          | Up to 7 days for new joins; existing memberships persist     |
 | Normal mutation admission                                    | Stops at 1,536 recorded operations or 500 mutations/day      |
 | Member revocation                                            | Exempt from normal admission; at most 512 successes/lifetime |
 | Normal non-delivery SQLite ceiling                           | 16,777,216 bytes (16 MiB), checked before and after writes   |
