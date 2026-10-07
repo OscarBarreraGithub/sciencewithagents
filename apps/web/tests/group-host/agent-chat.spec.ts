@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
 type HostConnection = { origin: string; cookie: string; port: number };
 let child: ChildProcess | undefined,
@@ -94,7 +95,7 @@ async function capture(page: Page, label: string) {
     path: join(root, 'data/normal-groups', `${test.info().project.name}-${label}.png`),
   });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-    test.info().project.use.viewport!.width + 2,
+    await page.evaluate(() => innerWidth + 2),
   );
 }
 test('local agents keep shared and private chats distinct, retain exact retries and expose owner access', async ({
@@ -176,6 +177,87 @@ test('local agents keep shared and private chats distinct, retain exact retries 
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(input).toHaveValue('');
   expect(posts.at(-1)!.body.intent).toBe('work');
+  const reply =
+    'Your group reply stays visible while sharing is pending. You can keep talking here.';
+  const replyId = randomUUID();
+  let completedReads = 0;
+  await page.route('**/api/groups/chat', async (route) => {
+    const response = await route.fetch();
+    const value = await response.json();
+    const receipt = value.nativeRequests?.at(-1);
+    if (receipt?.text === 'Exact shared work instruction') {
+      receipt.state = 'completed';
+      receipt.delivery = 'pending';
+      receipt.message = 'Native reply retained. Shared feed delivery is pending.';
+      if (++completedReads >= 2)
+        value.detail.entries.push({
+          id: replyId,
+          agentId: value.detail.agent.id,
+          runId: receipt.requestId,
+          kind: 'assistant',
+          title: 'Codex response',
+          text: reply,
+          status: 'complete',
+          createdAt: new Date().toISOString(),
+        });
+    }
+    await route.fulfill({ response, json: value });
+  });
+  const replyBubble = page
+    .locator('.conversation .message.assistant .markdown')
+    .filter({ hasText: reply });
+  await expect(replyBubble).toBeVisible();
+  await expect(
+    page.getByText('Native reply retained. Shared feed delivery is pending.', { exact: true }),
+  ).toBeHidden();
+  await expect(
+    page.getByText('Shared with this group · your agent runs on this computer', { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/Saved agent requests/)).toHaveCount(0);
+  const viewport = page.viewportSize()!;
+  if (test.info().project.name === 'desktop')
+    await page.setViewportSize({ width: 2048, height: 1229 });
+  const readingSize = test.info().project.name === 'desktop' ? '22px' : '20px';
+  await expect(replyBubble).toHaveCSS('font-size', readingSize);
+  await expect(input).toHaveCSS('font-size', readingSize);
+  await expect(replyBubble).toBeInViewport();
+  if (test.info().project.name === 'desktop') {
+    const composer = await input.boundingBox();
+    expect(composer!.width).toBeLessThanOrEqual(1050);
+    expect(composer!.width).toBeGreaterThan(900);
+  }
+  await expect(page.locator('.conversation-scroll-hint[aria-hidden="true"]')).toBeHidden();
+  await capture(page, 'readable-completed-reply');
+  await page.getByText('Message details', { exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Retry request', exact: true }).last(),
+  ).toBeVisible();
+  await page.getByText('Message details', { exact: true }).click();
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '150%';
+  });
+  await expect(input).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
+  expect(
+    await page.locator('.conversation').evaluate((element) => {
+      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        if (
+          ['auto', 'scroll'].includes(getComputedStyle(parent).overflowY) &&
+          parent.scrollHeight > parent.clientHeight + 1
+        )
+          return false;
+      }
+      return true;
+    }),
+  ).toBe(true);
+  await capture(page, 'readable-reply-large-text');
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '';
+  });
+  await page.setViewportSize(viewport);
+  await page.unroute('**/api/groups/chat');
   await input.fill('Shared draft stays here');
   const sentBeforeSwitch = posts.length;
   await page.getByRole('button', { name: 'Private to you', exact: true }).click();

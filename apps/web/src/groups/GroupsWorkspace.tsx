@@ -235,6 +235,7 @@ function Workspace(props: GroupsWorkspaceProps) {
           aria-labelledby="groups-feed-tab"
         >
           <GroupFeed
+            active={panel === 'feed'}
             group={group}
             members={props.members}
             loadPage={props.loadPage}

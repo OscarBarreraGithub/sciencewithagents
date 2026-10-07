@@ -15,6 +15,7 @@ import {
   type PublicationBinding,
 } from '@dock/shared/dist/group-delivery.js';
 import { creationGroupId, setupHash } from '../src/crypto.js';
+import { groupPromotionSourceSchema } from '@dock/shared/dist/group-promotion.js';
 const uuid = () => crypto.randomUUID();
 const keyOf = (header: Parameters<typeof publicationKeySchema.parse>[0]) => {
   const { event: _event, ...key } =
@@ -122,6 +123,103 @@ afterEach(async () => {
   await reset();
   Object.assign(env, { HOSTING_MODE: 'disabled', GROUP_SETUP_HASH: '' });
 });
+it.each(['original', 'summary'] as const)(
+  'allows only the first committed %s for a legacy chat source across concurrent staged deliveries and eviction',
+  async (first) => {
+    const f = await fixture();
+    const raw = await f.event('Exact legacy chat original 🧬');
+    const sourceId = await runInDurableObject(
+      f.stub,
+      (_instance, state) =>
+        state.storage.sql
+          .exec<{
+            source_id: string;
+          }>('SELECT source_id FROM delivery_messages WHERE message_id=?', raw.header.event.scope.source.messageId)
+          .one().source_id,
+    );
+    const source = groupPromotionSourceSchema.parse({
+      key: { groupId: f.groupId, sourceId, version: '1' },
+      writerId: f.identity.installationId,
+      scope: raw.header.event.scope,
+      projectionScope: raw.header.event.scope,
+      kind: 'human',
+      activity: 'substantive',
+      contentMode: 'shared-content',
+      original: { kind: 'inline', text: 'Exact legacy chat original 🧬' },
+      evidenceRefs: [],
+      correction: null,
+      decision: null,
+      synthesisAuthorized: false,
+    });
+    const promotion = (command: unknown) =>
+      f.stub.promote({ groupId: f.groupId, credential: f.credential, command });
+    expect(await promotion({ kind: 'register', source })).toMatchObject({
+      ok: true,
+      value: { kind: 'retained' },
+    });
+    expect(
+      await promotion({ kind: 'designate', writerId: f.identity.installationId }),
+    ).toMatchObject({ ok: true });
+    const summary = await f.event('Exact legacy chat original 🧬');
+    const projected = groupPromotionSourceSchema.parse({
+      ...source,
+      projectionScope: summary.header.event.scope,
+    });
+    const adopted = await promotion({ kind: 'adopt', source: projected });
+    expect(adopted).toMatchObject({ ok: true, value: { kind: 'registered' } });
+    if (!adopted.ok || adopted.value.kind !== 'registered')
+      throw new Error('Expected adopted source');
+    expect(
+      await promotion({
+        kind: 'command',
+        command: { kind: 'reserve', identity: adopted.value.identity },
+      }),
+    ).toMatchObject({ ok: true });
+    for (const envelope of [raw, summary]) {
+      expect(
+        await f.call({ kind: 'effect', packet: { kind: 'begin', header: envelope.header } }),
+      ).toMatchObject({ ok: true });
+      for (const chunk of envelope.chunks)
+        expect(
+          await f.call({
+            kind: 'effect',
+            packet: { kind: 'chunk', key: keyOf(envelope.header), chunk },
+          }),
+        ).toMatchObject({ ok: true });
+    }
+    const winner = first === 'original' ? raw : summary;
+    const loser = first === 'original' ? summary : raw;
+    expect(
+      await f.call({ kind: 'effect', packet: { kind: 'commit', key: keyOf(winner.header) } }),
+    ).toMatchObject({ ok: true, value: { receipt: { state: 'committed' } } });
+    await evictDurableObject(f.stub);
+    expect(
+      await f.call({ kind: 'effect', packet: { kind: 'commit', key: keyOf(loser.header) } }),
+    ).toMatchObject({ ok: true, value: { receipt: { state: 'collision' } } });
+    expect(await promotion({ kind: 'state', key: source.key })).toMatchObject({
+      ok: true,
+      value: { state: 'complete' },
+    });
+    if (first === 'original') {
+      expect(await promotion({ kind: 'pending', after: 0 })).toMatchObject({
+        ok: true,
+        value: { source: null, pending: 0 },
+      });
+      expect(await promotion({ kind: 'adopt', source: projected })).toMatchObject({
+        ok: false,
+        error: 'denied',
+      });
+      expect(
+        await promotion({
+          kind: 'command',
+          command: { kind: 'startSynthesis', identity: adopted.value.identity },
+        }),
+      ).toMatchObject({ ok: false, error: 'denied' });
+    }
+    const page = await f.call({ kind: 'feed', after: 0, limit: 8, cursor: null });
+    expect(page).toMatchObject({ ok: true, value: { kind: 'feed', watermark: 1 } });
+  },
+);
 it('persists exact receipts/chunks across eviction, immutable originals and authoritative snapshot cursors', async () => {
   const f = await fixture(),
     a = await f.event(' e\u0301 é 🧬 \u202e\n exact', 3);

@@ -17,6 +17,7 @@ import {
 import { MEMBERSHIP_LIMITS } from '@dock/shared/dist/group-membership.js';
 import { capabilityHash, hostingEnvironment } from './crypto.js';
 import { MEMBERSHIP_CAPACITY as C } from './capacity.js';
+import { chatDeliveryConflict } from './chat-source-delivery.js';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS delivery_control (
@@ -599,6 +600,9 @@ export class DeliveryStorage {
           key.operationId,
         ).map((r) => JSON.parse(r.chunk) as unknown);
         if (!publicationEnvelopeSchema.safeParse({ header, chunks }).success)
+          return { ...key, state: 'collision' };
+        const original = chunks.map((chunk) => (chunk as { text: string }).text).join('');
+        if (chatDeliveryConflict(this.storage.sql, op.source_id, original))
           return { ...key, state: 'collision' };
         const sequence = this.rows<{ n: number }>(
           'SELECT COALESCE(MAX(sequence),0)+1 AS n FROM delivery_operations',

@@ -46,11 +46,10 @@ uses fake providers and is not a substitute for this setup.
    membership. This makes no model call. The provider checks its existing sign-in when a
    request starts; use ordinary provider sign-in if needed. See [native owner
    setup](GROUP_NATIVE_OWNER_SETUP.md) for the supported setup and retained isolated mode.
-6. On the creator's computer, choose **Manage → Shared feed agent → Use this
-   computer for the shared feed**. Keep that computer running. Send a short human message
-   from each installation and confirm both people can open the originals in the shared
-   feed before calling messaging setup complete. Feed updates happen in background batches;
-   native-agent readiness is a separate check.
+6. Send a short human message from each installation and confirm both people can read it
+   and open its original in the shared feed. Shared messages and completed agent replies
+   publish directly; selecting a feed-summary computer is not required. The visible feed
+   checks for new arrivals automatically. Native-agent readiness is a separate check.
 
 Opening an invitation in an existing app tab opens Join with that invitation, including
 from an already open group. The app removes the invitation from the address immediately;
@@ -86,12 +85,13 @@ fallback to a human message; newer typing stays separate.
 Human-message Send retains what you send before delivery. **Retry delivery** uses the
 same saved message after a lost reply; it does not create another message. Open an original
 from the feed to read the exact retained text. Delivery status is separate from local saving.
-The selected computer resumes pending summaries when it reconnects, even with its browser closed.
-Longer summaries can need native setup and QUARK admission; originals remain retained while
-summaries wait.
+Shared originals use the durable delivery queue independently of optional summaries.
+A summary, provider limit or offline summary computer cannot hold up a saved chat reply.
+The older selected-writer summary workflow remains for retained activity; automatic
+per-member background summarization is not yet delivered.
 
-**Manage** collects invitations, the feed writer and local agent access. The
-separately configured mode also offers shared actions, Git and reports. Saved agent
+**Manage** collects invitations, Shared files, the optional feed writer and local agent
+access. The separately configured isolated mode also offers its own shared actions, Git and reports. Saved agent
 receipts are collapsed separately; a request needing authorization opens its existing
 controls.
 
@@ -117,10 +117,12 @@ their separately configured adapter.
 
 ## Private reading, files and Git
 
-GitHub is optional for messaging. For shared code/files, copy the optional **GitHub setup
-prompt** in Groups into your external setup agent. It helps sign in, choose the repository
-and visibility, and invite collaborators through native Git/GitHub tools. It does not
-enable the separate protected Git panel or automatically publish local files.
+GitHub is optional for messaging. For shared code/files, open **Manage group → Shared
+files** and copy the scoped setup prompt into your setup agent. It identifies this group’s
+shared folder and helps connect the intended repository. Each person supplies their GitHub
+username and signs in to their own account; unknown usernames stay blank. Repository access
+is separate from group membership. After setup, enable **Automatic sync** for reviewed,
+applied commits and clean checkouts. See [shared files and branches](GROUP_NATIVE_GIT.md).
 
 Private conversations, drafts, files and native history are not automatically published to
 the shared feed. **What mattered
@@ -129,10 +131,12 @@ shared evidence and retains its exact acknowledged snapshot across reload; unkno
 remain unknown. Notepad/draft conflicts require choosing a version rather than silently
 replacing your text.
 
-The protected shared Git, captured reports and confirmed-action board are not available
-in local-agent v1. Their older records are retained. Native agents can still use their
-ordinary Git, terminal and file tools; this does not automatically transfer files to
-other members. [Status](STATUS.md#groups) records the current scope.
+The older protected Git, captured-report and confirmed-action adapters remain separate
+from native mode and retain their records. Native shared-file sync uses ordinary task
+worktrees, independent review and exact integration previews. Creating a group alone
+still does not select or create a repository: connect the intended shared folder and
+collaborators with the setup agent before enabling sync. Private conversation history and
+credentials stay outside Git. [Status](STATUS.md#groups) records the current scope.
 
 ## Setup-agent boundary and limits
 

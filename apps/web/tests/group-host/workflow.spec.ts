@@ -428,15 +428,6 @@ test('invitation directly joins a second authenticated host and opens its privat
     await expect(page.locator('.groups-member-list')).toContainText('Li Ming');
     await capture(member, 'joined-directly');
     await capture(page, 'joined-members');
-    await page.getByRole('button', { name: 'Manage', exact: true }).click();
-    await page.getByText('Shared feed agent', { exact: true }).click();
-    await page
-      .getByRole('button', { name: 'Use this computer for the shared feed', exact: true })
-      .click();
-    await expect(
-      page.getByText('This computer is the shared feed writer.', { exact: false }),
-    ).toBeVisible();
-    await page.getByRole('button', { name: 'Done', exact: true }).click();
     await chat(member);
     await member.getByRole('button', { name: 'Private to you', exact: true }).click();
     await member.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
@@ -455,29 +446,32 @@ test('invitation directly joins a second authenticated host and opens its privat
     await sharedInput.fill(original);
     await member.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(member.locator('.conversation')).toContainText('SECOND-HOST-SHARED-EXACT');
-    await promotion('pass');
+    await promotion('pass', true); // Lose only the next direct publication acknowledgement.
     await chat(page);
     await page.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
     await page.getByPlaceholder('Send a group message…').fill('FIRST-HOST-UNCERTAIN-COMMIT');
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(page.locator('.conversation')).toContainText('FIRST-HOST-UNCERTAIN-COMMIT');
-    const lost = await promotion('pass', true);
+    await expect.poll(async () => (await promotion('inspect')).lostAcknowledgements).toBe(1);
+    const lost = await promotion('inspect');
     expect(lost.lostAcknowledgements).toBe(1);
     expect(lost.lostCommit).toBeDefined();
     expect(lost.publication).toEqual({ ...lost.lostCommit, state: 'uncertain' });
-    expect(lost.synthesisRequests).toBe(2);
+    expect(lost.synthesisRequests).toBe(0);
+    await page.getByText('Message details', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retry delivery', exact: true })).toBeVisible();
     await page.reload();
     await chat(page);
     expect((await promotion('inspect')).publication).toEqual(lost.publication);
-    // Existing durable backoff remains authoritative; advance the normal writer lifecycle.
+    // Recover the same direct outbox operation after reload; no summary/model turn.
+    await page.getByText('Message details', { exact: true }).click();
+    await page.getByRole('button', { name: 'Retry delivery', exact: true }).click();
     await expect
-      .poll(async () => (await promotion('pass')).publication, { intervals: [250, 500, 1000] })
+      .poll(async () => (await promotion('inspect')).publication, { intervals: [250, 500, 1000] })
       .toEqual({ ...lost.lostCommit, state: 'complete' });
     const recovered = await promotion('inspect');
     expect(recovered.lostAcknowledgements).toBe(1);
-    expect(recovered.synthesisRequests).toBe(2);
-    await page.getByRole('button', { name: 'Retry delivery', exact: true }).click();
+    expect(recovered.synthesisRequests).toBe(0);
     await expect(page.getByRole('button', { name: 'Retry delivery', exact: true })).toHaveCount(0);
     await feed(page);
     await page.getByRole('button', { name: 'Refresh shared feed', exact: true }).click();
@@ -495,6 +489,50 @@ test('invitation directly joins a second authenticated host and opens its privat
     );
   } finally {
     await context.close().catch(() => {});
+  }
+});
+test('shared feed receives another member without a writer, reload or refresh click', async ({
+  page,
+  browser,
+}) => {
+  await enter(page);
+  await create(page, 'Live feed River');
+  await page.getByRole('button', { name: 'Invite people', exact: true }).click();
+  await page.getByRole('button', { name: 'Create invitation', exact: true }).click();
+  const link = await page.getByLabel('Invitation link', { exact: true }).inputValue();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await feed(page);
+  await expect(page.locator('.groups-feed-panel')).toContainText('No shared events yet.');
+  const context = await browser.newContext({ viewport: test.info().project.use.viewport });
+  try {
+    const member = await context.newPage();
+    await authenticate(member, connection.secondary);
+    await member.goto(`${connection.secondary.origin}/${new URL(link).hash}`);
+    await member.getByLabel('Your display name', { exact: true }).fill('Li Ming');
+    await member.getByRole('button', { name: 'Join group', exact: true }).click();
+    await expect(
+      member.getByRole('heading', { name: 'Live feed River', exact: true }),
+    ).toBeVisible();
+    await member.getByRole('combobox', { name: 'Send to', exact: true }).selectOption('message');
+    await member.getByPlaceholder('Send a group message…').fill('Live message from Li Ming');
+    await member.getByRole('button', { name: 'Send message', exact: true }).click();
+    // No feed-writer configuration and no manual refresh on the reader.
+    await expect(page.locator('.groups-feed-panel')).toContainText('Live message from Li Ming', {
+      timeout: 15000,
+    });
+    await page.getByRole('button', { name: 'Read exact original', exact: true }).click();
+    await expect(page.locator('.groups-original')).toContainText('Live message from Li Ming');
+    await member.getByPlaceholder('Send a group message…').fill('A second shared update');
+    await member.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(page.locator('.groups-feed-panel')).toContainText('A second shared update', {
+      timeout: 15000,
+    });
+    await expect(page.locator('.groups-feed-panel article')).toHaveCount(2);
+    await expect(page.locator('.groups-original')).toContainText('Live message from Li Ming');
+    expect((await promotion('inspect')).synthesisRequests).toBe(0);
+    await capture(page, 'live-feed');
+  } finally {
+    await context.close();
   }
 });
 test('150% text keeps shared/private Conversation and Composer reachable', async ({ page }) => {

@@ -31,9 +31,12 @@ or network sandbox: a native agent can access whatever its owner’s native perm
 For shared work, use the group workspace and share files deliberately. Never put credentials
 or other people’s private information into a shared message.
 
-Git/report controls that depend on the older isolated runtime are not prerequisites for
-chat. Their availability is separate from native chat readiness. See [current status](STATUS.md#groups)
-for the exact delivered scope and acceptance evidence.
+Connect shared code/files through [native Git setup](GROUP_NATIVE_GIT.md). Each member uses
+their own GitHub account and the same intended repository. Shared Work uses member/request
+branches, task worktrees and independently reviewed integration. Optional sync publishes
+reviewed applied commits and fast-forwards clean checkouts; it does not publish private
+history or unfinished files. The older isolated Git/report adapters remain separate. See
+[current status](STATUS.md#groups) for the delivered scope and acceptance evidence.
 
 ## Existing installations
 

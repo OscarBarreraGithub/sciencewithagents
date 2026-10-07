@@ -2,6 +2,7 @@ import { GroupReports } from './GroupReports';
 import { GroupSetupPrompt } from './GroupSetupPrompt';
 import { GroupJoinReceipt } from './GroupJoinReceipt';
 import { GroupGitPanel } from './GroupGitPanel';
+import { GroupNativeGitPanel } from './GroupNativeGitPanel';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { groupFeedPageSchema, type GroupEvent, type GroupFeedQuery } from '@dock/shared';
 import * as contracts from '@dock/shared/dist/group-host.js';
@@ -539,6 +540,9 @@ export function GroupsApp({ route }: { route: string }) {
                   </button>
                 ))}
             </details>
+            {selected.native.executionMode === 'host' && (
+              <GroupNativeGitPanel key={selected.shared.handle} handle={selected.shared.handle} />
+            )}
             {selected.native.executionMode !== 'host' && (
               <>
                 <details className="group-host-members group-host-actions">
@@ -552,8 +556,8 @@ export function GroupsApp({ route }: { route: string }) {
             <details className="group-host-members">
               <summary>Shared feed agent</summary>
               <p>
-                The creator chooses the computer that condenses shared sources. Originals stay
-                available, and pending summaries resume when that computer reconnects.
+                Messages appear without a summary agent. This optional agent condenses older shared
+                sources; pending summaries resume when its computer reconnects.
               </p>
               <p role="status">{selected.feedWriter?.message}</p>
               {selected.feedWriter?.canSelect && (

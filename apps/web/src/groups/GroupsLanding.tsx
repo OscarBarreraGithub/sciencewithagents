@@ -172,6 +172,9 @@ export function GroupsLanding({
                   onChange={(event) => setProject(event.target.value)}
                 />
               </label>
+              <p>
+                Sharing files too? After creation, connect GitHub in Manage group → Shared files.
+              </p>
               {setupCodeRequired && (
                 <>
                   <label>

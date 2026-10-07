@@ -13,6 +13,7 @@ import {
 } from '@dock/shared/dist/group-promotion-host.js';
 import { GroupPromotionDoHandler, type GroupPromotionDoStorage } from './group-promotion.js';
 import { capabilityHash, digest } from './crypto.js';
+import { chatSourceDelivered, directChatDelivered } from './chat-source-delivery.js';
 
 type Actor = {
   member_id: string;
@@ -142,6 +143,7 @@ export class GroupPromotionHost {
         const policy: GroupPromotionPolicy = {
           authorize: (_a, identity) => {
             source(identity);
+            if (directChatDelivered(this.storage.sql, identity.key.sourceId)) fail('denied');
           },
           authorizeWriter: (_a, writerId) => {
             const renewal =
@@ -321,17 +323,19 @@ export class GroupPromotionHost {
             ok: true,
             value: {
               kind: 'status',
-              state: receipt?.publicationOperationId
-                ? 'complete'
-                : receipt?.disposition
-                  ? 'suppressed'
-                  : 'pending',
+              state:
+                receipt?.publicationOperationId ||
+                chatSourceDelivered(this.storage.sql, command.key.sourceId)
+                  ? 'complete'
+                  : receipt?.disposition
+                    ? 'suppressed'
+                    : 'pending',
             },
           };
         }
         if (command.kind === 'pending') {
           requireWriter(false);
-          const pendingSql = `FROM group_promotion_producers p LEFT JOIN group_promotion_receipts r ON r.source_id=p.source_id AND r.version=p.version WHERE (r.receipt_json IS NULL OR (json_extract(r.receipt_json,'$.publicationOperationId') IS NULL AND json_extract(r.receipt_json,'$.disposition') IS NULL))`;
+          const pendingSql = `FROM group_promotion_producers p LEFT JOIN group_promotion_receipts r ON r.source_id=p.source_id AND r.version=p.version WHERE (r.receipt_json IS NULL OR (json_extract(r.receipt_json,'$.publicationOperationId') IS NULL AND json_extract(r.receipt_json,'$.disposition') IS NULL)) AND NOT (json_extract(p.source_json,'$.kind') IN ('human','native') AND EXISTS(SELECT 1 FROM delivery_operations o WHERE o.source_id=p.source_id AND o.state='committed'))`;
           const row = this.rows<{ source_json: string; display_name: string; position: number }>(
             `SELECT p.source_json,p.display_name,p.rowid AS position ${pendingSql} AND p.rowid>? ORDER BY p.rowid LIMIT 1`,
             command.after,
@@ -441,6 +445,7 @@ export class GroupPromotionHost {
             return { ok: true, value: { kind: 'retained', key: s.key } };
           }
           requireWriter();
+          if (directChatDelivered(this.storage.sql, s.key.sourceId)) fail('denied');
           matches(s.projectionScope);
           if (
             !prior ||

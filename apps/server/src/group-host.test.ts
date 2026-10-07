@@ -33,11 +33,21 @@ import { Runtime } from './runtime.js';
 import { createServer } from './server.js';
 import { LocalAccess, prepareLocalAccess } from './local-access.js';
 import { localRequestProof } from '@dock/shared/dist/local-authorization.js';
-import { groupHostOpenSchema, groupHostReceiptSchema } from '@dock/shared/dist/group-host.js';
+import {
+  groupHostOpenSchema,
+  groupHostReceiptSchema,
+  type GroupHostOpen,
+} from '@dock/shared/dist/group-host.js';
+import { publicationCanonical } from './group-publication-protocol.js';
 import { proxyPath } from './hosts.js';
 import { groupActionResultSchema } from '@dock/shared/dist/group-actions.js';
 import type { GroupPromotionSynthesis, GroupPromotionSynthesisResult } from './group-promotion.js';
-import { groupEventIdSchema, type GroupContext } from '@dock/shared';
+import {
+  groupEventIdSchema,
+  groupOperationIdSchema,
+  groupEntityIdSchema,
+  type GroupContext,
+} from '@dock/shared';
 
 const secret = () => randomBytes(32).toString('hex');
 let root: string, endpoint: string, worker: ChildProcess | undefined, port: number;
@@ -253,6 +263,71 @@ async function create(f: Awaited<ReturnType<typeof installation>>, name = 'River
   expect(response.statusCode, response.body).toBe(200);
   return { input, open: groupHostOpenSchema.parse(response.json()) };
 }
+/** Pre-direct-delivery producer fixture. Its original IDs and pending receipt
+ * model an installation saved by the previous host, not a new normal send. */
+async function legacyHuman(
+  f: Awaited<ReturnType<typeof installation>>,
+  open: GroupHostOpen,
+  input: { handle: string; key: string; text: string },
+) {
+  expect(input.handle).toBe(open.shared.handle);
+  const messageId = randomUUID(),
+    operationId = randomUUID(),
+    entityId = randomUUID(),
+    runId = randomUUID();
+  const source = {
+    sessionId: open.shared.context.sessionId,
+    provider: open.shared.context.provider,
+    nativeSessionId: open.shared.context.nativeSessionId,
+    messageId,
+  };
+  const scope = {
+    groupId: open.shared.context.groupId,
+    memberId: open.shared.context.memberId,
+    installationId: open.shared.context.installationId,
+    visibility: 'shared' as const,
+    source,
+    causalRefs: [],
+  };
+  const event = f.host.events.append(f.host.events.trustedHostScope(scope), {
+    operationId: groupOperationIdSchema.parse(operationId),
+    entityId: groupEntityIdSchema.parse(entityId),
+    expectedRevision: 0,
+    category: 'Question',
+    condensedText: 'Human original retained on its source computer',
+    original: { kind: 'inline', text: input.text },
+    evidenceRefs: [],
+    corrects: null,
+  }).event;
+  const port = await f.host.promotionContext(open.group.handle);
+  const sourceId = await port.registerSource(source, operationId);
+  const promotionReceiptId = `human:${input.handle}:${input.key}`;
+  const promotionState = await f.host.promotion.retain({
+    receiptId: promotionReceiptId,
+    enrollmentHandle: open.group.handle,
+    sourceId,
+    scope: event.scope,
+    kind: 'human',
+    original: { kind: 'inline', text: input.text },
+  });
+  f.host.db.prepare('INSERT INTO gh_sends VALUES(?,?,?,?)').run(
+    input.handle,
+    input.key,
+    publicationCanonical(input),
+    JSON.stringify({
+      messageId,
+      operationId,
+      entityId,
+      runId,
+      eventId: event.eventId,
+      deliveryOperation: null,
+      promotionReceiptId,
+      promotionState,
+      createdAt: new Date().toISOString(),
+    }),
+  );
+  return promotionState;
+}
 
 it('normal action board retains authenticated instructions across lost response/restart and excludes private mutation', async () => {
   let lose = true;
@@ -394,13 +469,15 @@ it('shared work intent supplies a committed instruction and exact native task re
   });
   expect(page.statusCode, page.body).toBe(200);
   expect(page.json().entries.map((event: { category: string }) => event.category)).toEqual([
+    'Question',
     'Instruction',
+    'Question',
     'Decision',
   ]);
   const catchup = await a.post('catchup/start', { handle: open.private.handle });
   expect(catchup.statusCode, catchup.body).toBe(200);
-  expect(catchup.json().entries).toHaveLength(2);
-  expect(catchup.json().sourceFacts).toHaveLength(2);
+  expect(catchup.json().entries).toHaveLength(4);
+  expect(catchup.json().sourceFacts).toHaveLength(4);
   expect((await a.post('catchup/start', { handle: open.shared.handle })).statusCode).toBe(409);
   const read = catchup.json();
   const acknowledgement = {
@@ -721,7 +798,7 @@ it('protected hosted configuration routes approval only in server headers for al
     text: 'Actual local workerd result through configured hosted seam',
   };
   await selectFeedWriter(a, open.shared.handle);
-  expect((await a.post('send', input)).json().delivery).toContain('pending');
+  expect((await a.post('send', input)).json().delivery).toBe('complete');
   await progressFeed(a);
   const feed = await b.post('feed', {
     handle: joined.open.shared.handle,
@@ -1131,8 +1208,6 @@ it('same durable human context publishes multiple exact originals, reconciles lo
     b = await installation(),
     c = await installation();
   const { open } = await create(a, 'Human publication');
-  const summary = controlledFeedSynthesis();
-  await selectFeedWriter(a, open.shared.handle, summary);
   const joined = await joinMember(a, b, open.group.handle);
   const other = await create(c, 'Other group');
   const firstInput = {
@@ -1142,8 +1217,7 @@ it('same durable human context publishes multiple exact originals, reconciles lo
   };
   const first = await a.post('send', firstInput);
   expect(first.statusCode, first.body).toBe(200);
-  expect(first.json().delivery).toContain('pending');
-  await progressFeed(a);
+  expect(first.json().delivery).toBe('uncertain');
   const retained = () =>
     JSON.parse(
       String(
@@ -1153,11 +1227,8 @@ it('same durable human context publishes multiple exact originals, reconciles lo
       ),
     );
   const ids = retained();
-  const projection = a.host.db
-    .prepare('SELECT source_json FROM gh_promotion_projections ORDER BY rowid LIMIT 1')
-    .get()!;
-  expect(projection).toBeTruthy();
-  expect(ids.promotionReceiptId).toBeTruthy();
+  expect(ids.deliveryOperation).toBeTruthy();
+  expect(ids.promotionReceiptId).toBeUndefined();
   expect((await a.post('send', { ...firstInput, text: 'changed' })).statusCode).toBe(409);
   const privateInput = {
     handle: open.private.handle,
@@ -1170,15 +1241,12 @@ it('same durable human context publishes multiple exact originals, reconciles lo
   await stopWorker();
   await startWorker();
   const resumed = await installation(directory);
-  resumed.host.promotion.start(summary);
   await new Promise((resolve) => setTimeout(resolve, 1100)); // retained publication backoff, then receipt-only reconciliation
-  await progressFeed(resumed);
   expect(
     (
       await resumed.post('status', { handle: firstInput.handle, key: firstInput.key, retry: true })
     ).json().delivery,
   ).toBe('complete');
-  await progressFeed(resumed);
   const same = await resumed.post('send', firstInput);
   expect(same.statusCode, same.body).toBe(200);
   expect(same.json().runId).toBe(first.json().runId);
@@ -1196,13 +1264,11 @@ it('same durable human context publishes multiple exact originals, reconciles lo
     entityId: ids.entityId,
     runId: ids.runId,
     eventId: ids.eventId,
-    promotionReceiptId: ids.promotionReceiptId,
+    deliveryOperation: ids.deliveryOperation,
   });
-  expect(
-    resumed.host.db
-      .prepare('SELECT source_json FROM gh_promotion_projections ORDER BY rowid LIMIT 1')
-      .get(),
-  ).toEqual(projection);
+  expect(resumed.host.db.prepare('SELECT count(*) n FROM gh_promotion_projections').get()!.n).toBe(
+    0,
+  );
   const more = ['Second unchanged original 🧬', 'Third unchanged original e\u0301'];
   for (const text of more) {
     const result = await resumed.post('send', {
@@ -1211,8 +1277,7 @@ it('same durable human context publishes multiple exact originals, reconciles lo
       text,
     });
     expect(result.statusCode, result.body).toBe(200);
-    expect(result.json().delivery).toContain('pending');
-    await progressFeed(resumed);
+    expect(result.json().delivery).toBe('complete');
   }
   const memberText = 'Li Ming shared human original';
   expect(
@@ -1223,8 +1288,7 @@ it('same durable human context publishes multiple exact originals, reconciles lo
         text: memberText,
       })
     ).json().delivery,
-  ).toContain('pending');
-  await progressFeed(resumed);
+  ).toBe('complete');
   const query = { visibility: 'shared', after: 0, limit: 8, cursor: null };
   const response = await b.post('feed', { handle: joined.open.shared.handle, query });
   expect(response.statusCode, response.body).toBe(200);
@@ -1232,8 +1296,7 @@ it('same durable human context publishes multiple exact originals, reconciles lo
   expect(events).toHaveLength(4);
   expect(new Set(events.map((e: { eventId: string }) => e.eventId)).size).toBe(4);
   const owned = events.filter(
-    (e: { origin: { scope: { memberId: string } } }) =>
-      e.origin.scope.memberId === open.member.memberId,
+    (e: { scope: { memberId: string } }) => e.scope.memberId === open.member.memberId,
   );
   expect(owned).toHaveLength(3);
   for (const event of owned) {
@@ -1280,6 +1343,233 @@ it('same durable human context publishes multiple exact originals, reconciles lo
 
 // Controlled host contract fixture: no provider/native process or acceptance
 // readiness is proved here. The production factory has its own review/canaries.
+it('delivers exact human messages and native question/reply between hosts without a feed writer, preserving retries and private results', async () => {
+  let submits = 0;
+  const snapshots = new Map<string, GroupNativeSnapshot>();
+  const factory: GroupNativeConnectorFactory = ({ events }) => ({
+    availability: () => ({
+      available: true,
+      productionReady: true,
+      authState: 'ready',
+      message: 'Controlled native result',
+    }),
+    async submit(input) {
+      submits++;
+      const { sessionId: _owner, ...scope } = input.context;
+      const context = events.createContext({
+        ...scope,
+        provider: 'codex',
+        nativeSessionId: randomUUID(),
+      });
+      const result: GroupNativeSnapshot = {
+        requestId: input.requestId,
+        state: 'completed',
+        message: 'Native reply retained.',
+        result: {
+          context,
+          text:
+            context.visibility === 'shared'
+              ? 'Exact native answer 🧬\nwith original spacing.  '
+              : 'PRIVATE-ANSWER',
+          nativeToolItems: 1,
+          ...(context.visibility === 'shared'
+            ? {
+                source: {
+                  sessionId: context.sessionId,
+                  provider: context.provider,
+                  nativeSessionId: context.nativeSessionId,
+                  messageId: randomUUID(),
+                },
+              }
+            : {}),
+        },
+      };
+      snapshots.set(input.requestId, result);
+      return result;
+    },
+    async inspect({ requestId }) {
+      return snapshots.get(requestId)!;
+    },
+  });
+  const a = await installation(undefined, { nativeFactory: factory });
+  const { open } = await create(a, 'Direct shared originals');
+  const b = await installation();
+  const joined = await joinMember(a, b, open.group.handle);
+  expect((await a.host.open({ handle: open.group.handle })).feedWriter?.enabled).toBe(false);
+  const human = {
+    handle: joined.open.shared.handle,
+    key: randomUUID(),
+    text: '  Exact human message e\u0301 🧬\n',
+  };
+  expect((await b.post('send', human)).json().delivery).toBe('complete');
+  const request = { handle: open.shared.handle, key: randomUUID(), text: 'Shared agent question?' };
+  const reply = await a.post('request-agent', request);
+  expect(reply.statusCode, reply.body).toBe(200);
+  expect(reply.json()).toMatchObject({ state: 'completed', delivery: 'complete' });
+  const query = { visibility: 'shared', after: 0, limit: 20, cursor: null };
+  const feed = await b.post('feed', { handle: joined.open.shared.handle, query });
+  expect(feed.statusCode, feed.body).toBe(200);
+  expect(feed.json().entries).toHaveLength(3);
+  const originals = await Promise.all(
+    feed
+      .json()
+      .entries.map(
+        async (event: { eventId: string }) =>
+          (
+            await b.post('original', { handle: joined.open.shared.handle, eventId: event.eventId })
+          ).json().text,
+      ),
+  );
+  expect(originals).toEqual([
+    human.text,
+    request.text,
+    'Exact native answer 🧬\nwith original spacing.  ',
+  ]);
+  const chat = await a.post('chat', { handle: open.shared.handle });
+  expect(chat.body).toContain('Exact native answer');
+  expect(
+    chat.json().detail.entries.filter((entry: { text: string }) => entry.text === request.text),
+  ).toHaveLength(1);
+  const originalRecord = a.host.nativeJournal.get(request.handle, request.key)!;
+  expect(originalRecord.receipt.deliveryOperation).toBeTruthy();
+  expect(a.host.db.prepare('SELECT count(*) n FROM gh_promotion_inputs').get()!.n).toBe(0);
+  await a.close();
+  const restarted = await installation(a.directory, { nativeFactory: factory });
+  const replay = await restarted.post('request-agent', request);
+  expect(replay.json()).toEqual(reply.json());
+  expect(submits).toBe(1);
+  expect(restarted.host.nativeJournal.get(request.handle, request.key)!.receipt).toEqual(
+    originalRecord.receipt,
+  );
+  await selectFeedWriter(restarted, open.shared.handle);
+  await progressFeed(restarted);
+  expect(
+    (await b.post('feed', { handle: joined.open.shared.handle, query })).json().entries,
+  ).toHaveLength(3);
+  const privateReply = await restarted.post('request-agent', {
+    handle: open.private.handle,
+    key: randomUUID(),
+    text: 'PRIVATE-QUESTION',
+  });
+  expect(privateReply.json()).toMatchObject({ state: 'completed', delivery: 'private' });
+  expect((await b.post('feed', { handle: joined.open.shared.handle, query })).body).not.toContain(
+    'PRIVATE',
+  );
+  expect(
+    (await b.post('feed', { handle: joined.open.shared.handle, query })).json().entries,
+  ).toHaveLength(3);
+});
+
+it.each([false, true])(
+  'recovers an accepted legacy native result with summary already complete=%s without replay or duplicate shared events',
+  async (summaryComplete) => {
+    const a = await installation();
+    const { open } = await create(a, 'Legacy native delivery');
+    const b = await installation();
+    const joined = await joinMember(a, b, open.group.handle);
+    const request = {
+      handle: open.shared.handle,
+      key: randomUUID(),
+      text: 'Original accepted shared question?',
+    };
+    let record = a.host.nativeJournal.prepare(request.handle, {
+      key: request.key,
+      text: request.text,
+      context: open.shared.context,
+      enrollmentHandle: open.group.handle,
+    });
+    const { sessionId: _owner, ...scope } = open.shared.context;
+    const context = a.host.events.createContext({
+      ...scope,
+      provider: 'codex',
+      nativeSessionId: randomUUID(),
+    });
+    const source = {
+      sessionId: context.sessionId,
+      provider: context.provider,
+      nativeSessionId: context.nativeSessionId,
+      messageId: randomUUID(),
+    };
+    const text = 'Exact accepted reply before delivery migration 🧬';
+    record = a.host.nativeJournal.record(record, {
+      requestId: record.request.requestId,
+      state: 'completed',
+      message: 'Native reply retained.',
+      result: { context, source, text, nativeToolItems: 1 },
+    });
+    const access = a.host.events.trustedHostScope({
+      groupId: context.groupId,
+      memberId: context.memberId,
+      installationId: context.installationId,
+      visibility: 'shared',
+      source,
+      causalRefs: [],
+    });
+    const event = a.host.events.append(access, {
+      operationId: groupOperationIdSchema.parse(record.ids.operationId),
+      entityId: groupEntityIdSchema.parse(record.ids.entityId),
+      expectedRevision: 0,
+      category: 'Finding',
+      condensedText: 'Verified native original retained on its source computer',
+      original: { kind: 'inline', text },
+      evidenceRefs: [],
+      corrects: null,
+    }).event;
+    record = a.host.nativeJournal.mark(record, { eventId: event.eventId });
+    const port = await a.host.promotionContext(open.group.handle);
+    const sourceId = await port.registerSource(source, record.ids.operationId);
+    const legacyId = `native:${record.request.requestId}`;
+    expect(
+      await a.host.promotion.retain({
+        receiptId: legacyId,
+        enrollmentHandle: open.group.handle,
+        sourceId,
+        scope: event.scope,
+        kind: 'native',
+        original: { kind: 'inline', text },
+      }),
+    ).toContain('pending');
+    if (summaryComplete) {
+      await selectFeedWriter(a, open.shared.handle);
+      await progressFeed(a);
+      expect(await a.host.promotion.status(legacyId)).toBe('complete');
+    }
+    await a.close();
+    const resumed = await installation(a.directory);
+    const recovered = await resumed.post('request-agent', request);
+    expect(recovered.statusCode, recovered.body).toBe(200);
+    expect(recovered.json()).toMatchObject({
+      requestId: record.request.requestId,
+      state: 'completed',
+      delivery: 'complete',
+    });
+    const current = resumed.host.nativeJournal.get(request.handle, request.key)!;
+    expect(current.ids).toEqual(record.ids);
+    expect(current.receipt.eventId).toBe(event.eventId);
+    expect(!!current.receipt.deliveryOperation).toBe(!summaryComplete);
+    await selectFeedWriter(resumed, open.shared.handle);
+    await progressFeed(resumed);
+    expect((await resumed.post('request-agent', request)).json()).toEqual(recovered.json());
+    const query = { visibility: 'shared', after: 0, limit: 20, cursor: null };
+    const feed = await b.post('feed', { handle: joined.open.shared.handle, query });
+    expect(feed.statusCode, feed.body).toBe(200);
+    expect(feed.json().entries).toHaveLength(2);
+    const originals = await Promise.all(
+      feed
+        .json()
+        .entries.map(
+          async (e: { eventId: string }) =>
+            (
+              await b.post('original', { handle: joined.open.shared.handle, eventId: e.eventId })
+            ).json().text,
+        ),
+    );
+    expect(originals).toContain(text);
+    expect(originals.filter((original) => original === text)).toHaveLength(1);
+    expect(originals).toContain(request.text);
+  },
+);
+
 it('native host retains exact lost-handoff/result identities, scoped originals and private exclusion across restart', async () => {
   let submits = 0,
     inspections = 0;
@@ -1372,10 +1662,14 @@ it('native host retains exact lost-handoff/result identities, scoped originals a
     query: { visibility: 'shared', after: 0, limit: 20, cursor: null },
   });
   expect(feed.statusCode, feed.body).toBe(200);
-  expect(feed.json().entries).toHaveLength(1);
-  const event = feed.json().entries[0];
-  expect(event.origin.scope.source).toEqual(snapshots.get(requestId)!.result!.source);
-  expect(event.origin.kind).toBe('native');
+  expect(feed.json().entries).toHaveLength(2);
+  const event = feed
+    .json()
+    .entries.find(
+      (entry: { scope: { source: { provider: string } } }) =>
+        entry.scope.source.provider === 'codex',
+    );
+  expect(event.scope.source).toEqual(snapshots.get(requestId)!.result!.source);
   expect(event.manifest.chunks.length).toBeGreaterThan(1);
   const expanded = await restarted.post('original', {
     handle: request.handle,
@@ -1407,7 +1701,7 @@ it('native host retains exact lost-handoff/result identities, scoped originals a
         query: { visibility: 'shared', after: 0, limit: 20, cursor: null },
       })
     ).json().entries,
-  ).toHaveLength(1);
+  ).toHaveLength(2);
   await restarted.close();
   const again = await installation(a.directory, { nativeFactory: factory });
   const receipt = await again.post('request-agent', request);
@@ -1469,26 +1763,29 @@ it('native host refuses unrelated and unregistered result sources without sharin
   expect(chat.statusCode, chat.body).toBe(200);
   expect(chat.body).not.toContain('UNVERIFIED-NATIVE-RESULT');
   expect(chat.json().nativeRequests[0].state).toBe('unknown');
+  const feed = await a.post('feed', {
+    handle: request.handle,
+    query: { visibility: 'shared', after: 0, limit: 20, cursor: null },
+  });
+  expect(feed.json().entries).toHaveLength(1);
+  expect(feed.json().entries[0].scope.source.provider).toBe('owner');
   expect(
     (
-      await a.post('feed', {
-        handle: request.handle,
-        query: { visibility: 'shared', after: 0, limit: 20, cursor: null },
-      })
-    ).json().entries,
-  ).toHaveLength(0);
+      await a.post('original', { handle: request.handle, eventId: feed.json().entries[0].eventId })
+    ).json().text,
+  ).toBe(request.text);
   await a.post('request-agent', request);
   expect(submits).toBe(1);
 });
 
-it('designated normal writer resumes another host ordinary shared source after being offline, without duplicate projection or a model launch', async () => {
+it('ordinary shared messages deliver while the designated writer is offline without a duplicate projection or model launch', async () => {
   const a = await installation();
   const { open } = await create(a, 'Cross-host promotion');
   const b = await installation();
   const member = await joinMember(a, b, open.group.handle);
   const selected = await a.post('feed-writer', { handle: open.shared.handle, key: randomUUID() });
   expect(selected.statusCode, selected.body).toBe(200);
-  await a.close(); // writer unavailable; producer must still retain the exact source remotely
+  await a.close(); // Optional summarization cannot gate the producer's direct delivery.
   const input = {
     handle: member.open.shared.handle,
     key: randomUUID(),
@@ -1496,11 +1793,11 @@ it('designated normal writer resumes another host ordinary shared source after b
   };
   const sent = await b.post('send', input);
   expect(sent.statusCode, sent.body).toBe(200);
-  expect(sent.json().delivery).toContain('pending');
+  expect(sent.json().delivery).toBe('complete');
   const query = { visibility: 'shared', after: 0, cursor: null, limit: 20 };
   const before = await b.post('feed', { handle: input.handle, query });
   expect(before.statusCode, before.body).toBe(200);
-  expect(before.json().entries).toHaveLength(0);
+  expect(before.json().entries).toHaveLength(1);
   const resumed = await installation(a.directory);
   await resumed.host.promotion.pass();
   const page = await b.post('feed', { handle: input.handle, query });
@@ -1511,11 +1808,12 @@ it('designated normal writer resumes another host ordinary shared source after b
   ).toHaveLength(1);
   const event = page.json().entries[0];
   expect(event.condensedText).toBe(input.text);
-  expect(event.origin.scope.memberId).toBe(member.open.member.memberId);
-  expect(event.origin.scope.source.sessionId).toBe(member.open.shared.context.sessionId);
-  expect(event.origin.displayName).toBe('Li Ming');
-  expect(event.origin.writerId).toBe(open.member.installationId);
-  expect(event.scope.memberId).toBe(open.member.memberId);
+  expect(event.scope.memberId).toBe(member.open.member.memberId);
+  expect(event.scope.source.sessionId).toBe(member.open.shared.context.sessionId);
+  expect(event).not.toHaveProperty('origin');
+  expect(resumed.host.db.prepare('SELECT count(*) n FROM gh_promotion_projections').get()!.n).toBe(
+    0,
+  );
   const original = await b.post('original', { handle: input.handle, eventId: event.eventId });
   expect(original.json().text).toBe(input.text);
   expect((await b.post('status', { handle: input.handle, key: input.key })).json().delivery).toBe(
@@ -1530,7 +1828,7 @@ it('designated normal writer resumes another host ordinary shared source after b
   ).toBe(403);
 });
 
-it('chat follows background promotion receipts for writer and nonwriter sends across restart without remote fanout', async () => {
+it('chat follows direct receipts for writer and nonwriter sends across restart without promotion fanout', async () => {
   let promotionCalls = 0;
   const http: typeof fetch = async (...args) => {
     if (String(args[0]).endsWith('/promotion')) promotionCalls++;
@@ -1554,14 +1852,13 @@ it('chat follows background promotion receipts for writer and nonwriter sends ac
   expect((await a.post('send', writerSend)).statusCode).toBe(200);
   expect((await b.post('send', memberSend)).statusCode).toBe(200);
   expect((await a.post('chat', { handle: writerSend.handle })).json().deliveries).toEqual([
-    expect.objectContaining({ key: writerSend.key, state: expect.stringContaining('pending') }),
+    expect.objectContaining({ key: writerSend.key, state: 'complete' }),
   ]);
   expect((await b.post('chat', { handle: memberSend.handle })).json().deliveries).toEqual([
-    expect.objectContaining({ key: memberSend.key, state: expect.stringContaining('pending') }),
+    expect.objectContaining({ key: memberSend.key, state: 'complete' }),
   ]);
 
-  // These are the existing production timer's bounded passes. The nonwriter
-  // reconciles its own retained source without a browser Retry delivery action.
+  // Optional writer passes cannot create a second event for direct chat sources.
   await progressFeed(a);
   await a.host.promotion.pass();
   await b.host.promotion.pass();
@@ -1602,7 +1899,7 @@ it('chat follows background promotion receipts for writer and nonwriter sends ac
   expect(promotionCalls).toBe(beforeRestartChats);
 });
 
-it('chat preserves the exact retained promotion capacity refusal when no producer receipt was saved', async () => {
+it('chat preserves a legacy promotion capacity refusal while new direct messages bypass that capacity', async () => {
   const a = await installation();
   const { open } = await create(a, 'Retained delivery capacity');
   const input = {
@@ -1613,14 +1910,19 @@ it('chat preserves the exact retained promotion capacity refusal when no produce
   const full = 'full: original retained; shared source capacity reached';
   const retain = vi.spyOn(a.host.promotion, 'retain').mockResolvedValue(full);
   try {
-    const sent = await a.post('send', input);
-    expect(sent.statusCode, sent.body).toBe(200);
-    expect(sent.json().delivery).toBe(full);
+    expect(await legacyHuman(a, open, input)).toBe(full);
     expect(a.host.promotion.peek(`human:${input.handle}:${input.key}`)).toBe(
       'source_registration_pending',
     );
     expect((await a.post('chat', { handle: input.handle })).json().deliveries).toEqual([
       expect.objectContaining({ key: input.key, state: full }),
+    ]);
+    const fresh = { ...input, key: randomUUID(), text: 'New directly delivered message.' };
+    expect((await a.post('send', fresh)).json().delivery).toBe('complete');
+    expect(retain).toHaveBeenCalledTimes(1);
+    expect((await a.post('chat', { handle: input.handle })).json().deliveries).toEqual([
+      expect.objectContaining({ key: input.key, state: full }),
+      expect.objectContaining({ key: fresh.key, state: 'complete' }),
     ]);
   } finally {
     retain.mockRestore();
@@ -1763,7 +2065,7 @@ it('normal authenticated action confirmation dispatches through its original idl
   expect(f.store.runs(['running'])).toHaveLength(0);
 });
 
-it('committed cross-host source keeps original attribution while its writer is offline after a lost commit acknowledgement', async () => {
+it('a legacy committed cross-host summary keeps original attribution while its writer is offline after a lost commit acknowledgement', async () => {
   let lost = false;
   const http: typeof fetch = async (...args) => {
     const response = await fetch(...args);
@@ -1784,7 +2086,7 @@ it('committed cross-host source keeps original attribution while its writer is o
     key: randomUUID(),
     text: 'Decision: Retain the original member identity during recovery.',
   };
-  expect((await b.post('send', input)).statusCode).toBe(200);
+  expect(await legacyHuman(b, member.open, input)).toContain('pending');
   await a.host.promotion.pass();
   expect(lost).toBe(true);
   const projection = a.host.db
@@ -1795,7 +2097,7 @@ it('committed cross-host source keeps original attribution while its writer is o
   const reader = await b.host.promotionContext(member.open.group.handle);
   expect(await reader.command({ kind: 'state', key: source.key })).toMatchObject({
     ok: true,
-    value: { kind: 'status', state: 'pending' },
+    value: { kind: 'status', state: 'complete' },
   });
   const feed = await b.post('feed', {
     handle: input.handle,
@@ -1846,7 +2148,7 @@ it('committed cross-host source keeps original attribution while its writer is o
   ).toBe(403);
 });
 
-it('a bound cross-host source has no trusted attribution before delivery commits', async () => {
+it('a legacy bound cross-host summary has no trusted attribution before delivery commits', async () => {
   const http: typeof fetch = async (...args) => {
     const command = JSON.parse(String(args[1]?.body ?? '{}'));
     if (command.kind === 'effect' && command.packet.kind === 'commit')
@@ -1859,14 +2161,12 @@ it('a bound cross-host source has no trusted attribution before delivery commits
   const member = await joinMember(a, b, open.group.handle);
   await selectFeedWriter(a, open.shared.handle);
   expect(
-    (
-      await b.post('send', {
-        handle: member.open.shared.handle,
-        key: randomUUID(),
-        text: 'Decision: This source is not committed yet.',
-      })
-    ).statusCode,
-  ).toBe(200);
+    await legacyHuman(b, member.open, {
+      handle: member.open.shared.handle,
+      key: randomUUID(),
+      text: 'Decision: This source is not committed yet.',
+    }),
+  ).toContain('pending');
   await a.host.promotion.pass();
   const projection = a.host.db
     .prepare('SELECT source_json FROM gh_promotion_projections LIMIT 1')

@@ -20,8 +20,8 @@ const errorText = (value: unknown) =>
   value instanceof Error ? value.message : 'Groups host unavailable. Reconnect and retry.';
 const sharedDeliveryMessage = (state: string) => {
   if (state === 'source_registration_pending' || state.startsWith('pending:'))
-    return 'Waiting for the shared feed.';
-  if (['pending', 'waiting', 'idle', 'busy'].includes(state)) return 'Delivery is pending.';
+    return 'Sharing with the group…';
+  if (['pending', 'waiting', 'idle', 'busy'].includes(state)) return 'Sharing with the group…';
   if (state === 'offline') return 'Waiting for a connection to deliver your message.';
   if (state === 'uncertain') return 'Delivery is not yet confirmed. Your message is saved.';
   if (state === 'suppressed') return 'This message is not shared with the feed.';
@@ -33,6 +33,15 @@ const sharedDeliveryMessage = (state: string) => {
     return 'Delivery failed. Your message is saved.';
   return 'Delivery status is unknown. Your message is saved.';
 };
+const agentStatusMessage = (state: NonNullable<GroupHostChat['nativeRequests']>[number]['state']) =>
+  ({
+    queued: 'Waiting for your agent…',
+    'pending-consent': 'Enable your agent to continue.',
+    running: 'Your agent is working…',
+    completed: 'Reply received.',
+    unknown: 'Your request is saved. Check message details.',
+    blocked: 'Your agent could not finish. Check message details.',
+  })[state];
 const positions = new Map<string, number>();
 const cacheKey = (handle: string) =>
   location.pathname === '/group-fixture'
@@ -384,9 +393,16 @@ export function GroupChat({
     };
     void read();
     const interval = setInterval(() => void read(), 1000);
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void read();
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
       alive = false;
       clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
     };
   }, [slot.handle, model, onChanged]);
   useLayoutEffect(() => {
@@ -466,27 +482,23 @@ export function GroupChat({
   };
   const renderReceipt = (receipt: NonNullable<GroupHostChat['nativeRequests']>[number]) => {
     const prompt = receipt.text;
-    const stateMessage = {
-      queued: 'Agent request saved.',
-      'pending-consent': 'Your authorization is needed.',
-      running: 'Your agent is working.',
-      completed: 'Agent request complete.',
-      unknown: 'Agent status is not yet confirmed.',
-      blocked: 'Agent request stopped or could not start.',
-    }[receipt.state];
     return (
-      <div className="group-chat-cue" role="status" key={receipt.requestId}>
-        {stateMessage} {receipt.message}{' '}
+      <div className="group-native-receipt" key={receipt.requestId}>
+        <p>{agentStatusMessage(receipt.state)}</p>
         {receipt.source && (
-          <span>
+          <p>
             {receipt.delivery === 'complete'
-              ? 'Shared feed delivery complete.'
-              : sharedDeliveryMessage(receipt.delivery)}{' '}
-          </span>
+              ? 'Shared with the group.'
+              : sharedDeliveryMessage(receipt.delivery)}
+          </p>
         )}
         {receipt.state === 'completed' && receipt.delivery === 'private' && (
-          <span>Private result saved on this computer. </span>
+          <p>Only you can see this reply.</p>
         )}
+        <details>
+          <summary>Technical details</summary>
+          <p>{receipt.message}</p>
+        </details>
         {receipt.documentAvailable && (
           <GroupDocumentOfferButton
             handle={slot.handle}
@@ -503,14 +515,30 @@ export function GroupChat({
               disabled={deliveryBusy}
               onClick={() => void recoverAgent(receipt.key, prompt, receipt.intent).catch(() => {})}
             >
-              Recover agent request
+              Retry request
             </button>
           )}
       </div>
     );
   };
-  const currentReceipt = chat?.nativeRequests?.find((receipt) => receipt.state !== 'completed');
-  const olderReceipts = chat?.nativeRequests?.filter((receipt) => receipt !== currentReceipt) ?? [];
+  const latestReceipt = chat?.nativeRequests?.at(-1);
+  const currentReceipt = latestReceipt?.state === 'completed' ? undefined : latestReceipt;
+  const ownerReceipt = chat?.nativeRequests?.find((receipt) => receipt.state !== 'completed');
+  const pendingDeliveries =
+    chat?.deliveries?.filter((d) => !['complete', 'private'].includes(d.state)) ?? [];
+  const deliveryProblem = pendingDeliveries.find(
+    (delivery) =>
+      !['pending', 'waiting', 'idle', 'busy', 'source_registration_pending'].includes(
+        delivery.state,
+      ) && !delivery.state.startsWith('pending:'),
+  );
+  const detailedReceipts =
+    chat?.nativeRequests?.filter(
+      (receipt) =>
+        receipt.state !== 'completed' ||
+        receipt.documentAvailable ||
+        !['complete', 'private'].includes(receipt.delivery),
+    ) ?? [];
   const nativeOwner =
     !fixture && !refused ? (
       <GroupNativeOwner
@@ -518,7 +546,7 @@ export function GroupChat({
         handle={slot.handle}
         requestId={
           pendingAuthorization ??
-          (executionMode === 'host' ? (currentReceipt?.requestId ?? undefined) : undefined)
+          (executionMode === 'host' ? (ownerReceipt?.requestId ?? undefined) : undefined)
         }
         executionMode={executionMode}
         requestPendingConsent={Boolean(pendingAuthorization)}
@@ -561,27 +589,37 @@ export function GroupChat({
           {error}
         </p>
       )}
-      <p className={`group-chat-cue ${slot.context.visibility}`} role="status">
-        {slot.context.visibility === 'private'
-          ? fixture
-            ? 'Private test session · saved locally; excluded from shared feed'
-            : 'Private to you'
-          : fixture
-            ? 'Shared test session · messages and fake replies enter the shared feed'
-            : sendTarget === 'agent'
-              ? executionMode === 'host'
-                ? 'Shared with this group · your agent runs on this computer'
-                : 'Shared chat · isolated agent setup applies'
-              : 'Shared with this group'}
-        {view.blocked && <strong> · Draft conflict: choose a version below.</strong>}
-        {view.error === rejectedText && <strong> · Shorten or correct draft to save/send.</strong>}
-      </p>
-      {!fixture &&
-        chat?.deliveries
-          ?.filter((d) => !['complete', 'private'].includes(d.state))
-          .map((d) => (
-            <p className="group-chat-cue" role="status" key={d.key}>
-              {sharedDeliveryMessage(d.state)}{' '}
+      {(fixture || view.blocked || view.error === rejectedText) && (
+        <p className={`group-chat-cue ${slot.context.visibility}`} role="status">
+          {slot.context.visibility === 'private'
+            ? fixture
+              ? 'Private test session · saved locally; excluded from shared feed'
+              : 'Private to you'
+            : fixture
+              ? 'Shared test session · messages and fake replies enter the shared feed'
+              : ''}
+          {view.blocked && <strong> · Draft conflict: choose a version below.</strong>}
+          {view.error === rejectedText && (
+            <strong> · Shorten or correct draft to save/send.</strong>
+          )}
+        </p>
+      )}
+      {!fixture && currentReceipt && (
+        <p className="group-chat-status" role="status">
+          {agentStatusMessage(currentReceipt.state)}
+        </p>
+      )}
+      {!fixture && !currentReceipt && deliveryProblem && (
+        <p className="group-chat-status" role="status">
+          {sharedDeliveryMessage(deliveryProblem.state)} Open message details to retry.
+        </p>
+      )}
+      {!fixture && (pendingDeliveries.length > 0 || detailedReceipts.length > 0) && (
+        <details className="group-native-receipts">
+          <summary>Message details</summary>
+          {pendingDeliveries.map((d) => (
+            <div className="group-native-receipt" key={d.key}>
+              <p>{sharedDeliveryMessage(d.state)} </p>
               <button
                 disabled={deliveryBusy}
                 onClick={async () => {
@@ -601,13 +639,9 @@ export function GroupChat({
               >
                 Retry delivery
               </button>
-            </p>
+            </div>
           ))}
-      {!fixture && currentReceipt && renderReceipt(currentReceipt)}
-      {!fixture && olderReceipts.length > 0 && (
-        <details className="group-native-receipts">
-          <summary>Saved agent requests ({olderReceipts.length})</summary>
-          {olderReceipts.map(renderReceipt)}
+          {detailedReceipts.map(renderReceipt)}
         </details>
       )}
       <Composer

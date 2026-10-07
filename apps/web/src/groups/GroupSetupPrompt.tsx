@@ -25,7 +25,8 @@ histories. Do not publish private history, drafts or files automatically.
 For phone access, use the separate Cloudflare phone prompt and MY OWN Cloudflare
 Tunnel account, with authenticated device pairing; Groups hosting is separate from
 phone access to my computer. GitHub is optional for shared code/files and backups:
-explain it and use the separate GitHub prompt if I choose it. Ask only for necessary
+ask whether I want shared code/files, then use the separate GitHub prompt if I choose it.
+Ask each member for their GitHub username when setting up files; unknown names stay blank. Ask only for necessary
 sign-in, account/domain choices and approval steps; report any unresolved blocker.`;
 
 export const groupJoinSetupPrompt = `Help me join a sciencewithagents Group using the creator's invitation.
@@ -41,19 +42,31 @@ Open Groups → Join by invitation → Join group. The invitation grants members
 Follow docs/CONTRIBUTOR_SETUP.md to install my chosen CLI if missing or update its
 existing installation, then verify its version and model discovery.
 Explain Shared chat, Private to you and Local agent access; verify messages in both
-directions after joining. Phone access uses my own Cloudflare Tunnel and paired
+directions after joining. Ask whether this group uses a shared GitHub repository; if so,
+use the GitHub setup prompt to verify my own account access and connect its shared workspace.
+Phone access uses my own Cloudflare Tunnel and paired
 authentication through the separate phone prompt. Report any remaining blocker.`;
 
-export const groupGitHubSetupPrompt = `Help me set up optional shared GitHub code/files for my sciencewithagents Group.
-Preserve existing repositories, remotes, files and accounts. GitHub is not required for
-Groups messaging. Use my own GitHub account and native Git/GitHub tools. Explain the
-human steps: sign in, choose or create the repository and its visibility, and accept or
-send collaborator invitations. Configure the chosen repository on this computer without
-publishing private chats, credentials or unrelated files. Ask before publishing an
-existing private folder or changing repository visibility. Explain what is shared and
-verify access with the intended collaborator. The native Groups agents can use ordinary
-Git tools; do not claim the separate protected Groups Git panel is available in local
-agent mode. Report any remaining access or setup blocker.`;
+export const groupGitHubSetupPrompt = `Help me set up shared GitHub code/files for my sciencewithagents Group.
+Read docs/GROUP_WORKFLOW.md and docs/GROUP_NATIVE_GIT.md. Preserve existing repositories,
+remotes, files, accounts and running work. GitHub is optional for messaging. Ask for my
+GitHub username (a group display name is not a GitHub identity), sign in using my own
+native Git/GitHub account, and choose or create the intended repository. Leave unknown
+member usernames blank; never guess accounts or invite anyone without my instruction.
+For a new shared repository, use private visibility unless I explicitly choose otherwise.
+Explain collaborator invitations and have each member accept access through their own account.
+Connect only this group's server-selected shared workspace to the same repository on each
+computer. Keep Private to you, conversation databases, credentials and unrelated files out
+of the repository. Never publish an existing folder or change visibility without authorization.
+Open Manage group → Shared files, save my username if known, and enable automatic sync
+when I choose shared file synchronization. New Work requests use member/request branches;
+workers change task worktrees and an independent reviewer checks each committed result.
+Apply the exact reviewed preview under the saved project review policy. Sync fetches remote
+changes and fast-forwards clean branches; it pushes reviewed applied commits without force.
+Preserve dirty work and divergent branches and resolve conflicts through a reviewed change.
+Do not claim that joining a group grants GitHub access, that uncommitted files are synced,
+or that the app merges every branch automatically. Verify a reviewed change can reach the
+other member's checkout, and explain any remaining sign-in or collaborator-access blocker.`;
 
 const prompts = [
   {
@@ -161,8 +174,9 @@ export function GroupSetupPrompt({ initiallyOpen = false }: { initiallyOpen?: bo
           phone.
         </li>
         <li>
-          If sharing code/files, sign in to GitHub and choose a repository and collaborators. GitHub
-          is optional for messaging.
+          For shared files, sign in to GitHub, provide your GitHub username, choose the repository
+          and accept collaborator access. Then enable Shared files → Automatic sync. GitHub is
+          optional for messaging.
         </li>
       </ol>
       {prompts.map((prompt) => (

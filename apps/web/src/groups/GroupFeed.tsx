@@ -13,6 +13,7 @@ import type { GroupRead, GroupsWorkspaceProps } from './types';
 type Props = Pick<GroupsWorkspaceProps, 'group' | 'members' | 'loadPage' | 'loadOriginal'> & {
   onRevoked: (message: string) => void;
   refreshable?: boolean;
+  active?: boolean;
 };
 const failure = (reason: unknown): GroupRead<never> => ({
   kind: 'error',
@@ -90,6 +91,7 @@ export function GroupFeed({
   loadOriginal,
   onRevoked,
   refreshable = false,
+  active = true,
 }: Props) {
   const [{ entries, windowed }, setFeed] = useState<{
     entries: GroupFeedEntry[];
@@ -106,16 +108,21 @@ export function GroupFeed({
   const [open, setOpen] = useState<string | null>(null);
   const [request, setRequest] = useState(0);
   const next = useRef<GroupFeedCursor | null>(null);
+  const latestSequence = useRef(0);
+  const initialized = useRef(false);
+  const generation = useRef(0);
   useEffect(() => {
     const controller = new AbortController();
     let alive = true;
+    const readGeneration = generation.current;
+    const requestedCursor = next.current;
     setReading({ kind: 'loading' });
     void loadPage(
-      { visibility: 'shared', limit: 20, after: 0, cursor: next.current },
+      { visibility: 'shared', limit: 20, after: 0, cursor: requestedCursor },
       controller.signal,
     )
       .then((result) => {
-        if (!alive) return;
+        if (!alive || readGeneration !== generation.current) return;
         if (result.kind === 'revoked') {
           onRevoked(result.message);
           return;
@@ -133,35 +140,109 @@ export function GroupFeed({
         )
           throw new Error('The page did not belong to this shared group.');
         if (
-          next.current &&
-          (page.watermark !== next.current.watermark ||
-            (page.continuation && page.continuation.scopeKey !== next.current.scopeKey))
+          requestedCursor &&
+          (page.watermark !== requestedCursor.watermark ||
+            (page.continuation && page.continuation.scopeKey !== requestedCursor.scopeKey))
         )
           throw new Error('The feed snapshot changed. Reopen the group to start a fresh reading.');
-        if (next.current && page.entries.some((entry) => entry.sequence <= next.current!.after))
+        if (requestedCursor && page.entries.some((entry) => entry.sequence <= requestedCursor.after))
           throw new Error('The next page repeated an earlier position. Retry the page.');
         setFeed((previous) => {
           const ids = new Set(previous.entries.map((entry) => entry.eventId));
           const combined = [
             ...previous.entries,
             ...page.entries.filter((entry) => !ids.has(entry.eventId)),
-          ];
+          ].sort((a, b) => a.sequence - b.sequence);
           return {
             entries: combined.slice(-200),
             windowed: previous.windowed || combined.length > 200,
           };
         });
+        latestSequence.current = Math.max(
+          latestSequence.current,
+          page.watermark,
+        );
+        initialized.current = true;
         setCursor(page.continuation);
         setReading({ kind: 'ready', value: null });
       })
       .catch((reason: unknown) => {
-        if (alive) setReading(failure(reason));
+        if (alive && readGeneration === generation.current) setReading(failure(reason));
       });
     return () => {
       alive = false;
       controller.abort();
     };
   }, [request, group.id, loadPage, onRevoked]);
+  useEffect(() => {
+    if (!refreshable || !active) return;
+    let controller: AbortController | undefined;
+    const refresh = async () => {
+      if (document.hidden || controller || !initialized.current) return;
+      const read = new AbortController();
+      controller = read;
+      const after = latestSequence.current;
+      const readGeneration = generation.current;
+      try {
+        const result = await loadPage(
+          { visibility: 'shared', limit: 20, after, cursor: null },
+          read.signal,
+        );
+        if (read.signal.aborted || readGeneration !== generation.current) return;
+        if (result.kind === 'revoked') {
+          onRevoked(result.message);
+          return;
+        }
+        if (result.kind !== 'ready') {
+          setReading(result);
+          return;
+        }
+        const page = groupFeedPageSchema.parse(result.value);
+        if (
+          page.entries.some(
+            (entry) =>
+              entry.scope.groupId !== group.id ||
+              entry.scope.visibility !== 'shared' ||
+              entry.sequence <= after,
+          )
+        )
+          throw new Error('The updates did not belong to this shared group.');
+        // Append arrivals without clearing the reader, changing its scroll position,
+        // closing an original, or disturbing an existing pagination snapshot.
+        if (page.entries.length) {
+          latestSequence.current = Math.max(...page.entries.map((entry) => entry.sequence));
+          setFeed((previous) => {
+            const ids = new Set(previous.entries.map((entry) => entry.eventId));
+            const combined = [
+              ...previous.entries,
+              ...page.entries.filter((entry) => !ids.has(entry.eventId)),
+            ].sort((a, b) => a.sequence - b.sequence);
+            return {
+              entries: combined.slice(-200),
+              windowed: previous.windowed || combined.length > 200,
+            };
+          });
+        }
+        setReading({ kind: 'ready', value: null });
+      } catch (reason) {
+        if (!read.signal.aborted && readGeneration === generation.current) setReading(failure(reason));
+      } finally {
+        if (controller === read) controller = undefined;
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5000);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      controller?.abort();
+    };
+  }, [refreshable, active, request, group.id, loadPage, onRevoked]);
   const shown = entries.filter((entry) => !filter || entry.category === filter);
   return (
     <div className="groups-feed-scroll" tabIndex={0} aria-label="Shared feed entries">
@@ -172,7 +253,10 @@ export function GroupFeed({
           {refreshable && (
             <button
               onClick={() => {
+                generation.current += 1;
                 next.current = null;
+                latestSequence.current = 0;
+                initialized.current = false;
                 setCursor(null);
                 setFeed({ entries: [], windowed: false });
                 setOpen(null);

@@ -205,7 +205,14 @@ The app opens joined groups into full-width chat, with a separate feed tab and a
 dialog. The member list refreshes automatically. Existing
 creators must update their Worker as well as the app; private configuration and memberships
 are preserved. Human messaging and interrupted-request recovery remain available.
-Native chat, scoped reading and feed summaries are connected. Protected Git export,
+Native chat and scoped reading are connected. Shared chat originals publish independently of
+feed summaries; the visible feed automatically reads new arrivals. The older summary writer
+is not a prerequisite for messaging. Automatic per-member cheap summary agents are not
+yet delivered. Native Groups offer Shared files setup with a blank-capable GitHub identity,
+a scoped setup prompt, member/request branches, independent task review, exact apply and
+opt-in sync of reviewed committed work. Clean default checkouts fast-forward; dirty, active
+and divergent work is preserved. Repository creation, sign-in and collaborator access use
+the external setup agent; joining a group alone grants no GitHub access. Protected Git export,
 isolated report capture and the older confirmed-action board depend on the retained isolated
 adapter and are not presented as available in local mode. Native Work still has ordinary
 provider tools.

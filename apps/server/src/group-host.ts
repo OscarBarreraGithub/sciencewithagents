@@ -151,6 +151,16 @@ const unavailable = () =>
     'GROUP_SERVICE_UNAVAILABLE',
     'Groups delivery is unavailable. Reconnect the configured service and retry the same request; its identity is retained.',
   );
+// A preview of the explicitly shared original, not a synthesized finding.
+function chatPreview(text: string) {
+  const compact = text.replace(/\s+/gu, ' ').trim();
+  let preview = '';
+  for (const point of compact) {
+    if (Buffer.byteLength(preview + point, 'utf8') > 512) return preview + '…';
+    preview += point;
+  }
+  return preview || 'Shared message';
+}
 // Split only at Unicode code-point boundaries and preserve the exact original.
 function nativeOriginal(
   text: string,
@@ -1588,7 +1598,7 @@ export class GroupHost {
         category: 'Question',
         condensedText: send.eventId
           ? this.events.expand(this.access(slot, send.messageId), send.eventId).event.condensedText
-          : 'Human original retained on its source computer',
+          : chatPreview(input.text),
         original: { kind: 'inline', text: input.text },
         evidenceRefs: [],
         corrects: null,
@@ -1599,7 +1609,7 @@ export class GroupHost {
         .run(JSON.stringify(send), input.handle, input.key);
       let delivery = 'Private note saved on this computer';
       if (slot.context.visibility === 'shared') {
-        const sourceId = await this.registerSource(
+        await this.registerSource(
           value,
           groupSourceSchema.parse({
             sessionId: slot.context.sessionId,
@@ -1609,21 +1619,28 @@ export class GroupHost {
           }),
           send.operationId,
         );
-        if (send.deliveryOperation) {
+        // Old completed summaries retain their one public event. Pending sources
+        // migrate through the exact original event and the service's commit fence.
+        const legacyComplete =
+          send.promotionReceiptId &&
+          (await this.promotion.status(send.promotionReceiptId)) === 'complete';
+        if (legacyComplete) delivery = 'complete';
+        else {
           const pub = this.publication(value);
+          send.deliveryOperation ??= pub.controller.enqueue(pub.access, [
+            result.event.eventId,
+          ]).operations[0];
+          this.db
+            .prepare('UPDATE gh_sends SET body=? WHERE handle=? AND key=?')
+            .run(JSON.stringify(send), input.handle, input.key);
           await this.drive(pub, send.deliveryOperation);
           delivery = pub.controller.inspect(pub.access, send.deliveryOperation).state;
-        } else {
-          send.promotionReceiptId = `human:${input.handle}:${input.key}`;
-          delivery = await this.promotion.retain({
-            receiptId: send.promotionReceiptId,
-            enrollmentHandle: value.handle,
-            sourceId,
-            scope: result.event.scope,
-            kind: 'human',
-            original: { kind: 'inline', text: input.text },
-          });
-          send.promotionState = delivery;
+          if (
+            send.promotionReceiptId &&
+            delivery === 'collision' &&
+            (await this.promotion.status(send.promotionReceiptId)) === 'complete'
+          )
+            delivery = 'complete';
         }
         this.db
           .prepare('UPDATE gh_sends SET body=? WHERE handle=? AND key=?')
@@ -1652,12 +1669,11 @@ export class GroupHost {
       promotionState?: string;
     };
     if (slot.context.visibility === 'private') return { delivery: 'private' };
-    if (send.promotionReceiptId)
-      return {
-        delivery: send.promotionState?.startsWith('full:')
-          ? send.promotionState
-          : await this.promotion.status(send.promotionReceiptId),
-      };
+    if (
+      send.promotionReceiptId &&
+      (await this.promotion.status(send.promotionReceiptId)) === 'complete'
+    )
+      return { delivery: 'complete' };
     if (!send.deliveryOperation) {
       if (input.retry) {
         const receipt = await this.send(JSON.parse(String(prior.input)));
@@ -1747,26 +1763,32 @@ export class GroupHost {
       .prepare('SELECT input,body FROM gh_sends WHERE handle=? ORDER BY rowid DESC LIMIT 201')
       .all(handle)
       .reverse();
-    const entries = rows.slice(-200).map((row) => {
-      const send = JSON.parse(String(row.body)) as {
-        messageId: string;
-        runId: string;
-        eventId: string | null;
-        createdAt?: string;
-      };
-      const input = host.groupHostSendSchema.parse(JSON.parse(String(row.input)));
-      return {
-        id: send.messageId,
-        agentId: slot.handle,
-        runId: send.runId,
-        kind: 'user',
-        title: 'Human message',
-        text: input.text,
-        status: send.eventId ? 'complete' : 'uncertain',
-        createdAt: send.createdAt ?? slot.createdAt,
-      };
-    });
     const nativeRows = this.nativeJournal.list(handle);
+    const nativeKeys = new Set(nativeRows.map((record) => record.request.key));
+    const entries = rows
+      .slice(-200)
+      .filter(
+        (row) => !nativeKeys.has(host.groupHostSendSchema.parse(JSON.parse(String(row.input))).key),
+      )
+      .map((row) => {
+        const send = JSON.parse(String(row.body)) as {
+          messageId: string;
+          runId: string;
+          eventId: string | null;
+          createdAt?: string;
+        };
+        const input = host.groupHostSendSchema.parse(JSON.parse(String(row.input)));
+        return {
+          id: send.messageId,
+          agentId: slot.handle,
+          runId: send.runId,
+          kind: 'user',
+          title: 'Human message',
+          text: input.text,
+          status: send.eventId ? 'complete' : 'uncertain',
+          createdAt: send.createdAt ?? slot.createdAt,
+        };
+      });
     const nativeEntries = nativeRows.flatMap((record) => [
       {
         id: record.request.requestId,
@@ -1821,16 +1843,19 @@ export class GroupHost {
           state:
             slot.context.visibility === 'private'
               ? 'private'
-              : send.promotionReceiptId
-                ? send.promotionState?.startsWith('full:')
-                  ? send.promotionState
-                  : this.promotion.peek(send.promotionReceiptId)
+              : send.promotionReceiptId &&
+                  this.promotion.peek(send.promotionReceiptId) === 'complete'
+                ? 'complete'
                 : send.deliveryOperation
                   ? this.publication(value).controller.inspect(
                       this.publication(value).access,
                       send.deliveryOperation,
                     ).state
-                  : 'source_registration_pending',
+                  : send.promotionReceiptId
+                    ? send.promotionState?.startsWith('full:')
+                      ? send.promotionState
+                      : this.promotion.peek(send.promotionReceiptId)
+                    : 'source_registration_pending',
         };
       }),
     });
@@ -2249,29 +2274,19 @@ export class GroupHost {
       category: 'Finding',
       condensedText: record.receipt.eventId
         ? this.events.expand(access, record.receipt.eventId).event.condensedText
-        : 'Verified native original retained on its source computer',
+        : chatPreview(result.text),
       original: nativeOriginal(result.text),
       evidenceRefs: [],
       corrects: null,
     });
     record = this.nativeJournal.mark(record, { eventId: appended.event.eventId });
-    const sourceId = await this.registerSource(value, source, record.ids.operationId);
-    if (!record.receipt.deliveryOperation) {
-      const state = await this.promotion.retain({
-        receiptId: `native:${record.request.requestId}`,
-        enrollmentHandle: value.handle,
-        sourceId,
-        scope: appended.event.scope,
-        kind: 'native',
-        original: nativeOriginal(result.text),
-      });
-      if (state.startsWith('full:'))
-        record = this.nativeJournal.mark(record, {
-          message:
-            'Native result retained; shared source capacity reached. Existing sources remain available.',
-        });
+    await this.registerSource(value, source, record.ids.operationId);
+    const legacyId = `native:${record.request.requestId}`;
+    if (
+      this.promotion.peek(legacyId) !== 'source_registration_pending' &&
+      (await this.promotion.status(legacyId)) === 'complete'
+    )
       return record;
-    }
     const pub = this.publication(value);
     const deliveryOperation =
       record.receipt.deliveryOperation ??
@@ -2284,6 +2299,11 @@ export class GroupHost {
       await pub.controller.step(pub.access, deliveryOperation);
     }
     await this.drive(pub, deliveryOperation);
+    if (
+      pub.controller.inspect(pub.access, deliveryOperation).state === 'collision' &&
+      this.promotion.peek(legacyId) !== 'source_registration_pending'
+    )
+      await this.promotion.status(legacyId);
     return record;
   }
   private async advanceNative(value: Record, record: GroupHostNativeRecord, start = false) {
@@ -2336,12 +2356,14 @@ export class GroupHost {
       delivery:
         record.request.context.visibility === 'private'
           ? 'private'
-          : record.receipt.deliveryOperation
-            ? this.publication(value).controller.inspect(
-                this.publication(value).access,
-                record.receipt.deliveryOperation,
-              ).state
-            : this.promotion.peek(`native:${record.request.requestId}`),
+          : this.promotion.peek(`native:${record.request.requestId}`) === 'complete'
+            ? 'complete'
+            : record.receipt.deliveryOperation
+              ? this.publication(value).controller.inspect(
+                  this.publication(value).access,
+                  record.receipt.deliveryOperation,
+                ).state
+              : this.promotion.peek(`native:${record.request.requestId}`),
       ...(record.request.context.visibility === 'shared' && record.result?.source
         ? { source: record.result.source }
         : {}),
@@ -2392,6 +2414,8 @@ export class GroupHost {
       });
       if (record.request.context.visibility === 'shared' && record.request.intent === 'work')
         await this.sharedGoalForRequest(record.request.requestId);
+      if (record.request.context.visibility === 'shared')
+        await this.send({ handle: input.handle, key: input.key, text: input.text });
       record = await this.advanceNative(value, record, true);
       if (record.receipt.state === 'blocked')
         throw new GroupHostError(503, 'GROUP_NATIVE_BLOCKED', record.receipt.message);

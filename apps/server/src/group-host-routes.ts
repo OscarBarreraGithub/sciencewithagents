@@ -8,6 +8,7 @@ import { GroupHost, GroupHostError } from './group-host.js';
 import { HostedPublicationError } from './group-publication-host-transport.js';
 import { registerGroupActionsRoutes } from './group-actions-routes.js';
 import { registerGroupFeatureReading } from './group-features-reading.js';
+import { groupHostNativeGit } from './group-host-native-git.js';
 /** Registration deliberately requires an auth predicate even on loopback. */
 export function registerGroupHostRoutes(
   app: FastifyInstance,
@@ -65,6 +66,16 @@ export function registerGroupHostRoutes(
     'request-agent': (v: unknown) => host.requestAgent(v),
     'feed-writer': (v: unknown) => host.configurePromotion(v),
     'native-owner': (v: unknown) => host.nativeOwnerControl(v),
+    'native-git': (v: unknown) => {
+      const git = groupHostNativeGit(host);
+      if (!git)
+        throw new GroupHostError(
+          503,
+          'GROUP_NATIVE_GIT_UNAVAILABLE',
+          'Native shared workspace Git is unavailable.',
+        );
+      return git.request(v);
+    },
     git: (v: unknown) => {
       const git = groupFeatureGit(host);
       if (!git)

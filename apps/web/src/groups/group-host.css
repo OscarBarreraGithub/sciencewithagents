@@ -302,12 +302,73 @@
   border: 0;
   border-radius: 0;
 }
-.group-host-workspace .group-chat > .composer {
+.group-host-workspace .group-chat.flow-chat-main > .composer {
   max-height: none;
   padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  padding-inline: max(8px, calc((100% - 1050px) / 2));
 }
 .group-host-workspace .group-chat .conversation-inner {
-  max-width: 880px;
+  max-width: 1050px;
+}
+.group-host-workspace .group-chat .conversation-scroll-hint[aria-hidden='true'] {
+  visibility: hidden;
+}
+/* Keep the conversation itself comfortably readable; status text is secondary. */
+.group-host-workspace .group-chat {
+  --group-reading-size: max(20px, 1.25rem);
+}
+.group-host-workspace .group-chat .markdown,
+.group-host-workspace .group-chat.flow-chat-main .composer textarea {
+  font-size: var(--group-reading-size);
+}
+.group-host-workspace .group-chat .markdown {
+  line-height: 1.6;
+}
+.group-host-workspace .group-chat .composer textarea::placeholder {
+  font-size: inherit;
+}
+.group-host-workspace .group-chat-status {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 4px 12px;
+  font-size: var(--text-small);
+  color: var(--home-muted);
+}
+.group-host-workspace .group-native-receipts {
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  font-size: var(--text-caption);
+}
+.group-host-workspace .group-native-receipts > summary {
+  min-height: 36px;
+  padding: 6px 12px;
+}
+.group-host-workspace .group-native-receipt {
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+}
+.group-host-workspace .group-native-receipt + .group-native-receipt {
+  border-top: 1px solid var(--line);
+}
+.group-host-workspace .group-native-receipt p {
+  margin: 0 0 4px;
+}
+.group-host-workspace .group-native-receipt summary {
+  min-height: 44px;
+  padding-block: 8px;
+  cursor: pointer;
+}
+.group-host-workspace .group-native-receipt button {
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+@media (min-width: 1800px) {
+  .group-host-workspace .group-chat {
+    --group-reading-size: max(22px, 1.375rem);
+  }
 }
 @media (max-height: 500px) {
   .group-host-workspace .group-chat .composer textarea {
