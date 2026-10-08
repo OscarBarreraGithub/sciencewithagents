@@ -36,7 +36,7 @@ type Binding = z.infer<typeof bindingSchema>;
 type SavedRequest = { request_id: string; binding_key: string; input: string; prompt: string };
 const hash = (v: string) => createHash('sha256').update(v).digest('hex');
 const notice =
-  'Runs on this computer with your existing provider sign-in and native tools. Work can access files, commands and network as your user. Shared and private conversations have separate native threads; this is not a sandbox.';
+  'Runs on this computer with your existing provider sign-in and native tools. Work can access files, commands and network as your user. Your already-shared messages also receive bounded background feed summaries and labels using your saved bulk model. Private conversations stay separate; this is not a sandbox.';
 export interface GroupHostNativeRuntime extends GroupNativeConnector {
   readonly executionMode: 'host';
   beforeTurn(callback: (context: GroupContext, requestId: string) => Promise<void>): void;

@@ -12,12 +12,13 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import {
-  documentSchema,
   documentBrowseResponseSchema,
   type SavedDocument,
   type DocumentBrowse,
 } from '@dock/shared';
 import { api, ApiError } from './api';
+import { documentResponseSchema } from './document-responses';
+import { ArxivImportForm } from './ArxivImport';
 import './documents.css';
 
 const Reader = lazy(() => import('./PdfReader'));
@@ -62,7 +63,7 @@ export function DocumentLink({
             setBusy(true);
             setError('');
             void api('/documents/from-message', saved)
-              .then(documentSchema.parse)
+              .then(documentResponseSchema.parse)
               .then((document) => openDocument(document.id))
               .catch((error) => setError(error.message))
               .finally(() => setBusy(false));
@@ -184,7 +185,7 @@ export function LatexApp({ initialId }: { initialId?: string }) {
   const loadRecent = () =>
     api<{ documents: unknown[]; compiler: string | null }>('/documents')
       .then((result) => {
-        setRecent(result.documents.map((value) => documentSchema.strip().parse(value)));
+        setRecent(result.documents.map((value) => documentResponseSchema.parse(value)));
         setCompiler(result.compiler);
       })
       .catch((error) =>
@@ -236,7 +237,8 @@ export function LatexApp({ initialId }: { initialId?: string }) {
       <span>
         <strong>{doc.name}</strong>
         <small>
-          {doc.folder} · {doc.kind === 'tex' ? 'LaTeX' : 'PDF'}
+          {doc.arxiv ? `arXiv ${doc.arxiv.id}v${doc.arxiv.version}` : doc.folder} ·{' '}
+          {doc.kind === 'tex' ? 'LaTeX' : 'PDF'}
           {doc.hasPdf ? ' · PDF ready' : ''}
         </small>
       </span>
@@ -267,6 +269,12 @@ export function LatexApp({ initialId }: { initialId?: string }) {
       <button className="flow-button primary" onClick={() => void folder()}>
         <Folder size={20} /> Browse this computer
       </button>
+      <ArxivImportForm
+        onReady={(document) => {
+          setRecent((old) => [document, ...old.filter((item) => item.id !== document.id)]);
+          openDocument(document.id);
+        }}
+      />
       {compiler === null && (
         <p className="latex-note">
           PDFs open directly. To build .tex files, ask your setup agent to install Tectonic or TeX

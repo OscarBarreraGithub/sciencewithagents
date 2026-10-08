@@ -3,6 +3,7 @@ import {
   GROUP_LIMITS,
   groupCategorySchema,
   groupFeedPageSchema,
+  latestGroupFeedEntries,
   type GroupEvent,
   type GroupFeedEntry,
   type GroupFeedCursor,
@@ -145,7 +146,10 @@ export function GroupFeed({
             (page.continuation && page.continuation.scopeKey !== requestedCursor.scopeKey))
         )
           throw new Error('The feed snapshot changed. Reopen the group to start a fresh reading.');
-        if (requestedCursor && page.entries.some((entry) => entry.sequence <= requestedCursor.after))
+        if (
+          requestedCursor &&
+          page.entries.some((entry) => entry.sequence <= requestedCursor.after)
+        )
           throw new Error('The next page repeated an earlier position. Retry the page.');
         setFeed((previous) => {
           const ids = new Set(previous.entries.map((entry) => entry.eventId));
@@ -158,10 +162,7 @@ export function GroupFeed({
             windowed: previous.windowed || combined.length > 200,
           };
         });
-        latestSequence.current = Math.max(
-          latestSequence.current,
-          page.watermark,
-        );
+        latestSequence.current = Math.max(latestSequence.current, page.watermark);
         initialized.current = true;
         setCursor(page.continuation);
         setReading({ kind: 'ready', value: null });
@@ -225,7 +226,8 @@ export function GroupFeed({
         }
         setReading({ kind: 'ready', value: null });
       } catch (reason) {
-        if (!read.signal.aborted && readGeneration === generation.current) setReading(failure(reason));
+        if (!read.signal.aborted && readGeneration === generation.current)
+          setReading(failure(reason));
       } finally {
         if (controller === read) controller = undefined;
       }
@@ -243,7 +245,9 @@ export function GroupFeed({
       controller?.abort();
     };
   }, [refreshable, active, request, group.id, loadPage, onRevoked]);
-  const shown = entries.filter((entry) => !filter || entry.category === filter);
+  const shown = latestGroupFeedEntries(entries).filter(
+    (entry) => !filter || entry.category === filter,
+  );
   return (
     <div className="groups-feed-scroll" tabIndex={0} aria-label="Shared feed entries">
       <div className="groups-feed-chrome">

@@ -11,6 +11,7 @@ import {
 import { openClaudeSignIn } from './claude-sign-in.js';
 import type { DynamicTool } from './codex.js';
 import { Conflict, Store, type PrivateAgent } from './store.js';
+import { isMemberFeedAgent } from './group-member-feed.js';
 import { beginClaudeUsageSession } from './usage.js';
 import {
   ClaudeSession,
@@ -259,6 +260,7 @@ export class ManagedClaude {
             messageId: agent.interview!.sourceMessageId!,
           }
         : undefined;
+    const evidenceOnly = isMemberFeedAgent(this.store, agent.id);
     const options: ClaudeSessionOptions = {
       binary: this.binary,
       cwd,
@@ -267,11 +269,13 @@ export class ManagedClaude {
       forkFrom,
       accountAffinity: identity.affinity,
       writableDirectories,
-      inheritNative: agent.toolPolicy === 'native',
+      inheritNative: !evidenceOnly && agent.toolPolicy === 'native',
+      nativeTools: evidenceOnly ? 'off' : undefined,
       nativeChrome: agent.nativeChrome,
-      unattended: agent.toolPolicy === 'native',
-      role:
-        agent.surface || agent.resourceAssistant?.mode === 'interactive'
+      unattended: !evidenceOnly && agent.toolPolicy === 'native',
+      role: evidenceOnly
+        ? 'read-only'
+        : agent.surface || agent.resourceAssistant?.mode === 'interactive'
           ? agent.permission === 'workspace-write'
             ? 'implementer'
             : 'read-only'

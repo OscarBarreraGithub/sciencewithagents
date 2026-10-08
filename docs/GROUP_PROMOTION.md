@@ -1,9 +1,36 @@
 # Verified shared activity promotion
 
-Normal Groups send/result hooks use the bounded promotion controller, same-object service
-adapter and durable verified evidence index. Membership and storage authority stay with
-the existing group service. Local module/integration checks do not establish deployed
-hosting, real provider readiness or two installed computers; see [Status](STATUS.md#groups).
+Direct shared messages use the original-delivery journal. Member-owned summaries use
+the local lane below; older retained activity uses the selected-writer protocol.
+Membership and storage authority stay with the existing group service. Local checks do
+not establish real provider readiness or two installed computers; see [Status](STATUS.md#groups).
+
+## Per-member local feed summaries
+
+Local native Groups automatically summarize each member's **own new, already-shared
+originals** after that member enables native access on their computer. This path uses
+the central Bulk model for their saved native provider, not the group manager's model
+or another member's account. Missing models and provider limits do not trigger fallback.
+Opening or reading a group does not enqueue a model turn; a single local background pass
+batches up to eight confirmed deliveries after a 20-second window, with at most 24 KiB
+of source data. Originals over 12 KiB and brief acknowledgements receive no model turn.
+
+The local lane bounds the pending source backlog at 512 and admits at most one native
+batch at a time. Completed/unknown receipts remain as history and do not consume those
+slots or impose a lifetime batch limit. Each batch has one durably saved native run.
+Restart inspects that run; failure, interruption, unexpected
+tools or invalid output leave the original alone and never launch a replacement.
+After a native result finishes, unavailable group authority/publication parks that exact
+result for bounded round-robin inspection; it cannot hold up another group's new batch.
+Summary publication retries use one saved operation and the existing authenticated
+source/delivery protocol. Summaries are append-only revisions with the exact original
+payload, author and source reference; feed/chat presentation shows one latest revision.
+No private messages, personal history or other members' originals enter this lane.
+Labels are reading aids, not task or execution authority. These limits are local-runtime
+checks, not real-provider or two-person acceptance.
+
+The selected-writer protocol below remains separate for older retained activity. It
+does not gate direct original delivery or these member-owned batches.
 
 ## Source and summary boundary
 

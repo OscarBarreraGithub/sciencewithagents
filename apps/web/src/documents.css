@@ -29,6 +29,31 @@
 .latex-app > button {
   justify-self: start;
 }
+.arxiv-import {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+.arxiv-import label {
+  display: grid;
+  gap: 8px;
+  flex: 1 1 260px;
+  min-width: 0;
+  margin: 0;
+  font-weight: 600;
+}
+.arxiv-import > .flow-button {
+  margin: 0;
+}
+.arxiv-import input {
+  width: 100%;
+  min-width: 0;
+}
+.arxiv-import p {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
 .latex-app-icon {
   background: #e5ece6;
   color: #365e49;

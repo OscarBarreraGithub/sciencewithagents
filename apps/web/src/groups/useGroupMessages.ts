@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   GROUP_LIMITS,
   groupFeedPageSchema,
+  latestGroupFeedEntries,
   type GroupFeedCursor,
   type GroupFeedEntry,
 } from '@dock/shared';
@@ -107,7 +108,11 @@ export function useGroupMessages(groupId: string, active: boolean, reader?: Grou
           if (combined.length > 200) setWindowed(true);
           const retained = combined.slice(-200);
           cache.current = new Map(retained.map((original) => [original.event.eventId, original]));
-          setMessages(retained);
+          setMessages(
+            latestGroupFeedEntries(retained.map((message) => message.event)).map(
+              (event) => cache.current.get(event.eventId)!,
+            ),
+          );
           position.current = Math.max(
             position.current,
             ...page.entries.map((event) => event.sequence),

@@ -8,13 +8,13 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import {
-  documentLibrarySchema,
   projectAppsStatusSchema,
   publishingAccountsSchema,
   type PublishingAccounts,
   type ProjectAppView,
 } from '@dock/shared';
 import { api, apiScope } from '../api';
+import { documentLibraryResponseSchema } from '../document-responses';
 import { PromptCard } from '../SetupPrompt';
 import { useReading } from './useHomeData';
 import './apps-gallery.css';
@@ -253,7 +253,7 @@ export function AppsGallery({ route, computer }: { route: string; computer: stri
 }
 
 function Gallery({ reading, computer }: { reading: AppsReading; computer: string }) {
-  const library = useReading('/documents', documentLibrarySchema.parse);
+  const library = useReading('/documents', documentLibraryResponseSchema.parse);
   const hasReader = !!library.data?.documents.length;
   const heading = useRef<HTMLHeadingElement>(null);
   // A display preference, not a claim that an account is authenticated.

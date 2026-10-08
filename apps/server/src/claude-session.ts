@@ -433,6 +433,8 @@ export type ClaudeSessionOptions = {
   accountAffinity: string;
   role: 'manager' | 'read-only' | 'implementer';
   inheritNative?: boolean;
+  /** Internal supplied-evidence helpers have no native tools, including file reads. */
+  nativeTools?: 'off';
   /** Official per-session Chrome opt-in; omission preserves native preferences. */
   nativeChrome?: 'inherit' | 'enabled';
   /** Native scoped execution; permissions needing a person are denied, questions remain visible. */
@@ -548,7 +550,7 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
     throw new Error('Invalid private Claude session configuration.');
   const writing = options.role !== 'read-only';
   const builtins =
-    options.role === 'manager'
+    options.nativeTools === 'off' || options.role === 'manager'
       ? []
       : options.role === 'implementer'
         ? ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write']

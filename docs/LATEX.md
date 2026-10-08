@@ -21,6 +21,14 @@ Open **Apps → LaTeX** on a computer with recent documents, or **? → LaTeX / 
 to get started. Browse the selected computer’s folders, choose a `.tex` or `.pdf`,
 or reopen a recent document. PDF files need no compiler. LaTeX builds on the computer;
 the phone displays the result. Both devices use the existing authenticated connection.
+
+In **Open an arXiv paper**, paste an arXiv link or ID and choose **Open paper**.
+The selected computer fetches the source and original PDF, shows progress and opens the
+existing reader. An interrupted reply can be retried safely; reloading this tab follows
+an import already in progress. Imported papers stay in Recent documents with their version.
+PDF-only papers open the original with a note explaining that Reading needs source.
+Importing and deterministic Reading make no model call.
+
 If macOS blocks an iCloud or protected folder, allow sciencewithagents folder access in
 System Settings → Privacy & Security, then retry. The app does not bypass operating-system permissions.
 

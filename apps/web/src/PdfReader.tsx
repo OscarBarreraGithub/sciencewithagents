@@ -3,11 +3,11 @@ import { ArrowLeft, Download, Minus, Plus, RefreshCw } from 'lucide-react';
 import {
   documentReadingResponseSchema,
   type DocumentReadingResponse as Reading,
-  documentSchema,
   type SavedDocument,
 } from '@dock/shared';
 import type { PDFViewer as Viewer } from 'pdfjs-dist/types/web/pdf_viewer';
 import { api, apiScope, apiUrl } from './api';
+import { documentResponseSchema } from './document-responses';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import { DocumentReading } from './DocumentReading';
@@ -378,7 +378,7 @@ function Reader({
     setPages(0);
     const read = async (open = false) => {
       try {
-        const result = documentSchema.parse(
+        const result = documentResponseSchema.parse(
           await api(
             `${endpoint}${open ? '/open' : ''}`,
             open ? { key: actionKey.current } : undefined,
@@ -402,7 +402,7 @@ function Reader({
     const abort = new AbortController();
     const timer = setTimeout(() => {
       void api(endpoint, undefined, abort.signal)
-        .then(documentSchema.parse)
+        .then(documentResponseSchema.parse)
         .then(setDoc)
         .catch((error) => {
           if (!abort.signal.aborted) setError(error.message);
@@ -418,7 +418,9 @@ function Reader({
     setReadingVersion((value) => value + 1);
     setError('');
     try {
-      setDoc(documentSchema.parse(await api(`${endpoint}/build`, { key: crypto.randomUUID() })));
+      setDoc(
+        documentResponseSchema.parse(await api(`${endpoint}/build`, { key: crypto.randomUUID() })),
+      );
     } catch (error) {
       setError((error as Error).message);
     } finally {
@@ -473,6 +475,7 @@ function Reader({
         )}
       </header>
       {actions && <div className="pdf-toolbar group-report-actions">{actions}</div>}
+      {!!doc?.arxiv?.notes.length && <p className="pdf-status">{doc.arxiv.notes.join(' ')}</p>}
       {(reading?.available || readingError) && (
         <div className="pdf-toolbar reader-mode" aria-label="Reading controls">
           {reading?.available && (

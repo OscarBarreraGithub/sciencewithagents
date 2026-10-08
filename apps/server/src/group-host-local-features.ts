@@ -4,6 +4,7 @@ import type { GroupHostNativeRuntime } from './group-native-host-runtime.js';
 import { registerGroupReadingCapabilities } from './group-features-reading.js';
 import { createGroupLocalSynthesis } from './group-local-synthesis.js';
 import { GroupHostNativeGit } from './group-host-native-git.js';
+import { GroupMemberFeed } from './group-member-feed.js';
 
 /** Host mode reuses the ordinary native tools and its scoped private reader.
  * Container-specific Git, document export and coordination adapters stay optional. */
@@ -27,8 +28,17 @@ export function attachGroupHostLocalFeatures(
     authorize: (request, signal) => host.promotion.authorizeNative(request, signal),
   });
   host.promotion.start(synthesis);
+  const memberFeed = new GroupMemberFeed(runtime, host.directory, connector, {
+    source: (input) => host.memberFeedSource(input),
+    publish: (input, decision, operationId) => host.publishMemberFeed(input, decision, operationId),
+  });
+  const retain = (input: Parameters<GroupMemberFeed['retain']>[0]) => memberFeed.retain(input);
+  host.memberFeedOriginal = retain;
+  memberFeed.start();
   return {
     close: async () => {
+      if (host.memberFeedOriginal === retain) host.memberFeedOriginal = undefined;
+      await memberFeed.close();
       await git.close();
       await synthesis.close();
     },

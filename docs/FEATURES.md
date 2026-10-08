@@ -32,6 +32,12 @@ Groups appears under **Chats → Groups** in the same list/detail frame as other
 **Group chat** shows the shared conversation; **Your agent** directs your agent's shared
 work. Create/join, setup, invitations and management use compact dialogs. Existing private
 histories remain saved and private; they are not shown or republished in these shared tabs.
+Enabled local native access also batches that member's new confirmed shared originals
+for inexpensive feed summaries and labels through the central Bulk model level. Each
+computer handles its own sources; no selected writer or private history is required.
+Originals remain readable, opening a chat starts no summary turn, and failed/uncertain
+summary runs are retained without replay. This new local lane still needs real-provider
+and separate-computer acceptance; see [summary limits](GROUP_PROMOTION.md#per-member-local-feed-summaries).
 
 ## Report an issue
 
@@ -274,7 +280,7 @@ tappable folder path, recent files, selectable text, page navigation and zoom. M
 to the same reading position and draft. Failed builds retain the previous PDF; existing
 LaTeX-backed reports also have adjustable, reflowing Reading mode: phone-width text, figures and individually scrollable equations with visible overflow cues. Reading opens with the paper's title, authors with affiliations and abstract. Deterministic source rules keep arXiv-style sources from failing as a whole; a passage or include that cannot be read is marked “only in the Original PDF”, and plain-TeX papers point to Original PDF. Both views scroll natively on phones: touch handling never blocks scrolling, PDF pages render once per zoom instead of re-rendering while they move, and toolbar-only height changes keep the fitted zoom and position. An explicit **Format for phone** request creates a separate reading copy using a selectable model, defaulting to the live Sonnet family; originals stay unchanged. Saved local report links open inside the chat. PDFs need no compiler. See [LaTeX](LATEX.md) for setup and conversion limits.
 
-arXiv import (server API only; no app control yet): `POST /api/documents/arxiv {key, link}` accepts
+LaTeX's **Open an arXiv paper** field accepts
 an abs/pdf/html/src link, `arXiv:ID` or a bare new- or old-style ID, then fetches the paper's
 metadata, LaTeX source and PDF from arxiv.org only, with size caps and timeouts. Sources unpack
 in-process with unsafe paths refused and links/devices skipped; the main file follows arXiv's
@@ -283,8 +289,11 @@ Reading uses the normal pipeline and Original PDF is arXiv's own PDF without com
 id+version is cached under `data/arxiv`: repeating a versioned link is instant and offline, while a
 link without a version first asks arXiv for the latest version (offline, it reopens the newest
 cached copy). Temporary PDF failures are never cached. PDF-only papers and sources the app cannot
-read yet import with a clear note. Poll `GET /api/documents/arxiv/:id` for progress; restarts mark unfinished
-imports failed.
+read yet import with a clear note. The app shows progress, follows an unfinished import after
+reloading the tab, and retains its retry identity after a lost reply. Failed imports can be
+retried; computer restarts mark unfinished imports failed. Source-backed papers open in Reading,
+with Original PDF available. Local fixtures cover this journey; live arXiv and physical-phone
+acceptance of this control remain separate.
 
 ## Scope not presented as finished
 

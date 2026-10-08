@@ -42,7 +42,7 @@ import {
   publicationEnvelopeSchema,
   type DeliveryReply,
 } from '@dock/shared/dist/group-delivery.js';
-import { GroupEventRepository } from './group-events.js';
+import { GroupEventRepository, GroupEventError } from './group-events.js';
 import { GroupPublicationController, type PublicationAccess } from './group-publication.js';
 import { HostedPublicationTransport } from './group-publication-host-transport.js';
 import { publicationBindingSchema, publicationCanonical } from './group-publication-protocol.js';
@@ -83,6 +83,8 @@ import {
   type GroupPromotionHostCommand,
 } from '@dock/shared/dist/group-promotion-host.js';
 import type { GroupScope } from '@dock/shared';
+import type { GroupPromotionDecision } from '@dock/shared/dist/group-promotion.js';
+import { memberFeedInputSchema, type MemberFeedInput } from './group-member-feed.js';
 
 const slotSchema = z.strictObject({
   handle: z.uuid(),
@@ -196,6 +198,8 @@ export class GroupHost {
   readonly native: GroupNativeConnector;
   readonly nativeJournal: GroupHostNativeJournal;
   readonly promotion: GroupFeaturePromotion;
+  /** Internal local producer hook; no browser or shared feed read installs work. */
+  memberFeedOriginal?: (input: MemberFeedInput) => void;
   private controllers = new Map<
     string,
     {
@@ -1217,6 +1221,82 @@ export class GroupHost {
       );
     }
   }
+  /** Current own-member original and its exact direct-delivery receipt. Never
+   * expands other members' messages, private contexts, or native history. */
+  async memberFeedSource(raw: MemberFeedInput) {
+    const input = memberFeedInputSchema.parse(raw);
+    const port = await this.promotionContext(input.enrollmentHandle);
+    const scope = input.event.scope;
+    if (
+      scope.visibility !== 'shared' ||
+      scope.groupId !== port.context.groupId ||
+      scope.memberId !== port.context.memberId ||
+      scope.installationId !== port.context.installationId ||
+      input.event.revision !== 1 ||
+      input.event.corrects
+    )
+      throw new Conflict('Own shared original required.');
+    const expanded = this.events.expand(this.events.trustedHostScope(scope), input.event.eventId);
+    if (publicationCanonical(expanded.event) !== publicationCanonical(input.event))
+      throw new Conflict('Retained shared original changed.');
+    const value = await this.active(input.enrollmentHandle),
+      pub = this.publication(value);
+    const receipt = pub.controller.inspect(pub.access, input.deliveryOperation);
+    if (
+      pub.controller.enqueue(pub.access, [input.event.eventId]).operations[0] !==
+      input.deliveryOperation
+    )
+      throw new Conflict('Original delivery receipt changed.');
+    await port.revalidate();
+    return { original: expanded.original, committed: receipt.state === 'complete' };
+  }
+  /** Metadata is an append-only correction with the exact original payload.
+   * The existing authenticated source registration and publication journal own
+   * retry/uncertain outcomes; the old chosen-writer lease is not consulted. */
+  async publishMemberFeed(
+    input: MemberFeedInput,
+    decision: GroupPromotionDecision,
+    operationId: string,
+  ) {
+    const original = await this.memberFeedSource(input);
+    if (!original.committed) return 'pending' as const;
+    const port = await this.promotionContext(input.enrollmentHandle);
+    const scope = {
+      ...input.event.scope,
+      source: { ...input.event.scope.source, messageId: operationId },
+    };
+    const source = this.events.expand(
+      this.events.trustedHostScope(input.event.scope),
+      input.event.eventId,
+    );
+    let appended: ReturnType<GroupEventRepository['append']>;
+    try {
+      appended = this.events.append(this.events.trustedHostScope(scope), {
+        operationId: groupOperationIdSchema.parse(operationId),
+        entityId: input.event.entityId,
+        expectedRevision: input.event.revision,
+        category: decision.category,
+        condensedText: decision.sentences.join(' '),
+        original: { kind: 'inline', text: source.original },
+        evidenceRefs: [input.event.eventId],
+        corrects: input.event.eventId,
+      });
+    } catch (error) {
+      if (error instanceof GroupEventError && error.code === 'stale_revision')
+        return 'superseded' as const;
+      throw error;
+    }
+    await port.revalidate();
+    await port.registerSource(scope.source, operationId);
+    return (await port.enqueue(scope, appended.event.eventId)).state;
+  }
+  private retainMemberFeed(input: MemberFeedInput) {
+    try {
+      this.memberFeedOriginal?.(input);
+    } catch {
+      /* Summary capacity never prevents original delivery. */
+    }
+  }
   /** Resolve a provisioned native context back to its own saved enrollment.
    * The native tool gets its distinct session, never another member's aside. */
   async nativeFeatureContext(raw: GroupContext): Promise<GroupHostFeatureContext> {
@@ -1630,6 +1710,11 @@ export class GroupHost {
           send.deliveryOperation ??= pub.controller.enqueue(pub.access, [
             result.event.eventId,
           ]).operations[0];
+          this.retainMemberFeed({
+            enrollmentHandle: value.handle,
+            event: result.event,
+            deliveryOperation: send.deliveryOperation!,
+          });
           this.db
             .prepare('UPDATE gh_sends SET body=? WHERE handle=? AND key=?')
             .run(JSON.stringify(send), input.handle, input.key);
@@ -2291,6 +2376,11 @@ export class GroupHost {
     const deliveryOperation =
       record.receipt.deliveryOperation ??
       pub.controller.enqueue(pub.access, [appended.event.eventId]).operations[0];
+    this.retainMemberFeed({
+      enrollmentHandle: value.handle,
+      event: appended.event,
+      deliveryOperation,
+    });
     record = this.nativeJournal.mark(record, { deliveryOperation });
     if (retry) {
       const scheduled = pub.controller.inspect(pub.access, deliveryOperation);

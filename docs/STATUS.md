@@ -236,8 +236,12 @@ creators must update their Worker as well as the app; private configuration and 
 are preserved. Human messaging and interrupted-request recovery remain available.
 Native chat and scoped reading are connected. Shared chat originals publish independently of
 feed summaries; the visible feed automatically reads new arrivals. The older summary writer
-is not a prerequisite for messaging. Automatic per-member cheap summary agents are not
-yet delivered. Native Groups offer Shared files setup with a blank-capable GitHub identity,
+is not a prerequisite for messaging. The local runtime now batches each enabled member's
+own new, confirmed shared originals for summary/labels with the central Bulk model on
+that member's saved provider. It retains originals and exact run/publication receipts;
+chat opening makes no summary turn, and uncertain summaries are never replayed. Focused
+fixtures cover batching, restart, publication retries and tool-free helpers; real-provider
+and separate-computer acceptance of this new lane remains pending. Native Groups offer Shared files setup with a blank-capable GitHub identity,
 a scoped setup prompt, member/request branches, independent task review, exact apply and
 opt-in sync of reviewed committed work. Clean default checkouts fast-forward; dirty, active
 and divergent work is preserved. Repository creation, sign-in and collaborator access use

@@ -89,8 +89,14 @@ Human-message Send retains what you send before delivery. **Retry delivery** use
 same saved message after a lost reply; it does not create another message. Group chat reads the verified retained originals. Delivery status is separate from local saving.
 Shared originals use the durable delivery queue independently of optional summaries.
 A summary, provider limit or offline summary computer cannot hold up a saved chat reply.
-The older selected-writer summary workflow remains for retained activity; automatic
-per-member background summarization is not yet delivered.
+After native access is enabled on a member's computer, its new already-shared messages
+and replies receive background summaries and labels using that provider's saved **Bulk**
+model. Nearby messages share one bounded turn; opening a chat starts no summary turn.
+Each computer handles only its own shared originals. Private chats and local history are
+excluded, originals remain readable, and a failed/uncertain summary is never replayed.
+The older selected-writer workflow remains separate for retained activity; selecting it
+does not take over these per-member summaries. Long originals and full summary storage
+remain original-only. See [summary limits](GROUP_PROMOTION.md#per-member-local-feed-summaries).
 
 **Manage** collects invitations, Shared files, the optional feed writer and local agent
 access. The separately configured isolated mode also offers its own shared actions, Git and reports. Saved agent

@@ -186,6 +186,26 @@ export const groupFeedEntrySchema = groupEventSchema.extend({
   origin: groupFeedOriginSchema.optional(),
 });
 export type GroupFeedEntry = z.infer<typeof groupFeedEntrySchema>;
+/** Present revisions as one item while preserving every immutable feed event for
+ * pagination/evidence. A different member/installation cannot replace an author. */
+export function latestGroupFeedEntries<T extends GroupFeedEntry>(entries: readonly T[]): T[] {
+  const latest = new Map<string, { first: number; event: T }>();
+  for (const event of entries) {
+    const key = JSON.stringify([
+      event.scope.groupId,
+      event.entityId,
+      event.scope.memberId,
+      event.scope.installationId,
+    ]);
+    const prior = latest.get(key);
+    if (!prior) latest.set(key, { first: event.sequence, event });
+    else {
+      prior.first = Math.min(prior.first, event.sequence);
+      if (event.revision > prior.event.revision) prior.event = event;
+    }
+  }
+  return [...latest.values()].sort((a, b) => a.first - b.first).map((entry) => entry.event);
+}
 export const groupFeedPageSchema = z
   .strictObject({
     entries: z.array(groupFeedEntrySchema).max(GROUP_LIMITS.pageSize),
