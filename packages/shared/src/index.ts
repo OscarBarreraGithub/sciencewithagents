@@ -30,6 +30,7 @@ import { mcpUrlRequestSchema } from './mcp-urls.js';
 import { backupStatusSchema } from './backups.js';
 import { catalogQuerySchema, historyQuerySchema, historyReadSchema } from './history.js';
 import { workspaceDraftSubmissionSchema } from './workspace-state.js';
+import { folderBreadcrumbSchema, folderLocationSchema } from './folder-navigation.js';
 import { jobEstimateSchema } from './pulsar.js';
 import {
   providerIdSchema,
@@ -211,26 +212,8 @@ export const folderBrowseSchema = z
       .array(z.object({ id, name: z.string().max(255), location: z.string().optional() }).strict())
       .max(100),
     nextOffset: z.number().int().nonnegative().nullable(),
-    breadcrumbs: z.array(z.object({ id, name: z.string() }).strict()).default([]),
-    locations: z
-      .array(
-        z
-          .object({
-            id,
-            name: z.string(),
-            kind: z.enum([
-              'home',
-              'desktop',
-              'documents',
-              'downloads',
-              'developer',
-              'computer',
-              'volumes',
-            ]),
-          })
-          .strict(),
-      )
-      .default([]),
+    breadcrumbs: z.array(folderBreadcrumbSchema).default([]),
+    locations: z.array(folderLocationSchema).default([]),
     search: z.object({ query: z.string(), partial: z.boolean() }).strict().nullable().default(null),
   })
   .strict();
@@ -674,6 +657,7 @@ export * from './integration.js';
 export * from './project-drafts.js';
 export * from './setup.js';
 export * from './documents.js';
+export * from './folder-navigation.js';
 
 /** An outside agent can create new capped work, never revise or raise existing caps. */
 export const agentTaskRequestSchema = taskRequestSchema

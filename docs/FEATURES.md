@@ -168,6 +168,8 @@ or interrupted work by asking the agent to inspect saved progress and unfinished
 before acting. Recovery receipts survive reloads and simultaneous taps; a later queued turn
 suppresses the old recovery action. Claude sign-in timeouts, unavailable commands and malformed
 status are distinguished from a verified signed-out account, without changing native sign-in.
+Injected Claude background-task results cannot finish an owner turn or release its admission;
+the owned reply and usage remain attached to that turn.
 Older connected computers keep an inline **Continue** action with one command receipt per
 stopped run. Saved owner bubbles show **Queued** or **Sending** from the current run state;
 the message remains visible and its queue label clears when the run finishes.
@@ -265,10 +267,22 @@ All chat views render inline and displayed LaTeX equations automatically, includ
 and shared VS Code messages. Wide equations scroll within their message; code remains literal.
 
 Apps retains a LaTeX tile on computers with recent documents; Help also opens the reader.
-It supports computer-side compilation, folder browsing, recent
-files, selectable text, page navigation and zoom. Manager links open over chat and return
+It supports computer-side compilation, folder browsing with location shortcuts and a
+tappable folder path, recent files, selectable text, page navigation and zoom. Manager links open over chat and return
 to the same reading position and draft. Failed builds retain the previous PDF; existing
-LaTeX-backed reports also have adjustable, reflowing Reading mode: phone-width text, figures and individually scrollable equations with visible overflow cues. An explicit **Format for phone** request creates a separate reading copy using a selectable model, defaulting to the live Sonnet family; originals stay unchanged. Saved local report links open inside the chat. PDFs need no compiler. See [LaTeX](LATEX.md) for setup and conversion limits.
+LaTeX-backed reports also have adjustable, reflowing Reading mode: phone-width text, figures and individually scrollable equations with visible overflow cues. Reading opens with the paper's title, authors with affiliations and abstract. Deterministic source rules keep arXiv-style sources from failing as a whole; a passage or include that cannot be read is marked “only in the Original PDF”, and plain-TeX papers point to Original PDF. Both views scroll natively on phones: touch handling never blocks scrolling, PDF pages render once per zoom instead of re-rendering while they move, and toolbar-only height changes keep the fitted zoom and position. An explicit **Format for phone** request creates a separate reading copy using a selectable model, defaulting to the live Sonnet family; originals stay unchanged. Saved local report links open inside the chat. PDFs need no compiler. See [LaTeX](LATEX.md) for setup and conversion limits.
+
+arXiv import (server API only; no app control yet): `POST /api/documents/arxiv {key, link}` accepts
+an abs/pdf/html/src link, `arXiv:ID` or a bare new- or old-style ID, then fetches the paper's
+metadata, LaTeX source and PDF from arxiv.org only, with size caps and timeouts. Sources unpack
+in-process with unsafe paths refused and links/devices skipped; the main file follows arXiv's
+00README, then `\documentclass` heuristics. The paper appears in recent documents under its title,
+Reading uses the normal pipeline and Original PDF is arXiv's own PDF without compiling. Each
+id+version is cached under `data/arxiv`: repeating a versioned link is instant and offline, while a
+link without a version first asks arXiv for the latest version (offline, it reopens the newest
+cached copy). Temporary PDF failures are never cached. PDF-only papers and sources the app cannot
+read yet import with a clear note. Poll `GET /api/documents/arxiv/:id` for progress; restarts mark unfinished
+imports failed.
 
 ## Scope not presented as finished
 

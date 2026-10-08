@@ -21,8 +21,10 @@ import {
   documentSchema,
   documentActionSchema,
   documentBrowseQuerySchema,
+  documentBrowseSchema,
   savedDocumentLinkSchema,
   savedDocumentLinks,
+  type ArxivPaper,
   type DocumentReading,
   type SavedDocument,
 } from '@dock/shared';
@@ -33,7 +35,13 @@ import { buildReading, expandReadingSource } from './document-reading.js';
 const maxBytes = 50 * 1024 ** 2;
 const inside = (root: string, path: string) =>
   path === root || path.startsWith(root.endsWith(sep) ? root : root + sep);
-type Record = SavedDocument & { path: string; root: string; revision: string | null };
+// pdfSource: a host-owned PDF (e.g. arXiv's) that replaces local compilation for this source.
+type Record = SavedDocument & {
+  path: string;
+  root: string;
+  revision: string | null;
+  pdfSource?: string;
+};
 export function latexCompiler() {
   const dirs = [
     ...(process.env.PATH ?? '').split(delimiter),
@@ -103,7 +111,7 @@ export class Documents {
     return JSON.parse(String(row.body)) as Record;
   }
   private public(doc: Record): SavedDocument {
-    const { path: _path, root: _root, revision: _revision, ...value } = doc;
+    const { path: _path, root: _root, revision: _revision, pdfSource: _pdf, ...value } = doc;
     return documentSchema.parse(value);
   }
   private save(doc: Record, transactional = true) {
@@ -165,6 +173,57 @@ export class Documents {
       error: null,
       revision: null,
       href: `#/latex/${id}`,
+    });
+  }
+  /** Registers a host-imported paper (e.g. arXiv) whose PDF is shown without compiling. */
+  async registerImported(input: {
+    root: string;
+    path: string;
+    pdf: string | null;
+    name: string;
+    folder: string;
+    arxiv: ArxivPaper;
+  }) {
+    const root = await realpath(input.root);
+    const path = await realpath(input.path);
+    const pdfSource = input.pdf ? await realpath(input.pdf) : undefined;
+    if (!inside(root, path)) throw new Conflict('The imported source must stay in its folder.');
+    const kind = extname(path).toLowerCase() === '.pdf' ? ('pdf' as const) : ('tex' as const);
+    const existing = this.store.db.prepare('SELECT body FROM documents WHERE path=?').get(path);
+    const previous = existing ? (JSON.parse(String(existing.body)) as Record) : null;
+    const id = previous?.id ?? randomUUID();
+    let ready: Partial<Record> = {};
+    if (pdfSource && !(previous?.hasPdf && existsSync(this.pdfPath(id)))) {
+      const data = await readFile(pdfSource);
+      if (data.length > maxBytes || data.subarray(0, 5).toString() !== '%PDF-')
+        throw new Conflict('arXiv’s PDF is not a valid PDF smaller than 50 MB.');
+      await mkdir(this.directory, { recursive: true, mode: 0o700 });
+      const scratch = `${this.pdfPath(id)}.${randomUUID()}`;
+      await writeFile(scratch, data, { mode: 0o600 });
+      await rename(scratch, this.pdfPath(id));
+      ready = { state: 'ready', hasPdf: true, builtAt: now(), error: null };
+    }
+    const info = await stat(path);
+    return this.save({
+      ...(previous ?? {
+        id,
+        path,
+        root,
+        state: 'source' as const,
+        hasPdf: false,
+        builtAt: null,
+        error: null,
+        href: `#/latex/${id}`,
+      }),
+      kind,
+      name: input.name,
+      folder: input.folder,
+      arxiv: input.arxiv,
+      pdfSource,
+      ...ready,
+      // The imported tree is host-owned and never edited, so the arXiv PDF stays current.
+      revision: pdfSource ? `${info.size}:${info.mtimeMs}` : (previous?.revision ?? null),
+      openedAt: now(),
     });
   }
   async registerRelative(root: string, path: string) {
@@ -282,12 +341,19 @@ export class Documents {
         /* Unreadable/oversized entries cannot be opened. */
       }
     }
+    // Name every field: FolderBrowser additions must not leak into this strict contract.
     return {
-      ...folders,
-      folders: folders.folders.filter((folder) => !folder.name.startsWith('.')),
+      current: folders.current,
+      parentId: folders.parentId,
+      folders: folders.folders
+        .filter((folder) => !folder.name.startsWith('.'))
+        .map(({ id, name }) => ({ id, name })),
+      nextOffset: folders.nextOffset,
+      breadcrumbs: folders.breadcrumbs,
+      locations: folders.locations,
       files: documents,
       nextFileOffset: offset + 100 < files.length ? offset + 100 : null,
-    };
+    } satisfies z.input<typeof documentBrowseSchema>;
   }
   private async source(doc: Record) {
     const path = await realpath(doc.path);
@@ -340,8 +406,8 @@ export class Documents {
     try {
       const source = await this.source(doc);
       await mkdir(scratch, { recursive: true, mode: 0o700 });
-      let output = source.path;
-      if (doc.kind === 'tex') {
+      let output = doc.pdfSource ?? source.path;
+      if (doc.kind === 'tex' && !doc.pdfSource) {
         const compiler = latexCompiler();
         if (!compiler)
           throw new Error(
@@ -466,7 +532,8 @@ export class Documents {
       throw new Missing('The PDF is not ready. Open the document to build it.');
     const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
-      return { data: await handle.readFile(), name: doc.name.replace(/\.tex$/i, '.pdf') };
+      const name = /\.pdf$/i.test(doc.name) ? doc.name : `${doc.name.replace(/\.tex$/i, '')}.pdf`;
+      return { data: await handle.readFile(), name };
     } finally {
       await handle.close();
     }

@@ -1,7 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from 'react';
 import DOMPurify from 'dompurify';
 import katex from 'katex';
-import { readingMathParts, stripLatexCommand, type DocumentReading as Reading } from '@dock/shared';
+import {
+  readingMathParts,
+  stripLatexCommand,
+  type DocumentReadingResponse as Reading,
+} from '@dock/shared';
 import { apiScope, apiUrl } from './api';
 import 'katex/dist/katex.min.css';
 
@@ -154,6 +158,10 @@ export function DocumentReading({
     }
     return document.body.innerHTML;
   }, [id, endpoint, reading.html, reading.labels]);
+  // React 19 re-applies dangerouslySetInnerHTML whenever its object changes, so an inline
+  // object would rebuild the whole document (and reset equation scroll positions and overflow
+  // cues) on every parent render, such as each poll during a rebuild.
+  const markup = useMemo(() => ({ __html: html }), [html]);
   useLayoutEffect(() => {
     const element = scroll.current!;
     const key = `swa:reading:${apiScope()}:${endpoint}`;
@@ -176,43 +184,74 @@ export function DocumentReading({
       ...root.querySelectorAll<HTMLElement>('.math.display, .reading-table-scroll'),
     ];
     let disposed = false;
-    const update = () => {
+    // Each pass reads every geometry it needs before writing, and writes only changes, so a pass
+    // costs at most two layouts however many equations it covers. (Interleaving reads and writes
+    // forced one layout per equation: hundreds of milliseconds per scroll event on a phone.)
+    const hint = (equation: HTMLElement) =>
+      equation.parentElement!.querySelector<HTMLElement>(':scope > .reading-overflow-hint')!;
+    const cue = (equation: HTMLElement) => {
+      const { scrollLeft, scrollWidth, clientWidth } = equation;
+      const wide = scrollWidth > clientWidth + 3;
+      const left = scrollLeft > 3;
+      const right = scrollLeft + clientWidth < scrollWidth - 3;
+      const label = equation.classList.contains('reading-table-scroll') ? 'table' : 'equation';
+      return {
+        equation,
+        wide,
+        text: left && right ? `← More ${label} →` : left ? `← More ${label}` : `More ${label} →`,
+      };
+    };
+    const show = ({ equation, wide, text }: ReturnType<typeof cue>) => {
+      const element = hint(equation);
+      if (element.hidden === wide) element.hidden = !wide;
+      if (element.textContent !== text) element.textContent = text;
+      if (equation.tabIndex !== (wide ? 0 : -1)) equation.tabIndex = wide ? 0 : -1;
+      equation.parentElement!.classList.toggle('has-overflow', wide);
+    };
+    const update = (targets: Iterable<HTMLElement>) => {
       if (disposed) return;
-      for (const equation of equations) {
-        const hint = equation.parentElement!.querySelector<HTMLElement>('.reading-overflow-hint')!;
+      const stacks = [];
+      for (const equation of targets) {
         const content = equation.querySelector<HTMLElement>('.reading-equation-content');
         const formula = content?.firstElementChild as HTMLElement | null;
         const number = content?.querySelector<HTMLElement>('.reading-equation-number');
         if (content && formula && number)
-          content.classList.toggle(
-            'stack-number',
-            formula.scrollWidth +
-              number.scrollWidth +
-              parseFloat(getComputedStyle(equation).fontSize) >
+          stacks.push({
+            content,
+            stack:
+              formula.scrollWidth +
+                number.scrollWidth +
+                parseFloat(getComputedStyle(equation).fontSize) >
               equation.clientWidth,
-          );
-        const wide = equation.scrollWidth > equation.clientWidth + 3;
-        const left = equation.scrollLeft > 3;
-        const right = equation.scrollLeft + equation.clientWidth < equation.scrollWidth - 3;
-        hint.hidden = !wide;
-        equation.tabIndex = wide ? 0 : -1;
-        const label = equation.classList.contains('reading-table-scroll') ? 'table' : 'equation';
-        hint.textContent =
-          left && right ? `← More ${label} →` : left ? `← More ${label}` : `More ${label} →`;
-        equation.parentElement!.classList.toggle('has-overflow', wide);
+          });
       }
+      for (const { content, stack } of stacks) content.classList.toggle('stack-number', stack);
+      const cues = [...targets].map(cue);
+      for (const item of cues) show(item);
     };
-    const resize = new ResizeObserver(update);
+    // Observe each scroller and its content: late KaTeX fonts widen the content only.
+    const owner = new Map<Element, HTMLElement>();
     for (const equation of equations) {
-      resize.observe(equation);
-      equation.addEventListener('scroll', update, { passive: true });
+      owner.set(equation, equation);
+      const content = equation.querySelector('.reading-equation-content, table');
+      if (content) owner.set(content, equation);
     }
-    update();
-    void document.fonts.ready.then(update);
+    const resize = new ResizeObserver((entries) =>
+      update(new Set(entries.map((entry) => owner.get(entry.target)!))),
+    );
+    const scrolled = (event: Event) => {
+      if (!disposed) show(cue(event.currentTarget as HTMLElement));
+    };
+    for (const [element, equation] of owner) {
+      resize.observe(element);
+      if (element === equation) equation.addEventListener('scroll', scrolled, { passive: true });
+    }
+    update(equations);
+    void document.fonts.ready.then(() => update(equations));
     return () => {
       disposed = true;
       resize.disconnect();
-      for (const equation of equations) equation.removeEventListener('scroll', update);
+      for (const equation of equations) equation.removeEventListener('scroll', scrolled);
     };
   }, [html, size]);
   return (
@@ -267,7 +306,7 @@ export function DocumentReading({
       <article
         className="document-reading"
         style={{ '--reading-size': `${size}px` } as CSSProperties}
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={markup}
       />
     </div>
   );

@@ -137,9 +137,21 @@ test('LaTeX app browses, zooms, navigates pages, survives build errors and reope
   await expect(reader.locator('.page').nth(1).locator('.textLayer')).toContainText('Measurements');
   await reader.getByLabel('Page number').fill('1');
   await reader.getByLabel('Page number').press('Enter');
+  // Phone toolbars change only the height: the fitted scale and reading position stay put.
+  const scroller = reader.locator('.pdf-scroll');
+  const top = await scroller.evaluate((element) => (element.scrollTop = 200) && element.scrollTop);
+  const fitted = await reader.locator('.pdf-zoom').textContent();
+  const viewport = page.viewportSize()!;
+  await page.setViewportSize({ ...viewport, height: viewport.height - 75 });
+  await page.waitForTimeout(150);
+  await expect(reader.locator('.pdf-zoom')).toHaveText(fitted!);
+  expect(await scroller.evaluate((element) => element.scrollTop)).toBeCloseTo(top, 0);
+  await page.setViewportSize(viewport);
   const beforePinch = await reader.locator('.pdf-zoom').textContent();
-  await reader.locator('.pdf-scroll').evaluate((element) => {
+  // Pinch handling never cancels touches, so the browser can always scroll without waiting.
+  const prevented = await reader.locator('.pdf-scroll').evaluate((element) => {
     const touch = (x: number) => ({ clientX: x, clientY: 250 });
+    let cancelled = false;
     for (const [type, touches] of [
       ['touchstart', [touch(100), touch(180)]],
       ['touchmove', [touch(60), touch(220)]],
@@ -151,8 +163,11 @@ test('LaTeX app browses, zooms, navigates pages, survives build errors and reope
         changedTouches: { value: [touch(220)] },
       });
       element.dispatchEvent(event);
+      cancelled ||= event.defaultPrevented;
     }
+    return cancelled;
   });
+  expect(prevented).toBe(false);
   await expect(reader.locator('.pdf-zoom')).not.toHaveText(beforePinch!);
   await reader.getByLabel('Page fit').selectOption('page-width');
   await page.screenshot({
@@ -187,6 +202,145 @@ test('LaTeX app browses, zooms, navigates pages, survives build errors and reope
   await rendered(page);
   await page.goBack();
   await expect(reader).toHaveCount(0);
+});
+
+test('LaTeX browser navigates locations and breadcrumbs, tolerates server skew and explains bad replies', async ({
+  page,
+}, info) => {
+  const ids = Object.fromEntries(
+    [
+      'root',
+      'users',
+      'home',
+      'desktop',
+      'documents',
+      'downloads',
+      'developer',
+      'volumes',
+      'papers',
+    ].map((name) => [name, randomUUID()]),
+  );
+  const names: Record<string, string> = {
+    root: 'This computer',
+    users: 'Users',
+    home: 'emmy',
+    documents: 'Documents',
+    papers: 'Thermal papers',
+  };
+  const chain: Record<string, string[]> = {
+    home: ['root', 'users', 'home'],
+    documents: ['root', 'users', 'home', 'documents'],
+    papers: ['root', 'users', 'home', 'documents', 'papers'],
+    root: ['root'],
+  };
+  const locations = [
+    ['Home', 'home'],
+    ['Desktop', 'desktop'],
+    ['Documents', 'documents'],
+    ['Downloads', 'downloads'],
+    ['Developer', 'developer'],
+    ['This computer', 'root', 'computer'],
+    ['Drives', 'volumes'],
+  ].map(([name, key, kind]) => ({ id: ids[key]!, name, kind: kind ?? key }));
+  const recent: SavedDocument = {
+    id: randomUUID(),
+    name: 'Notes.pdf',
+    folder: 'Documents',
+    kind: 'pdf',
+    state: 'ready',
+    hasPdf: true,
+    builtAt: null,
+    openedAt: new Date().toISOString(),
+    error: null,
+    href: '#/latex/x',
+  };
+  const requested: (string | null)[] = [];
+  let malformed = false;
+  await page.route('**/api/documents**', (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/documents'))
+      return route.fulfill({ json: { compiler: 'latexmk', documents: [recent] } });
+    const folderId = url.searchParams.get('folderId');
+    requested.push(folderId);
+    if (malformed) return route.fulfill({ json: { current: 'unexpected' } });
+    const key = Object.keys(ids).find((name) => ids[name] === folderId) ?? 'home';
+    const trail = (chain[key] ?? ['home']).map((part) => ({ id: ids[part]!, name: names[part]! }));
+    // The exact shape the pre-fix server sends (it spreads FolderBrowser output), plus a future key.
+    return route.fulfill({
+      json: {
+        current: { id: ids[key], name: names[key], canSelect: key !== 'home' },
+        parentId: trail.at(-2)?.id ?? null,
+        folders: key === 'documents' ? [{ id: ids.papers, name: 'Thermal papers' }] : [],
+        nextOffset: null,
+        search: null,
+        breadcrumbs: trail,
+        locations,
+        files: [],
+        nextFileOffset: null,
+        addedByNewerServer: { anything: true },
+      },
+    });
+  });
+  await page.goto('/#/apps');
+  await page
+    .locator('.apps-grid')
+    .getByRole('link', { name: 'LaTeX / PDF reader', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Browse this computer' }).click();
+  const browser = page.getByRole('region', { name: 'Files on this computer' });
+  const places = browser.getByRole('navigation', { name: 'Locations' });
+  const path = browser.getByRole('navigation', { name: 'Folder path' });
+  await expect(places.getByRole('button')).toHaveText([
+    'Home',
+    'Desktop',
+    'Documents',
+    'Downloads',
+    'Developer',
+    'This computer',
+    'Drives',
+  ]);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(places.getByRole('button', { name: 'Home' })).toHaveAttribute(
+    'aria-current',
+    'location',
+  );
+  await places.getByRole('button', { name: 'Documents' }).click();
+  await expect(browser.getByRole('heading', { name: 'Documents' })).toBeVisible();
+  await browser.getByRole('button', { name: 'Thermal papers' }).click();
+  await expect(path.getByRole('button')).toHaveText([
+    'This computer',
+    'Users',
+    'emmy',
+    'Documents',
+    'Thermal papers',
+  ]);
+  await expect(path.getByRole('button', { name: 'Thermal papers' })).toHaveAttribute(
+    'aria-current',
+    'location',
+  );
+  // Narrow screens keep the current folder in view; ancestors scroll.
+  expect(
+    await path.evaluate(
+      (element) => element.scrollLeft + element.clientWidth >= element.scrollWidth - 1,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+  ).toBe(true);
+  for (const button of await places.getByRole('button').all())
+    expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await browser.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+  await page.screenshot({
+    path: `../../data/latex-browser-20261007/${info.project.name}-browser.png`,
+  });
+  await path.getByRole('button', { name: 'emmy' }).click();
+  await expect(browser.getByRole('heading', { name: 'emmy' })).toBeVisible();
+  expect(requested).toEqual([null, ids.documents, ids.papers, ids.home]);
+  malformed = true;
+  await browser.getByRole('button', { name: 'Refresh folder' }).click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'This folder could not be read. Reload and try again.',
+  );
 });
 
 test('manager PDF links retain the mounted chat, its draft and exact scroll position on Back and swipe', async ({
@@ -366,6 +520,16 @@ test('source reading wraps at large text sizes, isolates equations, keeps its pl
     element.scrollLeft = element.scrollWidth;
   });
   await expect(reader.getByText('← More equation', { exact: true })).toBeVisible();
+  // A parent re-render (here a rebuild and reading refresh) keeps the reading DOM, including
+  // the equation's sideways position and overflow cue.
+  const equation = await reader.locator('.math.display').elementHandle();
+  const sideways = await equation!.evaluate((element) => element.scrollLeft);
+  await reader.getByRole('button', { name: 'Rebuild', exact: true }).click();
+  await expect(reader.getByRole('button', { name: 'Rebuild', exact: true })).toBeEnabled();
+  expect(await equation!.evaluate((element) => element.isConnected && element.scrollLeft)).toBe(
+    sideways,
+  );
+  await expect(reader.getByText('← More equation', { exact: true })).toBeVisible();
   await page.screenshot({
     path: `../../data/reader-resource-20261004/reflow-${info.project.name}.png`,
   });
@@ -378,6 +542,73 @@ test('source reading wraps at large text sizes, isolates equations, keeps its pl
   await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBeGreaterThan(1400);
   await reader.getByRole('button', { name: 'Back to where I was' }).click();
   await expect(reader).toHaveCount(0);
+});
+
+test('source reading opens with the paper title block and marks passages only in the PDF', async ({
+  page,
+}, info) => {
+  const data = await fixture(page);
+  // Server output for a revtex paper (title, two authors with affiliations, email, abstract)
+  // with one passage Pandoc rejected. Unknown keys mimic a newer server.
+  const html = `<header class="reading-front-matter">
+<h1 class="reading-title">Thermal transport in a long-titled layered material with <span class="math inline">\\(\\kappa_{xy}\\)</span></h1>
+<div class="reading-authors"><p>Ann Alpha<sup>1</sup>, Ben Beta<sup>2</sup></p></div>
+<div class="reading-affiliations"><p><sup>1</sup>Department of Physics, First Institute of Technology, Town 12345</p>
+<p><sup>2</sup>Second Laboratory for Very Long Affiliation Names, City</p></div>
+<div class="reading-contact"><p>Email: ann.alpha@first-institute.example.org</p></div>
+<section class="reading-abstract"><h2 class="reading-abstract-heading">Abstract</h2>
+<p>We measure the thermal Hall conductivity <span class="math inline">\\(\\kappa_{xy}\\)</span> and find a small effect.</p></section>
+</header>
+<h1 id="introduction">Introduction</h1><p>${'Body text that wraps on a phone. '.repeat(8)}</p>
+<div class="reading-omitted"><p>Part of this section is only in the Original PDF.</p></div>`;
+  await page.route('**/api/documents/*/reading', (route) =>
+    route.fulfill({
+      json: {
+        available: true,
+        html,
+        warnings: [
+          'Some passages could not be converted. Each is marked where it is only in the Original PDF.',
+        ],
+        labels: {},
+        health: {
+          conversion: 'partial',
+          dropped: [{ part: 'body', reason: 'r', excerpt: 'e' }],
+          later: 1,
+        },
+        figures: [],
+      },
+    }),
+  );
+  await page.goto(`/#/latex/${data.doc.id}`);
+  const reader = page.getByRole('dialog', { name: 'PDF reader' });
+  const title = reader.getByRole('heading', { level: 1, name: /Thermal transport/ });
+  await expect(title).toBeVisible();
+  await expect(reader.locator('.document-reading > :first-child')).toHaveClass(
+    'reading-front-matter',
+  );
+  await expect(reader.getByRole('heading', { name: 'Abstract' })).toBeVisible();
+  await expect(reader.locator('.reading-title .katex')).toHaveCount(1);
+  await expect(reader.getByText('Part of this section is only in the Original PDF.')).toBeVisible();
+  await expect(reader.getByText('Conversion notes')).toBeVisible();
+  const area = reader.getByLabel('Reading pages');
+  const titleSize = await title.evaluate((element) =>
+    parseFloat(getComputedStyle(element).fontSize),
+  );
+  const bodySize = await reader
+    .locator('.document-reading > p')
+    .first()
+    .evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+  expect(titleSize).toBeGreaterThan(bodySize);
+  await page.screenshot({
+    path: `../../data/s2a-corpus/screens/front-matter-${info.project.name}.png`,
+  });
+  for (let i = 0; i < 5; i++) await reader.getByRole('button', { name: 'Larger text' }).click();
+  expect(await area.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: `../../data/s2a-corpus/screens/front-matter-large-${info.project.name}.png`,
+  });
 });
 
 test('phone formatting is an explicit selectable request and leaves original reading available', async ({

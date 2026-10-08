@@ -71,9 +71,9 @@ export class FolderBrowser {
       ['Downloads', join(home, 'Downloads'), 'downloads'],
       ['Developer', join(home, 'Developer'), 'developer'],
       ['This computer', parse(home).root, 'computer'],
-      ...(process.platform === 'darwin' ? [['Drives', '/Volumes', 'volumes']] : []),
+      ...(process.platform === 'darwin' ? ([['Drives', '/Volumes', 'volumes']] as const) : []),
     ] as const;
-    const locations: { id: string; name: string; kind: string }[] = [];
+    const locations: { id: string; name: string; kind: (typeof places)[number][2] }[] = [];
     for (const [name, target, kind] of places) {
       try {
         locations.push({ id: this.issue(await this.inspect(target)), name, kind });

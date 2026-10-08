@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { PassThrough } from 'node:stream';
 import { Runtime } from './runtime.js';
 import { Store } from './store.js';
 import { DemoProvider } from './demo.js';
@@ -15,6 +16,7 @@ import {
   ClaudePreflightError,
   parseClaudeIdentity,
   type ClaudeModel,
+  type ClaudeChannel,
   type ClaudeEvent,
   type ClaudeSessionOptions,
 } from './claude-session.js';
@@ -1509,6 +1511,169 @@ it('retains text from a native local command result without requiring an assista
       .entries(manager)
       .some((entry) => entry.runId === run.id && entry.text === 'Native context summary'),
   ).toBe(true);
+});
+
+it('Continue keeps admission through an injected native background result and captures the owned reply once', async () => {
+  await runtime.close();
+  const input = new PassThrough(),
+    output = new PassThrough();
+  const writes: Record<string, any>[] = [];
+  const emit = (frame: unknown) => output.write(JSON.stringify(frame) + '\n');
+  let exited!: (code: number | null) => void;
+  const channel: ClaudeChannel = {
+    input,
+    output,
+    exited: new Promise((resolve) => {
+      exited = resolve;
+    }),
+    close: async () => {
+      input.end();
+      output.end();
+      exited(0);
+    },
+  };
+  input.on('data', (buffer) => {
+    const frame = JSON.parse(buffer.toString());
+    writes.push(frame);
+    if (frame.type === 'control_request')
+      queueMicrotask(() =>
+        emit({
+          type: 'control_response',
+          response: { subtype: 'success', request_id: frame.request_id, response: {} },
+        }),
+      );
+  });
+  let nativeOptions!: ClaudeSessionOptions;
+  runtime = new Runtime(store, root, 'never-spawn-codex', codexFactory, {
+    identity: auth,
+    inspect,
+    session: (options) => {
+      nativeOptions = options;
+      return new ClaudeSession(options, { spawn: () => channel, identity: auth, timeoutMs: 500 });
+    },
+  });
+  const sessionId = randomUUID();
+  store.updateAgent(manager, { threadId: sessionId });
+  store.setSetting(`claude:account:${manager}`, identity.affinity);
+  store.setSetting(`claude:attempted:${sessionId}`, true);
+  const source = store.enqueue(
+    manager,
+    randomUUID(),
+    'Inspect prior side effects before continuing',
+  );
+  store.updateRun(source.id, { status: 'interrupted' });
+  store.updateAgent(manager, { status: 'interrupted' });
+  await runtime.initialize();
+  const view = runRecoveryView(store, manager)!;
+  expect(view.action).toBe('continue');
+  const request = {
+    key: randomUUID(),
+    runId: view.runId,
+    failureId: view.failureId,
+    action: view.action,
+  };
+  const receipt = recoverRun(store, manager, request);
+  runtime.kick();
+  await vi.waitFor(() => expect(writes.filter((frame) => frame.type === 'user')).toHaveLength(1));
+  expect(nativeOptions.resume).toBe(true);
+  expect(writes.find((frame) => frame.type === 'user')).toMatchObject({
+    uuid: receipt.runId,
+    origin: { kind: 'human' },
+  });
+  const backgroundId = randomUUID();
+  emit({
+    type: 'result',
+    uuid: backgroundId,
+    session_id: sessionId,
+    origin: { kind: 'task-notification' },
+    subtype: 'success',
+    is_error: false,
+    usage: { input_tokens: 0, output_tokens: 0 },
+  });
+  await vi.waitFor(() =>
+    expect(store.events(0, 1000)).toContainEqual(
+      expect.objectContaining({
+        type: 'claude.unowned_result_ignored',
+        data: {
+          resultId: backgroundId,
+          sessionId,
+          originKind: 'task-notification',
+          activeRunId: receipt.runId,
+        },
+      }),
+    ),
+  );
+  expect(store.run(receipt.runId).status).toBe('running');
+  expect(store.agent(manager).turnId).toBe(receipt.runId);
+  const lease = () =>
+    JSON.parse(
+      String(
+        store.db.prepare('SELECT body FROM pulsar_leases WHERE run_id=?').get(receipt.runId)!.body,
+      ),
+    );
+  expect(lease().finishedAt).toBeNull();
+  const hookId = randomUUID();
+  emit({
+    type: 'control_request',
+    request_id: hookId,
+    request: {
+      subtype: 'hook_callback',
+      callback_id: 'quark',
+      input: {
+        session_id: sessionId,
+        hook_event_name: 'PreToolUse',
+        tool_use_id: 'owned-read',
+        tool_name: 'Read',
+      },
+    },
+  });
+  await vi.waitFor(() =>
+    expect(writes.find((frame) => frame.response?.request_id === hookId)).toBeDefined(),
+  );
+  const hookResponse = writes.find((frame) => frame.response?.request_id === hookId)!.response;
+  expect(hookResponse.subtype).toBe('success');
+  expect(hookResponse.response.hookSpecificOutput?.permissionDecision).not.toBe('deny');
+  emit({
+    type: 'assistant',
+    uuid: randomUUID(),
+    session_id: sessionId,
+    message: {
+      id: 'owned-recovery-reply',
+      content: [{ type: 'text', text: 'Saved progress inspected; continued safely.' }],
+    },
+  });
+  emit({
+    type: 'result',
+    uuid: randomUUID(),
+    session_id: sessionId,
+    // A background-started turn can fold in the owner input. Its exact ID in
+    // the list still owns the terminal receipt, even if the opener is different.
+    user_message_uuid: randomUUID(),
+    user_message_uuids: [randomUUID(), receipt.runId],
+    origin: { kind: 'task-notification' },
+    subtype: 'success',
+    is_error: false,
+    usage: {
+      input_tokens: 9,
+      output_tokens: 3,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    },
+  });
+  await vi.waitFor(() => expect(store.run(receipt.runId).status).toBe('completed'));
+  expect(lease().finishedAt).not.toBeNull();
+  expect(
+    store
+      .entries(manager)
+      .filter((entry) => entry.runId === receipt.runId && entry.kind === 'assistant'),
+  ).toEqual([expect.objectContaining({ text: 'Saved progress inspected; continued safely.' })]);
+  runtime.quark.sync();
+  expect(runtime.quark.runs().find((run) => run.runId === receipt.runId)?.tokens.totalTokens).toBe(
+    12,
+  );
+  expect(recoverRun(store, manager, { ...request, key: randomUUID() })).toEqual(receipt);
+  expect(writes.filter((frame) => frame.type === 'user')).toHaveLength(1);
+  expect(codexFactory).not.toHaveBeenCalled();
 });
 
 it('a typed Claude preflight failure has one visible error and one explicit original-message retry', async () => {

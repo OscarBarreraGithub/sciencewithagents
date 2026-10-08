@@ -325,6 +325,7 @@ export type ClaudeEvent =
     }
   | { type: 'permission'; request: ClaudePermission }
   | { type: 'permission_cancelled'; requestId: string }
+  | { type: 'unowned_result'; id: string; sessionId: string; originKind: string }
   | {
       type: 'result';
       id: string;
@@ -956,6 +957,7 @@ export class ClaudeSession extends EventEmitter {
         type: 'user',
         session_id: this.options.sessionId,
         uuid: input.deliveryId,
+        origin: { kind: 'human' },
         message: { role: 'user', content: input.text },
         parent_tool_use_id: null,
       });
@@ -1176,14 +1178,24 @@ export class ClaudeSession extends EventEmitter {
       const resultId = id.parse(frame.uuid);
       // Results can be replayed after the next user input. A prior result must
       // never inherit the current delivery ID and complete that newer run.
-      if (this.seenResults.has(resultId) || !this.busy || !this.deliveryId) return;
-      if (
-        frame.user_message_uuid != null &&
-        uuid.parse(frame.user_message_uuid) !== this.deliveryId
-      )
-        return;
+      if (this.seenResults.has(resultId)) return;
       if (this.seenResults.size >= 20_000) throw new Error('Claude result limit reached.');
       this.seenResults.add(resultId);
+      const input = claudeResultInput(frame, this.deliveryId);
+      const originKind = nonHumanResultOrigin(frame);
+      if (originKind && !input.matches) {
+        // Native resumes can inject background-task turns beside the owner's
+        // input. Their terminal receipts do not release the owner's admission.
+        this.event({
+          type: 'unowned_result',
+          id: resultId,
+          sessionId: uuid.parse(frame.session_id),
+          originKind,
+        });
+        return;
+      }
+      if (!this.busy || !this.deliveryId) return;
+      if (input.reported && !input.matches) return;
     }
     if (frame.type === 'rate_limit_event') {
       // The SDK omits the turn origin, so the exact native event ID is replay
@@ -1325,6 +1337,32 @@ export class ClaudeSession extends EventEmitter {
     this.hostRequests.clear();
     await this.channel?.close();
   }
+}
+
+function claudeResultInput(frame: Record<string, unknown>, deliveryId: string | null) {
+  const singular = frame.user_message_uuid != null ? uuid.parse(frame.user_message_uuid) : null;
+  const folded =
+    frame.user_message_uuids != null
+      ? uuid.array().max(20_000).parse(frame.user_message_uuids)
+      : null;
+  return {
+    singular,
+    reported: singular !== null || folded !== null,
+    // The opening input supplies origin, but the native CLI can fold our input
+    // into that same turn. An exact input ID is stronger evidence than origin.
+    matches: deliveryId !== null && (singular === deliveryId || !!folded?.includes(deliveryId)),
+  };
+}
+
+// The native SDK distinguishes application input from injected background turns.
+// Older CLIs omit origin; keep their root results compatible with UUID fencing.
+function nonHumanResultOrigin(frame: Record<string, unknown>): string | null {
+  const origin = jsonObject.safeParse(frame.origin);
+  if (!origin.success || typeof origin.data.kind !== 'string' || origin.data.kind === 'human')
+    return null;
+  return origin.data.kind.length > 0 && origin.data.kind.length <= 64
+    ? origin.data.kind
+    : 'unknown';
 }
 
 const tokens = (value: unknown) =>
@@ -1469,6 +1507,12 @@ export function normalizeClaudeEvent(
   }
   if (frame.type === 'result') {
     if (frame.parent_tool_use_id != null) return [];
+    const input = claudeResultInput(frame, deliveryId);
+    if (
+      (nonHumanResultOrigin(frame) && !input.matches) ||
+      (deliveryId !== null && input.reported && !input.matches)
+    )
+      return [];
     const usage = jsonObject.safeParse(frame.usage);
     const models = jsonObject.safeParse(frame.modelUsage);
     const modelUsage =
@@ -1499,8 +1543,7 @@ export function normalizeClaudeEvent(
         type: 'result',
         id: id.parse(frame.uuid),
         sessionId: uuid.parse(frame.session_id),
-        deliveryId:
-          frame.user_message_uuid != null ? uuid.parse(frame.user_message_uuid) : deliveryId,
+        deliveryId: input.matches ? deliveryId : (input.singular ?? deliveryId),
         status: interrupted
           ? 'interrupted'
           : frame.is_error === true || frame.subtype !== 'success'

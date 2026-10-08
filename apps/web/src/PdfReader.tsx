@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, Download, Minus, Plus, RefreshCw } from 'lucide-react';
 import {
-  documentReadingSchema,
-  type DocumentReading as Reading,
+  documentReadingResponseSchema,
+  type DocumentReadingResponse as Reading,
   documentSchema,
   type SavedDocument,
 } from '@dock/shared';
@@ -46,16 +46,21 @@ function PdfPages({
         externalLinkTarget: 2,
         externalLinkRel: 'noopener noreferrer',
       });
+      // A page above maxCanvasPixels gets a half-resolution canvas plus "detail" canvases that
+      // pdf.js re-renders as the visible area moves, so scrolling flickers between blurry and
+      // sharp. Touch screens use pdf.js's own iOS/Android cap, which fits a fit-width page on any
+      // portrait phone, and render capped pages once instead of chasing the scroll position.
+      const touch = matchMedia('(pointer: coarse)').matches;
       const viewer = new PDFViewer({
         container: element,
         viewer: pages.current!,
         eventBus: bus,
         linkService: links,
         removePageBorders: true,
-        maxCanvasPixels: 2 * 1024 ** 2,
+        maxCanvasPixels: touch ? 5 * 1024 ** 2 : 16 * 1024 ** 2,
         maxCanvasDim: 4096,
         annotationMode: 1,
-        enableDetailCanvas: true,
+        enableDetailCanvas: !touch,
       });
       controller.current = viewer;
       links.setViewer(viewer);
@@ -105,10 +110,30 @@ function PdfPages({
       });
       links.setDocument(pdf);
       viewer.setDocument(pdf);
+      // Touch listeners stay passive so the browser never waits on JavaScript to scroll;
+      // `touch-action: pan-x pan-y` on .pdf-scroll keeps the browser's own zoom out of a pinch.
       let pinch: { distance: number; scale: number; x: number; y: number } | null = null;
+      let pinchScale = 0;
+      let pinchFrame = 0;
       let swipe: { x: number; y: number; at: number } | null = null;
       const distance = (a: Touch, b: Touch) =>
         Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const zoom = () => {
+        pinchFrame = 0;
+        if (!pinch) return;
+        viewer.updateScale({
+          scaleFactor: pinchScale / viewer.currentScale,
+          drawingDelay: 150,
+          origin: [pinch.x, pinch.y],
+        });
+      };
+      const settle = () => {
+        if (pinch && pinchFrame) {
+          cancelAnimationFrame(pinchFrame);
+          zoom();
+        }
+        pinch = null;
+      };
       const start = (event: TouchEvent) => {
         if (event.touches.length === 2) {
           const [a, b] = [event.touches[0]!, event.touches[1]!];
@@ -119,7 +144,6 @@ function PdfPages({
             y: (a.clientY + b.clientY) / 2,
           };
           swipe = null;
-          event.preventDefault();
         } else if (
           event.touches.length === 1 &&
           element.scrollLeft < 2 &&
@@ -131,19 +155,15 @@ function PdfPages({
       };
       const move = (event: TouchEvent) => {
         if (pinch && event.touches.length === 2) {
-          event.preventDefault();
-          const scale = Math.min(
+          pinchScale = Math.min(
             4,
             Math.max(
               0.2,
               (pinch.scale * distance(event.touches[0]!, event.touches[1]!)) / pinch.distance,
             ),
           );
-          viewer.updateScale({
-            scaleFactor: scale / viewer.currentScale,
-            drawingDelay: 150,
-            origin: [pinch.x, pinch.y],
-          });
+          // One CSS-scaled preview per frame; pdf.js redraws once the pinch rests.
+          pinchFrame ||= requestAnimationFrame(zoom);
         }
       };
       const end = (event: TouchEvent) => {
@@ -157,15 +177,35 @@ function PdfPages({
             element.dispatchEvent(new CustomEvent('pdf:back', { bubbles: true }));
         }
         swipe = null;
-        if (event.touches.length < 2) pinch = null;
+        if (event.touches.length < 2) settle();
       };
-      element.addEventListener('touchstart', start, { passive: false });
-      element.addEventListener('touchmove', move, { passive: false });
-      element.addEventListener('touchend', end);
-      const resize = new ResizeObserver(() => {
-        if (['page-width', 'page-fit'].includes(viewer.currentScaleValue))
-          viewer.currentScaleValue = viewer.currentScaleValue;
+      // A cancelled touch is never a swipe; a pinch keeps its last scale.
+      const cancel = () => {
+        swipe = null;
+        settle();
+      };
+      element.addEventListener('touchstart', start, { passive: true });
+      element.addEventListener('touchmove', move, { passive: true });
+      element.addEventListener('touchend', end, { passive: true });
+      element.addEventListener('touchcancel', cancel, { passive: true });
+      // Phone toolbars and the keyboard change only the height. Refit a width preset when the
+      // width changes (or the height, for whole-page fit), once per frame, keeping the page.
+      let size = { width: element.clientWidth, height: element.clientHeight };
+      let resizeFrame = 0;
+      const refit = () => {
+        resizeFrame = 0;
+        const next = { width: element.clientWidth, height: element.clientHeight };
+        const preset = viewer.currentScaleValue;
+        if (
+          (preset === 'page-width' && next.width !== size.width) ||
+          (preset === 'page-fit' && (next.width !== size.width || next.height !== size.height))
+        )
+          viewer.currentScaleValue = preset;
+        size = next;
         viewer.update();
+      };
+      const resize = new ResizeObserver(() => {
+        resizeFrame ||= requestAnimationFrame(refit);
       });
       resize.observe(element);
       cleanup = () => {
@@ -184,9 +224,12 @@ function PdfPages({
           /* Optional reading-position cache. */
         }
         resize.disconnect();
+        cancelAnimationFrame(resizeFrame);
+        cancelAnimationFrame(pinchFrame);
         element.removeEventListener('touchstart', start);
         element.removeEventListener('touchmove', move);
         element.removeEventListener('touchend', end);
+        element.removeEventListener('touchcancel', cancel);
       };
     })().catch((error) => {
       if (!disposed)
@@ -288,7 +331,7 @@ function Reader({
       abort.signal,
       150000,
     )
-      .then(documentReadingSchema.parse)
+      .then(documentReadingResponseSchema.parse)
       .then((value) => {
         if (abort.signal.aborted) return;
         setReading(value);

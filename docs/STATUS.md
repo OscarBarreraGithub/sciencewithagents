@@ -1,6 +1,6 @@
 # Current status
 
-Checked 2026-10-07. **Beta: current workflows have been exercised with real Codex/Claude
+Checked 2026-10-08. **Beta: current workflows have been exercised with real Codex/Claude
 projects and desktop/phone browser checks.** This is not a claim that every device or
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
@@ -11,6 +11,11 @@ Internal team notifications can be combined into one durable review without dele
 records or waking stopped chats. Queue cards separate those updates from executable work;
 pacing explanations are collapsed. These changes have focused backend and emulated browser
 checks; recurring native sign-in failures and physical iPhone behavior remain separate limits.
+Claude terminal results now match the submitted input, including native merged-input IDs;
+unrelated background completions cannot close that owner turn. Focused protocol/runtime
+checks cover this correction; a real reproduction of the interrupted native resume remains
+an acceptance limit. Shared-chat send receipts no longer describe a delivered follow-up as
+still queued; the live pending list carries that status.
 
 The beta covers provider routing, Claude review, manager leases, owned-process stopping,
 delayed allowance attribution, crowded attention/QUARK layouts, keyboard composers,
@@ -161,6 +166,9 @@ and model choices remain. Active work is never discarded by an inactivity timer.
   notebook-only HTTPS address. Each worker computer needs that address configured; the app
   does not automatically create DNS or publish a notebook port. Live hosting and physical-phone
   acceptance must be verified for the installation. See [Slurm cluster](CLUSTER.md).
+  Cluster-resident project managers with automatic compute allocation, persistent remote
+  session resumption and idle release are not delivered in this release. Their retained
+  development implementation still needs integration and real cluster acceptance.
 
 - **Remote editor:** an owned FASRC Remote SSH Codex fixture passed native sharing, an app
   follow-up, steering acknowledgement and Stop. A zero-turn same-browser check recovered

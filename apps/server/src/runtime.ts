@@ -5,6 +5,7 @@ import {
 } from './group-host-work-continuation.js';
 import { nativeCommandCatalogSchema } from '@dock/shared';
 import { Documents } from './documents.js';
+import { ArxivImports } from './arxiv-import.js';
 import { ChatImages } from './chat-images.js';
 import { DocumentFormatting, documentFormattingCharter } from './document-formatting.js';
 import { latexAuthoringCharter } from './latex-authoring.js';
@@ -313,6 +314,7 @@ export class Runtime {
     if (event.type !== 'entry.updated') this.kick();
   };
   readonly documents: Documents;
+  readonly arxivImports: ArxivImports;
   readonly chatImages: ChatImages;
   readonly documentFormatting: DocumentFormatting;
   models: Model[] = [];
@@ -330,6 +332,7 @@ export class Runtime {
     if (fixture) this.assertFixtureState();
     this.browserSetup = new BrowserSetup(() => this.codexDiscovery());
     this.documents = new Documents(store, dataDir);
+    this.arxivImports = new ArxivImports(store, this.documents, dataDir);
     this.chatImages = new ChatImages(store, dataDir);
     this.workItems = new WorkItems(store);
     this.managedGoals = new ManagedGoals(store, this.workItems, (id) => this.isInternalProject(id));
@@ -2640,6 +2643,16 @@ export class Runtime {
     const run = this.activeRun(agentId);
     if (event.type === 'unavailable') {
       await this.runtimeFailure(agentId, event.message);
+      return;
+    }
+    if (event.type === 'unowned_result') {
+      if (event.sessionId !== agent.threadId) return;
+      this.store.event('claude.unowned_result_ignored', agent.projectId, agentId, {
+        resultId: event.id,
+        sessionId: event.sessionId,
+        originKind: event.originKind,
+        activeRunId: run?.id ?? null,
+      });
       return;
     }
     if (event.type === 'permission_cancelled') {
@@ -5951,6 +5964,7 @@ export class Runtime {
     const setupClosing = this.setup.close();
     const signInClosing = this.codexSignIn.close();
     const discoveryClosing = this.modelPolicy.close();
+    await this.arxivImports.close();
     await this.documents.close();
     await this.resources.close();
     await this.conversationSearch.close();

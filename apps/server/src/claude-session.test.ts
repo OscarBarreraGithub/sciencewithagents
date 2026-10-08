@@ -1091,6 +1091,121 @@ describe('Claude typed native session', () => {
       expect.objectContaining({ deliveryId: second }),
     ]);
   });
+  it.each([undefined, { kind: 'human' }])(
+    'an injected background terminal preserves the owned turn until its result (origin %j)',
+    async (origin) => {
+      const f = fixture(options({ resume: true, role: 'implementer' }));
+      const deliveryId = randomUUID();
+      await f.session.submit({ deliveryId, text: 'Inspect saved progress and continue safely' });
+      expect(f.writes.find((frame) => frame.type === 'user')).toMatchObject({
+        uuid: deliveryId,
+        origin: { kind: 'human' },
+      });
+      const pending = permission();
+      f.emit(pending);
+      const background = {
+        type: 'result',
+        uuid: randomUUID(),
+        session_id: f.config.sessionId,
+        subtype: 'success',
+        is_error: false,
+        origin: { kind: 'task-notification' },
+      };
+      f.emit(background);
+      f.emit(background);
+      expect(normalizeClaudeEvent(background, deliveryId)).toEqual([]);
+      expect(f.events.filter((event) => event.type === 'unowned_result')).toEqual([
+        {
+          type: 'unowned_result',
+          id: background.uuid,
+          sessionId: f.config.sessionId,
+          originKind: 'task-notification',
+        },
+      ]);
+      expect(f.events.some((event) => event.type === 'result')).toBe(false);
+      expect(f.session.canAnswer(pending.request_id)).toBe(true);
+      await expect(f.submit()).rejects.toThrow('already working');
+      f.emit({ ...background, uuid: randomUUID(), origin, user_message_uuid: deliveryId });
+      expect(f.events.at(-1)).toMatchObject({ type: 'result', deliveryId, status: 'completed' });
+      expect(f.session.canAnswer(pending.request_id)).toBe(false);
+      expect(f.writes.filter((frame) => frame.type === 'user')).toHaveLength(1);
+    },
+  );
+  it('remembers root results observed while idle before a later delivery can inherit them', async () => {
+    const f = fixture();
+    await f.session.inspectFreshModels();
+    const old = {
+      type: 'result',
+      uuid: randomUUID(),
+      session_id: f.config.sessionId,
+      subtype: 'success',
+      is_error: false,
+    };
+    f.emit(old);
+    const deliveryId = randomUUID();
+    await f.session.submit({ deliveryId, text: 'New owner input' });
+    f.emit(old);
+    expect(f.events.some((event) => event.type === 'result')).toBe(false);
+    await expect(f.submit()).rejects.toThrow('already working');
+    f.emit({ ...old, uuid: randomUUID(), origin: { kind: 'human' } });
+    expect(f.events.at(-1)).toMatchObject({ type: 'result', deliveryId });
+  });
+  it.each(['singular', 'folded', 'both'] as const)(
+    'an exact %s input ID owns a result even when a background turn supplied its origin',
+    async (correlation) => {
+      const f = fixture(options({ resume: true }));
+      const deliveryId = randomUUID(),
+        other = randomUUID();
+      await f.session.submit({ deliveryId, text: 'Owner input folded into a native turn' });
+      const result = {
+        type: 'result',
+        uuid: randomUUID(),
+        session_id: f.config.sessionId,
+        subtype: 'success',
+        is_error: false,
+        origin: { kind: 'task-notification' },
+        ...(correlation === 'singular' ? { user_message_uuid: deliveryId } : {}),
+        ...(correlation !== 'singular' ? { user_message_uuids: [other, deliveryId] } : {}),
+        ...(correlation === 'both' ? { user_message_uuid: other } : {}),
+      };
+      expect(normalizeClaudeEvent(result, deliveryId)).toEqual([
+        expect.objectContaining({ type: 'result', deliveryId, status: 'completed' }),
+      ]);
+      f.emit(result);
+      f.emit(result);
+      expect(f.events.filter((event) => event.type === 'result')).toEqual([
+        expect.objectContaining({ deliveryId, status: 'completed' }),
+      ]);
+      expect(f.events.some((event) => event.type === 'unowned_result')).toBe(false);
+      await f.submit();
+      expect(f.writes.filter((frame) => frame.type === 'user')).toHaveLength(2);
+    },
+  );
+  it.each(['human', 'task-notification'])(
+    'a mismatched folded-input list cannot finish the owned delivery (origin %s)',
+    async (kind) => {
+      const f = fixture();
+      const deliveryId = randomUUID();
+      await f.session.submit({ deliveryId, text: 'This input needs its own terminal receipt' });
+      const old = {
+        type: 'result',
+        uuid: randomUUID(),
+        session_id: f.config.sessionId,
+        subtype: 'success',
+        is_error: false,
+        origin: { kind },
+        user_message_uuids: [randomUUID()],
+      };
+      expect(normalizeClaudeEvent(old, deliveryId)).toEqual([]);
+      f.emit(old);
+      expect(f.events.some((event) => event.type === 'result')).toBe(false);
+      await expect(f.submit()).rejects.toThrow('already working');
+      f.emit({ ...old, user_message_uuids: [deliveryId] }); // Same result UUID cannot be restamped.
+      expect(f.events.some((event) => event.type === 'result')).toBe(false);
+      f.emit({ ...old, uuid: randomUUID(), user_message_uuids: [deliveryId] });
+      expect(f.events.at(-1)).toMatchObject({ type: 'result', deliveryId });
+    },
+  );
   it('denies permission frames outside an active delivery instead of leaving the CLI waiting', async () => {
     const f = fixture(options({ role: 'implementer' }));
     await f.session.inspectFreshModels();

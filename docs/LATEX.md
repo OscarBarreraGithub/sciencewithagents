@@ -71,6 +71,20 @@ Includes outside the registered folder are refused in Reading mode. Inputs are b
 100 files / 8 MB combined, conversions to 30 seconds per operation, with one reading build
 at a time. Missing conversion tools have a retry action; the original PDF stays available.
 
+Reading starts with the paper's title, authors, affiliations, contact emails, date and
+abstract (revtex/aastex `\affiliation`, `\email`, `\correspondingauthor`, amsart `\address`
+and JHEP `\abstract{…}` included). A paper is never rejected as a whole. Deterministic
+source rules, with no model, read `\global\long\def`, skip preamble `\makeatletter` blocks and
+self-referential or expansion-steering definitions, join blank lines inside captions,
+footnotes and title arguments, and expand `\be`/`\ee`-style shortcuts without grouping
+them. If Pandoc still rejects the source, Reading closes a `{` left open at a paragraph end,
+then replaces the rejected passage with “Part of this section is only in the Original PDF.”
+Each Pandoc pass is time-limited and the retries are capped. A missing `\input` shows a
+note in its place. Plain TeX (harvmac, `\bye`) shows a sentence pointing to Original PDF.
+Messages are sentences without paths. The reading result carries an optional `health`
+report: missing includes, dropped passages, applied rules and the conversion state. Clients
+tolerate older and newer servers.
+
 ## Compiler and build boundaries
 
 Install **Tectonic** or **TeX Live with latexmk** if LaTeX compilation is wanted. Setup detects

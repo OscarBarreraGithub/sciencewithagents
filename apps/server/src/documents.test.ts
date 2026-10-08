@@ -7,6 +7,7 @@ import Fastify from 'fastify';
 import { Store } from './store.js';
 import { Documents, latexCompiler, registerDocumentRoutes } from './documents.js';
 import { proxyPath } from './hosts.js';
+import { documentBrowseResponseSchema, documentBrowseSchema } from '@dock/shared';
 
 let root: string, home: string, data: string, store: Store, documents: Documents;
 beforeEach(async () => {
@@ -60,6 +61,40 @@ it('browses host-issued folders and supported files without exposing paths or ac
   await writeFile(join(root, 'outside.tex'), tex);
   await symlink(join(root, 'outside.tex'), join(home, 'outside.tex'));
   await expect(documents.registerRelative(home, 'outside.tex')).rejects.toThrow(/within/);
+});
+it('returns a browse listing that the strict shared contract accepts, with locations and breadcrumbs', async () => {
+  await mkdir(join(home, 'Documents', 'papers'), { recursive: true });
+  await writeFile(join(home, 'Documents', 'papers', 'report.tex'), tex);
+  // The real browse output must parse strictly, so new FolderBrowser fields fail here, not on the phone.
+  const start = documentBrowseSchema.parse(await documents.browse());
+  const place = start.locations.find((x) => x.kind === 'documents');
+  expect(place).toMatchObject({ name: 'Documents' });
+  expect(start.locations.find((x) => x.kind === 'home')).toBeTruthy();
+  const inside = documentBrowseSchema.parse(await documents.browse(place!.id));
+  const papers = inside.folders.find((x) => x.name === 'papers')!;
+  const leaf = documentBrowseSchema.parse(await documents.browse(papers.id));
+  expect(leaf.files.map((x) => x.name)).toEqual(['report.tex']);
+  expect(leaf.breadcrumbs.slice(-3).map((x) => x.name)).toEqual(['home', 'Documents', 'papers']);
+  expect(leaf.parentId).toBe(leaf.breadcrumbs.at(-2)!.id);
+  const back = documentBrowseSchema.parse(await documents.browse(leaf.breadcrumbs.at(-3)!.id));
+  expect(back.current.name).toBe('home');
+  expect(JSON.stringify(leaf)).not.toContain(home);
+  // Clients tolerate skew: servers before this fix also sent `search`; newer ones may add more.
+  const skewed = {
+    ...leaf,
+    search: null,
+    future: true,
+    locations: [...leaf.locations, { id: randomUUID(), name: 'Cloud', kind: 'cloud', icon: 'x' }],
+    files: leaf.files.map((x) => ({ ...x, pages: 2 })),
+  };
+  const client = documentBrowseResponseSchema.parse(skewed);
+  expect(client).not.toHaveProperty('search');
+  expect(client.locations.at(-1)).toEqual(expect.objectContaining({ kind: 'cloud' }));
+  const { breadcrumbs: _b, locations: _l, ...older } = leaf;
+  expect(documentBrowseResponseSchema.parse(older)).toMatchObject({
+    breadcrumbs: [],
+    locations: [],
+  });
 });
 it('opens an existing PDF, preserves recent documents across restart and rejects key reuse', async () => {
   const pdf = Buffer.from('%PDF-1.4\nfixture\n%%EOF');

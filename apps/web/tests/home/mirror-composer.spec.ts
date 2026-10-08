@@ -173,6 +173,63 @@ test('shared-chat drafts wrap and resize without a horizontal or premature scrol
   await expect.poll(async () => (await geometry()).height).toBeLessThanOrEqual(emptyHeight + 1);
 });
 
+test('a delivered native follow-up leaves the queue without a stale queued receipt or duplicate send', async ({
+  page,
+}, info) => {
+  const state: MirrorState = {
+    windowId: randomUUID(),
+    threadId: randomUUID(),
+    provider: 'codex',
+    label: 'Native delivery',
+    title: 'Follow-up delivery',
+    status: 'busy',
+    message: '',
+    canSteer: true,
+    steerToken: 'current-turn',
+    canQueue: true,
+    entries: [],
+    queuedMessages: [],
+  };
+  const { entries: _, queuedMessages: _queue, ...window } = state;
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: [window] }),
+  );
+  await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
+    route.fulfill({ json: mirrorPage(state) }),
+  );
+  const sent: Record<string, unknown>[] = [];
+  await page.route(`**/api/vscode/windows/${state.windowId}/send`, (route) => {
+    sent.push(route.request().postDataJSON());
+    state.queuedMessages = [{ id: 'owned-follow-up', text: 'Run this after the current reply.' }];
+    return route.fulfill({
+      json: { state: 'sent', message: 'Accepted into the native Codex queue.' },
+    });
+  });
+  await page.goto(`/#/chats/vscode/${encodeURIComponent(`codex:${state.threadId}`)}`);
+  await page.getByRole('combobox', { name: 'Send timing' }).selectOption('queue');
+  const composer = page.getByRole('textbox', { name: 'Message Codex' });
+  await composer.fill('Run this after the current reply.');
+  await page.getByRole('button', { name: 'Queue follow-up', exact: true }).click();
+  await expect(page.locator('.mirror-delivery-status summary')).toHaveText('Follow-up accepted.');
+  await expect(page.getByRole('button', { name: /^1 queued message/ })).toBeVisible();
+  await composer.fill('Separate unsent draft stays here.');
+  state.queuedMessages = [];
+  state.entries = [
+    { id: 'accepted-owner-input', role: 'user', text: 'Run this after the current reply.' },
+    { id: 'actual-reply', role: 'assistant', text: 'The follow-up is now being handled.' },
+  ];
+  await expect(page.getByRole('button', { name: /Expand queue/ })).toHaveCount(0);
+  await expect(page.locator('.mirror-log')).toContainText('The follow-up is now being handled.');
+  await expect(page.locator('.mirror-delivery-status summary')).toHaveText('Follow-up accepted.');
+  await expect(page.locator('.mirror-delivery-status')).not.toContainText(/queue/i);
+  await expect(composer).toHaveValue('Separate unsent draft stays here.');
+  expect(sent).toHaveLength(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
+  await page.screenshot({ path: info.outputPath('native-follow-up-delivered.png') });
+});
+
 test('native queue is scrollable and sends the selected follow-up without steering', async ({
   page,
 }) => {

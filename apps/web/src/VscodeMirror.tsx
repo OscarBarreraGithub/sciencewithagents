@@ -758,7 +758,14 @@ export function VscodeMirror({
             setText('');
         }
       }
-      if (mounted.current) setReceipt(result.message);
+      if (mounted.current)
+        // This acknowledgement outlives delivery. Only the live queue above
+        // should claim that a follow-up is still waiting.
+        setReceipt(
+          result.state === 'sent' && input.mode === 'queue'
+            ? 'Follow-up accepted.'
+            : result.message,
+        );
       if (result.state === 'sent' && input.mode === 'queue')
         window.dispatchEvent(new CustomEvent('dock:mirror-queue', { detail: identity }));
     } catch {

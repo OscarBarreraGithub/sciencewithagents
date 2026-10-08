@@ -1,17 +1,40 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ComponentProps } from 'react';
-import { ArrowLeft, ChevronRight, FileText, Folder, RefreshCw } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronRight,
+  Code2,
+  Download,
+  FileText,
+  Folder,
+  HardDrive,
+  Home,
+  Monitor,
+  RefreshCw,
+} from 'lucide-react';
 import {
   documentSchema,
-  documentBrowseSchema,
+  documentBrowseResponseSchema,
   type SavedDocument,
   type DocumentBrowse,
 } from '@dock/shared';
-import { api } from './api';
+import { api, ApiError } from './api';
 import './documents.css';
 
 const Reader = lazy(() => import('./PdfReader'));
 const documentId = (href: string) => /^#\/latex\/([0-9a-f-]{36})$/i.exec(href)?.[1];
 const selected = () => new URL(location.href).searchParams.get('document');
+const placeIcons: Record<string, typeof Folder> = {
+  home: Home,
+  desktop: Monitor,
+  documents: FileText,
+  downloads: Download,
+  developer: Code2,
+  computer: HardDrive,
+  volumes: HardDrive,
+};
+// Server errors are already sentences; never show a parser dump from an unexpected response.
+const readable = (error: unknown, fallback: string) =>
+  error instanceof ApiError ? error.message : fallback;
 export function openDocument(id: string) {
   // A direct #/latex/id link mounts the library before the sibling overlay host.
   // Defer delivery until the current effect flush has installed its listener.
@@ -157,13 +180,16 @@ export function LatexApp({ initialId }: { initialId?: string }) {
   const [browsing, setBrowsing] = useState(false);
   const [filter, setFilter] = useState('');
   const request = useRef(0);
+  const pathRef = useRef<HTMLElement>(null);
   const loadRecent = () =>
     api<{ documents: unknown[]; compiler: string | null }>('/documents')
       .then((result) => {
-        setRecent(result.documents.map((value) => documentSchema.parse(value)));
+        setRecent(result.documents.map((value) => documentSchema.strip().parse(value)));
         setCompiler(result.compiler);
       })
-      .catch((error) => setError(String(error.message)));
+      .catch((error) =>
+        setError(readable(error, 'Recent documents could not be read. Reload and try again.')),
+      );
   useEffect(() => {
     void loadRecent();
     const update = () => {
@@ -182,7 +208,7 @@ export function LatexApp({ initialId }: { initialId?: string }) {
     setBrowsing(true);
     setFilter('');
     try {
-      const result = documentBrowseSchema.parse(
+      const result = documentBrowseResponseSchema.parse(
         await api(
           `/documents/browse?${new URLSearchParams({ ...(id ? { folderId: id } : {}), offset: String(offset) })}`,
         ),
@@ -198,7 +224,8 @@ export function LatexApp({ initialId }: { initialId?: string }) {
             : result,
         );
     } catch (error) {
-      if (number === request.current) setError((error as Error).message);
+      if (number === request.current)
+        setError(readable(error, 'This folder could not be read. Reload and try again.'));
     } finally {
       if (number === request.current) setBusy(false);
     }
@@ -216,6 +243,15 @@ export function LatexApp({ initialId }: { initialId?: string }) {
       <ChevronRight size={18} />
     </button>
   );
+  useEffect(() => {
+    // Keep the current folder visible on narrow screens; ancestors remain scrollable.
+    if (pathRef.current) pathRef.current.scrollLeft = pathRef.current.scrollWidth;
+  }, [browse?.current.id]);
+  const breadcrumbs = browse?.breadcrumbs.length
+    ? browse.breadcrumbs
+    : browse
+      ? [browse.current]
+      : [];
   const matches = (name: string) => name.toLocaleLowerCase().includes(filter.toLocaleLowerCase());
   return (
     <section className="latex-app">
@@ -257,6 +293,42 @@ export function LatexApp({ initialId }: { initialId?: string }) {
               <RefreshCw size={18} />
             </button>
           </header>
+          {!!browse?.locations.length && (
+            <nav className="latex-places" aria-label="Locations">
+              {browse.locations.map((place) => {
+                const Icon = placeIcons[place.kind] ?? Folder;
+                return (
+                  <button
+                    key={place.id}
+                    type="button"
+                    disabled={busy}
+                    aria-current={browse.current.id === place.id ? 'location' : undefined}
+                    onClick={() => void folder(place.id)}
+                  >
+                    <Icon size={18} aria-hidden="true" />
+                    <span>{place.name}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+          {breadcrumbs.length > 1 && (
+            <nav ref={pathRef} className="latex-path" aria-label="Folder path">
+              {breadcrumbs.map((part, index) => (
+                <span key={part.id}>
+                  {index > 0 && <ChevronRight size={14} aria-hidden="true" />}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-current={index === breadcrumbs.length - 1 ? 'location' : undefined}
+                    onClick={() => void folder(part.id)}
+                  >
+                    {part.name}
+                  </button>
+                </span>
+              ))}
+            </nav>
+          )}
           <label className="latex-filter">
             Find in this folder
             <input

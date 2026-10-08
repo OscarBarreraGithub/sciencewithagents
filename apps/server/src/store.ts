@@ -40,6 +40,8 @@ export class Conflict extends Error {
   }
 }
 export class Missing extends Error {}
+/** A request whose input is well-formed but not acceptable; shown to the person as written. */
+export class Invalid extends Error {}
 export const now = () => new Date().toISOString();
 export type PrivateAgent = Agent & {
   threadId: string | null;

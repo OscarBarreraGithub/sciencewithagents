@@ -1,4 +1,20 @@
 import { z } from 'zod';
+import { folderBreadcrumbSchema, folderLocationSchema } from './folder-navigation.js';
+
+/** Public arXiv provenance for an imported document. Paths and URLs other than arXiv's stay private. */
+export const arxivPaperSchema = z
+  .object({
+    id: z.string(),
+    version: z.number().int().positive(),
+    title: z.string(),
+    authors: z.array(z.string()),
+    abstract: z.string(),
+    absUrl: z.string(),
+    hasSource: z.boolean(),
+    notes: z.array(z.string()),
+  })
+  .strict();
+export type ArxivPaper = z.infer<typeof arxivPaperSchema>;
 
 export const documentSchema = z
   .object({
@@ -12,21 +28,74 @@ export const documentSchema = z
     openedAt: z.string().nullable(),
     error: z.string().nullable(),
     href: z.string(),
+    arxiv: arxivPaperSchema.optional(),
   })
   .strict();
 export type SavedDocument = z.infer<typeof documentSchema>;
 export const documentLibrarySchema = z
   .object({ compiler: z.string().nullable(), documents: documentSchema.array() })
   .strict();
+/**
+ * What the deterministic Reading rules did to a source. Later slices (bibliography, KaTeX
+ * checks, the light fixer) add optional fields here; names are relative, never absolute paths.
+ */
+export const readingHealthSchema = z
+  .object({
+    /** complete: every passage converted; partial: some passages are only in the PDF. */
+    conversion: z.enum(['complete', 'partial', 'unavailable']).default('complete'),
+    plainTex: z.boolean().default(false),
+    /** Included files named by the source but absent from its folder. */
+    missingIncludes: z.array(z.string()).default([]),
+    /** Passages replaced by a visible “only in the Original PDF” note. */
+    dropped: z
+      .array(
+        z
+          .object({
+            part: z.enum(['preamble', 'body']),
+            reason: z.string(),
+            excerpt: z.string(),
+          })
+          .strict(),
+      )
+      .default([]),
+    /** Deterministic source rules applied, by name, with how often each applied. */
+    rules: z.record(z.string(), z.number().int().nonnegative()).default({}),
+    notes: z.array(z.string()).default([]),
+  })
+  .strict();
+export type ReadingHealth = z.infer<typeof readingHealthSchema>;
 export const documentReadingSchema = z
   .object({
     available: z.boolean(),
     html: z.string(),
     warnings: z.array(z.string()),
     labels: z.record(z.string(), z.string()).default({}),
+    health: readingHealthSchema.optional(),
   })
   .strict();
 export type DocumentReading = z.infer<typeof documentReadingSchema>;
+/**
+ * Clients accept any server version: unknown keys are dropped and newer fields are optional,
+ * because the phone runs the web build on disk while the server keeps its own build until it
+ * restarts.
+ */
+export const documentReadingResponseSchema = documentReadingSchema.strip().extend({
+  warnings: z.array(z.string()).default([]),
+  health: z
+    .object({
+      conversion: z.string().default('complete'),
+      plainTex: z.boolean().default(false),
+      missingIncludes: z.array(z.string()).default([]),
+      dropped: z
+        .array(z.object({ part: z.string(), reason: z.string(), excerpt: z.string() }).strip())
+        .default([]),
+      rules: z.record(z.string(), z.number()).default({}),
+      notes: z.array(z.string()).default([]),
+    })
+    .strip()
+    .optional(),
+});
+export type DocumentReadingResponse = z.infer<typeof documentReadingResponseSchema>;
 export const savedDocumentLinkSchema = z
   .object({
     agentId: z.string().uuid(),
@@ -46,17 +115,30 @@ export const documentBrowseQuerySchema = z
     offset: z.coerce.number().int().min(0).max(1000000).default(0),
   })
   .strict();
+/** Server contract; the documents route has no folder search, so it never sends `search`. */
 export const documentBrowseSchema = z
   .object({
     current: z.object({ id: z.string().uuid(), name: z.string(), canSelect: z.boolean() }),
     parentId: z.string().uuid().nullable(),
     folders: z.array(z.object({ id: z.string().uuid(), name: z.string() })),
     nextOffset: z.number().nullable(),
+    breadcrumbs: z.array(folderBreadcrumbSchema),
+    locations: z.array(folderLocationSchema),
     files: z.array(documentSchema),
     nextFileOffset: z.number().nullable(),
   })
   .strict();
-export type DocumentBrowse = z.infer<typeof documentBrowseSchema>;
+/**
+ * Clients accept any server version: unknown keys are dropped, older servers may omit
+ * navigation and newer servers may add location kinds. The phone runs whatever web build
+ * is on disk while the server keeps running its own build until restarted.
+ */
+export const documentBrowseResponseSchema = documentBrowseSchema.strip().extend({
+  breadcrumbs: z.array(folderBreadcrumbSchema.strip()).default([]),
+  locations: z.array(folderLocationSchema.strip().extend({ kind: z.string() })).default([]),
+  files: z.array(documentSchema.strip()),
+});
+export type DocumentBrowse = z.infer<typeof documentBrowseResponseSchema>;
 export const documentActionSchema = z.object({ key: z.string().uuid() }).strict();
 /** Provider tool only: the browser selects host-issued IDs, never paths. */
 export const documentRegisterSchema = z
@@ -84,3 +166,21 @@ export const documentFormatStatusSchema = z
   })
   .strict();
 export type DocumentFormatStatus = z.infer<typeof documentFormatStatusSchema>;
+
+/** The client sends only an arXiv link or ID; the server chooses every URL and path. */
+export const arxivImportRequestSchema = z
+  .object({ key: z.string().uuid(), link: z.string().trim().min(1).max(2048) })
+  .strict();
+export const arxivImportSchema = z
+  .object({
+    id: z.string().uuid(),
+    arxivId: z.string(),
+    version: z.number().int().positive().nullable(),
+    state: z.enum(['queued', 'fetching', 'ready', 'failed']),
+    message: z.string(),
+    document: documentSchema.nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .strict();
+export type ArxivImport = z.infer<typeof arxivImportSchema>;

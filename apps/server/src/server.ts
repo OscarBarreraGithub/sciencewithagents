@@ -10,6 +10,7 @@ import { openBrowserSetup } from './browser-setup.js';
 import { browserSetupActionSchema } from '@dock/shared';
 import { repoRoot } from './paths.js';
 import { registerDocumentRoutes } from './documents.js';
+import { registerArxivImportRoutes } from './arxiv-import.js';
 import { registerChatImageRoutes } from './chat-images.js';
 import { registerQueuedMessageRoutes } from './queued-messages.js';
 import { recoverRun, runRecoveryReceipt, runRecoveryView } from './run-recovery.js';
@@ -81,7 +82,7 @@ import {
   capacityRefreshSchema,
   quotaResumeSchema,
 } from '@dock/shared';
-import { Conflict, Missing, Store, publicTask } from './store.js';
+import { Conflict, Invalid, Missing, Store, publicTask } from './store.js';
 import { conversationEntries } from './conversation-entries.js';
 import { Runtime } from './runtime.js';
 import { Terminals } from './terminal.js';
@@ -280,7 +281,9 @@ export async function createServer(
             ? 404
             : error instanceof Conflict
               ? 409
-              : 500;
+              : error instanceof Invalid
+                ? 400
+                : 500;
     if (
       options.localAccess &&
       [
@@ -635,6 +638,7 @@ export async function createServer(
   registerBugReportRoutes(app, maintenance, () => runtime.kick());
   registerAppUpdateRoutes(app, maintenance, () => runtime.kick(), options.demo);
   registerDocumentRoutes(app, runtime.documents);
+  registerArxivImportRoutes(app, runtime.arxivImports);
   registerChatImageRoutes(app, runtime.chatImages);
   registerQueuedMessageRoutes(app, store, runtime, workspace, terminals);
   registerDocumentFormattingRoutes(app, runtime.documentFormatting);
