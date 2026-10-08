@@ -149,14 +149,17 @@ async function serve(page: Page, emptyCatalogs = false) {
   });
   const mutations: string[] = [];
   const catalogs = { available: !emptyCatalogs, status: null as unknown };
+  // Read the demo baseline before navigation; an intercepted fetch can outlive its page.
+  const response = await page.request.get('/api/model-policy');
+  expect(response.ok()).toBe(true);
+  const modelPolicy = await response.json();
   page.on('request', (r) => {
     if (r.method() !== 'GET' && r.method() !== 'HEAD') mutations.push(new URL(r.url()).pathname);
   });
   await page.route('**/api/cluster', (route) => route.fulfill({ json: cluster }));
   await page.route('**/api/slurm-review', (route) => route.fulfill({ json: state }));
   await page.route('**/api/model-policy', async (route) => {
-    const response = await route.fetch();
-    const value = await response.json();
+    const value = structuredClone(modelPolicy);
     value.catalogs = catalogs.available
       ? [
           {
