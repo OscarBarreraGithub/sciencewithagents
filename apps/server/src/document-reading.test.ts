@@ -87,6 +87,54 @@ describe.skipIf(!readerExecutable('pandoc'))('arXiv source rules', () => {
     expect(visible(reading)).not.toContain(root);
   }
 
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBbkAAAAASUVORK5CYII=',
+    'base64',
+  );
+  it('resolves an explicitly named extensionless figure without changing source or math', async () => {
+    const home = join(root, 'source');
+    await mkdir(join(home, 'Figures'));
+    await writeFile(join(home, 'Figures', 'diagram.png'), png);
+    const reading = await read(String.raw`Original prose $x=1$.\includegraphics{Figures/diagram}`);
+    expect(reading.html).toMatch(/reader-asset:[a-f0-9]{64}\.png/);
+    expect(reading.html).toContain('Original prose');
+    expect(reading.html).toContain('x=1');
+    expect(reading.warnings).toEqual([]);
+    expect(await readFile(join(home, 'Figures', 'diagram.png'))).toEqual(png);
+    expect(await readFile(join(home, 'main.tex'), 'utf8')).toContain(
+      String.raw`\includegraphics{Figures/diagram}`,
+    );
+  });
+
+  it('keeps exact figure names and uses a fixed extension order only for omitted extensions', async () => {
+    const home = join(root, 'source');
+    await writeFile(join(home, 'diagram.png'), png);
+    await writeFile(join(home, 'diagram.jpg'), Buffer.concat([png, Buffer.from('different')]));
+    const reading = await read(String.raw`\includegraphics{diagram}\includegraphics{diagram.jpg}`);
+    expect(reading.html).toMatch(/reader-asset:[a-f0-9]{64}\.png/);
+    expect(reading.html).toMatch(/reader-asset:[a-f0-9]{64}\.jpg/);
+    expect(reading.warnings).toEqual([]);
+    const absent = await read(String.raw`\includegraphics{diagram.jpeg}`);
+    expect(absent.html).not.toContain('reader-asset:');
+    expect(absent.html).toContain('Figure available in Original PDF');
+  });
+
+  it('retains placeholders for unavailable, outside-root and oversized extensionless figures', async () => {
+    const home = join(root, 'source');
+    await writeFile(join(root, 'outside.png'), png);
+    await symlink(join(root, 'outside.png'), join(home, 'diagram.png'));
+    const outside = await read(String.raw`Body.\includegraphics{diagram}\includegraphics{absent}`);
+    expect(outside.html).not.toContain('reader-asset:');
+    expect(outside.html).toContain('Figure available in Original PDF');
+    expectHumanMessages(outside);
+    await rm(join(home, 'diagram.png'));
+    await writeFile(join(home, 'diagram.png'), Buffer.alloc(8 * 1024 ** 2 + 1));
+    const oversized = await read(String.raw`Body.\includegraphics{diagram}`);
+    expect(oversized.html).not.toContain('reader-asset:');
+    expect(oversized.html).toContain('Figure available in Original PDF');
+    expectHumanMessages(oversized);
+  });
+
   it('1: joins a blank line inside a caption', async () => {
     const reading = await read(
       'Opening text.\n\n\\begin{figure}\\caption{First half\n\nsecond half.}\\end{figure}\n\nClosing text.',

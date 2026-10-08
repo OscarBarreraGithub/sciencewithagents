@@ -532,7 +532,20 @@ async function convertReading(
     let replacement = '<span class="reading-missing">Figure available in Original PDF.</span>';
     try {
       if (/^(?:[a-z]+:|\/|\\)/i.test(name)) throw new Error('Only local figures');
-      const path = await local(resolve(dirname(source), name));
+      // TeX permits an omitted graphics extension. Try only this explicit stem,
+      // in a fixed order, retaining the same canonical-root and file-size checks.
+      let path: string | undefined;
+      for (const suffix of extname(name)
+        ? ['']
+        : ['', '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif']) {
+        try {
+          path = await local(resolve(dirname(source), name + suffix));
+          break;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
+      if (!path) throw new Error('Missing figure');
       const extension = extname(path).toLowerCase();
       const data = await readFile(path);
       const key = createHash('sha256').update(data).digest('hex');

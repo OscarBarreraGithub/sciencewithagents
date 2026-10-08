@@ -454,7 +454,8 @@ test('a native Claude helper exposes retained evidence and owning-session contro
   );
   await page.goto(`/#/chat/${child.id}`);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Native reviewer');
-  await expect(page.getByText('Native model not reported', { exact: false })).toBeVisible();
+  // Secondary metadata collapses in a landscape header; it must never claim a model.
+  await expect(page.locator('.chat-pane-meta')).toContainText('Native model not reported');
   await expect(page.getByText('I checked the boundary conditions.', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Ask about this work', exact: false }),
@@ -507,6 +508,8 @@ test('projects and conversations have panel scrolling and reachable controls at 
   const violations = await page.evaluate(() =>
     [...document.querySelectorAll('.flow-page button, .flow-page input, .flow-page a')]
       .filter((node) => {
+        // Inline prose links wrap with their sentence; app controls need touch targets.
+        if (node.tagName === 'A' && node.closest('.chat-markdown')) return false;
         const r = node.getBoundingClientRect();
         return r.width && r.height && r.height < 43;
       })

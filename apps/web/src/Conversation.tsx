@@ -1200,9 +1200,10 @@ export function Composer({
     const observer = new ResizeObserver(([entry]) => {
       if (entry && entry.contentRect.width !== width) {
         width = entry.contentRect.width;
-        // Height changes do not retrigger this width guard. Measure directly so
-        // restored drafts also size correctly when Safari suspends animation frames.
-        resize();
+        // Resizing this observed textarea during delivery changes its height and
+        // leaves WebKit with an undelivered notification, even with a width guard.
+        // Coalesce the measurement outside this delivery; cleanup cancels it.
+        later();
       }
     });
     if (textarea.current) observer.observe(textarea.current);

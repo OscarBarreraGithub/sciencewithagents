@@ -82,6 +82,10 @@ Supplied natbib `Author(Year)` labels with a four-digit
 year retain author–year text for `\citet` and `\citep`, including explicit citation notes.
 Other author–year styles and non-equation cross-reference numbering still need Original PDF.
 
+An explicitly named local figure may omit its extension. Reading tries the exact name,
+then PDF, PNG, JPG, JPEG, WebP and GIF under the same folder and file-size checks. It does
+not search folders or infer missing paths; unavailable figures keep an Original PDF note.
+
 Reading mode interprets LaTeX content, not every package's print layout. Complex package
 commands may need Original PDF; missing figures are marked. An ordinary PDF without its
 LaTeX source keeps the PDF viewer rather than claiming reliable mathematical reflow.

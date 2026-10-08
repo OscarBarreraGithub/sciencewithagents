@@ -584,6 +584,8 @@
   }
   .mirror-input-row textarea {
     font-size: var(--text-reading);
+  }
+  .mirror-composer[data-keyboard] .mirror-input-row textarea {
     max-height: max(44px, min(calc(var(--home-visible-height, 100dvh) * 0.15), 88px));
   }
 }
