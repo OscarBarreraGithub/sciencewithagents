@@ -96,6 +96,33 @@ function dropUnsafeDefinitions(text: string, health: ReadingHealth) {
   applied(health, 'unsafe-definition', times);
   return output + text.slice(at);
 }
+/** REVTeX's supplied .bbl can provide a TeX-only URL sanitizer for \href. Pandoc
+ * already reads \href, but expands this fallback and can exhaust its heap across references.
+ * Keep the native reader for this exact fallback, only in a bibliography's declaration header.
+ * Reference text, destinations and every other definition remain unchanged.
+ */
+function nativeBibliographyLinks(text: string, health: ReadingHealth) {
+  let times = 0;
+  text = text.replace(
+    /(\\begin\s*\{thebibliography\}\s*\{[^{}]*\})([\s\S]*?)(?=\\bibitem(?![A-Za-z@])|\\end\s*\{thebibliography\})/g,
+    (original: string, start: string, header: string, at: number) => {
+      if (braceBalance(text.slice(0, at)) !== 0) return original;
+      return (
+        start +
+        header.replace(
+          /\\providecommand\s*(?:\{\s*\\href\s*\}|\\href(?![A-Za-z@]))\s*\[0\]\s*\{\s*\\begingroup\s*\\@sanitize@url\s*\\@href\s*\}/g,
+          (fallback: string, at: number) => {
+            if (braceBalance(header.slice(0, at)) !== 0) return fallback;
+            times++;
+            return '';
+          },
+        )
+      );
+    },
+  );
+  applied(health, 'bibliography-native-links', times);
+  return text;
+}
 /** One-paragraph arguments: TeX tolerates a blank line inside them, Pandoc does not. */
 function joinArgumentParagraphs(text: string, health: ReadingHealth) {
   const command =
@@ -170,6 +197,7 @@ export function applySourceRules(text: string, health: ReadingHealth) {
   text = bareDefinitions(text, health);
   text = dropInternalBlocks(text, health);
   text = dropUnsafeDefinitions(text, health);
+  text = nativeBibliographyLinks(text, health);
   text = stripLayout(text, health);
   text = joinArgumentParagraphs(text, health);
   return groupMacroExpansions(text).replace(/\\hfill\b/g, ' ');

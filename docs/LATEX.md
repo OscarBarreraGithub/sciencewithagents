@@ -86,7 +86,9 @@ assets from the registered folder. Source files are never edited.
 
 When a source uses `\bibliography`, Reading includes its supplied same-name `.bbl`
 under the same folder and size limits. Bibliography prose and the supported numeric citation
-links are retained. Without a `.bbl`, named local `.bib` databases use the same aggregate
+links are retained. Reading keeps its native hyperlink parser instead of expanding the
+recognized REVTeX bibliography URL-sanitizer fallback; reference text and URLs stay intact.
+Without a `.bbl`, named local `.bib` databases use the same aggregate
 limits and sandboxed Pandoc citeproc, with a labelled author–date Reading style and linked
 references at the end. Missing or unreadable databases stay explicit. No TeX/BibTeX command,
 source-selected CSL file or remote bibliography runs; Original PDF retains publisher styles.

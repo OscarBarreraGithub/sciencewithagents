@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, it, expect } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { applySourceRules, groupMacroExpansions, readingHealth } from './reading-source-rules.js';
 import {
   documentReadingResponseSchema,
   documentReadingSchema,
@@ -478,6 +479,65 @@ Original body $x=1$.\includegraphics{linked.png}\includegraphics{large.png}
     expect(reading.warnings).toEqual([]);
     expect(reading.health?.rules['bibliography-bbl-inlined']).toBe(1);
     expect(await readFile(join(home, 'main.bbl'), 'utf8')).toBe(bbl);
+  });
+
+  it('retains every REVTeX reference and scientific passage without expanding its hyperlink fallback', async () => {
+    const fallback = String.raw`\providecommand \href [0]{\begingroup \@sanitize@url \@href}`;
+    const bbl =
+      String.raw`\begin{thebibliography}{99}
+\makeatletter
+${fallback}
+\providecommand \@href[1]{\@@startlink{#1}\@@href}
+\providecommand \@@href[1]{\endgroup#1\@@endlink}
+\providecommand \@sanitize@url [0]{\catcode ` +
+      '`' +
+      String.raw`\\12\catcode ` +
+      '`' +
+      String.raw`\$12\catcode ` +
+      '`' +
+      String.raw`\&12\relax}
+\providecommand \@@startlink[1]{}
+\providecommand \@@endlink[0]{}
+${Array.from({ length: 120 }, (_, i) => String.raw`\bibitem{reference${i}}Author ${i}. \href{https://example.org/paper${i}}{Reference ${i}, $C^*$ and $\alpha>2$.}`).join('\n')}
+\end{thebibliography}`;
+    const home = join(root, 'source');
+    await writeFile(join(home, 'main.bbl'), bbl);
+    const body = String.raw`Original claim before references.\begin{equation}\label{eq:claim}D(\rho\|\sigma)\geq0\end{equation}
+Compare \cite{reference0,reference119}.\bibliography{references}Original conclusion after references.`;
+    const reading = await read(body, String.raw`\usepackage{hyperref}`, {
+      timeoutMs: 1500,
+      budgetMs: 8000,
+    });
+    expect(reading.health?.conversion).toBe('complete');
+    expect(reading.health?.dropped).toEqual([]);
+    expect(reading.health?.rules['bibliography-native-links']).toBe(1);
+    expect(reading.html).toContain('Original claim before references.');
+    expect(reading.html).toContain('Original conclusion after references.');
+    expect(reading.html).toContain(String.raw`D(\rho\|\sigma)\geq0`);
+    expect(reading.html).toContain(String.raw`\label{eq:claim}`);
+    for (let i = 0; i < 120; i++) {
+      expect(reading.html).toContain(`id="bib-reference${i}"`);
+      expect(reading.html).toContain(`href="https://example.org/paper${i}"`);
+      expect(reading.html).toContain(`Reference ${i},`);
+    }
+    expect(reading.html).toContain(String.raw`\alpha&gt;2`);
+    expect(reading.html).toContain('href="#bib-reference119"');
+    expect(await readFile(join(home, 'main.bbl'), 'utf8')).toBe(bbl);
+    expect(await readFile(join(home, 'main.tex'), 'utf8')).toContain(body);
+
+    // Only the exact top-level bibliography fallback is normalized.
+    for (const original of [
+      fallback,
+      String.raw`\newcommand{\unrelated}[1]{\begin{thebibliography}{9}${fallback}\bibitem{x}#1\end{thebibliography}}`,
+      String.raw`\begin{thebibliography}{9}\bibitem{x}${fallback}\end{thebibliography}`,
+      String.raw`\begin{thebibliography}{9}{${fallback}}\bibitem{x}Text.\end{thebibliography}`,
+      String.raw`\begin{thebibliography}{9}\providecommand\href[2]{#2}\bibitem{x}Text.\end{thebibliography}`,
+      String.raw`\begin{thebibliography}{9}\newcommand\href[0]{\begingroup\@sanitize@url\@href}\bibitem{x}Text.\end{thebibliography}`,
+    ]) {
+      const health = readingHealth();
+      expect(applySourceRules(original, health)).toBe(groupMacroExpansions(original));
+      expect(health.rules['bibliography-native-links']).toBeUndefined();
+    }
   });
 
   it('reads an included bibliography command from the main job and ignores commented commands', async () => {
