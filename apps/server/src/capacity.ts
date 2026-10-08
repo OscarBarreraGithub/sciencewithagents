@@ -19,6 +19,13 @@ import { ClaudeCapacityError, nativeClaudeFetcher } from './claude-capacity.js';
 import { parseVm, type MachineReading } from './resource-probe.js';
 
 const prefix = 'capacity:v1:';
+const nativeAccountKey = 'capacity:native-account:claude';
+const nativeAccountSchema = z
+  .object({
+    observedAt: z.string().datetime(),
+    affinity: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
 export const refreshSeconds = 60;
 export const capacityStaleMs = 3 * 60_000;
 // Claude's shared endpoint throttles frequent polling. Its successful cache spans one five-minute interval.
@@ -158,6 +165,25 @@ export function readCapacity(
       !value.observedAt ||
       now - Date.parse(value.observedAt) > capacityMaxAge(provider),
   };
+}
+
+/** Private affinity proof for this exact successful native report; never part of the browser DTO. */
+export function readClaudeCapacityAffinity(
+  store: Store,
+  capacity: ProviderCapacity,
+): string | null {
+  if (
+    capacity.provider !== 'claude' ||
+    capacity.source !== 'claude-native-oauth' ||
+    capacity.state !== 'ready' ||
+    capacity.stale ||
+    !capacity.observedAt
+  )
+    return null;
+  const saved = nativeAccountSchema.safeParse(store.getSetting(nativeAccountKey));
+  return saved.success && saved.data.observedAt === capacity.observedAt
+    ? saved.data.affinity
+    : null;
 }
 
 export function codexbarFetcher(binary: string): Fetcher {
@@ -345,6 +371,7 @@ export class CapacityMonitor {
     const attemptedAt = new Date(this.clock()).toISOString();
     const promise = (async () => {
       let value: ProviderCapacity;
+      let nativeAccount: z.infer<typeof nativeAccountSchema> | null = null;
       let retryAt = 0;
       // Events keep only a fixed failure class; raw errors may carry private provider data.
       let reason: ClaudeCapacityError['reason'] | 'unclassified' | null = null;
@@ -357,24 +384,26 @@ export class CapacityMonitor {
           this.clock(),
           modelPolicySchema.parse(this.store.getSetting('model-policy') ?? defaultModelPolicy),
         );
-        // An owner's plan statement is bound to the verified native account, never a plan name.
-        if (
-          provider === 'claude' &&
-          value.source === 'claude-native-oauth' &&
-          value.weeklyPolicy === 'not-reported'
-        ) {
+        if (provider === 'claude' && value.source === 'claude-native-oauth') {
           const affinity = z
             .array(
               z.object({
+                provider: z.literal('claude'),
                 usage: z.object({ accountAffinity: z.string().regex(/^[a-f0-9]{64}$/) }),
               }),
             )
+            .length(1)
             .safeParse(raw);
+          if (affinity.success && value.observedAt)
+            nativeAccount = {
+              observedAt: value.observedAt,
+              affinity: affinity.data[0]!.usage.accountAffinity,
+            };
+          // An owner's plan statement is bound to the verified native account, never a plan name.
           if (
-            affinity.success &&
-            this.store.getSetting(
-              `capacity:owner-no-weekly:${affinity.data[0]?.usage.accountAffinity}`,
-            ) === true
+            value.weeklyPolicy === 'not-reported' &&
+            nativeAccount &&
+            this.store.getSetting(`capacity:owner-no-weekly:${nativeAccount.affinity}`) === true
           )
             value.weeklyPolicy = 'owner-reported-none';
         }
@@ -408,7 +437,10 @@ export class CapacityMonitor {
         attemptedAt,
         nextRefreshAt: new Date(Math.max(this.clock() + delay * 1000, retryAt)).toISOString(),
       };
-      this.store.setSetting(`${prefix}${provider}`, value);
+      this.store.transaction(() => {
+        this.store.setSetting(`${prefix}${provider}`, value);
+        if (provider === 'claude') this.store.setSetting(nativeAccountKey, nativeAccount);
+      });
       this.store.event('capacity.updated', null, null, {
         provider,
         state: value.state,

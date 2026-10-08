@@ -286,6 +286,10 @@ Work still needs clear assignments and completion criteria; QUARK does not inven
 - A reset needs a refreshed provider report; missing/stale data makes automatic work wait.
   Completed reservations remain until a later report can reflect their use. Owner overrides
   can accept an estimate/unknown capacity; a known exhausted or elapsed window still waits.
+  After an acknowledged native Claude allowance stop, a fresh account-matched report of
+  available capacity in the exact rejected window can also prove recovery after its reported
+  reset, even when an unused window has no next reset timestamp. Elapsed time alone never
+  resumes work; manual stops, queue holds and the original native session remain protected.
 - Task budgets count worker turns and task-associated manager reports, including reserved
   pending work. Measured counters replace estimates when available. Ordinary manager
   coordination uses its own bounded turn estimate rather than the whole task forecast.

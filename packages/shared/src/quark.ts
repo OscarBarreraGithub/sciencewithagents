@@ -154,7 +154,8 @@ export const quotaHoldSchema = z.object({
   lastAttemptAt: z.string().datetime().nullable(),
   error: z.string().nullable(),
   // Immutable typed native rejection evidence. Automatic recovery requires a fresh
-  // reading in which this exact window reports a reset beyond `resetsAt`.
+  // reading proving this exact window rolled over. A native unused window may
+  // omit its next reset; that path also requires private session/account proof.
   nativeExhaustion: z
     .object({
       source: z.literal('claude-rate-limit-event'),

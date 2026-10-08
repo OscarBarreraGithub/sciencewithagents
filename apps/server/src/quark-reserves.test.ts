@@ -7,9 +7,10 @@ import { effectiveProviderReserve, providerReservePolicy } from '@dock/shared';
 import { Store } from './store.js';
 import { Pulsar } from './pulsar.js';
 import { Quark } from './quark.js';
-import { parseCapacity, readCapacity } from './capacity.js';
+import { CapacityMonitor, parseCapacity, readCapacity } from './capacity.js';
 
 let root: string, store: Store, pulsar: Pulsar, quark: Quark;
+const monitors: CapacityMonitor[] = [];
 const start = Date.parse('2026-10-05T12:00:00Z');
 beforeEach(() => {
   vi.useFakeTimers();
@@ -27,10 +28,143 @@ beforeEach(() => {
   }));
   quark = new Quark(store, pulsar);
 });
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(monitors.splice(0).map((monitor) => monitor.close()));
   vi.useRealTimers();
   store.close();
   rmSync(root, { recursive: true, force: true });
+});
+
+async function nativeResetFixture() {
+  const reset = start + 60 * 60_000;
+  const affinity = 'a'.repeat(64);
+  const sessionId = randomUUID();
+  let reading = {
+    used: 100,
+    reset: reset as number | null,
+    affinity,
+    source: 'claude-native-oauth',
+  };
+  let fail = false;
+  const monitor = new CapacityMonitor(store, root, async () => {
+    if (fail) throw new Error('Unavailable native reading');
+    return [
+      {
+        provider: 'claude',
+        source: reading.source,
+        usage: {
+          updatedAt: new Date().toISOString(),
+          accountAffinity: reading.affinity,
+          primary: {
+            usedPercent: reading.used,
+            windowMinutes: 300,
+            resetsAt: reading.reset === null ? null : new Date(reading.reset).toISOString(),
+          },
+        },
+      },
+    ];
+  });
+  monitors.push(monitor);
+  await monitor.refresh('claude');
+  const r = run('claude');
+  store.setSetting(`quark:project-scheduler:${store.agent(r.agentId).projectId}`, {
+    projectId: store.agent(r.agentId).projectId,
+    enabled: false,
+    revision: 1,
+  });
+  store.setSetting(`claude:account:${r.agentId}`, affinity);
+  store.updateAgent(r.agentId, { threadId: sessionId });
+  store.updateRun(r.id, { status: 'running' });
+  quark.nativeExhaustion(store.run(r.id), {
+    sessionId,
+    rateLimitType: 'five_hour',
+    resetsAtSeconds: reset / 1000,
+  });
+  store.updateRun(r.id, { status: 'interrupted' });
+  store.updateAgent(r.agentId, { status: 'interrupted', turnId: null });
+  quark.acknowledgeStop(r.id);
+  return {
+    r,
+    reset,
+    monitor,
+    reading: (next: Partial<typeof reading>) => {
+      reading = { ...reading, ...next };
+    },
+    fail: () => {
+      fail = true;
+    },
+  };
+}
+
+it('resumes once from a fresh native zero/null-reset report after restart, without another model turn', async () => {
+  const f = await nativeResetFixture();
+  vi.setSystemTime(f.reset + 60_000);
+  f.reading({ used: 0, reset: null });
+  await f.monitor.refresh('claude');
+  await f.monitor.close();
+  store.close();
+  store = new Store(join(root, 'dock.sqlite'));
+  pulsar = new Pulsar(store);
+  quark = new Quark(store, pulsar);
+  quark.recoverTransient(new Set());
+  quark.recoverTransient(new Set());
+  expect(quark.holds()).toHaveLength(0);
+  expect(
+    store.runs(['queued']).filter((r) => r.agentId === f.r.agentId && r.kind === 'resume'),
+  ).toHaveLength(1);
+  expect(store.events().filter((e) => e.type === 'quark.resumed')).toHaveLength(1);
+  expect(store.agent(f.r.agentId).threadId).not.toBeNull();
+});
+
+it.each([
+  'stale',
+  'error',
+  'before-reset',
+  'other-account',
+  'changed-owner-account',
+  'no-account-proof',
+  'still-exhausted',
+  'other-window',
+  'same-reset',
+  'unverified-source',
+  'other-session',
+  'manual-stop',
+  'unacknowledged',
+] as const)('keeps a native reset hold when a null-reset reading is %s', async (mode) => {
+  const f = await nativeResetFixture();
+  vi.setSystemTime(f.reset + 60_000);
+  f.reading({ used: 0, reset: null });
+  if (mode === 'before-reset') vi.setSystemTime(f.reset - 60_000);
+  if (mode === 'other-account') f.reading({ affinity: 'b'.repeat(64) });
+  if (mode === 'no-account-proof') f.reading({ affinity: '' });
+  if (mode === 'still-exhausted') f.reading({ used: 100 });
+  if (mode === 'same-reset') f.reading({ reset: f.reset });
+  if (mode === 'unverified-source') f.reading({ source: 'oauth' });
+  if (mode === 'error') f.fail();
+  await f.monitor.refresh('claude');
+  if (mode === 'other-window') {
+    const cap = readCapacity(store, 'claude');
+    store.setSetting('capacity:v1:claude', {
+      ...cap,
+      windows: cap.windows.map((window) => ({ ...window, id: 'secondary', windowMinutes: 10080 })),
+    });
+  }
+  if (mode === 'changed-owner-account')
+    store.setSetting(`claude:account:${f.r.agentId}`, 'b'.repeat(64));
+  if (mode === 'stale') vi.setSystemTime(Date.now() + 7 * 60_000);
+  if (mode === 'other-session') store.updateAgent(f.r.agentId, { threadId: randomUUID() });
+  if (mode === 'manual-stop') quark.hold(store.run(f.r.id), 'Owner stopped this conversation.');
+  if (mode === 'unacknowledged') {
+    const hold = quark.holds()[0]!;
+    store.setSetting(`quark:hold:${f.r.id}`, { ...hold, stopAcknowledgedAt: null });
+  }
+  quark.recoverTransient(new Set());
+  quark.recoverTransient(new Set());
+  expect(quark.holds()).toHaveLength(1);
+  expect(
+    store.runs(['queued']).filter((r) => r.agentId === f.r.agentId && r.kind === 'resume'),
+  ).toHaveLength(0);
+  expect(store.events().filter((e) => e.type === 'quark.resumed')).toHaveLength(0);
 });
 function usage(provider: 'codex' | 'claude', used: number, reset: number) {
   store.setSetting(

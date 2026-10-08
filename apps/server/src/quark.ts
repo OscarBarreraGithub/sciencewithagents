@@ -28,7 +28,7 @@ import {
 } from '@dock/shared';
 import { z } from 'zod';
 import { Store, Conflict, type PrivateRun } from './store.js';
-import { readCapacity, capacityMaxAge } from './capacity.js';
+import { readCapacity, readClaudeCapacityAffinity, capacityMaxAge } from './capacity.js';
 import type { Pulsar } from './pulsar.js';
 import { currentRateSamples, rateHistory } from './quark-rates.js';
 import { managedChat, chatBypassRun, chatBypassAllowed } from './quark-chat.js';
@@ -50,6 +50,13 @@ const nativeWindows = {
   seven_day_opus: { id: 'extra:seven_day_opus', label: 'Opus weekly', minutes: 10080 },
   seven_day_sonnet: { id: 'extra:seven_day_sonnet', label: 'Sonnet weekly', minutes: 10080 },
 } as const;
+const nativeAccountSchema = z
+  .object({
+    runId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    affinity: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
 
 const unknown: TokenCounts = {
   totalTokens: null,
@@ -1415,6 +1422,16 @@ export class Quark {
         },
       });
       this.store.setSetting(`quark:hold:${run.id}`, value);
+      // Capture the owned conversation's immutable account binding, not a usage
+      // reading that may have lagged behind this direct native rejection.
+      const agent = this.store.agent(run.agentId);
+      const account = nativeAccountSchema.safeParse({
+        runId: run.id,
+        sessionId: event.sessionId,
+        affinity: this.store.getSetting(`claude:account:${agent.id}`),
+      });
+      if (agent.provider === 'claude' && agent.threadId === event.sessionId && account.success)
+        this.store.setSetting(`quark:native-account:${run.id}`, account.data);
       return value;
     });
   }
@@ -1461,7 +1478,8 @@ export class Quark {
       }
       // Automatic recovery always requires a new, successful report. A stale
       // reading accepted briefly for an already admitted turn is not admission.
-      const cap = readCapacity(this.store, this.store.agent(h.agentId).provider, this.clock());
+      const agent = this.store.agent(h.agentId);
+      const cap = readCapacity(this.store, agent.provider, this.clock());
       if (
         h.cause !== 'cache' &&
         (cap.stale || !cap.observedAt || Date.parse(cap.observedAt) <= Date.parse(h.createdAt))
@@ -1469,16 +1487,32 @@ export class Quark {
         continue;
       const native = h.nativeExhaustion;
       if (native) {
-        // Elapsed time or a low same-window reading is not a reset. Only the
-        // exact rejected window reporting a later reset proves rollover.
         const w = cap.windows.find((w) => w.id === native.windowId);
-        if (
-          Date.parse(cap.observedAt!) <= Date.parse(native.observedAt) ||
-          !w?.resetsAt ||
-          Date.parse(w.resetsAt) <= Date.parse(native.resetsAt) ||
-          sameAllowanceReset(w.resetsAt, native.resetsAt)
-        )
-          continue;
+        if (!w || Date.parse(cap.observedAt!) <= Date.parse(native.observedAt)) continue;
+        const laterReset =
+          w.resetsAt !== null &&
+          Date.parse(w.resetsAt) > Date.parse(native.resetsAt) &&
+          !sameAllowanceReset(w.resetsAt, native.resetsAt);
+        // Claude can report an available, unused window with no next reset until
+        // another turn starts. Require a fresh post-reset native reading tied to
+        // the same owned session/account; time alone and same-window lows never suffice.
+        const account = nativeAccountSchema.safeParse(
+          this.store.getSetting(`quark:native-account:${run.id}`),
+        );
+        const availableAfterReset =
+          w.resetsAt === null &&
+          w.usedPercent < 100 &&
+          w.windowMinutes === nativeWindows[native.rateLimitType].minutes &&
+          Date.parse(cap.observedAt!) > Date.parse(native.resetsAt) &&
+          Date.parse(cap.observedAt!) <= this.clock() &&
+          agent.provider === 'claude' &&
+          agent.threadId === native.sessionId &&
+          account.success &&
+          account.data.runId === run.id &&
+          account.data.sessionId === native.sessionId &&
+          account.data.affinity === this.store.getSetting(`claude:account:${agent.id}`) &&
+          account.data.affinity === readClaudeCapacityAffinity(this.store, cap);
+        if (!laterReset && !availableAfterReset) continue;
       }
       const block = this.block(run, true, true, false);
       if (block?.cause === 'budget') {
