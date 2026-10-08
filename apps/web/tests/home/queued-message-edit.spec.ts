@@ -423,6 +423,11 @@ test('queued edits retain later typing on lost acknowledgements and require expl
   expect(attempts[0].key).toBe(attempts[1].key);
   expect(attempts[0]).toEqual(attempts[1]);
   expect(queues).toBe(0);
+  // Keep this local version unsaved until the other browser takes ownership.
+  await page.clock.install({ time: new Date('2030-01-01T00:00:00Z') });
+  await page.clock.pauseAt(new Date('2030-01-01T00:00:01Z'));
+  await area.fill('Local version stays recoverable after takeover');
+  const savesBeforeTakeover = attempts.length;
   const other = await (
     await page.request.post('/api/workspace/clients', {
       headers: saved.headers,
@@ -439,8 +444,14 @@ test('queued edits retain later typing on lost acknowledgements and require expl
     },
   });
   expect(taken.ok()).toBe(true);
-  await area.fill('Local version stays recoverable after takeover');
-  await expect(pad.getByText(/changed on another tab or device/).first()).toBeVisible();
+  await expect(pad.getByText(/Another browser took over this message/).first()).toBeVisible();
+  await expect(area).toHaveAttribute('readonly', '');
+  await expect(area).toHaveValue('Local version stays recoverable after takeover');
+  await expect(pad.getByRole('button', { name: 'Editing closed', exact: true })).toBeDisabled();
+  await page.clock.runFor(2000);
+  await area.press('Control+Enter');
+  expect(attempts).toHaveLength(savesBeforeTakeover);
+  expect(queues).toBe(0);
   expect((await saved.read()).queueEdit.text).toBe(
     'Later typing must survive the old acknowledgement',
   );
@@ -457,6 +468,8 @@ test('queued edits retain later typing on lost acknowledgements and require expl
   ).toBeVisible();
   await pad.getByRole('button', { name: 'Minimize', exact: true }).click();
   expect((await saved.read()).queueEdit.state).toBe('editing');
+  expect(attempts).toHaveLength(savesBeforeTakeover);
+  expect(queues).toBe(0);
 });
 
 test('queued editing follows the pinned selected host and shows queue-only controls for Claude', async ({

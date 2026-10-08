@@ -103,8 +103,8 @@ test('a delivery event during a pending chat read is reconciled before the next 
   const composer = page.locator('.composer textarea');
   await composer.fill('An unrelated unsent draft');
   // Isolate event-driven refresh from the fallback timer. Native transport is entirely stubbed.
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await page.clock.install({ time: new Date('2030-01-01T00:00:00Z') });
+  await page.clock.pauseAt(new Date('2030-01-01T00:00:01Z'));
   const before = reads;
   holdNextRead();
   const change = () =>
