@@ -1,3 +1,8 @@
+import { registerSlurmReviewRoutes } from './slurm-review.js';
+import { registerClusterProjectRoutes } from './cluster-project-routes.js';
+import type { ClusterProjects } from './cluster-projects.js';
+import { clusterInternalPath, type ClusterRemoteAdmission } from './cluster-remote-admission.js';
+import type { ClusterRuntimeIdle } from './cluster-runtime-idle.js';
 import { CoordinationReviews } from './coordination-reviews.js';
 import { promptBodyLimit, promptTextLimit } from '@dock/shared';
 import { registerGroupHostRoutes } from './group-host-routes.js';
@@ -150,6 +155,10 @@ export async function createServer(
     backups?: SourceBackups;
     backupSetup?: SourceBackupSetup;
     hosts?: Hosts;
+    clusterProjects?: ClusterProjects;
+    clusterCompute?: boolean;
+    clusterAdmission?: ClusterRemoteAdmission;
+    clusterIdle?: ClusterRuntimeIdle;
     mirrors?: VscodeMirrors;
     /** Shared by both entries; absent in demo and embedded test servers. */
     publishing?: PublishingAccounts;
@@ -165,7 +174,7 @@ export async function createServer(
     requestTimeout: 30_000,
     // Retire idle HTTP sockets promptly. Longer-lived idle sockets reproduced
     // stalled native fetch polling on Node 26; active SSE/WebSockets are unaffected.
-    keepAliveTimeout: 5000,
+    keepAliveTimeout: options.clusterCompute ? 30000 : 5000,
   });
   const terminals = options.terminals ?? new Terminals(runtime);
   const ownerTerminals =
@@ -197,6 +206,30 @@ export async function createServer(
       options.groupFixture.store !== store)
   )
     throw new Error('Groups test host requires its exact explicit fixture runtime/store.');
+  if (options.clusterIdle) {
+    const mutations = new WeakMap<FastifyRequest, () => void>();
+    const finish = (request: FastifyRequest) => {
+      mutations.get(request)?.();
+      mutations.delete(request);
+    };
+    app.addHook('preHandler', async (request) => {
+      if (
+        !['GET', 'HEAD'].includes(request.method) &&
+        !clusterInternalPath(request.method, request.url)
+      )
+        mutations.set(request, options.clusterIdle!.beginMutation());
+    });
+    app.addHook('onSend', async (request, _reply, payload) => {
+      finish(request);
+      return payload;
+    });
+    app.addHook('onError', async (request) => {
+      finish(request);
+    });
+    app.addHook('onResponse', async (request) => {
+      finish(request);
+    });
+  }
   const phone = options.phone;
   if (options.remote && options.localAccess)
     throw new Error('The phone entry cannot accept local installation credentials.');
@@ -456,8 +489,9 @@ export async function createServer(
         : role === 'owner' ||
           (browserOrigins.has(expected) && access.browser(request.headers.cookie)) ||
           (role === 'host' &&
-            proxyPath(request.method, request.url.slice(4), !!request.headers.upgrade) ===
-              request.url);
+            (proxyPath(request.method, request.url.slice(4), !!request.headers.upgrade) ===
+              request.url ||
+              (!!options.clusterAdmission && clusterInternalPath(request.method, request.url))));
       if (!allowed && !publicRead && !localHandoff && !separateClient)
         return reply.code(401).send({
           error:
@@ -627,6 +661,76 @@ export async function createServer(
         return session ? phone!.watch(session, close) : () => {};
       },
     });
+  if (options.clusterProjects)
+    registerClusterProjectRoutes(app, options.clusterProjects, {
+      watch: (request, close) => {
+        const session = phoneSessions.get(request);
+        return session ? phone!.watch(session, close) : () => {};
+      },
+    });
+  if (options.clusterAdmission) {
+    const requireController = (request: FastifyRequest) => {
+      if (localRoles.get(request) !== 'host')
+        throw new Conflict('Only the verified controller gateway can coordinate remote admission.');
+    };
+    if (options.clusterIdle) {
+      app.post('/api/cluster/runtime/admission/drain', async (request) => {
+        requireController(request);
+        return options.clusterIdle!.drain(request.body);
+      });
+      app.post('/api/cluster/runtime/admission/reopen', async (request) => {
+        requireController(request);
+        return options.clusterIdle!.reopen(request.body);
+      });
+    }
+    app.get('/api/cluster/runtime/admission', async (request) => {
+      requireController(request);
+      return options.clusterAdmission!.snapshot();
+    });
+    app.post('/api/cluster/runtime/admission/grants', async (request) => {
+      requireController(request);
+      const result = options.clusterAdmission!.inbox.push(request.body);
+      runtime.kick();
+      return result;
+    });
+    app.post('/api/cluster/runtime/admission/reader', async (request) => {
+      requireController(request);
+      return options.clusterAdmission!.selectReader(request.body);
+    });
+    app.post('/api/cluster/runtime/admission/acknowledge', async (request) => {
+      requireController(request);
+      return options.clusterAdmission!.inbox.acknowledge(request.body);
+    });
+    app.post('/api/cluster/runtime/admission/revoke', async (request) => {
+      requireController(request);
+      return options.clusterAdmission!.inbox.revoke(request.body);
+    });
+    app.post('/api/cluster/runtime/admission/dispose', async (request) => {
+      requireController(request);
+      return options.clusterAdmission!.inbox.dispose(request.body);
+    });
+    app.addHook('preHandler', async (request) => {
+      if (
+        request.method === 'POST' &&
+        ['/api/quark/settings', '/api/quark/budgets'].includes(request.url)
+      )
+        throw new Conflict(
+          'Cluster allowance settings belong to the controller’s authoritative account ledger. Open that account’s controls to change them.',
+        );
+    });
+  }
+  if (runtime.clusterWorkspace) {
+    app.get('/api/cluster/workspace', async () => runtime.clusterWorkspace!.status());
+    app.post('/api/cluster/workspace/settings', async (request) =>
+      runtime.clusterWorkspace!.save(request.body),
+    );
+    app.post('/api/cluster/workspace/lease', async (request) =>
+      runtime.clusterWorkspace!.renew(request.body),
+    );
+    app.post('/api/cluster/workspace/refresh', async (request) =>
+      runtime.clusterWorkspace!.refresh(request.body),
+    );
+  }
   const agentId = (params: unknown) => z.object({ id }).parse(params).id;
   const maintenance = new BugReports(
     store,
@@ -688,6 +792,7 @@ export async function createServer(
   registerConversationVisibilityRoutes(app, store, () => mirrors.windows());
   registerMirrorRoutes(app, mirrors, !!options.remote);
   registerArchiveRoutes(app, new Archive(store, mirrors));
+  if (!runtime.fixture) registerSlurmReviewRoutes(app, runtime.slurmReview, () => runtime.kick());
   registerConversationSearchRoutes(app, runtime.conversationSearch, () => runtime.kick());
   if (phone) {
     app.post('/api/phone/setup/check', async (request, reply) => {

@@ -513,6 +513,44 @@ export class Quark {
           : 'measured',
     });
   }
+  /**
+   * Cluster ledger evidence: a remote QUARK's normalized cumulative counts for one run.
+   * There is no native thread, so counts replace (never add to) this run's tokens; a later
+   * unknown field keeps earlier evidence. The receipt contract proves no whole-tree coverage,
+   * so remote evidence is at most 'partial' and never trains model rates as measured.
+   */
+  observeRemoteRun(runId: string, counts: TokenCounts) {
+    if (!this.store.db.isTransaction) throw new Error('Remote usage requires an atomic request.');
+    const row = this.store.db.prepare('SELECT body FROM quark_runs WHERE run_id=?').get(runId);
+    if (!row) throw new Conflict('This remote run has no QUARK accounting record.');
+    const run = quarkRunSchema.parse(JSON.parse(String(row.body)));
+    if (run.threadId) throw new Conflict('Native conversations report usage by native snapshot.');
+    const tokens = { ...run.tokens };
+    for (const k of Object.keys(unknown) as (keyof TokenCounts)[]) {
+      const before = run.tokens[k],
+        after = counts[k];
+      if (after === null) continue;
+      if (before !== null && after < before)
+        throw new Conflict('Remote token counts are cumulative per run and cannot decrease.');
+      tokens[k] = after;
+    }
+    const known = Object.values(tokens).some((n) => n !== null);
+    this.saveRun({
+      ...run,
+      tokens,
+      observedAt: known ? stamp(this.clock()) : run.observedAt,
+      basis: known ? 'partial' : run.basis,
+    });
+    return tokens;
+  }
+  /** Cluster ledger only: a durably proven never-consumed remote grant leaves no evidence. */
+  discardUnconsumed(runId: string) {
+    const row = this.store.db.prepare('SELECT body FROM quark_runs WHERE run_id=?').get(runId);
+    if (row && quarkRunSchema.parse(JSON.parse(String(row.body))).observedAt)
+      throw new Conflict('Observed usage cannot be discarded.');
+    this.pulsar.discardUnconsumed(runId);
+    this.store.db.prepare('DELETE FROM quark_runs WHERE run_id=?').run(runId);
+  }
   sync() {
     this.store.transaction(() => {
       let cursor = Number(this.store.getSetting('quark:cursor') ?? 0);

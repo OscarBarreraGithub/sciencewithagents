@@ -17,6 +17,7 @@ import {
 import { Store } from './store.js';
 import { ClaudeCapacityError, nativeClaudeFetcher } from './claude-capacity.js';
 import { parseVm, type MachineReading } from './resource-probe.js';
+import { ClusterMachineSampler, type MachineSample } from './cluster-machine-sampler.js';
 
 const prefix = 'capacity:v1:';
 const nativeAccountKey = 'capacity:native-account:claude';
@@ -234,30 +235,50 @@ export class CapacityMonitor {
   private machine: MachineCapacity | null = null;
   private closed = false;
   private memoryProbe: Promise<void> | null = null;
+  private machineProbe: Promise<void> | null = null;
   private memoryReading: {
     bytes: number;
     observedAt: number;
     compressedBytes: number | null;
     swapOutBytes: number | null;
   } | null = null;
+  /** Verified Slurm allocation capacity, never a browser-selected machine override. */
+  allocationLimits: { cpus: number; memoryMb: number } | null = null;
   constructor(
     readonly store: Store,
     readonly dataDir: string,
     private fetcher: Fetcher = sharedCapacityFetcher(dataDir),
     private clock = Date.now,
+    private readonly machineSampler = new ClusterMachineSampler(dataDir),
   ) {}
 
-  start() {
+  start(readAllowance = true) {
     if (this.timer || this.closed) return;
     this.sampleMachine();
-    void this.refresh();
+    if (readAllowance) void this.refresh();
     this.timer = setInterval(() => {
       this.sampleMachine();
-      void this.refresh();
+      if (readAllowance) void this.refresh();
     }, 1000);
     this.timer.unref();
   }
   sampleMachine() {
+    if (this.closed) return;
+    if (this.allocationLimits) {
+      if (!this.machineProbe)
+        this.machineProbe = this.machineSampler
+          .sample()
+          .then((sample) => {
+            if (sample && !this.closed) this.applyMachineSample(sample);
+          })
+          .catch(() => {
+            /* Keep the previous observation, never mark a failed sample fresh. */
+          })
+          .finally(() => {
+            this.machineProbe = null;
+          });
+      return;
+    }
     if (
       process.platform === 'darwin' &&
       !this.memoryProbe &&
@@ -283,7 +304,16 @@ export class CapacityMonitor {
         this.memoryProbe = null;
       });
     }
-    const processors = cpus();
+    let disk: MachineSample['disk'] = null;
+    try {
+      const value = statfsSync(this.dataDir);
+      disk = { available: value.bavail * value.bsize, total: value.blocks * value.bsize };
+    } catch {
+      /* reported unknown */
+    }
+    this.applyMachineSample({ processors: cpus(), disk });
+  }
+  private applyMachineSample({ processors, disk }: MachineSample) {
     this.cores = processors;
     const current = processors.reduce(
       (sum, cpu) => ({
@@ -301,29 +331,24 @@ export class CapacityMonitor {
     const delta = previous ? current.total - previous.total : 0;
     const used = previous && delta > 0 ? 100 * (1 - (current.idle - previous.idle) / delta) : null;
     this.previousCpu = { ...current, at: this.clock() };
-    let diskAvailableBytes: number | null = null;
-    this.diskTotalBytes = null;
-    try {
-      const disk = statfsSync(this.dataDir);
-      diskAvailableBytes = disk.bavail * disk.bsize;
-      this.diskTotalBytes = disk.blocks * disk.bsize;
-    } catch {
-      /* reported unknown */
-    }
+    this.diskTotalBytes = disk?.total ?? null;
     this.machine = {
       observedAt: new Date(this.clock()).toISOString(),
-      cpuCount: Math.max(1, processors.length),
+      cpuCount: Math.min(Math.max(1, processors.length), this.allocationLimits?.cpus ?? Infinity),
       cpuUsedPercent: used === null ? null : Math.max(0, Math.min(100, used)),
-      memoryTotalBytes: totalmem(),
+      memoryTotalBytes: Math.min(
+        totalmem(),
+        (this.allocationLimits?.memoryMb ?? Infinity) * 1024 ** 2,
+      ),
       memoryAvailableBytes:
         this.memoryReading && this.clock() - this.memoryReading.observedAt < 30_000
           ? this.memoryReading.bytes
-          : freemem(),
+          : Math.min(freemem(), (this.allocationLimits?.memoryMb ?? Infinity) * 1024 ** 2),
       memoryBasis:
         this.memoryReading && this.clock() - this.memoryReading.observedAt < 30_000
           ? 'free-plus-reclaimable-estimate'
           : 'free-only',
-      diskAvailableBytes,
+      diskAvailableBytes: disk?.available ?? null,
       loadPerCore: loadavg()[0]! / Math.max(1, processors.length),
     };
   }
@@ -455,6 +480,8 @@ export class CapacityMonitor {
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
     this.abort.abort();
+    await this.machineSampler.close();
+    await this.machineProbe;
     await Promise.allSettled(this.pending.values());
     await this.memoryProbe;
   }

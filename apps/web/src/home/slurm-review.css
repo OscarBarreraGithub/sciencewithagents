@@ -1,0 +1,118 @@
+.slurm-review {
+  padding: 12px 0;
+  border-top: 1px solid var(--q-border);
+  min-width: 0;
+}
+.slurm-review header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.slurm-review h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+.slurm-review small {
+  display: block;
+  color: var(--q-muted);
+  margin: 5px 0;
+  overflow-wrap: anywhere;
+}
+.slurm-review p {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.slurm-review details {
+  margin-top: 10px;
+}
+.slurm-review summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  border: 1px solid var(--q-border);
+  border-radius: 10px;
+  background: var(--q-surface, #fff);
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.slurm-review summary:hover {
+  background: var(--q-hover, #f5f5f5);
+}
+.slurm-review summary:focus-visible {
+  outline: 2px solid var(--q-accent, #4f46e5);
+  outline-offset: 2px;
+}
+.slurm-review .slurm-model-refresh {
+  justify-self: start;
+}
+.slurm-review form {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.slurm-review fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.slurm-review label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.85rem;
+  min-width: 0;
+  margin: 0;
+  color: inherit;
+}
+.slurm-review input:not([type='checkbox']),
+.slurm-review select,
+.slurm-review textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 8px;
+  border: 1px solid var(--q-border);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+}
+.slurm-review button {
+  min-height: 44px;
+}
+.slurm-review .cluster-control-check {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+}
+.slurm-review .cluster-control-check input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+.slurm-review .cluster-control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  gap: 10px;
+}
+.slurm-review .cluster-control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.slurm-review .cluster-review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.slurm-review .cluster-review-list > li {
+  padding: 12px 0;
+  border-top: 1px solid var(--q-border);
+}

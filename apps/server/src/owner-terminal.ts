@@ -19,6 +19,11 @@ export class OwnerTerminals {
   private sessions = new Map<string, Session>();
   private openings = new Map<string, string>();
   private stopped = false;
+  beforeOpen: () => void = () => {};
+  activeCount() {
+    return [...this.sessions.values()].filter((session) => session.info.status === 'running')
+      .length;
+  }
   constructor(
     private configuration = (() => {
       const owner = userInfo();
@@ -37,6 +42,7 @@ export class OwnerTerminals {
     return this.openOwned(`group-native:${key}`, invocation);
   }
   private openOwned(key: string, invocation?: { executable: string; args: readonly string[] }) {
+    this.beforeOpen();
     if (this.stopped) throw new Conflict('The computer terminal service is stopping.');
     const existing = this.openings.get(key);
     if (existing) return this.read(existing);

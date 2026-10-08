@@ -13,7 +13,7 @@ import {
   TerminalSquare,
 } from 'lucide-react';
 import { frontdeskStatusSchema } from '@dock/shared';
-import { api, apiScope, selectComputer } from '../api';
+import { api, apiScope, apiComputer, selectComputer } from '../api';
 import { FrontdeskSettings } from '../FrontdeskSettings';
 import { RecoveryBackups } from '../RecoveryBackups';
 import { RetainedBrowserDrafts } from '../RetainedBrowserDrafts';
@@ -121,7 +121,7 @@ export function ConnectionFlow({ route, data }: { route: string; data: HomeData 
         </FlowHeading>
         <div className="flow-form-panel">
           <HostSelector
-            selected={apiScope()}
+            selected={apiComputer()}
             onChange={(id) => selectComputer(id, '#/computers')}
           />
         </div>

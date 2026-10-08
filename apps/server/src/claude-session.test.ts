@@ -1680,3 +1680,57 @@ describe('native Claude command transport', () => {
     expect(f.session.nativeCommands()).toEqual(['compact', 'fresh']);
   });
 });
+
+it.each(['allow', 'reject', 'finished'] as const)(
+  'answers a bounded async hook safely after %s',
+  async (outcome) => {
+    let resolve!: (value: Record<string, unknown>) => void;
+    let reject!: (error: Error) => void;
+    const pending = new Promise<Record<string, unknown>>((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    const f = fixture(options({ hook: () => pending }));
+    await f.submit();
+    const requestId = randomUUID();
+    f.emit({
+      type: 'control_request',
+      request_id: requestId,
+      request: {
+        subtype: 'hook_callback',
+        callback_id: 'quark',
+        input: {
+          session_id: f.config.sessionId,
+          hook_event_name: 'PreToolUse',
+          tool_name: 'Bash',
+          tool_use_id: randomUUID(),
+          tool_input: { command: 'sbatch job.sh' },
+          transcript_path: null,
+        },
+      },
+    });
+    expect(f.writes.some((frame) => frame.response?.request_id === requestId)).toBe(false);
+    if (outcome === 'finished') {
+      f.emit({
+        type: 'result',
+        uuid: randomUUID(),
+        session_id: f.config.sessionId,
+        subtype: 'success',
+        result: '',
+        is_error: false,
+      });
+      await f.submit();
+    }
+    if (outcome === 'reject') reject(new Error('fixture read failure'));
+    else resolve({});
+    await tick();
+    const reply = f.writes.find((frame) => frame.response?.request_id === requestId)!.response;
+    expect(reply.response).toMatchObject(
+      outcome === 'allow'
+        ? {}
+        : {
+            hookSpecificOutput: { permissionDecision: 'deny' },
+          },
+    );
+  },
+);

@@ -448,7 +448,11 @@ export type ClaudeSessionOptions = {
   /** Synchronous host receipt/attempt fence, after startup but before native input I/O. */
   beforeWrite?: (deliveryId: string) => void;
   /** Observe native events and gate continued work without defining its tools. */
-  hook?: (event: ClaudeHook, deliveryId: string, receipt?: string) => Record<string, unknown>;
+  hook?: (
+    event: ClaudeHook,
+    deliveryId: string,
+    receipt?: string,
+  ) => Record<string, unknown> | Promise<Record<string, unknown>>;
   /** Host-chosen working folders a writing role also uses, such as a manager's project folder. */
   writableDirectories?: string[];
   /** Fixed native auth-failure observations only; never raw stderr or a retry. */
@@ -550,11 +554,13 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
     throw new Error('Invalid private Claude session configuration.');
   const writing = options.role !== 'read-only';
   const builtins =
-    options.nativeTools === 'off' || options.role === 'manager'
+    options.nativeTools === 'off'
       ? []
-      : options.role === 'implementer'
-        ? ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write']
-        : ['Read', 'Glob', 'Grep'];
+      : options.role === 'manager'
+        ? []
+        : options.role === 'implementer'
+          ? ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write']
+          : ['Read', 'Glob', 'Grep'];
   return [
     '--print',
     '--input-format',
@@ -823,6 +829,44 @@ export class ClaudeSession extends EventEmitter {
       }
     });
   }
+  /**
+   * Host hooks usually answer synchronously. An asynchronous answer (a bounded host check)
+   * is written when ready; a failed check denies a pending tool instead of passing it.
+   */
+  private answerHook(
+    key: string,
+    name: ClaudeHook['hook_event_name'],
+    output: Record<string, unknown> | Promise<Record<string, unknown>>,
+  ) {
+    if (!(output instanceof Promise)) return this.reply(key, output);
+    const failed =
+      name === 'PreToolUse'
+        ? {
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'deny',
+              permissionDecisionReason: 'The host could not finish checking this tool request.',
+            },
+          }
+        : {};
+    const send = (value: unknown) => {
+      try {
+        if (!this.closed) this.reply(key, value);
+      } catch {
+        // A disconnected session cannot run the tool; nothing is replayed.
+      }
+    };
+    const delivery = this.deliveryId;
+    void output.then(
+      (value) =>
+        send(
+          name === 'PreToolUse' && (!this.busy || !delivery || delivery !== this.deliveryId)
+            ? failed
+            : value,
+        ),
+      () => send(failed),
+    );
+  }
   private reply(requestId: string, response: unknown, error?: string) {
     this.write({
       type: 'control_response',
@@ -1053,8 +1097,9 @@ export class ClaudeSession extends EventEmitter {
           return;
         }
         if (event.data.hook_event_name === 'SessionStart') {
-          this.reply(
+          this.answerHook(
             key,
+            event.data.hook_event_name,
             this.options.hook(event.data, this.deliveryId ?? this.options.sessionId, key),
           );
           return;
@@ -1078,7 +1123,11 @@ export class ClaudeSession extends EventEmitter {
             );
           return;
         }
-        this.reply(key, this.options.hook(event.data, this.deliveryId, key));
+        this.answerHook(
+          key,
+          event.data.hook_event_name,
+          this.options.hook(event.data, this.deliveryId, key),
+        );
         if (event.data.agent_id) {
           if (event.data.hook_event_name === 'SubagentStart')
             this.nativeChildren.add(event.data.agent_id);

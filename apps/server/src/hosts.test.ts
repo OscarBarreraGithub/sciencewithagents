@@ -1,8 +1,8 @@
 import { modelFixture } from './model-policy.fixture.js';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { get, globalAgent } from 'node:http';
+import { Agent, get, globalAgent, type IncomingMessage } from 'node:http';
 import { createConnection, createServer as createTcpServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
@@ -312,6 +312,122 @@ function checkHeaders(index: number) {
 }
 
 describe('isolated computer connections', () => {
+  it('reuses a private cluster pipe while checking fresh proofs and identity before every write', async () => {
+    const fixture = fixtures[0];
+    fixture.access = new LocalAccess(prepareLocalAccess(root, fixture.config.remotePort));
+    const config = { ...fixture.config, credential: fixture.access.configuration.host };
+    const agent = new Agent({ keepAlive: true, maxSockets: 24, maxFreeSockets: 24 });
+    const connections = new Set<unknown>();
+    const challenges: string[] = [];
+    let identities = 0;
+    const observe = (request: IncomingMessage) => {
+      connections.add(request.socket);
+      if (request.url?.startsWith('/api/local-access/proof?')) challenges.push(request.url);
+      if (request.url === '/api/host-info') identities++;
+    };
+    fixture.app.server.on('request', observe);
+    const pooled = new Hosts(
+      root,
+      async () => ({
+        port: config.remotePort,
+        connectionStartTimeoutMs: 15_000,
+        agent,
+        alive: () => true,
+        close: async () => agent.destroy(),
+      }),
+      [config],
+    );
+    const write = async (key: string) => {
+      const response = await pooled.forward(config.id, 'POST', `/api/agents/${agentId}/messages`, {
+        key,
+        text: 'Owned fixture input',
+      });
+      for await (const _chunk of response) {
+        /* Fully release the pooled connection. */
+      }
+    };
+    try {
+      await write(randomUUID());
+      await write(randomUUID());
+      expect(connections.size).toBe(1);
+      expect(identities).toBe(3); // Initial connection plus both independent write guards.
+      expect(challenges).toHaveLength(5);
+      expect(new Set(challenges).size).toBe(challenges.length);
+      expect(fixture.writes).toHaveLength(2);
+      fixture.hostId = randomUUID();
+      await expect(write(randomUUID())).rejects.toThrow('different sciencewithagents workspace');
+      expect(fixture.writes).toHaveLength(2);
+      expect(connections.size).toBe(1);
+      await vi.waitFor(() => {
+        expect(Object.keys(agent.sockets)).toHaveLength(0);
+        expect(Object.keys(agent.freeSockets)).toHaveLength(0);
+      });
+    } finally {
+      await pooled.close();
+      agent.destroy();
+      fixture.app.server.off('request', observe);
+    }
+  });
+
+  it.each(['match', 'wrong-host', 'wrong-credential'] as const)(
+    'checks identity and peer proof through delayed native connections (%s)',
+    async (identity) => {
+      const fixture = fixtures[0];
+      fixture.access = new LocalAccess(prepareLocalAccess(root, fixture.config.remotePort));
+      const config = { ...fixture.config, credential: fixture.access.configuration.host };
+      if (identity === 'wrong-host') fixture.hostId = randomUUID();
+      if (identity === 'wrong-credential') config.credential = '0'.repeat(64);
+      const sockets = new Set<ReturnType<typeof createConnection>>();
+      const pending = new Set<Promise<void>>();
+      const forward = createTcpServer((socket) => {
+        sockets.add(socket);
+        socket.once('close', () => sockets.delete(socket));
+        socket.on('error', () => {});
+        // Each fresh HTTP connection pays native ownership + srun startup latency.
+        const ready = delay(5200).then(() => {
+          if (socket.destroyed) return;
+          const upstream = createConnection(fixture.config.remotePort, '127.0.0.1');
+          sockets.add(upstream);
+          upstream.once('close', () => sockets.delete(upstream));
+          upstream.on('error', () => socket.destroy());
+          socket.pipe(upstream).pipe(socket);
+        });
+        pending.add(ready);
+        void ready.finally(() => pending.delete(ready));
+      });
+      forward.listen(0, '127.0.0.1');
+      await once(forward, 'listening');
+      const port = (forward.address() as { port: number }).port;
+      const delayed = new Hosts(root, async () => ({
+        port,
+        connectionStartTimeoutMs: 15_000,
+        alive: () => true,
+        close: async () => {},
+      }), [config]);
+      try {
+        if (identity === 'wrong-host') {
+          await expect(delayed.connection(config.id)).rejects.toThrow(
+            'different sciencewithagents workspace',
+          );
+        } else if (identity === 'wrong-credential') {
+          await expect(delayed.connection(config.id)).rejects.toThrow(
+            'could not authenticate its saved connection',
+          );
+        } else {
+          await delayed.connection(config.id);
+          expect(delayed.status().hosts[0].status).toBe('connected');
+        }
+        expect(fixture.writes).toEqual([]);
+      } finally {
+        await delayed.close();
+        for (const socket of sockets) socket.destroy();
+        await Promise.all(pending);
+        await new Promise<void>((resolve) => forward.close(() => resolve()));
+      }
+    },
+    20_000,
+  );
+
   it('waits for a cold authenticated tunnel and preserves the destination Host on a different port', async () => {
     const fixture = fixtures[0];
     fixture.access = new LocalAccess(prepareLocalAccess(root, fixture.config.remotePort));

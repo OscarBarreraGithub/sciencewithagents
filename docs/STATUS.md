@@ -166,9 +166,19 @@ and model choices remain. Active work is never discarded by an inactivity timer.
   notebook-only HTTPS address. Each worker computer needs that address configured; the app
   does not automatically create DNS or publish a notebook port. Live hosting and physical-phone
   acceptance must be verified for the installation. See [Slurm cluster](CLUSTER.md).
-  Cluster-resident project managers with automatic compute allocation, persistent remote
-  session resumption and idle release are not delivered in this release. Their retained
-  development implementation still needs integration and real cluster acceptance.
+  Cluster-resident project managers, automatic compute allocation, persistent native session
+  resumption and idle release are available in source. Each installation needs a reviewed
+  runtime-source pin, verified target provider CLI/account/model, and confirmed site/account
+  and submission-review settings before owner activation. Separate FASRC checks passed native startup, Continue and
+  retained history; a fresh allocation naturally released under an explicit one-minute idle
+  policy with a private zero-work barrier. The default 20-minute policy has local fake-clock
+  coverage; earlier real observations were inconclusive, and native fixture archival remains
+  separate. The optional Slurm submission reviewer has source-level service and
+  managed-Claude runtime fixtures; it starts Off and retains explicitly saved policies.
+  The source includes compact review settings, confirmed account/site defaults,
+  reviewer selection and review results. Focused controller/proxy and emulated layout checks
+  pass; an owned FASRC fixture also passed native submission review. Each installation still
+  needs its own provider and site checks.
 
 - **Remote editor:** an owned FASRC Remote SSH Codex fixture passed native sharing, an app
   follow-up, steering acknowledgement and Stop. A zero-turn same-browser check recovered

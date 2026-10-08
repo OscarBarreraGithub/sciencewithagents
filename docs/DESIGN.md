@@ -95,6 +95,8 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   Native editor queues remain visible under their provider ownership. Changed queued wording
   returns linked owner-request triage to pending review and retains searchable original text.
   Failed or uncertain sends keep the draft and delivery receipt; do not show a blanket wait restriction.
+  Delivery events received during a pending chat read retain one follow-up read, so an older
+  response cannot leave Queued visible until the fallback poll. Navigation cancels that follow-up.
 - Conversation Archive hides a chat only in this app. Archived lists and Restore retain drafts,
   history, files and running work; shared editor/provider conversations remain native.
   Put Archive in one small three-dot conversation menu, without a duplicate chat-list button.

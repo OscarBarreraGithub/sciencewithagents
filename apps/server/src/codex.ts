@@ -11,6 +11,10 @@ import { z } from 'zod';
 import { disabledMcpOverride } from './mcp.js';
 import type { Agent } from '@dock/shared';
 import type { NativeProviderBoundary } from './native-provider-boundary.js';
+import {
+  captureCodexProcessIdentity,
+  type ProviderProcessIdentity,
+} from './provider-process-identity.js';
 const responseByteLimit = 16 * 1024 * 1024; // Bounded provider output, including encoded images.
 
 /** macOS Unix socket names have a 104-byte bound, including the terminator. */
@@ -53,6 +57,7 @@ export type DynamicTool = {
 export interface Provider extends EventEmitter {
   ready: boolean;
   readonly ownedProcessId?: number | null;
+  readonly ownedProcessIdentity?: readonly ProviderProcessIdentity[] | null;
   request(method: string, params?: unknown): Promise<unknown>;
   respond(id: string | number, result: unknown): void;
   close(): Promise<void>;
@@ -76,6 +81,7 @@ export class CodexRpc extends EventEmitter implements Provider {
   >();
   private stopping = false;
   private cancelConnect: (() => void) | null = null;
+  ownedProcessIdentity: readonly ProviderProcessIdentity[] | null = null;
   constructor(
     readonly binary: string,
     socketPath: string,
@@ -88,6 +94,7 @@ export class CodexRpc extends EventEmitter implements Provider {
     readonly inheritNative = false,
     private readonly socketTiming = { openingMs: 20_000, handshakeMs: 5_000 },
     readonly boundary?: NativeProviderBoundary,
+    private readonly captureIdleIdentity = false,
   ) {
     super();
     this.socketPath = providerSocketPath(socketPath);
@@ -265,6 +272,14 @@ export class CodexRpc extends EventEmitter implements Provider {
         },
       });
       this.socket.send(JSON.stringify({ method: 'initialized', params: {} }));
+      if (this.captureIdleIdentity && !this.boundary?.codexDirect && this.process.pid)
+        this.ownedProcessIdentity = captureCodexProcessIdentity(
+          this.process.pid,
+          process.execPath,
+          host,
+          this.binary,
+          args,
+        );
       if (this.stopping) throw new Error('Codex was stopped during startup.');
       this.ready = true;
     } catch (error) {

@@ -28,6 +28,12 @@ export class Terminals {
   constructor(readonly runtime: Runtime) {
     runtime.store.on('event', this.onEvent);
   }
+  activeCount() {
+    return (
+      this.openings.size +
+      [...this.sessions.values()].filter((session) => session.exit === null).length
+    );
+  }
   active(id: string) {
     return this.openings.has(id) || this.sessions.get(id)?.exit === null;
   }

@@ -4,39 +4,114 @@ import { detailSchema, snapshotSchema, modelSchema, type AgentDetailChannel } fr
 // routes keep that computer; only an explicit choice here (selectComputer) removes it. The
 // saved selection, other tabs and their drafts are unchanged.
 const entryPinned = new URLSearchParams(location.search).get('computer') === 'entry';
-// The selector is local UI state. Server-side host configuration remains the authority.
-function storedScope() {
-  if (entryPinned) return 'local';
-  const selected = localStorage.getItem('dock:host');
-  return selected && /^[0-9a-f-]{36}$/i.test(selected) ? selected : 'local';
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export type ClusterContext = { controllerHost: string; projectId: string };
+function storedContext(): { computer: string; cluster: ClusterContext | null } {
+  if (entryPinned) return { computer: 'local', cluster: null };
+  const pinned = new URLSearchParams(location.search).get('computer');
+  if (pinned === 'local' || (pinned && uuid.test(pinned)))
+    return { computer: pinned, cluster: null };
+  let computer = 'local';
+  try {
+    const selected = localStorage.getItem('dock:host');
+    if (selected && uuid.test(selected)) computer = selected;
+    const saved: unknown = JSON.parse(localStorage.getItem('dock:cluster-project') ?? 'null');
+    if (
+      saved &&
+      typeof saved === 'object' &&
+      'controllerHost' in saved &&
+      'projectId' in saved &&
+      saved.controllerHost === computer &&
+      typeof saved.projectId === 'string' &&
+      uuid.test(saved.projectId)
+    )
+      return { computer, cluster: { controllerHost: computer, projectId: saved.projectId } };
+  } catch {
+    // Missing browser storage or a malformed saved destination opens the computer itself.
+  }
+  return { computer, cluster: null };
 }
-// A document never changes account underneath an in-flight form callback. Computer
-// selection creates a new document; late continuations keep their original target.
-const documentScope = storedScope();
+// Each document pins its own controller/project. Another tab cannot retarget its callbacks,
+// uploads, caches or drafts while requests are in flight.
+const documentContext = storedContext();
+const documentScope = documentContext.cluster
+  ? `cluster:${documentContext.computer}:${documentContext.cluster.projectId}`
+  : documentContext.computer;
 export function apiScope() {
-  // localStorage is shared by tabs, but an already-open tab keeps its own computer.
-  // UI labels and draft keys must agree with the pinned request route until reload.
   return documentScope;
 }
-/** Explicit computer choice: saved for this browser; this document reopens without the marker. */
-export function selectComputer(id: string, hash = location.hash) {
-  localStorage.setItem('dock:host', id);
+export function apiComputer() {
+  return documentContext.computer;
+}
+export function apiCluster() {
+  return documentContext.cluster;
+}
+const reopen = (hash: string) => {
   const url = new URL(location.href);
   url.searchParams.delete('computer');
   history.replaceState(history.state, '', `${url.pathname}${url.search}${hash}`);
   location.reload();
+};
+export function selectComputer(id: string, hash = location.hash) {
+  if (id !== 'local' && !uuid.test(id)) throw new Error('This computer could not be selected.');
+  try {
+    localStorage.setItem('dock:host', id);
+    localStorage.removeItem('dock:cluster-project');
+  } catch {
+    throw new Error(
+      'This browser could not save the computer choice. Allow browser storage and try again.',
+    );
+  }
+  reopen(hash);
+}
+/** Only an ID returned by the controller is used; host credentials never enter browser state. */
+export function selectClusterProject(projectId: string, hash = location.hash) {
+  if (!uuid.test(projectId)) throw new Error('This cluster project could not be opened.');
+  try {
+    localStorage.setItem('dock:host', documentContext.computer);
+    localStorage.setItem(
+      'dock:cluster-project',
+      JSON.stringify({ controllerHost: documentContext.computer, projectId }),
+    );
+  } catch {
+    throw new Error(
+      'This browser could not save the cluster choice. Your unsent request is retained; allow browser storage and retry.',
+    );
+  }
+  reopen(hash);
+}
+/** A return pins this tab's original controller without erasing another tab's newer choice. */
+export function leaveClusterProject(hash = '#/chats') {
+  const cluster = documentContext.cluster;
+  try {
+    const saved = JSON.parse(localStorage.getItem('dock:cluster-project') ?? 'null');
+    if (
+      cluster &&
+      saved?.controllerHost === cluster.controllerHost &&
+      saved?.projectId === cluster.projectId
+    )
+      localStorage.removeItem('dock:cluster-project');
+  } catch {
+    /* A return remains available without browser storage. */
+  }
+  const url = new URL(location.href);
+  url.searchParams.set('computer', documentContext.computer);
+  history.replaceState(history.state, '', `${url.pathname}${url.search}${hash}`);
+  location.reload();
 }
 export function apiUrl(path: string) {
-  const scope = documentScope;
-  // Device enrollment belongs to the entry computer, never a selected downstream host.
-  // Push subscriptions belong to this browser's entry computer as well.
+  // Device enrollment and push subscriptions always belong to the entry computer.
+  const pathname = path.split('?')[0]!;
   const local =
-    path.startsWith('/phone/') ||
-    path === '/hosts' ||
-    path.startsWith('/hosts/') ||
-    path === '/notifications' ||
-    path.startsWith('/notifications/');
-  return `/api${scope === 'local' || local ? '' : `/hosts/${scope}/proxy`}${path}`;
+    pathname.startsWith('/phone/') ||
+    pathname === '/hosts' ||
+    pathname.startsWith('/hosts/') ||
+    pathname === '/notifications' ||
+    pathname.startsWith('/notifications/');
+  if (local) return `/api${path}`;
+  const cluster = documentContext.cluster;
+  const nested = cluster ? `/cluster/projects/${cluster.projectId}/proxy${path}` : path;
+  return `/api${documentContext.computer === 'local' ? '' : `/hosts/${documentContext.computer}/proxy`}${nested}`;
 }
 export class ApiError extends Error {
   constructor(
@@ -54,11 +129,45 @@ export const connectionLost = (error: unknown) =>
   error instanceof TypeError ||
   (error instanceof ApiError &&
     (error.code === 'OFFLINE' || error.code === 'REQUEST_TIMEOUT' || error.code === 'INTERRUPTED'));
-export async function api<T = unknown>(
+export function api<T = unknown>(
   path: string,
   body?: unknown,
   signal?: AbortSignal,
   timeoutMs = 30_000,
+): Promise<T> {
+  return request<T>(apiUrl(path), path, body, signal, timeoutMs);
+}
+/** Reconnect and account/project controls address the controller before its private runtime exists. */
+export function controllerApi<T = unknown>(
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+  timeoutMs = 30_000,
+): Promise<T> {
+  const prefix =
+    documentContext.computer === 'local' ? '' : `/hosts/${documentContext.computer}/proxy`;
+  return request<T>(`/api${prefix}${path}`, path, body, signal, timeoutMs);
+}
+/** Exact policy save to this tab's controller, including from a cluster project. */
+export function saveSlurmPolicy<T = unknown>(body: unknown): Promise<T> {
+  const prefix =
+    documentContext.computer === 'local' ? '' : `/hosts/${documentContext.computer}/proxy`;
+  return request<T>(
+    `/api${prefix}/slurm-review/policy`,
+    '/slurm-review/policy',
+    body,
+    undefined,
+    30_000,
+    'PUT',
+  );
+}
+async function request<T>(
+  url: string,
+  path: string,
+  body: unknown,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+  method: 'POST' | 'PUT' = 'POST',
 ): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -66,12 +175,12 @@ export async function api<T = unknown>(
   if (signal?.aborted) controller.abort();
   const timeout = window.setTimeout(abort, timeoutMs);
   try {
-    const response = await fetch(apiUrl(path), {
+    const response = await fetch(url, {
       signal: controller.signal,
       ...(body === undefined
         ? {}
         : {
-            method: 'POST',
+            method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
           }),

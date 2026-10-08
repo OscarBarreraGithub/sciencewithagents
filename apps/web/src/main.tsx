@@ -8,6 +8,7 @@ import './styles.css';
 import { apiScope, selectComputer } from './api';
 import { readPairingCode } from './pairing-link';
 import { startClientCache } from './cache-bootstrap';
+import { ClusterGate } from './home/ClusterProjectSetup';
 
 startClientCache({ registerWorker: import.meta.env.PROD });
 
@@ -61,8 +62,10 @@ createRoot(document.getElementById('root')!).render(
   ) : (
     <React.StrictMode>
       <PhoneGate initialPairingCode={initialPairingCode}>
-        <WorkspaceApp />
-        <DocumentHost />
+        <ClusterGate>
+          <WorkspaceApp />
+          <DocumentHost />
+        </ClusterGate>
       </PhoneGate>
     </React.StrictMode>
   ),

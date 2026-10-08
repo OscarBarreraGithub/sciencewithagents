@@ -5,6 +5,7 @@ type EntryOptions = NonNullable<Parameters<typeof createServer>[2]>;
 export type SharedEntryServices = Pick<
   EntryOptions,
   | 'groupHost'
+  | 'clusterProjects'
   | 'phone'
   | 'notebookGateway'
   | 'terminals'

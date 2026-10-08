@@ -174,7 +174,14 @@ test('Spawn a fresh manager in a reused folder, send an idea and remove it witho
     );
     expect(readFileSync(join(folder, 'old-session.jsonl'), 'utf8')).toContain('Do not import');
     await page.goto(`/#/chat/${id}`);
-    await expect(page.getByText('Archived conversation.', { exact: false })).toBeVisible();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Archived conversation.' }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Build a simple app for my observations. Start by discussing the idea.', {
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(page.getByRole('textbox', { name: `Message ${name}`, exact: true })).toHaveCount(
       0,
     );

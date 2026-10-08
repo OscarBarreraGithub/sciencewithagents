@@ -1,0 +1,110 @@
+.cluster-project-setup {
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+}
+.cluster-project-setup label {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  color: inherit;
+  font-size: var(--text-small);
+}
+.cluster-project-setup :is(input, select, textarea) {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid var(--home-line);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+.cluster-project-brief small,
+.cluster-project-status {
+  color: var(--q-muted, #69707a);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+}
+.cluster-project-status {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.cluster-project-notice {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fbf3ec;
+  font-size: var(--text-small);
+}
+.cluster-project-notice p {
+  margin: 0;
+}
+.cluster-project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cluster-gate {
+  display: grid;
+  gap: 14px;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 28px 18px;
+}
+.cluster-gate h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-lead);
+}
+.cluster-project-brief {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  color: inherit;
+  font-size: var(--text-small);
+}
+.cluster-project-brief textarea {
+  box-sizing: border-box;
+  min-height: 120px;
+  padding: 10px;
+  border: 1px solid var(--home-line, #dfe3e8);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+.cluster-project-notepad-note {
+  margin: 0;
+  padding: 8px 16px;
+  max-height: 25dvh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--pad-line);
+  background: var(--pad-paper);
+  font-size: var(--text-small);
+}
+@media (min-width: 701px) and (max-height: 500px) {
+  .cluster-project-notepad .notepad-bar {
+    min-width: 0;
+    gap: 8px;
+    padding-inline: 12px;
+  }
+  .cluster-project-notepad .notepad-status {
+    min-width: 0;
+    max-width: 26vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cluster-project-notepad .notepad-title h2 {
+    font-size: var(--text-lead);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

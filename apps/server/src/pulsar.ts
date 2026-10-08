@@ -1,3 +1,4 @@
+import { isSlurmReviewer } from './slurm-review.js';
 import {
   coordinationCount,
   coordinationTaskIds,
@@ -69,6 +70,8 @@ export function initializeScheduling(store: Store) {
   });
 }
 export class Pulsar {
+  /** Account-only ledgers leave compute and provider slots to each remote runtime. */
+  remoteCompute = false;
   /** Host supplies a synchronous read scope; admission/reservation always rechecks live state. */
   statusRead: <T>(read: () => T) => T = (read) => read();
   /** A synchronous read batch ends before reserve writes its lease. */
@@ -355,7 +358,8 @@ export class Pulsar {
   isUrgentDiagnostic(run: PrivateRun) {
     return (
       this.isInteractiveDiagnostic(run) ||
-      this.store.agent(run.agentId).resourceAssistant?.reason === 'pressure'
+      this.store.agent(run.agentId).resourceAssistant?.reason === 'pressure' ||
+      isSlurmReviewer(this.store, run.agentId)
     );
   }
   ordered(runs: PrivateRun[]) {
@@ -495,9 +499,10 @@ export class Pulsar {
     const diagnosticSlot =
       diagnostic && !active.some((l) => this.isUrgentDiagnostic(this.store.run(l.runId)));
     if (
+      !this.remoteCompute &&
       sameProvider.length >=
-      (agent.provider === 'claude' ? policy.claudeConcurrent : policy.codexConcurrent) +
-        Number(diagnosticSlot)
+        (agent.provider === 'claude' ? policy.claudeConcurrent : policy.codexConcurrent) +
+          Number(diagnosticSlot)
     )
       return reject(
         `Waiting for the shared ${agent.provider === 'claude' ? 'Claude' : 'Codex'} worker slot.`,
@@ -652,6 +657,8 @@ export class Pulsar {
     diagnostic = false,
   ) {
     const reject = (reason: string) => ({ eligible: false, reason });
+    if (this.remoteCompute)
+      return { eligible: true, reason: 'The remote runtime manages its own compute.' };
     if (!this.policy().enabled || override)
       return { eligible: true, reason: 'Capacity pacing overridden or disabled.' };
     const machine = this.machine(),
@@ -728,14 +735,15 @@ export class Pulsar {
     );
     return parsed.success ? parsed.data : null;
   }
-  settle(runId: string) {
+  /** Only a cluster ledger supplies normalized per-run remote totals. */
+  settle(runId: string, remoteMeasured: number | null = null) {
     const lease = this.lease(runId);
     if (!lease) return;
     if (lease.finishedAt && lease.tokenBasis === 'measured') return;
     const run = this.store.run(runId);
     if (['queued', 'running'].includes(run.status)) return;
-    const snapshot = this.tokens(run);
-    let measured: number | null = null;
+    const snapshot = remoteMeasured === null ? this.tokens(run) : null;
+    let measured: number | null = remoteMeasured;
     if (snapshot?.runId === run.id) {
       if (
         lease.provider === 'codex' &&
@@ -766,6 +774,15 @@ export class Pulsar {
       tokensCharged: measured ?? lease.estimate.expectedTokens,
       tokenBasis: measured === null ? 'estimated' : 'measured',
     });
+  }
+  /**
+   * Cluster ledger only: the remote runtime durably proved this admitted grant was never
+   * consumed. No spend exists to retain, so the open reservation is removed, not settled.
+   */
+  discardUnconsumed(runId: string) {
+    if (this.lease(runId)?.finishedAt)
+      throw new Conflict('A settled reservation cannot be discarded.');
+    this.store.db.prepare('DELETE FROM pulsar_leases WHERE run_id=?').run(runId);
   }
   reconcile(agentId?: string | null) {
     const rows = this.store.db

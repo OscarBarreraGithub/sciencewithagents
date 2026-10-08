@@ -1,5 +1,9 @@
 # Slurm cluster
 
+Compute runtimes sample CPU and filesystem capacity in one background worker so slow host
+CPU-frequency or shared-filesystem reads do not block chat connections. Pending or failed
+samples retain their original observation time; allocation CPU and memory limits still apply.
+
 Connect a Slurm cluster you already reach with SSH from this computer. QUARK shows its
 state to you, the QUARK coordinator and your managers. Managers do the real cluster work
 with your normal SSH access. The app observes; it does not add cluster limits.
@@ -48,11 +52,92 @@ a job's priority but does not guarantee an earlier start. It is not remaining ca
 completion-time promise or a reason to choose an account. Cluster resources are separate
 from AI allowance.
 
+## Saved project setup
+
+Computers with the cluster workspace and project routes can show compact saved-folder,
+account, development-job and source-review settings in QUARK. Unsupported computers keep
+the existing monitoring, sign-in and notebook controls. Opening setup makes no model call,
+starts no SSH sign-in and submits no job. Folder choices use the server's saved IDs.
+
+When both typed workspace and project reads succeed, New project also offers the saved
+cluster folders and Chats lists saved cluster projects. Spawn retains the exact create
+receipt and opens a Notepad for the unsent first request; explicit open can request a
+development allocation. The controller must verify readiness before cluster chat loads.
+Each tab keeps its controller and project scope for requests, uploads, drafts and saved
+chat copies. Return to controller preserves that scope's drafts and other tabs' choices.
+These client controls require the controller's saved workspace, reviewed runtime-source pin
+and target provider setup below. Partial or unavailable controller routes leave the local
+journey in place. See [Status](STATUS.md) for installation and acceptance limits.
+
+Before choosing a cluster manager, verify the **target cluster's** installed Codex or Claude
+CLI version, signed-in account and native model catalog with metadata-only checks. The local
+computer's catalog does not establish cluster model support. Update the target CLI through
+its existing installation method when needed; the app does not update it automatically.
+Preserve explicit model and reasoning choices, and ask for a different choice if necessary;
+never silently substitute another model. Keep native provider homes, credentials and SQLite
+history in place. An owner-pinned executable can differ from the default cluster CLI; current
+acceptance used a side-by-side Codex executable and does not certify an older default CLI.
+
+For a setup agent:
+
+```text
+Prepare my cluster project using docs/CLUSTER.md. Before choosing the manager or sending
+its first request, verify the target cluster's native provider CLI version, signed-in
+account and model catalog without a model turn. Update through its existing installation
+method if needed, preserving native accounts, homes and SQLite history. Keep my explicit
+model/reasoning choice; ask only if it is unavailable, without a silent fallback. Saving
+a folder or draft must not allocate compute or send a model request. Preserve running
+work, site rules and saved submission-review policy. If I require review per submission,
+configure it explicitly before an app-managed allocation; account defaults do not enable
+review. Report startup, retained-history and idle-release checks separately.
+```
+
+On a controller with these services enabled, project managers and QUARK can use
+`dock_cluster_workspace` to inspect cached folders and the saved connection deadline.
+An admitted writing manager may renew the app-owned SSH holder for 1–72 hours, or stop
+that holder. Retrying the same tool request does not extend the deadline again. This
+does not sign in, stop the shared SSH master, or cancel a compute job. Existing native
+conversations keep their original tool catalog; the capability is advertised on new
+conversations when available.
+
+## Optional submission review
+
+Slurm submission review starts Off and preserves saved policy choices. In the cluster panel,
+open **Submission review** to enable it, confirm an account, select dated site rules and
+choose its reviewer model. The authenticated `/api/slurm-review/policy` route exposes the
+same settings to setup agents. Workspace setup updates those confirmed
+defaults without enabling review. `dock_slurm_review` requests a bounded review and reports
+its result through the normal work queue; pending reviews do not need polling.
+The reviewer receives the bounded proposal, saved owner rules and native Slurm reading
+together as untrusted evidence, without tools to retrieve missing information.
+
+When enabled, the controller reviews its exact development-allocation proposal before
+submission. Approval continues the same explicit Open request automatically, using its saved
+allocation token and configuration. Corrected policy, changed native evidence or expired approval
+can receive a fresh review without replaying a submission. Status reads never start a review or
+allocation. Controller restart or connection Stop requires another explicit Open; an uncertain
+submission remains reconciliation-only. Automatic review continuation is bounded to two attempts.
+Managed Claude hooks hold recognized `sbatch`, `salloc` and `srun` commands.
+Computed commands, programs that submit internally, Codex and the owner terminal are not
+intercepted; managers request the typed review explicitly. Native Slurm remains authoritative.
+The compact settings and review results have local fixture and emulated layout coverage.
+Owned FASRC acceptance also exercised a real native submission reviewer; provider/site setup
+for each installation remains required. See
+[manager guidance](../scripts/cluster/MANAGER_SLURM.md).
+
+The source has real cold/warm startup, native Continue and retained-history
+evidence using an owner-pinned Codex CLI. A separate fresh allocation naturally released with
+an explicit one-minute idle policy and a private zero-work barrier. The default 20-minute policy
+has local fake-clock coverage; earlier real 20-minute observations did not prove release. After
+release, cached account/history records remain and admission polling waits for explicit reopen.
+These checks do not establish owner installation, native fixture archival or real-phone
+acceptance, and do not certify an older default CLI.
+
 ## Managers on the cluster
 
 Managers use the native terminal: `ssh`, `scp`/`rsync`, `sbatch`, `salloc`/`srun` and their
-own scripts. There are no app wrappers per command, no account selection and no submission
-gate; your account, partition, QOS and site rules apply. Managers read the shared reading
+own scripts. Your account, partition, QOS and site rules apply, along with submission review
+when you enable it. Managers read the shared reading
 with `dock_inspect {cluster:true}` instead of polling. They pick accounts from the project's
 instructions or ask you, keep compute off login nodes, and never handle passwords or codes.
 Read-only reviewers may inspect but not change cluster files or jobs.

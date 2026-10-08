@@ -10,14 +10,19 @@ import {
   snapshotSchema,
   clusterStatusSchema,
 } from '@dock/shared';
-import { api } from '../api';
+import { api, controllerApi } from '../api';
 import { trackRefresh } from './refreshHome';
 
 const mirrorsSchema = mirrorWindowSchema.array();
 
 // The new home is an observation surface. No session restoration, model turns,
 // workspace writes or provider refresh requests happen when it is opened.
-export function useReading<T>(path: string, parse: (value: unknown) => T) {
+export function useReading<T>(
+  path: string,
+  parse: (value: unknown) => T,
+  readApi = api,
+  enabled = true,
+) {
   const [reading, setReading] = useState<{ data: T | null; error: boolean; loaded: boolean }>({
     data: null,
     error: false,
@@ -25,6 +30,10 @@ export function useReading<T>(path: string, parse: (value: unknown) => T) {
   });
   const retry = useRef<() => void>(() => {});
   useEffect(() => {
+    if (!enabled) {
+      retry.current = () => {};
+      return;
+    }
     let alive = true;
     let pending: Promise<boolean> | null = null;
     let controller: AbortController | undefined;
@@ -35,7 +44,7 @@ export function useReading<T>(path: string, parse: (value: unknown) => T) {
       const timeout = window.setTimeout(() => controller?.abort(), 15_000);
       pending = (async () => {
         try {
-          const data = parse(await api(path, undefined, signal));
+          const data = parse(await readApi(path, undefined, signal));
           if (alive) setReading({ data, error: false, loaded: true });
           return true;
         } catch {
@@ -64,7 +73,7 @@ export function useReading<T>(path: string, parse: (value: unknown) => T) {
       document.removeEventListener('visibilitychange', refresh);
       window.removeEventListener('swa:refresh-home', requested);
     };
-  }, [path, parse]);
+  }, [path, parse, readApi, enabled]);
   return { ...reading, retry: () => retry.current() };
 }
 
@@ -77,7 +86,7 @@ export function useHomeData() {
     work: useReading('/pulsar', pulsarStatusSchema.parse),
     resources: useReading('/resources', resourceStatusSchema.parse),
     local: useReading('/local-jobs', localJobsStatusSchema.parse),
-    cluster: useReading('/cluster', clusterStatusSchema.parse),
+    cluster: useReading('/cluster', clusterStatusSchema.parse, controllerApi),
     mirrors: useReading('/vscode/windows', mirrorsSchema.parse),
   };
 }

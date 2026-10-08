@@ -18,7 +18,7 @@ export const providerCapacitySchema = z
     account: z.literal('local-sign-in'),
     label: z.string().max(120),
     plan: z.string().max(120).nullable(),
-    source: z.enum(['codexbar-oauth', 'claude-native-oauth']),
+    source: z.enum(['codexbar-oauth', 'claude-native-oauth', 'codex-native']),
     observedAt: z.string().datetime().nullable(),
     attemptedAt: z.string().datetime().nullable(),
     nextRefreshAt: z.string().datetime().nullable(),

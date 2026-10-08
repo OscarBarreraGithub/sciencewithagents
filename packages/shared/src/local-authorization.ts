@@ -1,6 +1,6 @@
 /** Node-only local client protocol. Do not export from the browser contract barrel. */
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { get, type IncomingMessage } from 'node:http';
+import { get, type Agent, type IncomingMessage } from 'node:http';
 import { z } from 'zod';
 export const localRoleSchema = z.enum(['owner', 'bridge', 'host']);
 export type LocalRole = z.infer<typeof localRoleSchema>;
@@ -38,7 +38,12 @@ export async function localAuthorization(
   role: LocalRole,
   method: string,
   path: string,
-  connection?: { transportOrigin: string; headers: Record<string, string> },
+  connection?: {
+    transportOrigin: string;
+    headers: Record<string, string>;
+    timeoutMs?: number;
+    agent?: Agent;
+  },
 ) {
   token.parse(credential);
   localRoleSchema.parse(role);
@@ -56,7 +61,11 @@ export async function localAuthorization(
   const response = await new Promise<IncomingMessage>((resolve, reject) => {
     get(
       `${connection?.transportOrigin ?? origin}/api/local-access/proof?role=${role}&challenge=${challenge}`,
-      { headers: connection?.headers, signal: AbortSignal.timeout(5000), agent: false },
+      {
+        headers: connection?.headers,
+        signal: AbortSignal.timeout(connection?.timeoutMs ?? 5000),
+        agent: connection?.agent ?? false,
+      },
       resolve,
     ).once('error', reject);
   });

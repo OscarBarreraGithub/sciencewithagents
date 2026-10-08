@@ -1,3 +1,4 @@
+import { isSlurmReviewer } from './slurm-review.js';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -42,7 +43,7 @@ type Callbacks = {
     event: ClaudeHook,
     runId: string,
     receipt?: string,
-  ): Record<string, unknown>;
+  ): Record<string, unknown> | Promise<Record<string, unknown>>;
   event(agentId: string, event: ClaudeEvent): void;
 };
 
@@ -260,7 +261,8 @@ export class ManagedClaude {
             messageId: agent.interview!.sourceMessageId!,
           }
         : undefined;
-    const evidenceOnly = isMemberFeedAgent(this.store, agent.id);
+    const evidenceOnly =
+      isMemberFeedAgent(this.store, agent.id) || isSlurmReviewer(this.store, agent.id);
     const options: ClaudeSessionOptions = {
       binary: this.binary,
       cwd,

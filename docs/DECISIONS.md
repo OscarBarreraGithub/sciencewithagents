@@ -137,8 +137,12 @@ authoritative. [QUARK](QUARK.md#adaptive-window-pace)
 
 ## Slurm clusters
 
-A connected cluster is observed, not governed. QUARK shares one cached reading of native
-queue, fairshare, limits and accounting; it adds no cluster limits or submission gate.
+A connected cluster's QUARK collector is advisory. It shares one cached reading of native
+queue, fairshare, limits and accounting; it adds no blanket cluster limits. Owners can enable
+bounded submission review for app-managed development allocations and recognized managed-Claude
+submissions. Fresh policy starts Off; saved owner requirements remain authoritative. Native
+Slurm still enforces site rules. Codex, computed commands and owner terminals are not intercepted;
+managers request typed review explicitly when policy requires it.
 Managers use the owner's native SSH account for files and jobs under the site's own rules.
 The app never chooses an account, stores passwords or codes, or equates fairshare or cluster
 resources with AI allowance.

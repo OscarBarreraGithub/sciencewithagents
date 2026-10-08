@@ -1,3 +1,4 @@
+import { SlurmReview } from './SlurmReview';
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, Server } from 'lucide-react';
 import {
@@ -14,6 +15,7 @@ import { api } from '../api';
 import { ago } from './HomeOverview';
 import { useReading, type HomeData } from './useHomeData';
 import './quark-cluster.css';
+import { ClusterWorkspaceSetup } from './ClusterProjectDestination';
 
 const stateLabels: Record<ClusterStatus['connection']['state'], string> = {
   'not-configured': 'Monitoring off',
@@ -536,6 +538,8 @@ export function QuarkCluster({ reading }: { reading: HomeData['cluster'] }) {
           (connection.state === 'connected' && connection.master === 'absent')) && (
           <ClusterSignInFlow label={s.settings!.label} done={reading.retry} />
         )}
+      <ClusterWorkspaceSetup panelConnected={connection.state === 'connected'} />
+      <SlurmReview />
       <div className="quark-cluster-grid">
         <div>
           <h3>

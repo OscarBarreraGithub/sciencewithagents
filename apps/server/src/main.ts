@@ -1,3 +1,11 @@
+import {
+  computeClusterRunner,
+  computeBootstrap,
+  computeRuntimeIdentity,
+} from './cluster-compute.js';
+import { ClusterRemoteAdmission } from './cluster-remote-admission.js';
+import { ClusterRuntimeIdle } from './cluster-runtime-idle.js';
+import { createClusterControllerServices } from './cluster-controller-services.js';
 import { GroupHost } from './group-host.js';
 import { createProductionGroupHost } from './group-host-bootstrap.js';
 import { GroupFixtureHost } from './group-fixture-host.js';
@@ -32,6 +40,9 @@ import { selectDevelopmentFixture } from './development-fixture.js';
 process.umask(0o077);
 const demo = process.argv.includes('--demo');
 const fixture = selectDevelopmentFixture(process.argv.slice(2), process.env, repoRoot);
+if ((demo || fixture) && process.env.DOCK_CLUSTER_BOOTSTRAP_FILE)
+  throw new Error('Development fixtures cannot become cluster runtimes.');
+const computeRunner = await computeClusterRunner(process.env.DOCK_CLUSTER_BOOTSTRAP_FILE);
 const listenPort = fixture?.port ?? port;
 const root = fixture?.data ?? (demo ? join(dataDir, 'demo') : dataDir);
 mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -66,6 +77,9 @@ try {
 }
 
 // Main retains ownership even if configuration, a listener, or startup fails halfway.
+let clusterServices: ReturnType<typeof createClusterControllerServices>;
+let clusterAdmission: ClusterRemoteAdmission | undefined;
+let clusterIdle: ClusterRuntimeIdle | undefined;
 let store: Store | undefined;
 let runtime: Runtime | undefined;
 let groupFixture: GroupFixtureHost | undefined;
@@ -92,6 +106,9 @@ function checkStopping() {
 function stop() {
   stopping = true;
   accepting = false;
+  // Freeze saved allocation intents before awaiting unrelated resource cleanup.
+  // A review may finish while those resources are still closing.
+  clusterServices?.projects.close();
   return (closing ??= (async () => {
     // A signal can arrive during an awaited version check or server construction.
     // Finish acquiring that resource before cleanup, without allowing model dispatch.
@@ -114,6 +131,9 @@ function stop() {
     await close(() => terminals?.close());
     await close(() => ownerTerminals?.close());
     await Promise.all([close(() => remote?.close()), close(() => app?.close())]);
+    await close(() => clusterServices?.close());
+    await close(() => clusterAdmission?.close());
+    await close(() => clusterIdle?.close());
     await close(() => hosts?.close());
     await close(() => notifications?.close());
     await runtimeClosing;
@@ -195,7 +215,17 @@ startup = (async () => {
         }
       : undefined,
     fixture ? { workspace: fixture.workspace } : undefined,
+    computeRunner,
   );
+  if (computeRunner) {
+    const bootstrap = computeBootstrap(process.env.DOCK_CLUSTER_BOOTSTRAP_FILE!);
+    runtime.capacity.allocationLimits = { cpus: bootstrap.cpus, memoryMb: bootstrap.memoryMb };
+    clusterAdmission = new ClusterRemoteAdmission(
+      runtime,
+      computeRuntimeIdentity(process.env.DOCK_CLUSTER_BOOTSTRAP_FILE!),
+    );
+  }
+  if (!demo && !computeRunner) clusterServices = createClusterControllerServices(runtime, repoRoot);
   const phone = new PhoneAccess(store, phoneConfig, undefined, phoneIssue);
   if (!demo)
     try {
@@ -250,6 +280,15 @@ startup = (async () => {
         }
       : undefined,
   );
+  if (clusterAdmission)
+    clusterIdle = new ClusterRuntimeIdle(
+      clusterAdmission.identity,
+      runtime,
+      terminals,
+      ownerTerminals,
+      process.env.DOCK_CLUSTER_BOOTSTRAP_FILE!,
+      computeBootstrap(process.env.DOCK_CLUSTER_BOOTSTRAP_FILE!).idleMinutes,
+    );
   if (!fixture) backups = new SourceBackups(store, root, undefined, demo ? [] : undefined);
   hosts = new Hosts(root, undefined, demo ? [] : undefined);
   // Demo data never checks the real computer's GitHub or Cloudflare sign-in.
@@ -275,9 +314,11 @@ startup = (async () => {
   }
   checkStopping();
   if (fixture) groupFixture = new GroupFixtureHost(store, runtime);
-  if (!demo && !fixture) groupHost = createProductionGroupHost(root, runtime, ownerTerminals);
+  if (!demo && !fixture && !computeRunner)
+    groupHost = createProductionGroupHost(root, runtime, ownerTerminals);
   const shared: SharedEntryServices = {
     groupHost,
+    clusterProjects: clusterServices?.projects,
     phone,
     notebookGateway,
     terminals,
@@ -329,6 +370,9 @@ startup = (async () => {
     store,
     runtime,
     localEntryOptions(shared, {
+      clusterCompute: !!computeRunner,
+      clusterAdmission,
+      clusterIdle,
       groupFixture,
       port: listenPort,
       webDir: join(repoRoot, 'apps/web/dist'),
@@ -355,10 +399,12 @@ startup = (async () => {
   // The local entry is required. An unavailable optional phone entry has no connector
   // and grants no remote access; it does not disable already authorized local work.
   // Browser actions remain gated until startup reconciliation has completed.
+  await clusterAdmission?.initialize();
   await runtime.initialize();
+  clusterServices?.start();
   groupFixture?.recover();
   if (!demo) {
-    runtime.capacity.start();
+    runtime.capacity.start(!computeRunner);
     runtime.resources.start();
     runtime.cluster.start();
   }

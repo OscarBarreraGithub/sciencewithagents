@@ -166,6 +166,7 @@ export class ClusterMonitor {
   /** Bumped whenever the saved alias changes; in-flight work for an older target is discarded. */
   private generation = 0;
   private targetListeners = new Set<(change: ClusterTargetChange) => void>();
+  private signInListeners = new Set<(connectionId?: string) => void>();
   private failures = 0;
   private nextFast = 0;
   private nextSlow = 0;
@@ -185,6 +186,10 @@ export class ClusterMonitor {
   onTargetChange(listener: (change: ClusterTargetChange) => void) {
     this.targetListeners.add(listener);
     return () => this.targetListeners.delete(listener);
+  }
+  onSignedIn(listener: (connectionId?: string) => void) {
+    this.signInListeners.add(listener);
+    return () => this.signInListeners.delete(listener);
   }
   settings(): ClusterSettings | null {
     const saved = clusterSettingsSchema.safeParse(this.store.getSetting(prefix + 'settings'));
@@ -451,10 +456,25 @@ export class ClusterMonitor {
     return /No such file|Connection refused/i.test(result.stderr) ? 'absent' : 'unknown';
   }
   /** A restored sign-in resumes collection immediately instead of waiting out a backoff. */
-  signedIn() {
+  signedIn(connectionId?: string) {
+    for (const listener of this.signInListeners) {
+      try {
+        listener(connectionId);
+      } catch {
+        /* Metadata observers cannot undo sign-in. */
+      }
+    }
     this.failures = 0;
     this.nextFast = this.nextSlow = 0;
     void this.tick();
+  }
+  /** Identity of the owner's current native master; this check never signs in. */
+  async masterIdentity(alias = this.settings()?.alias): Promise<string | null> {
+    if (!alias) return null;
+    const result = await this.runner(['-O', 'check', '--', alias], null, 5000);
+    if (result.code !== 0) return null;
+    const pid = /Master running \(pid=(\d+)\)/.exec(result.stderr + result.stdout)?.[1];
+    return pid ? `master:${pid}` : 'master:present';
   }
   private async query(settings: ClusterSettings, script: string, args: string[]) {
     const result = await this.runner(

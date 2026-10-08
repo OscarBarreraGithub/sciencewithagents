@@ -60,6 +60,7 @@ export function Notepad({
   statusLabel,
   recoveryDescription,
   initialOptionsOpen = false,
+  className = '',
 }: {
   draft: SharedDraft;
   agentId: string;
@@ -84,6 +85,7 @@ export function Notepad({
   statusLabel?: string;
   recoveryDescription?: string;
   initialOptionsOpen?: boolean;
+  className?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const editor = useRef<HTMLTextAreaElement>(null);
@@ -149,7 +151,7 @@ export function Notepad({
   return createPortal(
     <dialog
       ref={dialog}
-      className={`notepad ${historyOpen ? 'with-history' : ''}`}
+      className={`notepad ${historyOpen ? 'with-history' : ''} ${className}`}
       aria-labelledby={titleId}
       onCancel={(event) => {
         // Escape keeps the draft and returns to chat; it never sends.

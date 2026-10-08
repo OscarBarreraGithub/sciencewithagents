@@ -38,6 +38,7 @@ export const chooseFolder: FolderPicker = async (signal) => {
 type Selection = {
   root: string;
   name?: string;
+  description?: string;
   provider?: ProviderId;
   requestedProvider?: ProviderId | 'policy';
   needsTracking?: boolean;
@@ -194,7 +195,7 @@ export class FolderConnections {
         : undefined
       : this.store.projects().find((project) => project.root === saved.root);
   }
-  private async inspect(selected: string): Promise<Selection> {
+  async inspect(selected: string): Promise<Selection> {
     try {
       if (!isAbsolute(selected)) throw new Error('Absolute selection required');
       const root = realpathSync(selected),
@@ -244,6 +245,51 @@ export class FolderConnections {
         'That folder cannot be connected safely. Choose an accessible project folder outside the app’s private storage. Existing version history may need attention.',
       );
     }
+  }
+  /** Server-owned cluster bootstrap only: input comes from its pinned, consented destination. */
+  async connectPreparedFolder(
+    key: string,
+    root: string,
+    provider: ProviderId,
+    name: string,
+    description: string,
+    expectedIdentity: string | null,
+    trackingConsent: boolean,
+  ) {
+    id.parse(key);
+    const setting = `project-folder:${key}`;
+    let saved = this.store.getSetting(setting) as Selection | null;
+    if (saved) {
+      if (saved.root !== root || saved.provider !== provider || saved.name !== name || !saved.fresh)
+        throw new Conflict('This folder receipt belongs to a different project setup.');
+      this.assertSelection(saved);
+    } else {
+      const selected = await this.inspect(root);
+      if (expectedIdentity && selected.identity !== expectedIdentity)
+        throw new Conflict(
+          'The saved cluster folder identity changed. Refresh and choose it again.',
+        );
+      saved = {
+        ...selected,
+        provider,
+        requestedProvider: provider,
+        name,
+        description,
+        fresh: true,
+      };
+      this.store.setSetting(setting, saved);
+      this.store.event('project.folder_selected', null, null, { key });
+    }
+    const existing = this.existing(key, saved);
+    if (existing) return projectSchema.parse(existing);
+    if (saved.needsTracking) {
+      if (!trackingConsent || !expectedIdentity || saved.identity !== expectedIdentity)
+        throw new Conflict(
+          'This saved cluster folder needs explicit Start tracking in the app before a manager can use task worktrees. No files were added or committed.',
+        );
+      return this.track(key);
+    }
+    return this.store.register(root, name, description, provider, key);
   }
   /** Explicit owner action. Retries only finish the directory this receipt originally selected. */
   async track(key: string): Promise<Project> {
@@ -309,7 +355,7 @@ export class FolderConnections {
       return this.store.register(
         saved.root,
         saved.name ?? basename(saved.root),
-        '',
+        saved.description ?? '',
         saved.provider,
         saved.fresh ? key : undefined,
       );

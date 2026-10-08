@@ -14,6 +14,7 @@ import {
   type RefObject,
 } from 'react';
 import {
+  ArrowLeft,
   ArrowRight,
   ChevronRight,
   CircleHelp,
@@ -29,7 +30,7 @@ import {
   type PhoneStatus,
   type ProviderCapacity,
 } from '@dock/shared';
-import { apiScope } from '../api';
+import { apiScope, apiComputer, apiCluster, leaveClusterProject } from '../api';
 import { Modal } from '../Modal';
 import { PhoneSettings } from '../PhoneAccess';
 import { useHomeData, useReading, type HomeData } from './useHomeData';
@@ -243,13 +244,15 @@ function Allowances({ data, now }: { data: HomeData; now: number }) {
 }
 
 function selectedHost(data: HomeData) {
-  const scope = apiScope();
-  return scope === 'local'
-    ? (data.hosts.data?.local.label ?? 'Computer')
-    : (data.hosts.data?.hosts.find((h) => h.id === scope)?.label ?? 'Selected computer');
+  const computer = apiComputer();
+  const label =
+    computer === 'local'
+      ? (data.hosts.data?.local.label ?? 'Computer')
+      : (data.hosts.data?.hosts.find((host) => host.id === computer)?.label ?? 'Selected computer');
+  return apiCluster() ? `Cluster project via ${label}` : label;
 }
 function ComputerLink({ data }: { data: HomeData }) {
-  const scope = apiScope();
+  const scope = apiComputer();
   const host = scope === 'local' ? null : data.hosts.data?.hosts.find((h) => h.id === scope);
   const state = data.snapshot.error
     ? 'offline'
@@ -454,6 +457,17 @@ export function Home() {
               </div>
             )}
             <div className="home-header-actions">
+              {apiCluster() && (
+                <button
+                  type="button"
+                  className="home-icon-button"
+                  aria-label="Return to controller"
+                  title="Return to controller"
+                  onClick={() => leaveClusterProject()}
+                >
+                  <ArrowLeft size={20} />
+                </button>
+              )}
               <button
                 type="button"
                 className="home-icon-button"

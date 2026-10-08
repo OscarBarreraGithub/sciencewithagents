@@ -70,6 +70,8 @@ import {
   ConversationVisibilityUndo,
 } from './ConversationVisibilityButton';
 import { ProjectQuarkPreference } from './ProjectQuarkPreference';
+import { ClusterProjectDestination } from './ClusterProjectDestination';
+import { ClusterProjectList, ClusterProjectSetup } from './ClusterProjectSetup';
 import './workspace-flow.css';
 
 export const flowPages = new Set([
@@ -232,19 +234,25 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
     );
   if (page === 'new')
     return (
-      <ProjectConfiguration
-        key={route}
-        seed={target === 'idea' ? readProjectSeed(route.split('/')[2]) : undefined}
+      <ClusterProjectDestination
+        cluster={() => <ClusterProjectSetup />}
         heading={
           <FlowHeading label="A NEW PROJECT" title="Start or connect a project">
             Name it, choose its manager and how its team works. Nothing runs until you send the
             first request.
           </FlowHeading>
         }
-        onCreated={(managerId, fresh) => {
-          refresh();
-          location.hash = fresh ? `${go('chat', managerId)}/brief` : go('chat', managerId);
-        }}
+        local={(heading) => (
+          <ProjectConfiguration
+            key={route}
+            seed={target === 'idea' ? readProjectSeed(route.split('/')[2]) : undefined}
+            heading={heading}
+            onCreated={(managerId, fresh) => {
+              refresh();
+              location.hash = fresh ? `${go('chat', managerId)}/brief` : go('chat', managerId);
+            }}
+          />
+        )}
       />
     );
   if (page === 'project') {
@@ -618,11 +626,22 @@ export function ChatPage({
     setError('');
     setBusy(false);
     let pending = false;
+    let invalidated = false;
+    let active = true;
     const reload = () => {
+      if (!active) return;
+      // A delivery event during a read can be newer than its captured response.
+      // Coalesce those events into one follow-up instead of dropping them.
+      if (pending) {
+        invalidated = true;
+        return;
+      }
       if (!pending) {
         pending = true;
+        invalidated = false;
         void read().finally(() => {
           pending = false;
+          if (invalidated) reload();
         });
       }
     };
@@ -633,6 +652,7 @@ export function ChatPage({
     source.onopen = reload;
     const timer = window.setInterval(reload, 5000);
     return () => {
+      active = false;
       alive.current = false;
       source.close();
       window.clearInterval(timer);
@@ -1559,6 +1579,7 @@ function MainChat({
           </p>
         )}
         {!selected && visibilityNotice}
+        <ClusterProjectList />
         <nav className="chat-list-scroll" aria-label="Conversation list">
           {shown.slice(0, rowLimit).map((row) => (
             <div className="conversation-visible-row" key={`${row.kind}:${row.key}`}>

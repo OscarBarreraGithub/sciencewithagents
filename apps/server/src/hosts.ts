@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
-import { request as httpRequest, type IncomingMessage } from 'node:http';
+import { request as httpRequest, type Agent, type IncomingMessage } from 'node:http';
 import { createServer as reservePort } from 'node:net';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
@@ -30,6 +30,10 @@ import {
 
 export type HostTransport = {
   port: number;
+  /** Fixed server-owned bound for a transport that starts a native step per connection. */
+  connectionStartTimeoutMs?: number;
+  /** Server-owned pool scoped to this exact transport; proofs remain fresh per request. */
+  agent?: Agent;
   alive(): boolean;
   close(): Promise<void>;
 };
@@ -189,6 +193,8 @@ async function authenticatedHeaders(
       authorization: await localAuthorization(base.origin, host.credential, 'host', method, path, {
         transportOrigin: `http://127.0.0.1:${transport.port}`,
         headers: base,
+        timeoutMs: transport.connectionStartTimeoutMs,
+        agent: transport.agent,
       }),
     };
   } catch (error) {
@@ -219,6 +225,7 @@ async function request(
         method,
         path,
         headers: authenticated,
+        agent: transport.agent,
         signal,
       },
       (response) => {
@@ -239,7 +246,7 @@ async function identity(host: HostConnection, transport: HostTransport) {
     'GET',
     '/api/host-info',
     undefined,
-    AbortSignal.timeout(2000),
+    AbortSignal.timeout(transport.connectionStartTimeoutMs ?? 2000),
   );
   if (response.statusCode === 409) {
     response.destroy();
@@ -452,7 +459,12 @@ const groupDocumentWritePath = new RegExp(
 const terminalPath = new RegExp(`^/(?:agents/${uuid}/terminal|owner-terminal/${uuid}/socket)$`);
 
 /** Exact routes only. Reject encoded paths rather than reinterpret them across two routers. */
-export function proxyPath(method: string, path: string, socket = false) {
+export function proxyPath(
+  method: string,
+  path: string,
+  socket = false,
+  clusterHop = true,
+): string | null {
   const [pathname, query, ...extra] = path.split('?');
   if (
     extra.length ||
@@ -461,6 +473,57 @@ export function proxyPath(method: string, path: string, socket = false) {
     pathname.includes('..')
   )
     return null;
+  const cluster = new RegExp(`^/cluster/projects/${uuid}/proxy(/.*)$`).exec(path);
+  if (cluster)
+    return clusterHop && proxyPath(method, cluster[1]!, socket, false) ? `/api${path}` : null;
+  if (pathname.startsWith('/slurm-review')) {
+    if (socket) return null;
+    const list = pathname === '/slurm-review/reviews';
+    const policy = pathname === '/slurm-review/policy';
+    const read =
+      method === 'GET' &&
+      (pathname === '/slurm-review' ||
+        policy ||
+        list ||
+        new RegExp(`^/slurm-review/reviews/${uuid}$`).test(pathname));
+    const write =
+      query === undefined &&
+      ((method === 'PUT' && policy) ||
+        (method === 'POST' &&
+          (list || new RegExp(`^/slurm-review/reviews/${uuid}/decision$`).test(pathname))));
+    if (!read && !write) return null;
+    if (query !== undefined) {
+      if (!read || (!policy && !list)) return null;
+      const params = new URLSearchParams(query);
+      for (const [name, value] of params)
+        if (
+          params.getAll(name).length !== 1 ||
+          !(name === 'projectId'
+            ? new RegExp(`^${uuid}$`).test(value)
+            : list &&
+              name === 'limit' &&
+              /^\d{1,2}$/.test(value) &&
+              Number(value) >= 1 &&
+              Number(value) <= 50)
+        )
+          return null;
+    }
+    return `/api${path}`;
+  }
+  const clusterRead = new RegExp(
+    `^/cluster/(?:workspace|projects(?:/${uuid}(?:/open|/admission)?)?)$`,
+  );
+  const clusterWrite = new RegExp(
+    `^/cluster/(?:workspace/(?:settings|lease|refresh)|projects(?:/${uuid}/(?:open|tracking|admission/(?:policy|budget)))?)$`,
+  );
+  if (
+    !socket &&
+    query === undefined &&
+    (method === 'GET'
+      ? clusterRead.test(pathname)
+      : method === 'POST' && clusterWrite.test(pathname))
+  )
+    return `/api${path}`;
   if (
     socket
       ? method !== 'GET' || !terminalPath.test(pathname) || query !== undefined
@@ -564,12 +627,17 @@ export function proxyPath(method: string, path: string, socket = false) {
   return `/api${path}`;
 }
 
-type GatewayOptions = { watch?: (request: FastifyRequest, close: () => void) => () => void };
+type GatewayOptions = {
+  prefix?: '/api/hosts' | '/api/cluster/projects';
+  proxyOnly?: boolean;
+  watch?: (request: FastifyRequest, close: () => void) => () => void;
+};
 export function registerHostRoutes(
   app: FastifyInstance,
-  hosts: Hosts,
+  hosts: Pick<Hosts, 'status' | 'connection' | 'checked' | 'forward'>,
   options: GatewayOptions = {},
 ) {
+  const route = options.prefix ?? '/api/hosts';
   const active = new Set<() => void>();
   const notebookDelegations = new NotebookDelegations(async (hostId, action, key) => {
     const response = await hosts.forward(hostId, 'POST', `/api/cluster/notebooks/${action}`, {
@@ -591,23 +659,25 @@ export function registerHostRoutes(
     error: error instanceof HostUnavailable ? error.message : unavailable,
     code: 'HOST_UNAVAILABLE',
   });
-  app.get('/api/hosts', async () => hosts.status());
-  app.post<{ Params: { hostId: string } }>('/api/hosts/:hostId/connect', async (request, reply) => {
-    if (!z.object({}).strict().safeParse(request.body).success)
-      return reply.code(400).send({ error: 'Connection setup is managed on the computer.' });
-    try {
-      await hosts.connection(request.params.hostId, true);
-      return hosts.status();
-    } catch (error) {
-      return reply.code(502).send(failure(error));
-    }
-  });
+  if (!options.proxyOnly) {
+    app.get(route, async () => hosts.status());
+    app.post<{ Params: { hostId: string } }>(`${route}/:hostId/connect`, async (request, reply) => {
+      if (!z.object({}).strict().safeParse(request.body).success)
+        return reply.code(400).send({ error: 'Connection setup is managed on the computer.' });
+      try {
+        await hosts.connection(request.params.hostId, true);
+        return hosts.status();
+      } catch (error) {
+        return reply.code(502).send(failure(error));
+      }
+    });
+  }
   app.route<{ Params: { hostId: string; '*': string } }>({
-    method: ['GET', 'POST'],
-    url: '/api/hosts/:hostId/proxy/*',
+    method: ['GET', 'POST', 'PUT'],
+    url: `${route}/:hostId/proxy/*`,
     bodyLimit: chatImageBodyLimit,
     handler: async (request, reply) => {
-      const prefix = `/api/hosts/${request.params.hostId}/proxy`;
+      const prefix = `${route}/${request.params.hostId}/proxy`;
       const raw = request.raw.url ?? request.url;
       const target = raw.startsWith(prefix)
         ? proxyPath(request.method, raw.slice(prefix.length))
@@ -681,14 +751,25 @@ export function registerHostRoutes(
       }
     },
   });
-  for (const terminalRoute of ['agents/:agentId/terminal', 'owner-terminal/:agentId/socket'])
-    app.get<{ Params: { hostId: string; agentId: string } }>(
-      `/api/hosts/:hostId/proxy/${terminalRoute}`,
+  for (const terminalRoute of [
+    'agents/:agentId/terminal',
+    'owner-terminal/:agentId/socket',
+    ...(options.proxyOnly
+      ? []
+      : [
+          'cluster/projects/:clusterId/proxy/agents/:agentId/terminal',
+          'cluster/projects/:clusterId/proxy/owner-terminal/:agentId/socket',
+        ]),
+  ])
+    app.get<{ Params: { hostId: string; agentId: string; clusterId?: string } }>(
+      `${route}/:hostId/proxy/${terminalRoute}`,
       { websocket: true },
       (socket, request) => {
-        const terminalTarget = terminalRoute.replace(':agentId', request.params.agentId);
+        const terminalTarget = terminalRoute
+          .replace(':agentId', request.params.agentId)
+          .replace(':clusterId', request.params.clusterId ?? '');
         const target = proxyPath('GET', `/${terminalTarget}`, true);
-        const expectedPrefix = `/api/hosts/${request.params.hostId}/proxy/${terminalTarget}`;
+        const expectedPrefix = `${route}/${request.params.hostId}/proxy/${terminalTarget}`;
         if (!target || request.raw.url !== expectedPrefix || !request.headers.origin) {
           socket.close(1008, 'Unknown terminal');
           return;
