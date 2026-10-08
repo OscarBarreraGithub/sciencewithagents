@@ -127,8 +127,9 @@ be described as a failed core installation. Browser-test downloads are developer
    sign-in on this computer; follow [managed Claude](MANAGED_CLAUDE.md). Claude is optional
    for Codex-only use. Do not extract sign-in files or switch to paid API usage.
 4. Review the build result and any optional-dependency warning. After launch in step 6,
-   check the person's actual first-run journey: choose their provider, check native sign-in/models,
-   and create or connect their first project. Creating a project sends no prompt. Start model
+   check the person's actual first-run journey: confirm their provider (ask only if neither the
+   request nor saved settings give it), check native sign-in/models, and create or connect
+   their first project. Creating a project sends no prompt. Start model
    work only when requested.
    Ordinary installation does not need the developer test suite or browser downloads.
    If source changes were needed, run checks appropriate to those changes; a failed check
@@ -157,10 +158,16 @@ be described as a failed core installation. Browser-test downloads are developer
    opens its private browser handoff; a bare localhost link is not the authenticated entry.
    The handoff connects the default browser only; to use another browser, make it the
    default and open the app again.
-   Have them use **Welcome and setup → Choose team defaults**, keep or save their provider
-   choice, return to **Check accounts and setup**, then **Check this computer → Create first
-   project**. If the saved defaults already match their provider, continue directly to the
-   check. Do not replace this journey with package-manager commands.
+   **Welcome and setup** summarizes the saved team; it is not a second questionnaire.
+   Continue to **Check this computer → Create first project**. Do not replace this journey
+   with package-manager commands. QUARK pacing is optional and off by default.
+
+   **Model choices.** Keep saved or explicitly stated provider/model/team choices; otherwise
+   use the recommended defaults. Do not interview the person role by role. If they stated a
+   choice that differs from the saved settings, save it once through **Settings → Model
+   preferences** (Welcome's optional **Edit team defaults**), then reload and confirm the
+   saved values. Do not say a conversational answer is saved until that check passes. If it
+   cannot be saved, report the exact problem instead of asking the questions again.
    Phone setup follows PHONE_SETUP.md and CLOUDFLARE_SETUP.md, with a verified
    remote authentication boundary before exposure. Private source backups follow SOURCE_BACKUPS.md.
    Other computer/account connections follow MULTI_COMPUTER_SETUP.md. Share that guide with
@@ -168,31 +175,31 @@ be described as a failed core installation. Browser-test downloads are developer
 
 ### Desktop Groups setup
 
-For a Groups request, continue from the authenticated app to **Home → Groups** instead of
+For a Groups request, continue from the authenticated app to **Chats → Groups** instead of
 requiring a personal first project. Follow [Groups workflow](GROUP_WORKFLOW.md): the creator's
 setup agent deploys the shared service to that person's own Cloudflare account, following
 [hosting](GROUP_HOSTING.md), then configures their installation. No maintainer-issued beta
 code or maintainer service is part of fresh setup. Joining members use an invitation and
 the documented service-configuration handoff; they do not each deploy another service.
 Keep a short human checklist for native sign-in, Cloudflare sign-in/account selection for
-the creator, invitation exchange and membership approval. Handle the technical commands
+the creator and the invitation exchange; the invitation grants membership. Handle the technical commands
 for the person. GitHub is optional for repository sharing, not required for messaging.
 Preserve existing service configuration, groups and membership; reconcile a mismatch
 explicitly. Provider sign-in belongs to this person, never the maintainer or another member.
 
 Enable requested group agents through [native owner setup](GROUP_NATIVE_OWNER_SETUP.md).
 They use the normal host runtime and this person’s existing provider sign-in. Explain the
-Shared chat / Private to you distinction and normal native computer access; conversation
+**Group chat** / **Group manager** distinction and normal native computer access; conversation
 separation is not a filesystem sandbox. Do not require Docker, Linux or a duplicate provider
 sign-in. A missing or expired native sign-in must remain visible. Phone access, VS Code
 sharing and Git are optional and do not block desktop human group messages.
 
 ### First project and manager handoff
 
-Ask for the project name and description, a new folder or an existing local project, and
-the manager's provider/model. Its worker provider mix and spending level are separate,
-with defaults and optional exact model overrides. Show actual available model names.
-Use the latest family defaults unless the person picks an exact version. A Codex-only or
+The project form starts from the saved team defaults. Ask only for missing project details:
+name and description, and a new folder or an existing local project. Change the manager or
+worker provider mix, spending level or exact models only when the person asks; show actual
+available model names then. Use the latest family defaults unless the person picks an exact version. A Codex-only or
 Claude-only choice must work without installing/signing into the other provider. Untouched
 worker defaults follow enabled providers and the shared preset; saved or explicit choices
 are retained. If model-default loading fails, use its retry before creating the project.

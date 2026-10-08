@@ -45,10 +45,13 @@ outside cloud sync. Follow docs/CONTRIBUTOR_SETUP.md and check docs/STATUS.md fi
 Use my own Codex or Claude account; I do not need both. Install my chosen provider's
 CLI if missing, or update it through its existing method, then verify its version and
 available models. A desktop app alone is not enough. Handle the technical setup,
-install the Mac Applications launcher when supported, and open the app. Help me
-choose my manager and worker defaults, then prepare my first project without sending
-its brief until I am ready. Keep phone access, VS Code sharing and GitHub backup
-optional. Ask me only for necessary sign-in, device and preference steps. Do not run
+install the Mac Applications launcher when supported, and open the app. Ask which
+provider only if I have not said and none is saved. Keep saved or stated model choices,
+otherwise use the recommended defaults; do not interview me role by role. Save any
+explicit choice once in the app's Model preferences and confirm the saved values. Prepare
+my first project with those defaults, asking only for missing project details, without
+sending its brief until I am ready. QUARK pacing, phone access, VS Code sharing and
+GitHub backup are optional. Ask me only for necessary sign-in and device steps. Do not run
 the full developer test suite for ordinary setup. Explain how to reopen the app and
 report anything incomplete rather than claiming success.
 ```
@@ -76,8 +79,8 @@ maintainer's service, require a beta code, buy a domain, or enable paid services
 Handle deployment and private local configuration; leave account sign-in and account
 selection to me. Open Chats → Groups, help me create a group and invite another person, and
 explain Group chat (everyone’s messages) and Group manager (my agent’s shared work). Use native local agents, without Docker.
-Give me a short checklist of the remaining human steps. Verify messages in both
-directions and a private Ask once the other person joins. Report what remains untested.
+Give me a short checklist of the remaining human steps. Verify Group chat messages in both
+directions and an Ask in Group manager once the other person joins. Report what remains untested.
 ```
 
 **Join a group — send this prompt and the invitation privately to the new member:**
@@ -91,7 +94,7 @@ existing installation, then verify its version and model discovery.
 Configure the invitation's group service using the documented
 setup-agent process, without deploying a separate service or using the maintainer's
 account. Open Chats → Groups → Join group. The invitation grants membership;
-no confirmation code or separate approval is needed. Verify shared messaging and my private chat.
+no confirmation code or separate approval is needed. Verify Group chat messaging and my Group manager.
 Keep phone access and GitHub optional; list only the human steps I still need to do.
 ```
 

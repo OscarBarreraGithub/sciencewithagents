@@ -15,6 +15,17 @@
   padding: 8px 12px;
   font-size: 0.8rem;
 }
+.group-setup-dialog .group-host-status > summary,
+.group-setup-dialog .group-host-recovery > summary {
+  min-height: 44px;
+  padding: 10px 12px;
+  margin-block: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
 .group-join-receipt {
   margin-block: 20px;
   padding: 16px;

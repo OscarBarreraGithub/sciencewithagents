@@ -105,6 +105,7 @@ test('routine team coordination moves to Team activity while owner conversation 
   };
   const steering = randomUUID();
   const entries: FixtureEntry[] = [
+    entry('user', 'You', 'Earlier request from the owner.'),
     ...Array.from({ length: 205 }, (_, index) =>
       entry('assistant', manager.name, `Earlier answer #${index} for the owner.`),
     ),
@@ -148,10 +149,13 @@ test('routine team coordination moves to Team activity while owner conversation 
   await expect(main.getByText(/Report #|Ack #/)).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('main-chat.png') });
   // Earlier chat history pages through the same conversation channel.
-  await main.getByRole('button', { name: 'Load earlier messages' }).click();
+  await page.getByRole('button', { name: 'Your prompts', exact: true }).click();
+  const prompts = page.getByRole('dialog', { name: 'Your prompts', exact: true });
+  await prompts.getByRole('button', { name: 'Older prompts', exact: true }).click();
+  await prompts.getByRole('button', { name: /Earlier request from the owner/ }).click();
   await expect(main.getByText('Earlier answer #0 for the owner.')).toBeVisible();
   await expect(main.getByText(/Report #|Ack #/)).toHaveCount(0);
-  await main.getByRole('button', { name: 'Latest messages' }).click();
+  await page.getByRole('button', { name: 'Back to latest', exact: true }).click();
   await expect(main.getByText('Owner-facing answer: local storage first.')).toBeVisible();
   expect(history.calls).toContain('conversation:latest');
   expect(history.calls).toContain('conversation:earlier');

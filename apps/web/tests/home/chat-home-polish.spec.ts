@@ -533,10 +533,13 @@ test('explicit phases and page boundaries never hide finals, owner input or unkn
   await expect(marked.locator('.tool-note')).toContainText('Update');
   await expect(marked.locator('.tool-note')).not.toContainText('Earlier reply');
   // Older page: the reply before tools has no later reply on this page, so it stays.
-  await page.getByRole('button', { name: 'Load earlier messages', exact: true }).click();
+  await page.getByRole('button', { name: 'Your prompts', exact: true }).click();
+  const prompts = page.getByRole('dialog', { name: 'Your prompts', exact: true });
+  await prompts.getByRole('button', { name: 'Older prompts', exact: true }).click();
+  await prompts.getByRole('button', { name: /Older owner question/ }).click();
   await expect(visible('Older owner question')).toHaveCount(1);
   await expect(visible('Older reply before tools')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Latest messages', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to latest', exact: true }).click();
   await expect(visible('Split-run final reply')).toHaveCount(1);
 });
 

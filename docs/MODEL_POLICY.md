@@ -3,6 +3,9 @@
 Open **Settings → Model preferences**. Set your manager and worker defaults, refresh
 available models, then **Save model settings**. This works on the
 computer and paired phone; each selected computer keeps its own policy and sign-ins.
+Welcome only summarizes these saved settings. A setup agent keeps saved or stated choices,
+uses the recommended defaults otherwise, and saves an explicit choice once here, then
+confirms the saved values; it never asks for every role again.
 
 | Level        | Codex family | Claude family | Default work                                                                                                  |
 | ------------ | ------------ | ------------- | ------------------------------------------------------------------------------------------------------------- |

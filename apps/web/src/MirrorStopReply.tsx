@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Square } from 'lucide-react';
 import { mirrorControlSchema, mirrorResultSchema, type MirrorControl } from '@dock/shared';
 import { api, apiScope } from './api';
 
@@ -82,11 +83,15 @@ export function MirrorStopReply({
       {(token || pending) && (
         <button
           type="button"
-          className="secondary"
+          className="secondary mirror-stop-button"
+          data-action={busy || pending ? 'check' : 'stop'}
+          aria-label={busy ? 'Checking stop status' : pending ? 'Check stop status' : 'Stop reply'}
+          title={busy ? 'Checking stop status' : pending ? 'Check stop status' : 'Stop reply'}
           onClick={() => void stop()}
           disabled={busy || (!pending && token === lastToken)}
         >
-          {busy ? 'Checking…' : pending ? 'Check stop status' : 'Stop reply'}
+          {!busy && !pending && <Square size={16} aria-hidden="true" />}
+          <span>{busy ? 'Checking…' : pending ? 'Check stop status' : 'Stop reply'}</span>
         </button>
       )}
       {message && <p role="status">{message}</p>}

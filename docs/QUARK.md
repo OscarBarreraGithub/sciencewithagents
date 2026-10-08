@@ -81,6 +81,11 @@ Compute ratings are relative queue hints, not provider allowance or CPU entitlem
 
 ## New-install setup
 
+Project rate cards keep current estimates, saved limits, sliders and save/retry controls
+visible. **Details** opens the 12-hour chart, allowance-window choices and accounting.
+Board cards show a short waiting reason; longer explanations and resource readings are
+available through their **Details** button. Expanding details starts no model work.
+
 A new empty installation starts with shared pacing and automatic coordinator checks off.
 Enable these deliberately in QUARK when wanted. Existing workspaces and saved choices are
 preserved. Welcome shows the current setting; when pacing is enabled, it also points out

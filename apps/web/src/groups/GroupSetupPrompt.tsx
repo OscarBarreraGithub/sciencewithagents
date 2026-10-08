@@ -89,6 +89,8 @@ const prompts = [
   },
   {
     title: '4. GitHub for shared code and files (optional)',
+    description:
+      'Connect a repository only if your group will work on files together. Group messages already sync through Cloudflare.',
     label: 'Groups GitHub setup prompt',
     button: 'Copy GitHub setup prompt',
     text: groupGitHubSetupPrompt,
@@ -186,6 +188,7 @@ export function GroupSetupPrompt({ initiallyOpen = false }: { initiallyOpen?: bo
       {prompts.map((prompt) => (
         <section className="group-setup-choice" key={prompt.label}>
           <h3>{prompt.title}</h3>
+          {prompt.description && <p>{prompt.description}</p>}
           <CopyPrompt label={prompt.label} button={prompt.button} text={prompt.text} />
         </section>
       ))}

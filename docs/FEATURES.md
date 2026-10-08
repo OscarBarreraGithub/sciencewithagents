@@ -137,7 +137,7 @@ An unconfirmed launch keeps its receipt; **Open again** deliberately starts a ne
 and may open another window.
 Unsupported goal connections explain their capability and keep drafts. The command menu
 also exposes the currently connected session controls; other native commands still need
-the original provider session. Manual Claude compaction is not connected to the app yet.
+the original provider session.
 
 The manager goal’s objective and progress persist through reloads and restarts. First and follow-up turns
 use the manager's ordinary model and QUARK admission, including existing reserves and
@@ -186,7 +186,9 @@ timeline. Without a phase, only earlier replies of a completed turn followed by 
 a later reply on the same page join the row, labelled Earlier replies and still readable; imports,
 running/stopped turns and replies after owner steering stay in the timeline. Routine draft autosave keeps one stable status line; failures alert with Retry. The saved history is retained;
 the two views page their own entries using recorded run provenance.
-Managed chats show up to 200 entries per page; **Latest messages**
+Managed chats show up to 200 entries per page. **Your prompts** in managed and shared
+editor chats reads one bounded history page at a time and opens the conversation around
+the selected owner message. Dates appear when retained by the source. **Back to latest**
 returns to current replies without changing the draft. The Chats finder excludes background
 helpers and resource checks using saved identities before candidate limits; a matching title never
 hides a personal chat. Assisted model coverage remains partial: up to 20 recent projects,

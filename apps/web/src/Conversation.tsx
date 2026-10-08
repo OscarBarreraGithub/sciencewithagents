@@ -45,6 +45,7 @@ import { McpUrlLink } from './McpUrlLink';
 import { Notepad, type DraftSelection } from './Notepad';
 import { useScrollHints } from './home/useScrollHints';
 import { ChatCommands } from './ChatCommands';
+import { PromptHistory, scrollToPrompt } from './PromptHistory';
 
 function SendTiming({
   steer,
@@ -281,6 +282,7 @@ export function Conversation({
   intro,
   formatEntry,
   channel,
+  promptNavigation = true,
 }: {
   agent: Agent;
   detail: AgentDetail | null;
@@ -291,6 +293,8 @@ export function Conversation({
   formatEntry?: (entry: Entry) => Entry;
   /** Earlier pages come from the same server channel as `detail`. */
   channel?: AgentDetailChannel;
+  /** Custom group feeds do not use the retained agent history route. */
+  promptNavigation?: boolean;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const scrollHint = useScrollHints(scroll, agent.id);
@@ -298,8 +302,23 @@ export function Conversation({
   const lastTop = useRef(0);
   const shownApproval = useRef<string | null>(null);
   const [older, setOlder] = useState<AgentDetail | null>(null);
+  const [promptsOpen, setPromptsOpen] = useState(false);
+  const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const historyRequest = useRef(0);
+  const historyBefore = useRef<string | undefined>(undefined);
+  const [newerHistory, setNewerHistory] = useState<(string | undefined)[]>([]);
+  useEffect(() => {
+    setOlder(null);
+    setPromptsOpen(false);
+    setSelectedPrompt(null);
+    setLoadingHistory(false);
+    setNewerHistory([]);
+    historyBefore.current = undefined;
+    return () => {
+      historyRequest.current++;
+    };
+  }, [agent.id, channel]);
   useEffect(() => {
     const container = scroll.current;
     if (!container) return;
@@ -311,17 +330,23 @@ export function Conversation({
           container.scrollTop +=
             card.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
       }
-    } else if (!older && pinned.current && !document.documentElement.dataset.pdfOpen)
+    } else if (
+      !older &&
+      !selectedPrompt &&
+      pinned.current &&
+      !document.documentElement.dataset.pdfOpen
+    )
       container.scrollTop = container.scrollHeight;
     shownApproval.current = first;
-  }, [data, approvals, older]);
+  }, [data, approvals, older, selectedPrompt]);
   useLayoutEffect(() => {
     const container = scroll.current;
     if (!container) return;
-    pinned.current = !older;
-    container.scrollTop = older ? 0 : container.scrollHeight;
+    pinned.current = !older && !selectedPrompt;
+    if (selectedPrompt) scrollToPrompt(container, selectedPrompt);
+    else container.scrollTop = older ? 0 : container.scrollHeight;
     lastTop.current = container.scrollTop;
-  }, [older]);
+  }, [older, selectedPrompt]);
   useEffect(() => {
     const container = scroll.current;
     if (!container) return;
@@ -349,13 +374,97 @@ export function Conversation({
     setLoadingHistory(true);
     try {
       const result = await detail(agent.id, entries[0]?.id, channel);
-      if (request === historyRequest.current) setOlder(result);
+      if (request === historyRequest.current) {
+        const previousBefore = historyBefore.current;
+        setNewerHistory((positions) => [...positions, previousBefore]);
+        historyBefore.current = entries[0]?.id;
+        setSelectedPrompt(null);
+        setOlder(result);
+      }
     } finally {
       if (request === historyRequest.current) setLoadingHistory(false);
     }
   };
   return (
     <>
+      {promptNavigation && channel !== 'coordination' && (
+        <nav className="prompt-history-actions" aria-label="Conversation history">
+          <button type="button" className="secondary" onClick={() => setPromptsOpen(true)}>
+            Your prompts
+          </button>
+          {older && newerHistory.length > 0 && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={loadingHistory}
+              onClick={() =>
+                void act(async () => {
+                  const request = ++historyRequest.current;
+                  setLoadingHistory(true);
+                  const before = newerHistory[newerHistory.length - 1];
+                  try {
+                    const value = await detail(agent.id, before, channel);
+                    if (request !== historyRequest.current) return;
+                    historyBefore.current = before;
+                    setNewerHistory((positions) => positions.slice(0, -1));
+                    setSelectedPrompt(null);
+                    setOlder(value);
+                  } finally {
+                    if (request === historyRequest.current) setLoadingHistory(false);
+                  }
+                })
+              }
+            >
+              Continue reading
+            </button>
+          )}
+          {(older || selectedPrompt) && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                historyRequest.current++;
+                setLoadingHistory(false);
+                setSelectedPrompt(null);
+                setOlder(null);
+                setNewerHistory([]);
+                historyBefore.current = undefined;
+              }}
+            >
+              Back to latest
+            </button>
+          )}
+        </nav>
+      )}
+      {promptsOpen && (
+        <PromptHistory
+          key={`${agent.id}:${channel ?? 'all'}`}
+          close={() => setPromptsOpen(false)}
+          read={async (before) => {
+            const value = await detail(agent.id, before, channel);
+            return {
+              value: { detail: value, before },
+              prompts: value.entries
+                .filter(
+                  (entry) =>
+                    entry.kind === 'user' ||
+                    (entry.kind === 'system' && entry.title === 'Owner steering'),
+                )
+                .map((entry) => (formatEntry ? formatEntry(entry) : entry)),
+              before: value.hasMore ? value.entries[0]?.id : undefined,
+            };
+          }}
+          choose={(value, id, newer) => {
+            historyRequest.current++;
+            setLoadingHistory(false);
+            setOlder(value.detail);
+            historyBefore.current = value.before;
+            setNewerHistory(newer);
+            setSelectedPrompt(id);
+            setPromptsOpen(false);
+          }}
+        />
+      )}
       <div
         className="conversation"
         ref={scroll}
@@ -365,7 +474,7 @@ export function Conversation({
           // Only the reader moving up leaves the newest message. Scrolls caused by layout,
           // pinning or scroll anchoring must not unpin a reader who was at the bottom.
           const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
-          if (nearBottom) pinned.current = true;
+          if (nearBottom && !older) pinned.current = true;
           else if (element.scrollTop < lastTop.current - 1) pinned.current = false;
           lastTop.current = element.scrollTop;
         }}
@@ -379,7 +488,7 @@ export function Conversation({
             {new Date(agent.createdAt).toLocaleDateString([], { month: 'long', day: 'numeric' })}
             <span />
           </div>
-          {older && (
+          {older && channel === 'coordination' && (
             <button
               className="load-history"
               onClick={() => {
@@ -391,15 +500,16 @@ export function Conversation({
               Latest messages
             </button>
           )}
-          {(older?.hasMore ?? data?.hasMore) && (
-            <button
-              className="load-history"
-              disabled={loadingHistory}
-              onClick={() => void act(load)}
-            >
-              Load earlier messages
-            </button>
-          )}
+          {(older || !promptNavigation || channel === 'coordination') &&
+            (older?.hasMore ?? data?.hasMore) && (
+              <button
+                className="load-history"
+                disabled={loadingHistory}
+                onClick={() => void act(load)}
+              >
+                Load earlier messages
+              </button>
+            )}
           {entries.length === 0 && (
             <div className="conversation-intro">
               <Avatar role={agent.role} />
@@ -477,7 +587,11 @@ export function Conversation({
                 </div>
               </div>
             ) : (
-              <article className={`message ${entry.kind}`} key={entry.id}>
+              <article
+                className={`message ${entry.kind}${entry.id === selectedPrompt ? ' prompt-selected' : ''}`}
+                data-prompt-id={entry.kind === 'user' ? entry.id : undefined}
+                key={entry.id}
+              >
                 <div className="message-avatar">
                   {entry.kind === 'user' ? (
                     <span className="user-avatar">You</span>

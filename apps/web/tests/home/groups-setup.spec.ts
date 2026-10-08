@@ -117,6 +117,8 @@ test('fresh Groups shows creator-owned Cloudflare prompts, human steps and copya
   const setup = page.getByRole('dialog', { name: 'Group setup', exact: true });
   await expect(setup).toBeVisible();
   await expect(setup).toContainText('The creator hosts Groups in their own Cloudflare account.');
+  await expect(setup.getByText('Recover an interrupted request', { exact: true })).toHaveCount(0);
+  await expect(setup).toContainText('Group messages already sync through Cloudflare.');
   await setup.getByText('Your setup checklist', { exact: true }).click();
   await expect(setup).toContainText('sign in to your Cloudflare account and confirm Workers Free');
   await expect(setup.getByLabel('Cloudflare Groups setup prompt')).toBeHidden();
@@ -266,4 +268,21 @@ test('invalid invitation can be corrected while uncertain joins keep their retry
   await expect.poll(() => keys.length).toBe(3);
   expect(keys[1]).toBe(keys[2]);
   await expect(page.getByRole('heading', { name: 'Request sent', exact: true })).toHaveCount(0);
+  // A lost acknowledgement makes recovery useful; opening help itself must not resend.
+  const recovery: unknown[] = [];
+  await page.route('**/api/groups/resume', (route) => {
+    recovery.push(route.request().postDataJSON());
+    return route.fulfill({ status: 503, json: { error: 'Still reconnecting. Request retained.' } });
+  });
+  await join.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page.getByRole('button', { name: 'Group setup', exact: true }).click();
+  const setup = page.getByRole('dialog', { name: 'Group setup', exact: true });
+  await setup.getByText('Recover an interrupted request', { exact: true }).click();
+  expect(recovery).toEqual([]);
+  await setup.getByRole('button', { name: 'Recover pending setup', exact: true }).click();
+  await expect(setup.getByRole('alert')).toHaveText('Still reconnecting. Request retained.');
+  expect(recovery).toEqual([{ key: keys[1], kind: 'join' }]);
+  await expect(
+    setup.getByRole('button', { name: 'Recover pending setup', exact: true }),
+  ).toBeVisible();
 });

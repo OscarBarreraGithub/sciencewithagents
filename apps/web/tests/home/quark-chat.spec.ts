@@ -131,7 +131,10 @@ test('QUARK fullscreen shows failed reads and sends, retains drafts, retries onc
   expect(attempts).toHaveLength(2);
   expect(attempts[1]!.key).toBe(attempts[0]!.key);
   expect(attempts[1]!.steer).toBe(attempts[0]!.steer);
-  await full.getByRole('button', { name: 'Load earlier messages', exact: true }).click();
+  await full.getByRole('button', { name: 'Your prompts', exact: true }).click();
+  const prompts = page.getByRole('dialog', { name: 'Your prompts', exact: true });
+  await prompts.getByRole('button', { name: 'Older prompts', exact: true }).click();
+  await prompts.getByRole('button', { name: /Earlier owner instruction remains readable/ }).click();
   await expect(
     full.getByText('Earlier owner instruction remains readable.', { exact: true }),
   ).toBeVisible();

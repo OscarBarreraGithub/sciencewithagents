@@ -638,6 +638,7 @@ export function GroupChat({
       {!refused && !groupMessages.revoked && chat && conversationDetail ? (
         <Conversation
           key={slot.context.sessionId}
+          promptNavigation={false}
           agent={chat.detail.agent}
           intro={
             mode

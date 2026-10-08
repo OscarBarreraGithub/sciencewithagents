@@ -49,6 +49,15 @@ const pending = (action: string, input: unknown) => {
   sessionStorage.setItem(storage, JSON.stringify(result));
   return { key: result.key, clear: () => sessionStorage.removeItem(storage) };
 };
+function hasPendingSetup() {
+  try {
+    return ['create', 'join'].some((kind) =>
+      sessionStorage.getItem(`swa:groups:${apiScope()}:${kind}`),
+    );
+  } catch {
+    return false;
+  }
+}
 function GroupConversation({
   slot,
   onChanged,
@@ -713,9 +722,12 @@ export function GroupsApp({
           {error && <p role="alert">{error}</p>}
           {joinNotice && <p role="status">{joinNotice}</p>}
           <GroupSetupPrompt initiallyOpen />
-          {
+          {hasPendingSetup() && (
             <details className="group-host-recovery">
               <summary>Recover an interrupted request</summary>
+              <p>
+                Check whether your earlier create or join request finished without starting another.
+              </p>
               <button
                 onClick={() =>
                   void act(async () => {
@@ -744,13 +756,15 @@ export function GroupsApp({
                 Recover pending setup
               </button>
             </details>
-          }
+          )}
           {
             <details className="group-host-status">
               <summary>Connection details</summary>
               <p>{service}</p>
               <p>{native}</p>
-              <a href="#/welcome">Open setup checks</a>
+              <a className="flow-button" href="#/welcome">
+                Open setup checks
+              </a>
             </details>
           }
         </Modal>

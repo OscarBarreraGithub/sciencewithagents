@@ -45,6 +45,8 @@ import { NativeGoalCard } from './NativeGoalCard';
 import { ChatCommands } from './ChatCommands';
 import { Notepad, type DraftSelection } from './Notepad';
 import { useBrowserNotepad } from './useBrowserNotepad';
+import { useVisibleViewport } from './useVisibleViewport';
+import { PromptHistory, scrollToPrompt } from './PromptHistory';
 
 // A native Codex daemon session lives on the computer, never in a VS Code window.
 const DaemonSource = createContext(false);
@@ -132,10 +134,12 @@ const MirrorEntry = memo(
     entry,
     provider,
     windowId,
+    selected = false,
   }: {
     entry: MirrorState['entries'][number];
     provider: string;
     windowId: string;
+    selected?: boolean;
   }) {
     const [open, setOpen] = useState(false);
     return entry.role === 'activity' ? (
@@ -147,7 +151,10 @@ const MirrorEntry = memo(
         {open && <EntryText entry={entry} windowId={windowId} />}
       </details>
     ) : (
-      <article className={`mirror-message ${entry.role}`}>
+      <article
+        className={`mirror-message ${entry.role}${selected ? ' prompt-selected' : ''}`}
+        data-prompt-id={entry.role === 'user' ? entry.id : undefined}
+      >
         <small>{entry.role === 'user' ? 'You' : provider}</small>
         <div className="mirror-text">
           <EntryText entry={entry} windowId={windowId} />
@@ -158,6 +165,7 @@ const MirrorEntry = memo(
   (a, b) =>
     a.provider === b.provider &&
     a.windowId === b.windowId &&
+    a.selected === b.selected &&
     a.entry.id === b.entry.id &&
     a.entry.role === b.entry.role &&
     a.entry.text === b.entry.text &&
@@ -408,6 +416,7 @@ export function VscodeMirror({
   headerAction?: ReactNode;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
+  const visible = useVisibleViewport();
   const identity = mirrorKey(chat);
   const provider = mirrorProvider(chat);
   const daemon = mirrorDaemon(chat);
@@ -488,8 +497,19 @@ export function VscodeMirror({
   }, [notepadOpen]);
   const [following, setFollowing] = useState(true);
   const [historyQuery, setHistoryQuery] = useState('');
+  const [promptsOpen, setPromptsOpen] = useState(false);
+  const [promptSelection, setPromptSelection] = useState<{ state: MirrorState; id: string } | null>(
+    null,
+  );
+  const displayed = promptSelection?.state ?? state;
+  useEffect(() => {
+    setPromptSelection(null);
+    setPromptsOpen(false);
+    setHistoryQuery('');
+  }, [identity]);
   const viewport = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
+  const startHistory = useRef(false);
   // When the latest successful chat read started (client clock), for freshness against discovery.
   const readAt = useRef(0);
   // Where a following reader last was; only scrolling up from here reads history.
@@ -589,28 +609,51 @@ export function VscodeMirror({
     return () => window.removeEventListener('dock:mirror-draft', changed);
   }, [draftKey]);
   useEffect(() => {
-    if (follow.current && viewport.current && !document.documentElement.dataset.pdfOpen)
+    if (startHistory.current && state && viewport.current) {
+      startHistory.current = false;
+      viewport.current.scrollTop = 0;
+      followTop.current = 0;
+      follow.current = false;
+      setFollowing(false);
+      return;
+    }
+    if (
+      !promptSelection &&
+      follow.current &&
+      viewport.current &&
+      !document.documentElement.dataset.pdfOpen
+    )
       viewport.current.scrollTop = viewport.current.scrollHeight;
-  }, [state?.entries]);
+  }, [state?.entries, promptSelection]);
+  useLayoutEffect(() => {
+    if (promptSelection && viewport.current) {
+      follow.current = false;
+      setFollowing(false);
+      scrollToPrompt(viewport.current, promptSelection.id);
+      followTop.current = viewport.current.scrollTop;
+    }
+  }, [promptSelection]);
   useEffect(() => {
     const log = viewport.current;
     if (!log) return;
     // A keyboard or taller composer shrinks the log. Keep the newest message in view
     // only for a reader already at the bottom; anyone reading history keeps their place.
     const observer = new ResizeObserver(() => {
-      if (follow.current && !document.documentElement.dataset.pdfOpen)
+      if (!promptSelection && follow.current && !document.documentElement.dataset.pdfOpen)
         log.scrollTop = log.scrollHeight;
     });
     observer.observe(log);
     return () => observer.disconnect();
-  }, []);
+  }, [promptSelection]);
   function save(value: string, request: MirrorSend | null) {
     sessionStorage.setItem(draftKey, JSON.stringify({ text: value, pending: request }));
   }
   function history(direction: 'before' | 'after' | 'latest') {
-    const cursor = direction !== 'latest' ? state?.page?.[direction] : undefined;
+    const cursor = direction !== 'latest' ? displayed?.page?.[direction] : undefined;
     setHistoryQuery(cursor ? `?${new URLSearchParams({ [direction]: cursor })}` : '');
+    setPromptSelection(null);
     setState(null);
+    startHistory.current = direction !== 'latest';
     follow.current = true;
     setFollowing(true);
   }
@@ -794,25 +837,59 @@ export function VscodeMirror({
                   : 'Offline. Open VS Code and share this conversation to continue. Your draft stays here.')}
           </div>
         )}
-      {(state?.page?.before || state?.page?.after || historyQuery) && (
-        <nav className="mirror-history" aria-label="Conversation history">
-          <button type="button" disabled={!state?.page?.before} onClick={() => history('before')}>
-            Older messages
-          </button>
-          <span>{historyQuery ? 'Earlier history' : 'Latest messages'}</span>
-          {historyQuery && (
-            <>
-              <button type="button" disabled={!state?.page?.after} onClick={() => history('after')}>
-                Newer messages
-              </button>
-              <button type="button" onClick={() => history('latest')}>
-                Back to latest
-              </button>
-            </>
-          )}
-        </nav>
+      <nav className="mirror-history" aria-label="Conversation history">
+        <button type="button" onClick={() => setPromptsOpen(true)}>
+          Your prompts
+        </button>
+        {(historyQuery || promptSelection) && (
+          <>
+            <button
+              type="button"
+              disabled={!displayed?.page?.after}
+              onClick={() => history('after')}
+            >
+              Continue reading
+            </button>
+            <button type="button" onClick={() => history('latest')}>
+              Back to latest
+            </button>
+          </>
+        )}
+      </nav>
+      {promptsOpen && (
+        <PromptHistory
+          key={identity}
+          close={() => setPromptsOpen(false)}
+          read={async (before) => {
+            const query = before ? `?${new URLSearchParams({ before })}` : '';
+            const raw = mirrorStateSchema.parse(
+              await api(`/vscode/windows/${chat.windowId}${query}`),
+            );
+            const value = raw.page ? raw : mirrorPage(raw, before ? { before } : {});
+            if (mirrorKey(value) !== identity)
+              throw new Error(
+                'This connection now shares a different conversation. Reopen your chat.',
+              );
+            if (value.historyUnavailable)
+              throw new Error(
+                value.message ||
+                  'This conversation’s history is currently unavailable. Reconnect and try again.',
+              );
+            return {
+              value: { state: value, query },
+              prompts: value.entries.filter((entry) => entry.role === 'user'),
+              before: value.page?.before,
+            };
+          }}
+          choose={(value, id) => {
+            setHistoryQuery(value.query);
+            setState(value.state);
+            setPromptSelection({ state: value.state, id });
+            setPromptsOpen(false);
+          }}
+        />
       )}
-      {state?.page?.reset && (
+      {!promptSelection && state?.page?.reset && (
         <p className="mirror-notice">
           History changed {daemon ? 'on your computer' : 'in VS Code'}. Showing the latest messages.
         </p>
@@ -831,7 +908,7 @@ export function VscodeMirror({
           // layout scroll before ResizeObserver repins it. The reader has not moved, so
           // keep following unless they scrolled up toward older messages.
           const held = !near && follow.current && top >= followTop.current - 2;
-          follow.current = near || held;
+          follow.current = !promptSelection && (near || held);
           followTop.current = held ? Math.max(followTop.current, top) : top;
           setFollowing(follow.current);
         }}
@@ -839,14 +916,19 @@ export function VscodeMirror({
         <div className="mirror-messages">
           {/* Renders no element; nested history and images name the right computer place. */}
           <DaemonSource.Provider value={daemon}>
-            {timelineRows(state?.entries ?? []).map((entries, index, rows) =>
+            {timelineRows(displayed?.entries ?? []).map((entries, index, rows) =>
               entries[0].role === 'activity' ? (
                 <ActivityGroup
                   key={entries[0].id}
                   entries={entries}
                   provider={provider}
                   windowId={chat.windowId}
-                  working={status === 'busy' && index === rows.length - 1}
+                  working={
+                    !historyQuery &&
+                    !promptSelection &&
+                    status === 'busy' &&
+                    index === rows.length - 1
+                  }
                 />
               ) : (
                 <MirrorEntry
@@ -854,11 +936,12 @@ export function VscodeMirror({
                   entry={entries[0]}
                   provider={provider}
                   windowId={chat.windowId}
+                  selected={entries[0].id === promptSelection?.id}
                 />
               ),
             )}
           </DaemonSource.Provider>
-          {!state?.entries.length && !state?.historyUnavailable && (
+          {!displayed?.entries.length && !displayed?.historyUnavailable && (
             <p className="mirror-empty">
               {connecting
                 ? 'Loading conversation…'
@@ -869,7 +952,7 @@ export function VscodeMirror({
                   : 'No messages yet. Say hello when the conversation is ready.'}
             </p>
           )}
-          {status === 'busy' && (
+          {!historyQuery && !promptSelection && status === 'busy' && (
             <p className="mirror-working" role="status">
               <span className="live-dot" />
               {provider} is working…
@@ -877,7 +960,7 @@ export function VscodeMirror({
           )}
         </div>
         {/* Sticks to the bottom of the history, so it can never cover the composer. */}
-        {!following && (
+        {!following && !historyQuery && !promptSelection && (
           <div className="mirror-latest-dock">
             <button
               className="mirror-latest secondary"
@@ -898,6 +981,7 @@ export function VscodeMirror({
       </div>
       <form
         className="mirror-composer"
+        data-keyboard={visible?.keyboard || undefined}
         onSubmit={(e) => {
           e.preventDefault();
           void send();

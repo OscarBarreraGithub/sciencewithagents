@@ -4,6 +4,16 @@ Current product decisions, consolidated from the drawings and subsequent correct
 This is a behavior/design reference, not a completion checklist. See [Features](FEATURES.md)
 and [Status](STATUS.md) for implementation and gaps. Private drawings are not distributed.
 
+## Controls
+
+- Actions must visibly look clickable: use a button surface or outline with padding, a clear
+  label or recognizable icon, and visible focus/pressed states. Navigation actions may be
+  links semantically, but style them as buttons when presented among app controls. Reserve
+  ordinary inline links for references within prose; do not disguise controls as plain text.
+- Adjacent secondary controls share their surface, border and text colors. Three-dot menus
+  use the same treatment as the other header buttons; reserve accent colors for primary
+  actions or meaningful state. Keep mobile toolbars compact without shrinking touch targets.
+
 ## Home and navigation
 
 - Chats, Apps and QUARK come first on mobile, with compact allowance/computer information.
@@ -57,6 +67,10 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
   sideways-scrolling row, then the message area gives way, so Back, input and Send stay visible.
   Closing the keyboard, including while pinch-zoomed, then changing screens or swiping back
   returns the full screen without reopening the app. Native pinch zoom stays available.
+- Manager and shared editor chats offer **Your prompts** to browse retained owner messages.
+  Selecting one opens its surrounding conversation, with **Continue reading** and **Back to
+  latest**. Keep the live tail fast: load older pages only on request, preserve drafts and
+  avoid an always-visible row of competing oldest/older/newer/latest controls.
 - During a running Codex reply, the composer offers “Steer now” or “Queue next”; priority
   applies only to queued messages. The notepad uses the same choice. Claude follow-ups queue.
   Timing is a small secondary control beside the other composer tools, not its own full-width

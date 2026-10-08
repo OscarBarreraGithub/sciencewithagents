@@ -2,6 +2,98 @@ import { expect, test } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { mirrorPage, type MirrorState, type MirrorQueuedMessage } from '@dock/shared';
 
+test('shared-chat tools keep one touch-sized row and remove the keyboard safe-area gap', async ({
+  page,
+}, info) => {
+  const state: MirrorState = {
+    windowId: randomUUID(),
+    threadId: randomUUID(),
+    provider: 'codex',
+    label: 'Compact composer',
+    title: 'Working shared conversation',
+    status: 'busy',
+    message: '',
+    canSteer: true,
+    canQueue: true,
+    steerToken: 'current-turn',
+    stopToken: 'current-turn',
+    paged: true,
+    entries: [{ id: 'reply', role: 'assistant', text: 'The current reply remains readable.' }],
+  };
+  await page.route(/\/api\/vscode\/windows(?:\?.*)?$/, (route) => {
+    const { entries: _, ...window } = state;
+    return route.fulfill({ json: [window] });
+  });
+  await page.route(`**/api/vscode/windows/${state.windowId}`, (route) =>
+    route.fulfill({ json: mirrorPage(state) }),
+  );
+  await page.goto(`/#/chats/vscode/${encodeURIComponent(`codex:${state.threadId}`)}`);
+  const composer = page.locator('.mirror-composer');
+  const tools = page.locator('.mirror-compose-tools');
+  const input = page.getByRole('textbox', { name: 'Message Codex' });
+  const stop = tools.getByRole('button', { name: 'Stop reply', exact: true });
+  const notepad = tools.getByRole('button', { name: 'Open notepad', exact: true });
+  await expect(stop).toBeVisible();
+  const boxes = await tools.locator('button, select').evaluateAll((controls) =>
+    controls
+      .filter((control) => control.getClientRects().length)
+      .map((control) => {
+        const box = control.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width, height: box.height };
+      }),
+  );
+  expect(boxes).toHaveLength(5);
+  expect(
+    Math.max(...boxes.map((box) => box.y)) - Math.min(...boxes.map((box) => box.y)),
+  ).toBeLessThanOrEqual(1);
+  for (const box of boxes) {
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+  if (page.viewportSize()!.width <= 459) {
+    expect((await stop.boundingBox())!.width).toBe(44);
+    expect((await notepad.boundingBox())!.width).toBe(44);
+  }
+  const toolsHeight = (await tools.boundingBox())!.height;
+  await input.fill('Keep my draft.');
+  const composerHeight = (await composer.boundingBox())!.height;
+  await input.press('End');
+  await input.press('!');
+  await expect(input).toBeFocused();
+  expect((await tools.boundingBox())!.height).toBe(toolsHeight);
+  expect((await composer.boundingBox())!.height).toBe(composerHeight);
+  // Routine draft persistence and provider refreshes keep the same writing geometry.
+  state.status = 'idle';
+  state.stopToken = undefined;
+  await expect(stop).toHaveCount(0);
+  expect((await tools.boundingBox())!.height).toBe(toolsHeight);
+  expect((await composer.boundingBox())!.height).toBe(composerHeight);
+  await expect(input).toBeFocused();
+  await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport!, {
+      height: { configurable: true, value: Math.min(420, innerHeight - 100) },
+      offsetTop: { configurable: true, value: 12 },
+    });
+    window.visualViewport!.dispatchEvent(new Event('resize'));
+  });
+  await expect(composer).toHaveAttribute('data-keyboard', 'true');
+  expect(await composer.evaluate((element) => getComputedStyle(element).paddingBottom)).toBe('6px');
+  const bottomGap = await composer.evaluate((element) => {
+    const bottom = element.getBoundingClientRect().bottom;
+    const toolsBottom = element
+      .querySelector('.mirror-compose-tools')!
+      .getBoundingClientRect().bottom;
+    return bottom - toolsBottom;
+  });
+  // The fixed one-line delivery receipt remains; no second safe area sits above the keyboard.
+  expect(bottomGap).toBeLessThanOrEqual(32);
+  await expect(input).toHaveValue('Keep my draft.!');
+  await expect(input).toBeFocused();
+  await page.screenshot({ path: info.outputPath('compact-shared-composer-keyboard.png') });
+  await page.reload();
+  await expect(input).toHaveValue('Keep my draft.!');
+});
+
 test('shared-chat drafts wrap and resize without a horizontal or premature scrollbar', async ({
   page,
 }) => {

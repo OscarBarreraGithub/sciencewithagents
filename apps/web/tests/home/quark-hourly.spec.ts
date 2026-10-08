@@ -233,6 +233,10 @@ test('primary rate and reserve sliders persist zero, retry lost replies, queue i
     expect(writes).toHaveLength(0); // no save for every pixel
     await slider.dispatchEvent('pointerup');
     await expect(providerRate.getByRole('alert')).toContainText('Rate save response lost');
+    // Recovery never hides behind Details.
+    await expect(
+      providerRate.getByRole('button', { name: 'Details', exact: true }),
+    ).toHaveAttribute('aria-expanded', 'false');
     await providerRate.getByRole('button', { name: 'Retry rate save' }).click();
     await expect(providerRate.getByRole('alert')).toHaveCount(0);
     await expect(providerRate.getByRole('status')).toHaveText('Saved');
@@ -291,9 +295,15 @@ test('primary rate and reserve sliders persist zero, retry lost replies, queue i
     await move(slider, 2);
     await expect(providerRate.getByRole('status')).toHaveText('Saved');
     await expect(slider).toHaveValue('2');
-    await expect(
-      card.getByRole('img', { name: /Estimated project usage over the last 12 hours/ }),
-    ).toHaveCount(2);
+    // The default readout stays short; history, reasons and caveats are one button away.
+    expect((await providerRate.innerText()).length).toBeLessThan(240);
+    const history = card.getByRole('img', {
+      name: /Estimated project usage over the last 12 hours/,
+    });
+    await expect(history).toHaveCount(0);
+    for (const details of await card.getByRole('button', { name: 'Details', exact: true }).all())
+      await details.click();
+    await expect(history).toHaveCount(2);
     await expect(providerRate.getByText(/min observed/).first()).toBeVisible();
     await page.getByRole('button', { name: 'Show all 9 projects' }).click();
     await expect(page.locator('.quark-project-card')).toHaveCount(9);

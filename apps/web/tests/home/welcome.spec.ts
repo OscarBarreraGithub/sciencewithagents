@@ -255,7 +255,61 @@ test('Codex sign-in restores its exact pending code after a lost response and ne
   expect(checks).toBe(1);
 });
 
-test('welcome lets a Claude-only user choose their provider before readiness without losing exact pins', async ({
+test('welcome summarizes saved Claude-only choices without asking again or saving them', async ({
+  page,
+}) => {
+  const state = status();
+  const policy = state.policy.policy;
+  policy.enabledProviders = ['claude'];
+  policy.scheduledProvider = 'claude';
+  policy.preset = 'claude-heavy';
+  policy.models.claude.grad.model = 'retained-opus-version';
+  policy.managerModels.claude = {
+    ...structuredClone(policy.models.claude.postdoc),
+    model: 'retained-fable-version',
+  };
+  state.accounts[1] = {
+    provider: 'claude',
+    state: 'signed-in',
+    checkedAt: new Date().toISOString(),
+  };
+  const requests: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'POST' || path === '/api/model-policy')
+      requests.push(`${request.method()} ${path}`);
+  });
+  await page.route('**/api/setup', (route) => route.fulfill({ json: state }));
+  await page.route('**/api/setup/check', (route) => route.fulfill({ json: state }));
+  await page.route('**/api/model-policy', (route) =>
+    route.fulfill({ json: { policy, catalogs: [] } }),
+  );
+  await page.goto('/#/welcome');
+  await expect(page.getByRole('heading', { name: 'Your team', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choose your team' })).toHaveCount(0);
+  await expect(page.getByText('Saved defaults: Claude')).toBeVisible();
+  await expect(page.getByText('Manager: Claude · retained-fable-version')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Codex readiness' })).toHaveCount(0);
+  const card = page.getByRole('region', { name: 'Claude readiness' });
+  await expect(card.getByText('Native sign-in found', { exact: true })).toBeVisible();
+  await expect(card.locator('details')).not.toHaveAttribute('open', /.*/);
+  await expect(card.locator('summary')).toHaveText('Model details · needs a current check');
+  await expect(card.locator('.welcome-model-list')).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'QUARK scheduling (optional)' })).toBeVisible();
+  const edit = page.getByRole('link', { name: 'Edit team defaults', exact: true });
+  await expect(edit).toHaveAttribute('href', '#/models');
+  expect(requests).toEqual([]);
+  await edit.click();
+  await expect(page.getByLabel('Use Codex in defaults')).not.toBeChecked();
+  await expect(page.getByLabel('Grad student Claude model', { exact: true })).toHaveValue(
+    'retained-opus-version',
+  );
+  await page.getByRole('link', { name: 'Check accounts and setup', exact: true }).click();
+  await expect(page.getByText('Manager: Claude · retained-fable-version')).toBeVisible();
+  expect(requests.filter((request) => request.startsWith('POST'))).toEqual([]);
+});
+
+test('welcome lets a Claude-only user change their provider before readiness without losing exact pins', async ({
   page,
 }) => {
   const initial = status();
@@ -289,7 +343,7 @@ test('welcome lets a Claude-only user choose their provider before readiness wit
   });
   await page.goto('/#/welcome');
   await expect(page.getByText('Saved defaults: Codex')).toBeVisible();
-  await page.getByRole('link', { name: 'Choose team defaults', exact: true }).click();
+  await page.getByRole('link', { name: 'Edit team defaults', exact: true }).click();
   await page.getByLabel('Use Claude in defaults').check();
   await page.getByLabel('Use Codex in defaults').uncheck();
   await expect(page.getByLabel('Use Claude in defaults')).toBeDisabled();

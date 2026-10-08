@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Layers3, MessageCircle, Settings2, Clock3, Users } from 'lucide-react';
+import {
+  ArrowUpRight,
+  ChevronDown,
+  Layers3,
+  MessageCircle,
+  Settings2,
+  Clock3,
+  Users,
+} from 'lucide-react';
 import {
   latestFamily,
   allowanceWindowLabel,
@@ -96,6 +104,14 @@ function shortReason(message: string) {
   return lead.trim().length <= 120
     ? lead.trim()
     : 'Usage reading needs attention. Check connection.';
+}
+
+/** A card shows a short reason whole; a long one leads with its first sentence and keeps the
+ *  complete text in Details. */
+function brief(message: string) {
+  const text = message.replace(/\s+/g, ' ').trim();
+  if (text.length <= 140) return text;
+  return /^.{1,140}?[.!?](?= )/.exec(text)?.[0] ?? `${text.slice(0, 139).replace(/ \S*$/, '')}…`;
 }
 
 const windowExpired = (window: ProviderCapacity['windows'][number], now: number) =>
@@ -262,6 +278,13 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
   const [completedSearch, setCompletedSearch] = useState('');
   const [limits, setLimits] = useState<Partial<Record<Column, number>>>({});
   const [projectLimit, setProjectLimit] = useState(projectPage);
+  const [openTickets, setOpenTickets] = useState<ReadonlySet<string>>(new Set());
+  const toggleTicket = (id: string) =>
+    setOpenTickets((open) => {
+      const next = new Set(open);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const limit = (column: Column) => limits[column] ?? pageSize(column);
   const budgetEdits = useRef<BudgetEdits>(new Map());
   const [, renderBudgets] = useState(0);
@@ -585,10 +608,7 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
           </div>
           <section className="quark-reserve-section" aria-label="Shared provider reserves">
             <h2>Shared reserves</h2>
-            <p>
-              Keep this percentage of each full allowance available across projects. A zero reserve
-              removes this protection; provider limits and other caps still apply.
-            </p>
+            <p>Allowance kept free across all projects. 0% removes this protection.</p>
             <div className="quark-reserve-controls">
               {s.capacity.map((provider) => (
                 <ProviderReserveControl
@@ -708,14 +728,8 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
             <div>
               <h2>Project usage rates</h2>
               <p className="quark-budget-help">
-                Adjust Codex and Claude separately for each project. Release a slider to save its
-                rate; 0 pauses that provider and keeps progress.
+                Hourly limit per provider. Release a slider to save; 0 pauses and keeps progress.
               </p>
-              <small className="quark-budget-help">
-                Current rates are estimates; saved rates are rolling-hour ceilings. Total caps,
-                shared reserves and other pauses still apply. Charts leave gaps where readings are
-                missing.
-              </small>
             </div>
             <a className="flow-button" href="#/projects">
               Projects <ArrowUpRight size={16} />
@@ -732,10 +746,14 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
           )}
           {rateReading.data && (
             <p className="quark-footnote">
-              Rate view as of {new Date(rateReading.data.observedAt).toLocaleString()} on the
-              selected computer. Account depletion forecasts include shared and external activity.{' '}
-              {rateReading.data.historyTruncated &&
-                'History results were bounded; coverage may be partial.'}
+              Estimates as of{' '}
+              {new Date(rateReading.data.observedAt).toLocaleString([], {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })}
+              {rateReading.data.historyTruncated && ' · history bounded, coverage may be partial'}.
             </p>
           )}
           <div className="quark-projects">
@@ -751,7 +769,12 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                   <ArrowUpRight size={15} />
                 </a>
                 <span>{p.policy.paused ? 'Paused' : `Priority weight ${p.policy.weight}`}</span>
-                {p.policy.instruction && <small>{p.policy.instruction}</small>}
+                {p.policy.instruction && (
+                  <details className="quark-project-instructions">
+                    <summary>Project instructions</summary>
+                    <p>{p.policy.instruction}</p>
+                  </details>
+                )}
                 {s.capacity.map((provider) => (
                   <ProjectHourlyBudget
                     key={provider.provider}
@@ -834,57 +857,88 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                     {visibleCards
                       .filter((c) => c.column === column)
                       .slice(0, limit(column))
-                      .map((c) => (
-                        <article
-                          key={c.id}
-                          id={`quark-task-${c.id}`}
-                          className={`quark-ticket${c.id === taskId ? ' is-target' : ''}`}
-                          tabIndex={c.id === taskId ? -1 : undefined}
-                        >
-                          <span className="quark-ticket-project">{c.project}</span>
-                          <h4>
-                            <a href={c.href}>{c.title}</a>
-                          </h4>
-                          <span className="quark-ticket-model">{c.model}</span>
-                          {column !== 'Completed' && <p>{c.reason}</p>}
-                          {column !== 'Completed' && (
-                            <div className="quark-ticket-facts">
-                              <span>
-                                <Clock3 size={13} />
-                                {c.estimate}
-                              </span>
-                              {c.resources && <span>{c.resources}</span>}
-                              {c.actual && <span>{c.actual}</span>}
-                              {c.team && (
+                      .map((c) => {
+                        // State, estimate, caps and actions stay on the card; the full reason
+                        // and resource readings are one tap away.
+                        const reason = brief(c.reason);
+                        const longReason = reason !== c.reason.replace(/\s+/g, ' ').trim();
+                        const more =
+                          column !== 'Completed' && (longReason || !!c.resources || !!c.actual);
+                        const open = openTickets.has(c.id);
+                        return (
+                          <article
+                            key={c.id}
+                            id={`quark-task-${c.id}`}
+                            className={`quark-ticket${c.id === taskId ? ' is-target' : ''}`}
+                            tabIndex={c.id === taskId ? -1 : undefined}
+                          >
+                            <span className="quark-ticket-project">{c.project}</span>
+                            <h4>
+                              <a href={c.href}>{c.title}</a>
+                            </h4>
+                            <span className="quark-ticket-model">{c.model}</span>
+                            {column !== 'Completed' && <p>{reason}</p>}
+                            {column !== 'Completed' && (
+                              <div className="quark-ticket-facts">
                                 <span>
-                                  <Users size={13} />
-                                  {c.team}
+                                  <Clock3 size={13} />
+                                  {c.estimate}
                                 </span>
-                              )}
-                            </div>
-                          )}
-                          {column !== 'Completed' && c.budgets.map(budgetSlider)}
-                          {column !== 'Completed' && c.resume.length > 0 && (
-                            <button
-                              className="flow-button quark-continue"
-                              disabled={busy}
-                              onClick={() => void continueWork(c.resume)}
-                            >
-                              Continue work
-                            </button>
-                          )}
-                          <footer>
-                            <span>
-                              {column === 'Completed'
-                                ? c.team || c.actual || 'Open details'
-                                : `${c.priority} · weight ${c.weight}`}
-                            </span>
-                            <a href={c.href} aria-label={`Open ${c.title}`}>
-                              <ArrowUpRight size={15} />
-                            </a>
-                          </footer>
-                        </article>
-                      ))}
+                                {c.team && (
+                                  <span>
+                                    <Users size={13} />
+                                    {c.team}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {column !== 'Completed' && c.budgets.map(budgetSlider)}
+                            {column !== 'Completed' && c.resume.length > 0 && (
+                              <button
+                                className="flow-button quark-continue"
+                                disabled={busy}
+                                onClick={() => void continueWork(c.resume)}
+                              >
+                                Continue work
+                              </button>
+                            )}
+                            <footer>
+                              <span>
+                                {column === 'Completed'
+                                  ? c.team || c.actual || 'Open details'
+                                  : `${c.priority} · weight ${c.weight}`}
+                              </span>
+                              <span className="quark-ticket-actions">
+                                {more && (
+                                  <button
+                                    type="button"
+                                    className="flow-button quark-more-button"
+                                    aria-expanded={open}
+                                    aria-controls={`quark-task-${c.id}-details`}
+                                    onClick={() => toggleTicket(c.id)}
+                                  >
+                                    Details <ChevronDown size={16} aria-hidden="true" />
+                                  </button>
+                                )}
+                                <a href={c.href} aria-label={`Open ${c.title}`}>
+                                  <ArrowUpRight size={15} />
+                                </a>
+                              </span>
+                            </footer>
+                            {more && (
+                              <div
+                                id={`quark-task-${c.id}-details`}
+                                className="quark-more-panel"
+                                hidden={!open}
+                              >
+                                {longReason && <p>{c.reason}</p>}
+                                {c.resources && <span>{c.resources}</span>}
+                                {c.actual && <span>{c.actual}</span>}
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })}
                     {!visibleCards.some((c) => c.column === column) && (
                       <p className="quark-column-empty">
                         {column === 'Completed'

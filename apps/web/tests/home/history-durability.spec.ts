@@ -16,7 +16,7 @@ test('long managed history pages stay bounded and keep the last reply outside co
     id: crypto.randomUUID(),
     agentId: agent.id,
     runId: null,
-    kind: index > 1170 && index < 1204 ? 'tool' : 'assistant',
+    kind: index % 200 === 100 ? 'user' : index > 1170 && index < 1204 ? 'tool' : 'assistant',
     title: 'Saved reply',
     text: index === 1204 ? 'Final assistant reply 🧪' : `Retained entry ${index}`,
     status: 'complete',
@@ -42,13 +42,17 @@ test('long managed history pages stay bounded and keep the last reply outside co
   const composer = page.getByRole('textbox', { name: `Message ${agent.name}`, exact: true });
   const text = 'Unicode 🧪 café 漢字\nSecond line\n' + 'x'.repeat(2048);
   await composer.fill(text);
-  for (let index = 0; index < 3; index++) {
+  await page.getByRole('button', { name: 'Your prompts', exact: true }).click();
+  const prompts = page.getByRole('dialog', { name: 'Your prompts', exact: true });
+  await prompts.getByRole('button', { name: 'Older prompts', exact: true }).click();
+  await prompts.getByRole('button', { name: /Retained entry 900/ }).click();
+  for (let index = 0; index < 2; index++) {
     await page.getByRole('button', { name: 'Load earlier messages', exact: true }).click();
     await expect(page.locator('.message')).toHaveCount(200);
     await expect(composer).toBeInViewport();
     await expect(composer).toHaveValue(text);
   }
-  await page.getByRole('button', { name: 'Latest messages', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to latest', exact: true }).click();
   await expect(page.getByText('Final assistant reply 🧪', { exact: true })).toBeVisible();
   await expect(composer).toHaveValue(text);
 });

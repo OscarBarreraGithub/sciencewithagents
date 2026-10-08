@@ -355,6 +355,8 @@
 }
 .quark-ticket footer {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
   justify-content: space-between;
   align-items: center;
   border-top: 1px solid #eff1ef;
@@ -445,12 +447,21 @@
   color: inherit;
   text-decoration: none;
 }
-.quark-ticket footer > a {
+.quark-ticket-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.quark-ticket-actions > a {
   display: inline-grid;
   place-items: center;
   min-width: 44px;
   min-height: 44px;
   color: inherit;
+  border: 1px solid var(--q-border);
+  border-radius: 10px;
+  background: white;
 }
 .quark-budget-slider {
   border-top: 1px solid var(--q-border);
@@ -594,10 +605,7 @@
   color: var(--q-muted);
 }
 .quark-account summary {
-  padding: 12px 0;
-  min-height: 44px;
-  font-size: var(--text-small);
-  cursor: pointer;
+  margin: 4px 0 0;
 }
 .quark-account details[open] {
   padding-bottom: 12px;
@@ -711,20 +719,103 @@
 .quark-rate-paused {
   color: #845d2d;
 }
-.quark-project-rate details,
 .quark-provider-reserve details,
 .quark-total-caps {
   font-size: var(--text-caption);
 }
-.quark-project-rate summary,
+/* Disclosures match the adjacent secondary buttons, with a chevron instead of a marker. */
 .quark-provider-reserve summary,
-.quark-total-caps summary {
+.quark-project-instructions summary,
+.quark-total-caps summary,
+.quark-account summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
   min-height: 44px;
-  display: list-item;
-  align-content: center;
+  box-sizing: border-box;
+  padding: 8px 14px;
+  border: 1px solid var(--q-border);
+  border-radius: 12px;
+  background: white;
+  color: #243538;
+  font-size: var(--text-small);
+  list-style: none;
   cursor: pointer;
 }
-.quark-project-rate details label,
+.quark-provider-reserve summary::-webkit-details-marker,
+.quark-project-instructions summary::-webkit-details-marker,
+.quark-total-caps summary::-webkit-details-marker,
+.quark-account summary::-webkit-details-marker {
+  display: none;
+}
+.quark-provider-reserve summary::after,
+.quark-project-instructions summary::after,
+.quark-total-caps summary::after,
+.quark-account summary::after {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: translateY(-2px) rotate(45deg);
+}
+.quark-provider-reserve details[open] > summary::after,
+.quark-project-instructions[open] > summary::after,
+.quark-total-caps[open] > summary::after,
+.quark-account details[open] > summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
+.quark-provider-reserve details[open] > summary,
+.quark-project-instructions[open] > summary,
+.quark-total-caps[open] > summary {
+  margin-bottom: 8px;
+}
+/* Details open below a stable row; [hidden] must win over the panel's grid display. */
+.quark-more-button {
+  flex: none;
+  padding: 8px 14px;
+  font-size: var(--text-small);
+}
+.quark-more-button svg {
+  transition: transform 0.15s;
+}
+.quark-more-button[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+.quark-more-panel {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--q-border);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--q-muted);
+}
+.quark-more-panel[hidden] {
+  display: none;
+}
+.quark-more-panel .flow-button {
+  justify-self: start;
+}
+.quark-ticket .quark-more-panel p {
+  margin: 0;
+}
+.quark-rate-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+}
+.quark-rate-foot [role='status'] {
+  flex: 1;
+  min-width: 0;
+}
+.quark-project-rate .quark-more-panel label,
 .quark-provider-reserve details label {
   display: grid;
   gap: 8px;
@@ -749,8 +840,7 @@
   min-width: 20px;
   min-height: 20px;
 }
-.quark-provider-reserve details .flow-button,
-.quark-project-rate details .flow-button {
+.quark-provider-reserve details .flow-button {
   margin-bottom: 10px;
 }
 .quark-rate-history {

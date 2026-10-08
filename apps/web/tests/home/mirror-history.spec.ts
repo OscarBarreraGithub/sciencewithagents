@@ -15,7 +15,7 @@ test('large shared history stays responsive, paged and usable on a phone', async
     ? JSON.parse(readFileSync(supplied, 'utf8')).entries
     : Array.from({ length: 6309 }, (_, i) => ({
         id: `entry-${i}`,
-        role: i % 12 ? 'activity' : 'assistant',
+        role: i % 120 === 0 ? 'user' : i % 12 ? 'activity' : 'assistant',
         text: `commandExecution ${i}\n${'Saved output with enough text to reproduce a long native conversation. '.repeat(48)}`,
       }));
   entries.push({
@@ -90,9 +90,12 @@ test('large shared history stays responsive, paged and usable on a phone', async
     await tool.getByRole('button', { name: 'Previous part', exact: true }).click();
     await expect(tool).toContainText('characters 1–8000');
     await tool.locator('summary').click();
-    await page.getByRole('button', { name: 'Older messages', exact: true }).click();
-    await expect(page.getByText('Earlier history', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Newer messages', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Your prompts', exact: true }).click();
+    const prompts = page.getByRole('dialog', { name: 'Your prompts', exact: true });
+    await prompts.getByRole('button', { name: 'Older prompts', exact: true }).click();
+    await prompts.locator('.prompt-history-choice').first().click();
+    await expect(page.locator('.mirror-message.prompt-selected')).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'Continue reading', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: 'Back to latest', exact: true }).click();
     await expect(
       page.getByText('Latest reply ready on your phone.', { exact: true }),

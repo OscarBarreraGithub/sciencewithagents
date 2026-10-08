@@ -100,6 +100,14 @@ test('archive and restore keep queued work, history and the composer; retries re
   await page.goto(`/#/chat/${saved.project.managerId}`);
   const tools = page.getByRole('group', { name: 'Conversation tools' });
   const options = tools.getByRole('button', { name: 'Conversation options', exact: true });
+  const surface = (button: Locator) =>
+    button.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { color: style.color, background: style.backgroundColor, border: style.borderColor };
+    });
+  expect(await surface(options)).toEqual(
+    await surface(tools.locator('.chat-tool[aria-pressed="false"]').first()),
+  );
   const composer = page.locator('.composer textarea');
   await composer.fill('An unsent draft remains in this conversation.');
   // The selected chat has no direct archive button beside Configure or in its list row.
@@ -130,7 +138,7 @@ test('archive and restore keep queued work, history and the composer; retries re
   await expect(actions.getByRole('button', { name: 'Archived', exact: true })).toBeVisible();
   await expect(
     page.getByRole('group', { name: 'Conversation type' }).getByRole('button'),
-  ).toHaveCount(4);
+  ).toHaveText(['All', 'Managers', 'VS Code', 'Misc', 'Groups']);
   const list = page.getByRole('navigation', { name: 'Conversation list' });
   await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toHaveCount(0);
   await page.getByRole('button', { name: 'Managers', exact: true }).click();

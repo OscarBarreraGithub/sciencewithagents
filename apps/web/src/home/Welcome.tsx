@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import {
   latestFamily,
+  managerModelChoice,
   modelTierSchema,
   policyProvider,
   setupStatusSchema,
@@ -208,8 +209,8 @@ export function Welcome({ data }: { data: HomeData }) {
           <ShieldCheck size={27} />
           <strong>Your computer. Your accounts.</strong>
           <p>
-            Managers coordinate the work. QUARK paces the team against shared limits. You review
-            decisions and results in one place.
+            Managers coordinate the work. You review decisions and results in one place. QUARK
+            pacing is optional and off by default.
           </p>
         </div>
         <div className="welcome-orbit" aria-hidden="true">
@@ -232,25 +233,37 @@ export function Welcome({ data }: { data: HomeData }) {
           <div className="welcome-step-top">
             <span className="welcome-number">01</span>
             <div>
-              <h2>Choose your team</h2>
+              <h2>Your team</h2>
               <p>
-                Use Codex, Claude, or both. Choose the subscriptions you have before checking this
-                computer. With one provider, it handles both managers and workers.
+                Setup uses your saved team defaults, or the recommended ones if you never changed
+                them. With one provider, it handles both managers and workers.
               </p>
             </div>
           </div>
-          {state && (
-            <p className="welcome-saved">
-              <Check size={16} /> Saved defaults:{' '}
-              {state.policy.policy.enabledProviders.map((p) => names[p]).join(' + ')}
-            </p>
-          )}
+          {state &&
+            (() => {
+              const manager = policyProvider(state.policy.policy, 'manager', undefined, true);
+              const choice = manager && managerModelChoice(state.policy.policy, manager);
+              return (
+                <>
+                  <p className="welcome-saved">
+                    <Check size={16} /> Saved defaults:{' '}
+                    {state.policy.policy.enabledProviders.map((p) => names[p]).join(' + ')}
+                  </p>
+                  {manager && choice && (
+                    <p className="welcome-fine">
+                      Manager: {names[manager]} · {choice.model ?? `latest ${choice.family}`}
+                    </p>
+                  )}
+                </>
+              );
+            })()}
           <a className="flow-button" href="#/models">
             <Users size={17} />
-            Choose team defaults
+            Edit team defaults
           </a>
           <p className="welcome-fine">
-            Already right? Continue below. Model versions and roles can be changed later; existing
+            Optional. Nothing needs to be chosen again here. Changes apply to new work; existing
             conversations keep their choices.
           </p>
         </article>
@@ -295,6 +308,19 @@ export function Welcome({ data }: { data: HomeData }) {
                     )
                     .map((task) => taskTiers[task]),
                 );
+                const rows = tiersHighToLow.map((tier) => {
+                  const choice = state.policy.policy.models[provider][tier];
+                  const model = choice.model
+                    ? catalog?.models.find((item) => item.id === choice.model)
+                    : latestFamily(catalog?.models ?? [], choice.family);
+                  const usable =
+                    validCatalog &&
+                    !!model &&
+                    (!choice.effort || model.efforts.includes(choice.effort));
+                  return { tier, choice, model, usable };
+                });
+                // Real unavailable-model problems stay open; routine detail stays collapsed.
+                const unavailable = validCatalog ? rows.filter((row) => !row.usable).length : 0;
                 return (
                   <section
                     className="welcome-provider"
@@ -344,17 +370,17 @@ export function Welcome({ data }: { data: HomeData }) {
                         {catalog.error}
                       </p>
                     )}
-                    <ul className="welcome-model-list">
-                      {tiersHighToLow.map((tier) => {
-                        const choice = state.policy.policy.models[provider][tier];
-                        const model = choice.model
-                          ? catalog?.models.find((item) => item.id === choice.model)
-                          : latestFamily(catalog?.models ?? [], choice.family);
-                        const usable =
-                          validCatalog &&
-                          !!model &&
-                          (!choice.effort || model.efforts.includes(choice.effort));
-                        return (
+                    <details className="welcome-model-details" open={unavailable > 0}>
+                      <summary>
+                        Model details ·{' '}
+                        {!validCatalog
+                          ? 'needs a current check'
+                          : unavailable
+                            ? `${unavailable} saved ${unavailable === 1 ? 'model' : 'models'} unavailable`
+                            : 'saved models available'}
+                      </summary>
+                      <ul className="welcome-model-list">
+                        {rows.map(({ tier, choice, model, usable }) => (
                           <li key={tier}>
                             <span>
                               <strong>{tierLabels[tier]}</strong>
@@ -377,12 +403,12 @@ export function Welcome({ data }: { data: HomeData }) {
                               )}
                             </span>
                           </li>
-                        );
-                      })}
-                    </ul>
-                    <a className="welcome-text-link" href="#/models">
-                      Review {names[provider]} model choices <ArrowUpRight size={15} />
-                    </a>
+                        ))}
+                      </ul>
+                      <a className="flow-button" href="#/models">
+                        Review {names[provider]} model choices <ArrowUpRight size={15} />
+                      </a>
+                    </details>
                   </section>
                 );
               })}
@@ -414,8 +440,11 @@ export function Welcome({ data }: { data: HomeData }) {
             <div className="welcome-step-top">
               <span className="welcome-number">04</span>
               <div>
-                <h2>QUARK scheduling</h2>
-                <p>QUARK shares provider allowance and computer capacity across your projects.</p>
+                <h2>QUARK scheduling (optional)</h2>
+                <p>
+                  Not required for setup. When turned on, QUARK shares provider allowance and
+                  computer capacity across your projects.
+                </p>
               </div>
             </div>
             {!data.work.data || data.work.error ? (
@@ -478,7 +507,7 @@ export function Welcome({ data }: { data: HomeData }) {
           </a>
         </aside>
       </div>
-      <a className="welcome-text-link" href="#/home">
+      <a className="flow-button" href="#/home">
         Open home <ArrowUpRight size={16} />
       </a>
     </section>

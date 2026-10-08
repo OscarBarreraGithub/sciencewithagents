@@ -43,6 +43,8 @@ controls available and explained. Verify failure/retry, persistence and first-ru
 not only preconfigured fixtures. Test appropriate to the change; do not run the full developer
 suite for ordinary installation or repeat passing suites without a new concern.
 UI checks cover 412×915, 360×800, 915×412 and desktop; distinguish emulation from real devices.
+App actions must look like buttons, not unstyled text links. Match adjacent secondary
+controls, including three-dot menus; follow docs/DESIGN.md for interaction styling.
 
 Own and close temporary servers/browsers after checks. Archive sessions created by real-provider
 fixtures through supported provider APIs. Leave the optional login service off unless requested.

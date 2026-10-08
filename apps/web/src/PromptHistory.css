@@ -1,0 +1,68 @@
+.prompt-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border, var(--line));
+}
+.prompt-history-actions button,
+.prompt-history-pages button {
+  padding: 8px 10px;
+  min-height: 44px;
+  border: 1px solid var(--border, var(--line));
+  border-radius: 8px;
+  background: white;
+  color: inherit;
+  font-size: var(--text-small);
+}
+.prompt-history-dialog {
+  width: min(520px, calc(100vw - 24px));
+}
+.prompt-history-list {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+.prompt-history-choice {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 12px;
+  min-height: 44px;
+  border: 1px solid var(--border, var(--line));
+  border-radius: 10px;
+  background: #f7f8f5;
+  color: inherit;
+  text-align: left;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.prompt-history-choice time,
+.prompt-history-open {
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.prompt-history-open {
+  color: #506b42;
+  font-weight: 600;
+}
+.prompt-history-choice:hover {
+  background: #eef3e9;
+}
+.mirror-history > button {
+  min-height: 44px;
+}
+.prompt-history-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.message.prompt-selected .message-body,
+.mirror-message.prompt-selected {
+  outline: 2px solid #86a66e;
+  outline-offset: 4px;
+}

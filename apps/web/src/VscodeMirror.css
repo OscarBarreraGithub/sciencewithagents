@@ -603,11 +603,34 @@
   min-height: 44px;
   margin: 0;
 }
+.mirror-compose-tools .mirror-stop-button {
+  min-height: 44px;
+  padding-block: 6px;
+}
+.mirror-stop-button > svg {
+  display: none;
+}
 .mirror-compose-tools > .mirror-stop-row {
   margin: 0 0 0 auto;
 }
 @container (max-width: 459px) {
   .mirror-compose-tools .mirror-notepad > svg {
+    display: block;
+  }
+  .mirror-compose-tools .mirror-notepad,
+  .mirror-compose-tools .mirror-stop-button[data-action='stop'] {
+    justify-content: center;
+    flex-shrink: 0;
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 5px;
+  }
+  .mirror-compose-tools .mirror-stop-button[data-action='stop'] > svg {
+    display: block;
+  }
+  .mirror-compose-tools .mirror-notepad > span,
+  .mirror-compose-tools .mirror-stop-button[data-action='stop'] > span {
     display: none;
   }
   .mirror-compose-tools .mirror-send-timing {
@@ -666,6 +689,11 @@
   margin: 0;
   font-size: var(--text-small);
   flex: 1 1 12rem;
+}
+/* The keyboard's visible viewport already excludes the home indicator. Keeping
+   its safe-area inset here leaves an empty band above the keyboard on iPhone. */
+.mirror-composer[data-keyboard] {
+  padding-bottom: 6px;
 }
 .mirror-notepad {
   display: inline-flex;

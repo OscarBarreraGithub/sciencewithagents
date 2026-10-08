@@ -197,14 +197,24 @@
   margin-top: 5px;
   line-height: 1.5;
 }
-.welcome-text-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: #305dc3;
-  font-size: var(--text-small);
+.welcome-model-details > summary {
   min-height: 44px;
-  text-decoration: none;
+  padding: 10px 14px;
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  background: var(--home-surface, white);
+  color: var(--home-ink);
+  font-size: var(--text-small);
+  font-weight: 600;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.welcome-model-details > summary:focus-visible {
+  outline: 2px solid var(--accent, #4350dc);
+  outline-offset: 2px;
+}
+.welcome-model-details[open] > summary {
+  margin-bottom: 12px;
 }
 .welcome-phone {
   display: flex;

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import {
   quarkStatusSchema,
   allowanceWindowLabel,
@@ -58,6 +59,8 @@ export function ProjectHourlyBudget({
     confirmed.current = existing;
   const latest = confirmed.current?.windowId === windowId ? confirmed.current : existing;
   const rangeId = useId();
+  const detailsId = useId();
+  const [details, setDetails] = useState(false);
   const draft = useRef<number | null>(null);
   const numericText = useRef<string | null>(null);
   const pending = useRef<{ key: string; [field: string]: unknown } | null>(null);
@@ -81,8 +84,8 @@ export function ProjectHourlyBudget({
   );
   const rateLabel =
     rate?.estimatedPercentPerHour === null || rate?.estimatedPercentPerHour === undefined
-      ? 'Waiting for enough readings'
-      : `≈${Number(rate.estimatedPercentPerHour.toFixed(1))}% / hour${rate.stale ? ' · old reading' : ''}`;
+      ? 'Now: waiting for readings'
+      : `Now ≈${Number(rate.estimatedPercentPerHour.toFixed(1))}% / hour${rate.stale ? ' · old reading' : ''}`;
   // Advisory only: a ready reading may prefill an unsaved field; it is never saved on its own.
   const advice = rate?.adaptive;
   const advised =
@@ -174,7 +177,7 @@ export function ProjectHourlyBudget({
     <section className="quark-project-rate" aria-label={`${provider.label} project rate`}>
       <div className="quark-rate-current">
         <strong>{provider.label}</strong>
-        <span>Current {rateLabel}</span>
+        <span>{rateLabel}</span>
       </div>
       {!windowId ? (
         <p>No reported allowance window yet. Refresh usage before setting a rate.</p>
@@ -270,44 +273,26 @@ export function ProjectHourlyBudget({
           </div>
           {latest?.enabled && latest.limitPercent === 0 && (
             <p className="quark-rate-paused">
-              {provider.label} paused for this project. Raise the saved rate to permit recovery.
+              {provider.label} paused for this project. Raise the rate to allow recovery.
             </p>
           )}
-          {!limited && (
-            <small>
-              No project rate limit. Moving the slider sets one; 0 pauses this provider.
-            </small>
-          )}
-          <small className="quark-rate-advice">{adviceText}</small>
-          {advice?.resetsAt && (
-            <small>
-              Reported window resets{' '}
-              {new Date(advice.resetsAt).toLocaleString([], {
-                weekday: 'short',
-                hour: 'numeric',
-                minute: '2-digit',
-              })}
-            </small>
-          )}
-          {latest?.enabled && (
-            <small>
-              ≈{Number(latest.spentPercent.toFixed(1))}% used in the rolling hour
-              {latest.reservedPercent > 0 &&
-                ` · ≈${Number(latest.reservedPercent.toFixed(1))}% in flight`}
-            </small>
-          )}
           {latest?.reason && latest.limitPercent !== 0 && <small>{latest.reason}</small>}
-          {latest?.nextEligibleAt && (
-            <small>
-              Earlier usage starts to leave the hour at{' '}
-              {new Date(latest.nextEligibleAt).toLocaleTimeString([], {
-                hour: 'numeric',
-                minute: '2-digit',
-              })}
-              .
-            </small>
+          {suggestion !== null && draft.current === null && (
+            <small>Suggested {suggestion}% / hour · not saved</small>
           )}
-          <small role="status">{status || 'Release to save'}</small>
+          {/* Status and the Details button share one row, so saving never shifts the card. */}
+          <div className="quark-rate-foot">
+            <small role="status">{status}</small>
+            <button
+              type="button"
+              className="flow-button quark-more-button"
+              aria-expanded={details}
+              aria-controls={detailsId}
+              onClick={() => setDetails(!details)}
+            >
+              Details <ChevronDown size={16} aria-hidden="true" />
+            </button>
+          </div>
           {error && (
             <div className="quark-budget-error">
               <p role="alert">{error}</p>
@@ -332,9 +317,37 @@ export function ProjectHourlyBudget({
               </button>
             </div>
           )}
-          <RateHistory rate={rate} />
-          <details>
-            <summary>Rate options</summary>
+          {/* Already-loaded readings only: opening Details makes no request or model call. */}
+          <div id={detailsId} className="quark-more-panel" hidden={!details}>
+            <RateHistory rate={rate} />
+            <small className="quark-rate-advice">{adviceText}</small>
+            {advice?.resetsAt && (
+              <small>
+                Reported window resets{' '}
+                {new Date(advice.resetsAt).toLocaleString([], {
+                  weekday: 'short',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </small>
+            )}
+            {latest?.enabled && (
+              <small>
+                ≈{Number(latest.spentPercent.toFixed(1))}% used in the rolling hour
+                {latest.reservedPercent > 0 &&
+                  ` · ≈${Number(latest.reservedPercent.toFixed(1))}% in flight`}
+              </small>
+            )}
+            {latest?.nextEligibleAt && (
+              <small>
+                Earlier usage starts to leave the hour at{' '}
+                {new Date(latest.nextEligibleAt).toLocaleTimeString([], {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+                .
+              </small>
+            )}
             <label>
               Reported allowance window
               <select
@@ -373,11 +386,6 @@ export function ProjectHourlyBudget({
                 Use shared pace
               </button>
             )}
-            <small>
-              A lower rate can wait for recent usage to leave the hour. Work in flight may overshoot
-              while stopping. Raising from 0 needs a confirmed stop, fresh readings and room under
-              every other hold.
-            </small>
             {saved
               .filter((b) => b.windowId !== windowId && b.enabled)
               .map((b) => (
@@ -386,7 +394,15 @@ export function ProjectHourlyBudget({
                   {b.limitPercent}% / hour.
                 </small>
               ))}
-          </details>
+            <small>
+              {!limited && 'No project rate limit; moving the slider sets one and 0 pauses. '}
+              Current rates are estimates; saved rates cap the rolling hour alongside total caps,
+              shared reserves and other pauses. A lower rate can wait for recent usage to leave the
+              hour, and work in flight may overshoot while stopping. Raising from 0 needs a
+              confirmed stop, fresh readings and room under every other hold. Chart gaps mean no
+              reading.
+            </small>
+          </div>
         </>
       )}
     </section>

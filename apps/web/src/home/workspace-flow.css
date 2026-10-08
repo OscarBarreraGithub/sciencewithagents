@@ -2125,14 +2125,13 @@
   flex: 1;
   min-width: 0;
 }
-/* The options trigger is quiet: no border or fill until hover, focus or an open menu. */
+/* List options stay quiet; header options use the same surface as adjacent tools. */
 .conversation-menu-trigger {
   flex-shrink: 0;
   width: 44px;
   padding: 0;
 }
 .conversation-visible-row > .conversation-menu-trigger,
-.chat-pane-tools > .conversation-menu-trigger,
 .mirror-header > .conversation-menu-trigger,
 .chat-offline-tools > .conversation-menu-trigger {
   border-color: transparent;
