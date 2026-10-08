@@ -85,6 +85,10 @@ Other author–year styles and non-equation cross-reference numbering still need
 An explicitly named local figure may omit its extension. Reading tries the exact name,
 then PDF, PNG, JPG, JPEG, WebP and GIF under the same folder and file-size checks. It does
 not search folders or infer missing paths; unavailable figures keep an Original PDF note.
+Reading also supports one literal, top-level preamble `\graphicspath` declaration with
+up to 16 local directories. It checks the source directory first, then the declared order,
+using the same extension and file guards. Macro, conditional and scoped path declarations
+still need Original PDF.
 PDF figure conversion shares Reading’s 60-second conversion budget. When time runs out,
 the paper’s body, completed figures and raster images remain available; each unconverted
 figure keeps its Original PDF note.
@@ -92,6 +96,10 @@ figure keeps its Original PDF note.
 Reading mode interprets LaTeX content, not every package's print layout. Complex package
 commands may need Original PDF; missing figures are marked. An ordinary PDF without its
 LaTeX source keeps the PDF viewer rather than claiming reliable mathematical reflow.
+For a wide display equation with one unambiguous top-level `=`, Reading can place the
+unchanged left side above the unchanged `= right side`, at the same font size. It keeps
+the original line when it fits. Unsupported or still-wide expressions retain their own
+horizontal scroll and direction hint; sources, labels and Original PDF stay unchanged.
 Includes outside the registered folder are refused in Reading mode. Inputs are bounded to
 100 files / 8 MB combined, conversions to 30 seconds per operation, with one reading build
 at a time. Missing conversion tools have a retry action; the original PDF stays available.

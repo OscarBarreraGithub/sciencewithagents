@@ -8,6 +8,7 @@ import { mapFrontMatter, withFrontMatter } from './reading-front-matter.js';
 import {
   applySourceRules,
   bodyStart,
+  braceBalance,
   closeOpenBraces,
   dropPassage,
   isPlainTex,
@@ -363,6 +364,26 @@ async function convertReading(
     return unavailable(plainTexSentence);
   }
   text = mapFrontMatter(applySourceRules(text, health), health);
+  // A single literal, top-level preamble declaration is data, not TeX execution.
+  // Keep the source directory first; do not guess macro/conditional or scoped paths.
+  const figureDirectories = [''];
+  const preamble = text.slice(0, Math.max(0, bodyStart(text)));
+  const declarations = text.matchAll(/\\graphicspath\b/g);
+  const declaration = declarations.next().value;
+  if (declaration && declaration.index < preamble.length && declarations.next().done) {
+    const preceding = preamble.slice(0, declaration.index);
+    const literal = /^\\graphicspath\s*\{\s*((?:\{[^{}\\]*\}\s*){1,16})\}/.exec(
+      preamble.slice(declaration.index),
+    );
+    if (
+      literal &&
+      braceBalance(preceding) === 0 &&
+      !/\\(?:if[A-Za-z]*|else|fi|begingroup|endgroup|bgroup|egroup|begin|end)\b/.test(preceding)
+    )
+      for (const [, directory] of literal[1]!.matchAll(/\{([^{}]*)\}/g))
+        if (directory && !/[:\0\\]/.test(directory) && !directory.startsWith('/'))
+          figureDirectories.push(directory);
+  }
   const body = bodyStart(text);
   text = text.replace(missingMarker, (_, name: string, offset: number) =>
     offset > body
@@ -535,14 +556,16 @@ async function convertReading(
       // TeX permits an omitted graphics extension. Try only this explicit stem,
       // in a fixed order, retaining the same canonical-root and file-size checks.
       let path: string | undefined;
-      for (const suffix of extname(name)
-        ? ['']
-        : ['', '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif']) {
-        try {
-          path = await local(resolve(dirname(source), name + suffix));
-          break;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      search: for (const directory of figureDirectories) {
+        for (const suffix of extname(name)
+          ? ['']
+          : ['', '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif']) {
+          try {
+            path = await local(resolve(dirname(source), directory, name + suffix));
+            break search;
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          }
         }
       }
       if (!path) throw new Error('Missing figure');

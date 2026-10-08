@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import type { SavedDocument } from '@dock/shared';
+import { readingEqualityLayout } from '../../src/readingMathLayout';
 
 // A tiny standards-compliant PDF with two real, selectable-text pages; no binary fixture is shipped.
 function pdfFixture() {
@@ -679,4 +680,132 @@ test('phone formatting is an explicit selectable request and leaves original rea
   await expect(page.getByRole('heading', { name: 'Original report' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('phone-formatting.png') });
+});
+
+test('Reading equality candidates retain substrings and decline uncertain TeX boundaries', () => {
+  const tex = String.raw`\mathrm{Attention}(Q, K, V) = \mathrm{softmax}(\frac{QK^T}{\sqrt{d_k}})V`;
+  expect(readingEqualityLayout(tex)).toBe(
+    String.raw`\begin{gathered}\mathrm{Attention}(Q, K, V) \\= \mathrm{softmax}(\frac{QK^T}{\sqrt{d_k}})V\end{gathered}`,
+  );
+  expect(readingEqualityLayout(String.raw`\mathbf{a}=b`)).toBe(
+    String.raw`\begin{gathered}\mathbf{a}\\=b\end{gathered}`,
+  );
+  // Unscoped declarations can reset at a gathered row, changing the RHS appearance.
+  for (const declaration of [
+    'bf',
+    'rm',
+    'it',
+    'sf',
+    'tt',
+    'cal',
+    'mit',
+    'tiny',
+    'sixptsize',
+    'scriptsize',
+    'footnotesize',
+    'small',
+    'normalsize',
+    'large',
+    'Large',
+    'LARGE',
+    'huge',
+    'Huge',
+  ]) {
+    expect(readingEqualityLayout(`\\${declaration} a=b`)).toBeNull();
+    expect(readingEqualityLayout(`a=\\${declaration} b`)).toBeNull();
+  }
+  for (const uncertain of [
+    'a <= b',
+    'a < = b',
+    'a >= b',
+    'a != b',
+    'a == b',
+    'a=b=c',
+    'a=(b',
+    'a(b=c)',
+    String.raw`\text{a=b}`,
+    String.raw`a=\text{b}`,
+    String.raw`\verb|a=b|`,
+    String.raw`a\=b`,
+    String.raw`a\not=b`,
+    String.raw`\textstyle a=b`,
+    String.raw`\color{red}a=b`,
+    String.raw`\{a=b\}`,
+    String.raw`a\\ b=c`,
+    String.raw`\left(a=b\right)`,
+    String.raw`\langle a=b\rangle`,
+    String.raw`\begin{bmatrix}a=b\end{bmatrix}`,
+    String.raw`a&=b`,
+  ])
+    expect(readingEqualityLayout(uncertain)).toBeNull();
+});
+
+test('cached attention equality fits the Reading column without changing its scientific tokens', async ({
+  page,
+}, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const data = await fixture(page);
+  // Exact equation from cached1706.03762/model_architecture.tex; label supplied by this fixture.
+  const tex = String.raw`\mathrm{Attention}(Q, K, V) = \mathrm{softmax}(\frac{QK^T}{\sqrt{d_k}})V`;
+  const wide = String.raw`z=\frac{${'a+'.repeat(70)}b}{c}`;
+  const html = `<p>Scaled dot-product attention, equation <a href="#eq:attention" data-reference-type="ref">7</a>.</p><span class="math display">\\[\\begin{equation}\\label{eq:attention}${tex}\\end{equation}\\]</span><span class="math display">\\[${wide}\\]</span>`;
+  await page.route('**/api/documents/*/reading', (route) =>
+    route.fulfill({
+      json: { available: true, html, labels: { 'eq:attention': '7' }, warnings: [] },
+    }),
+  );
+  await page.goto(`/#/latex/${data.doc.id}`);
+  const reader = page.getByRole('dialog', { name: 'PDF reader' });
+  const equation = reader.getByRole('region', { name: 'Equation 7', exact: true });
+  await expect(equation).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const wrapped = equation.locator('.reading-equation-wrapped');
+  const original = equation.locator('.reading-equation-original');
+  const formula = equation.locator('.reading-equation-content > span').first();
+  const inspect = async () => {
+    await expect
+      .poll(() => equation.evaluate((element) => element.scrollWidth <= element.clientWidth + 3))
+      .toBe(true);
+    expect(await original.locator('annotation').textContent()).toBe(tex);
+    expect(await wrapped.locator('annotation').textContent()).toBe(readingEqualityLayout(tex));
+    await expect(formula.getByRole('math')).toHaveCount(1);
+    await expect(equation.locator('.reading-equation-number')).toContainText('(7)');
+    await expect(reader.locator('#eq\\:attention')).toHaveCount(1);
+    expect(
+      await reader
+        .getByLabel('Reading pages')
+        .evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+    ).toBe(true);
+  };
+  await inspect();
+  const dimensions = await equation.evaluate((element) => ({
+    available: element.clientWidth,
+    rendered: element.scrollWidth,
+    natural: element.querySelector('.reading-equation-original .katex')!.getBoundingClientRect()
+      .width,
+    wrapped: !element.querySelector<HTMLElement>('.reading-equation-wrapped')!.hidden,
+  }));
+  await info.attach('attention-width', {
+    body: JSON.stringify(dimensions),
+    contentType: 'application/json',
+  });
+  expect(dimensions.wrapped).toBe(dimensions.natural > dimensions.available + 3);
+  for (let i = 0; i < 2; i++) await reader.getByRole('button', { name: 'Larger text' }).click();
+  await inspect();
+  if (['phone', 'small-phone'].includes(info.project.name)) await expect(wrapped).toBeVisible();
+  const fallback = reader.getByRole('region', { name: 'Equation', exact: true });
+  expect(await fallback.evaluate((element) => element.scrollWidth > element.clientWidth + 3)).toBe(
+    true,
+  );
+  await expect(fallback.locator('..').getByText('More equation →', { exact: true })).toBeVisible();
+  await fallback.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  await expect(fallback.locator('..').getByText('← More equation', { exact: true })).toBeVisible();
+  for (let i = 0; i < 2; i++) await reader.getByRole('button', { name: 'Smaller text' }).click();
+  await inspect();
+  await expect(reader.locator('.katex-error')).toHaveCount(0);
+  await expect.poll(() => errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath('attention-reflow.png') });
 });

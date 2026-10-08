@@ -7,6 +7,7 @@ import {
   type DocumentReadingResponse as Reading,
 } from '@dock/shared';
 import { apiScope, apiUrl } from './api';
+import { readingEqualityLayout } from './readingMathLayout';
 import 'katex/dist/katex.min.css';
 
 export function DocumentReading({
@@ -106,6 +107,25 @@ export function DocumentReading({
         maxExpand: 1000,
         maxSize: 20,
       });
+      const candidate = display && readingEqualityLayout(resolved);
+      if (candidate && !formula.querySelector('.katex-error')) {
+        const original = document.createElement('span');
+        original.className = 'reading-equation-original';
+        original.append(...formula.childNodes);
+        const wrapped = document.createElement('span');
+        wrapped.className = 'reading-equation-wrapped';
+        wrapped.hidden = true;
+        katex.render(candidate, wrapped, {
+          displayMode: true,
+          throwOnError: false,
+          trust: false,
+          strict: 'ignore',
+          maxExpand: 1000,
+          maxSize: 20,
+        });
+        if (wrapped.querySelector('.katex-error')) formula.append(...original.childNodes);
+        else formula.append(original, wrapped);
+      }
       if (display && number !== undefined) {
         const tag = document.createElement('span');
         tag.className = 'reading-equation-number';
@@ -184,9 +204,10 @@ export function DocumentReading({
       ...root.querySelectorAll<HTMLElement>('.math.display, .reading-table-scroll'),
     ];
     let disposed = false;
-    // Each pass reads every geometry it needs before writing, and writes only changes, so a pass
-    // costs at most two layouts however many equations it covers. (Interleaving reads and writes
-    // forced one layout per equation: hundreds of milliseconds per scroll event on a phone.)
+    let frame = 0;
+    const pending = new Set<HTMLElement>();
+    // Batch geometry reads before each stage's writes: relation layout, number placement,
+    // then overflow cues. Never alternate reads/writes once per equation.
     const hint = (equation: HTMLElement) =>
       equation.parentElement!.querySelector<HTMLElement>(':scope > .reading-overflow-hint')!;
     const cue = (equation: HTMLElement) => {
@@ -210,6 +231,23 @@ export function DocumentReading({
     };
     const update = (targets: Iterable<HTMLElement>) => {
       if (disposed) return;
+      const layouts = [];
+      for (const equation of targets) {
+        const original = equation.querySelector<HTMLElement>('.reading-equation-original');
+        const wrapped = equation.querySelector<HTMLElement>('.reading-equation-wrapped');
+        const natural = original?.querySelector<HTMLElement>('.katex');
+        if (original && wrapped && natural)
+          layouts.push({
+            original,
+            wrapped,
+            reflow: natural.getBoundingClientRect().width > equation.clientWidth + 3,
+          });
+      }
+      for (const { original, wrapped, reflow } of layouts) {
+        original.classList.toggle('reading-equation-clipped', reflow);
+        original.setAttribute('aria-hidden', String(reflow));
+        wrapped.hidden = !reflow;
+      }
       const stacks = [];
       for (const equation of targets) {
         const content = equation.querySelector<HTMLElement>('.reading-equation-content');
@@ -236,8 +274,18 @@ export function DocumentReading({
       const content = equation.querySelector('.reading-equation-content, table');
       if (content) owner.set(content, equation);
     }
+    const schedule = (targets: Iterable<HTMLElement>) => {
+      for (const target of targets) pending.add(target);
+      if (!frame)
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          const targets = [...pending];
+          pending.clear();
+          update(targets);
+        });
+    };
     const resize = new ResizeObserver((entries) =>
-      update(new Set(entries.map((entry) => owner.get(entry.target)!))),
+      schedule(new Set(entries.map((entry) => owner.get(entry.target)!))),
     );
     const scrolled = (event: Event) => {
       if (!disposed) show(cue(event.currentTarget as HTMLElement));
@@ -247,9 +295,12 @@ export function DocumentReading({
       if (element === equation) equation.addEventListener('scroll', scrolled, { passive: true });
     }
     update(equations);
-    void document.fonts.ready.then(() => update(equations));
+    void document.fonts.ready.then(() => {
+      if (!disposed) schedule(equations);
+    });
     return () => {
       disposed = true;
+      cancelAnimationFrame(frame);
       resize.disconnect();
       for (const equation of equations) equation.removeEventListener('scroll', scrolled);
     };

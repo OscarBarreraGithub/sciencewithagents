@@ -624,7 +624,9 @@ test('known archives survive an optional-route loss across Home/Chats and remain
   });
   const count = page.locator('.overview-destinations a[href="#/chats"] small');
   await expect(count).toHaveText(/project manager/);
-  const before = await count.textContent();
+  // The editor connection count loads independently of archived app conversations.
+  const appCount = async () => (await count.textContent())?.replace(/ · \d+ VS Code chats?$/, '');
+  const before = await appCount();
   await page.route('**/api/conversations/visibility', (route) =>
     route.fulfill({ status: 404, json: { error: 'Optional route absent' } }),
   );
@@ -647,7 +649,7 @@ test('known archives survive an optional-route loss across Home/Chats and remain
   await page.evaluate(() => {
     location.hash = '#/home';
   });
-  await expect(count).toHaveText(before!);
+  await expect.poll(appCount).toBe(before);
 
   const host = randomUUID();
   const prefix = `/api/hosts/${host}/proxy`;

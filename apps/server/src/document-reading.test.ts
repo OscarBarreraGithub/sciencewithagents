@@ -176,6 +176,80 @@ Final prose.`,
     expect(absent.html).toContain('Figure available in Original PDF');
   });
 
+  it('resolves literal preamble graphicspath directories with existing name and extension precedence', async () => {
+    const home = join(root, 'source');
+    await mkdir(join(home, 'figures'));
+    await mkdir(join(home, 'other'));
+    const secondary = Buffer.concat([png, Buffer.from('secondary')]);
+    await writeFile(join(home, 'local.png'), png);
+    await writeFile(join(home, 'figures', 'local.png'), secondary);
+    await writeFile(join(home, 'figures', 'diagram.png'), png);
+    await writeFile(join(home, 'figures', 'diagram.jpg'), secondary);
+    await writeFile(join(home, 'other', 'diagram.png'), secondary);
+    const body = String.raw`Original prose $x=1$.
+\includegraphics{local}\includegraphics{diagram}\includegraphics{diagram.jpg}
+\includegraphics{diagram.jpeg}`;
+    const preamble = String.raw`\usepackage{graphicx}\graphicspath{{figures/}{other/}}`;
+    const reading = await read(body, preamble);
+    expect(reading.html.match(/reader-asset:/g)).toHaveLength(3);
+    const images = [...reading.html.matchAll(/reader-asset:([a-f0-9]{64}\.[a-z]+)/g)].map(
+      (match) => match[1],
+    );
+    expect(images[0]).toBe(images[1]);
+    expect(images[2]).toMatch(/\.jpg$/);
+    expect(reading.html.match(/Figure available in Original PDF\./g)).toHaveLength(1);
+    expect(reading.html).toContain('Original prose');
+    expect(reading.html).toContain('x=1');
+    expect(await readFile(join(home, 'main.tex'), 'utf8')).toContain(preamble);
+    expect(await readFile(join(home, 'figures', 'diagram.png'))).toEqual(png);
+  });
+
+  it('keeps graphicspath candidates within the registered folder and rejects oversized assets', async () => {
+    const home = join(root, 'source');
+    await mkdir(join(home, 'figures'));
+    await writeFile(join(root, 'outside.png'), png);
+    await symlink(join(root, 'outside.png'), join(home, 'figures', 'diagram.png'));
+    const preamble = String.raw`\graphicspath{{figures/}}`;
+    const outside = await read(String.raw`Body.\includegraphics{diagram}`, preamble);
+    expect(outside.html).not.toContain('reader-asset:');
+    expect(outside.html).toContain('Figure available in Original PDF');
+    await rm(join(home, 'figures', 'diagram.png'));
+    await writeFile(join(home, 'figures', 'diagram.png'), Buffer.alloc(8 * 1024 ** 2 + 1));
+    const oversized = await read(String.raw`Body.\includegraphics{diagram}`, preamble);
+    expect(oversized.html).not.toContain('reader-asset:');
+    expect(oversized.html).toContain('Figure available in Original PDF');
+    expectHumanMessages(outside);
+    expectHumanMessages(oversized);
+  });
+
+  it('does not infer graphicspath directories from macros, conditionals or ambiguous declarations', async () => {
+    const home = join(root, 'source');
+    await mkdir(join(home, 'figures'));
+    await writeFile(join(home, 'figures', 'diagram.png'), png);
+    for (const preamble of [
+      String.raw`\newcommand{\unused}{\graphicspath{{figures/}}}`,
+      String.raw`\iffalse\graphicspath{{figures/}}\fi`,
+      String.raw`\begingroup\graphicspath{{figures/}}\endgroup`,
+      String.raw`\bgroup\graphicspath{{figures/}}\egroup`,
+      String.raw`\begin{filecontents}{fake.tex}
+\graphicspath{{figures/}}
+\end{filecontents}`,
+      String.raw`\newcommand{\figurefolder}{figures/}\graphicspath{{\figurefolder}}`,
+      String.raw`\graphicspath{{figures/}}\graphicspath{{\unknown}}`,
+      `\\graphicspath{${'{figures/}'.repeat(17)}}`,
+    ]) {
+      const reading = await read(String.raw`Body.\includegraphics{diagram}`, preamble);
+      expect(reading.html).not.toContain('reader-asset:');
+      expect(reading.html).toContain('Figure available in Original PDF');
+    }
+    const laterOverride = await read(
+      String.raw`\graphicspath{{unknown/}}Body.\includegraphics{diagram}`,
+      String.raw`\graphicspath{{figures/}}`,
+    );
+    expect(laterOverride.html).not.toContain('reader-asset:');
+    expect(laterOverride.html).toContain('Figure available in Original PDF');
+  });
+
   it('retains placeholders for unavailable, outside-root and oversized extensionless figures', async () => {
     const home = join(root, 'source');
     await writeFile(join(root, 'outside.png'), png);

@@ -707,6 +707,19 @@
 .document-reading .reading-equation-content > span {
   flex: 0 0 auto;
 }
+.reading-equation-original,
+.reading-equation-wrapped {
+  display: block;
+}
+.reading-equation-wrapped[hidden] {
+  display: none;
+}
+.reading-equation-original.reading-equation-clipped {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
 .document-reading .reading-equation-number {
   margin: 0;
   padding: 0;
