@@ -153,12 +153,10 @@ async function controllerRoutes(page: Page, prefix: string) {
         contentType: 'text/event-stream',
         body: 'event: ready\ndata: {}\n\n',
       });
-    const response = await page.request.fetch(url, {
-      method: source.method(),
-      data: source.postData() ?? undefined,
-      headers: { 'Content-Type': 'application/json', Origin: new URL(source.url()).origin },
+    return route.continue({
+      url,
+      headers: { ...source.headers(), Origin: new URL(source.url()).origin },
     });
-    return route.fulfill({ response });
   });
   const calls = { creates: [] as Record<string, unknown>[], opens: [] as { key: string }[] };
   let release = () => {};
@@ -222,12 +220,10 @@ for (const via of ['local', 'selected'] as const)
             contentType: 'text/event-stream',
             body: 'event: ready\ndata: {}\n\n',
           });
-        const response = await page.request.fetch(url, {
-          method: source.method(),
-          data: source.postData() ?? undefined,
-          headers: { 'Content-Type': 'application/json', Origin: new URL(source.url()).origin },
+        return route.continue({
+          url,
+          headers: { ...source.headers(), Origin: new URL(source.url()).origin },
         });
-        return route.fulfill({ response });
       });
     const { projectId, remote, managerName, calls, release } = await controllerRoutes(page, prefix);
     await page.goto('/#/new');
@@ -387,12 +383,10 @@ test('a saved cluster scope mounts nothing nested until its controller verifies 
         contentType: 'text/event-stream',
         body: 'event: ready\ndata: {}\n\n',
       });
-    const response = await page.request.fetch(url, {
-      method: source.method(),
-      data: source.postData() ?? undefined,
-      headers: { 'Content-Type': 'application/json', Origin: baseURL! },
+    return route.continue({
+      url,
+      headers: { ...source.headers(), Origin: baseURL! },
     });
-    return route.fulfill({ response });
   });
   const opens: { key: string }[] = [];
   let answer: 'hold' | 'pending' | 'ready' = 'hold';
@@ -653,12 +647,10 @@ test('non-Git tracking is explicit and a lost consent receipt retries once acros
     const url = source.url().replace(nested, '/api');
     if (new URL(url).pathname === '/api/events')
       return route.fulfill({ contentType: 'text/event-stream', body: '' });
-    const response = await page.request.fetch(url, {
-      method: source.method(),
-      data: source.postData() ?? undefined,
-      headers: { 'Content-Type': 'application/json', Origin: new URL(source.url()).origin },
+    return route.continue({
+      url,
+      headers: { ...source.headers(), Origin: new URL(source.url()).origin },
     });
-    return route.fulfill({ response });
   });
   const writes = forbidden(page);
   await page.goto('/#/new');
@@ -760,12 +752,10 @@ test('first compute preparation keeps Notepad editable and opens verified cached
       url = source.url().replace(nested, '/api');
     if (new URL(url).pathname === '/api/events')
       return route.fulfill({ contentType: 'text/event-stream', body: '' });
-    const response = await page.request.fetch(url, {
-      method: source.method(),
-      data: source.postData() ?? undefined,
-      headers: { 'Content-Type': 'application/json', Origin: new URL(source.url()).origin },
+    return route.continue({
+      url,
+      headers: { ...source.headers(), Origin: new URL(source.url()).origin },
     });
-    return route.fulfill({ response });
   });
   const writes = forbidden(page);
   await page.goto('/#/new');

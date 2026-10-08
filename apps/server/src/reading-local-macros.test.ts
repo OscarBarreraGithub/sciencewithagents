@@ -5,6 +5,65 @@ import { readingHealth } from './reading-source-rules.js';
 
 const source = String.raw`\documentclass{article}\usepackage{author}\begin{document}$\opt$\end{document}`;
 const definition = String.raw`\newcommand{\opt}{\mathrm{opt}}`;
+const renewal = String.raw`\renewcommand{\op}{\mathrm{op}}`;
+describe('repeat-identical author renewals', () => {
+  it('restores the exact author norm subscript without changing the following math font', () => {
+    const health = readingHealth();
+    const macros = localReadingMacros(
+      source,
+      [{ file: 'template.sty', text: renewal + '\n' + renewal }],
+      health,
+    );
+    expect(macros).toEqual({ '\\op': String.raw`\mathrm{op}` });
+    expect(health.localMacros).toEqual([
+      { name: '\\op', file: 'template.sty', status: 'restored', reason: null, occurrences: 0 },
+    ]);
+    const expression = String.raw`\|V^{-1}\|_\op \leq 2+x`;
+    expect(() => katex.renderToString(expression, { throwOnError: true })).toThrow(
+      /Undefined control sequence/,
+    );
+    const options = { throwOnError: true, trust: false, maxExpand: 1000, maxSize: 20, macros };
+    const visual = (text: string) => text.replace(/<annotation[^>]*>.*?<\/annotation>/g, '');
+    const rendered = katex.renderToString(expression, options);
+    expect(visual(rendered)).toBe(
+      visual(katex.renderToString(String.raw`\|V^{-1}\|_\mathrm{op} \leq 2+x`, options)),
+    );
+    expect(rendered).toContain('<mi>x</mi>');
+    expect(rendered).toContain(expression);
+  });
+  it.each([
+    [renewal + String.raw`\renewcommand{\op}{\mathrm{different}}`, ''],
+    [renewal + String.raw`\newcommand{\op}{\mathrm{op}}`, ''],
+    [String.raw`\renewcommand{\op}[1]{\mathrm{op}}`.repeat(2), ''],
+    [renewal + '{' + renewal + '}', ''],
+    [String.raw`\iftrue` + renewal.repeat(2) + String.raw`\fi`, ''],
+    [renewal.repeat(2), String.raw`\def\op{x}`],
+    [renewal.repeat(2), renewal],
+    [renewal.repeat(2), String.raw`\renewcommand{\mathrm}[1]{\mathbf{#1}}`],
+    [renewal.repeat(2) + String.raw`\expandafter\other`, ''],
+    [String.raw`\renewcommand{\frac}{\mathrm{op}}`.repeat(2), ''],
+    [String.raw`\renewcommand{\op}{\op}`.repeat(2), ''],
+  ])('declines ambiguous or stateful repeated declarations %s %s', (text, later) => {
+    expect(
+      localReadingMacros(source + later, [{ file: 'template.sty', text }], readingHealth()),
+    ).toEqual({});
+  });
+  it('keeps cross-style collisions and single unsupported renewals as fallback', () => {
+    expect(
+      localReadingMacros(
+        source,
+        [
+          { file: 'one.sty', text: renewal },
+          { file: 'two.sty', text: renewal },
+        ],
+        readingHealth(),
+      ),
+    ).toEqual({});
+    expect(
+      localReadingMacros(source, [{ file: 'template.sty', text: renewal }], readingHealth()),
+    ).toEqual({});
+  });
+});
 describe('bounded local author macro data', () => {
   it('restores an exact zero-argument font atom without rewriting source or math', () => {
     const health = readingHealth();

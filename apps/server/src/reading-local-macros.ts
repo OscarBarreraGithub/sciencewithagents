@@ -21,9 +21,16 @@ const programming =
 const literalBody =
   /^(?:\\(mathrm|mathbf|mathbb|mathcal|mathfrak|mathsf|mathtt)\{[A-Za-z0-9 ]{1,64}\}|[A-Za-z]_\{\\(rm) [A-Za-z0-9 ]{1,64}\}|\\(epsilon))$/;
 export type LocalStyle = { file: string; text: string };
+function declarationBody(text: string, match: RegExpMatchArray) {
+  const following = text.slice(match.index! + match[0].length);
+  const opening = /^\s*(?:\[0\]\s*)?\{/.exec(following);
+  const open = opening ? match.index! + match[0].length + opening[0].length - 1 : -1;
+  const end = open >= 0 ? groupEnd(text, open) : -1;
+  return end >= 0 ? text.slice(open + 1, end - 1) : '';
+}
 
 /** This is a small data vocabulary, not a TeX interpreter. Collisions anywhere in the
- * loaded source/styles win over a candidate, including later and scoped overrides. */
+ * loaded source/styles win, except identical top-level renewals within one style. */
 export function localReadingMacros(source: string, styles: LocalStyle[], health: ReadingHealth) {
   const macros: Record<string, string> = {};
   if (styles.some((style) => style.text.length > localMacroLimits.styleChars)) {
@@ -42,27 +49,38 @@ export function localReadingMacros(source: string, styles: LocalStyle[], health:
     opaqueSource.test(text),
   );
   for (const { file, text } of styles) {
-    for (const match of text.matchAll(declarations)) {
-      if (match[1] !== 'newcommand') continue;
+    const local = [...text.matchAll(declarations)];
+    for (const match of local) {
+      const bareName = match[2] ?? match[3]!;
+      if (match[1] !== 'newcommand' && !(match[1] === 'renewcommand' && counts.get(bareName)! > 1))
+        continue;
       if (bindings.length === localMacroLimits.bindings) {
         health.notes.push('Some local macro definitions exceed Reading’s bounded support.');
         break;
       }
-      const name = '\\' + (match[2] ?? match[3]!);
+      const name = '\\' + bareName;
       if (name.length > 41) {
         const note = 'A local macro name exceeds Reading’s bounded support.';
         if (!health.notes.includes(note)) health.notes.push(note);
         continue;
       }
-      const following = text.slice(match.index! + match[0].length);
-      const opening = /^\s*(?:\[0\]\s*)?\{/.exec(following);
-      const open = opening ? match.index! + match[0].length + opening[0].length - 1 : -1;
-      const end = open >= 0 ? groupEnd(text, open) : -1;
-      const body = end >= 0 ? text.slice(open + 1, end - 1) : '';
+      const body = declarationBody(text, match);
+      const repeated = local.filter((other) => (other[2] ?? other[3]) === bareName);
+      // Every declaration must be the same zero-argument author renewal in this file;
+      // any source/other-style binding, different body or scoped copy still conflicts.
+      const sameRenewals =
+        match[1] === 'renewcommand' &&
+        repeated.length === counts.get(bareName) &&
+        repeated.every(
+          (other) =>
+            other[1] === 'renewcommand' &&
+            declarationBody(text, other) === body &&
+            braceBalance(text.slice(0, other.index)) === 0,
+        );
       const literal = literalBody.exec(body);
       const prefix = text.slice(0, match.index);
       const reason =
-        counts.get(name.slice(1)) !== 1
+        counts.get(bareName) !== 1 && !sameRenewals
           ? 'conflicting-definition'
           : braceBalance(prefix) !== 0 ||
               programming.test(text) ||
@@ -74,6 +92,7 @@ export function localReadingMacros(source: string, styles: LocalStyle[], health:
               : counts.has(literal[1] ?? literal[2] ?? literal[3]!) || !undefinedNative(name)
                 ? 'conflicting-definition'
                 : null;
+      if (sameRenewals && macros[name] === body) continue;
       bindings.push({
         name,
         file,

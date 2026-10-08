@@ -111,9 +111,11 @@ the paper’s body, completed figures and raster images remain available; each u
 figure keeps its Original PDF note.
 
 Plain preamble `\usepackage` references may supply local `.sty` author macros as data.
-Reading restores only unique zero-argument definitions made from scoped font atoms
+Reading restores unique zero-argument definitions made from scoped font atoms
 (such as `\mathrm{opt}`), one Latin atom with a local roman subscript (`d_{\rm IF}`),
-or the native `\epsilon` symbol, retaining source/provenance health. Conflicting, conditional,
+or the native `\epsilon` symbol, retaining source/provenance health. Top-level author
+`\renewcommand` bindings with identical literal bodies repeated in one style may use that vocabulary
+when no source/other-style definition or renderer builtin conflicts. Conflicting, conditional,
 scoped, recursive and unsupported definitions retain their source/PDF fallback. Styles
 are never executed and their package imports are not followed; no model call is made.
 An author alias for an unsupported command such as `\Tilde` remains unsupported; Reading
