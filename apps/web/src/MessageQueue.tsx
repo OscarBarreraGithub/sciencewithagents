@@ -12,6 +12,7 @@ export function MessageQueue({
   error,
   actions,
   detail,
+  counts,
   alert,
 }: {
   messages: readonly { id: string; text: string }[];
@@ -20,6 +21,8 @@ export function MessageQueue({
   actions?: (id: string) => ReactNode;
   /** Short state shown in the closed summary, such as held or uncertain items. */
   detail?: string;
+  /** Saved delivery stages can remain visible after leaving the runnable queue. */
+  counts?: { queued: number; handedOff: number; uncertain: number; held: number };
   /** Receipts and failures follow the open dialog so they are never hidden behind it. */
   alert?: ReactNode;
 }) {
@@ -40,7 +43,14 @@ export function MessageQueue({
       ? nativeQueueError
       : [
           // The count leads so a narrow or zoomed row still shows it.
-          `${messages.length}${hasMore ? '+' : ''} queued message${messages.length === 1 && !hasMore ? '' : 's'}`,
+          ...(!counts || counts.queued || hasMore
+            ? [
+                `${counts?.queued ?? messages.length}${hasMore ? '+' : ''} queued message${(counts?.queued ?? messages.length) === 1 && !hasMore ? '' : 's'}`,
+              ]
+            : []),
+          counts?.handedOff && `${counts.handedOff} awaiting confirmation`,
+          counts?.uncertain && `${counts.uncertain} delivery uncertain`,
+          counts?.held && `${counts.held} held`,
           detail,
           nativeQueueError?.toLowerCase(),
         ]

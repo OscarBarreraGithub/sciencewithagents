@@ -117,7 +117,7 @@ panels are unavailable in local mode; their saved records are retained. Native A
 Work keep the agent's ordinary tools. These optional panels remain available only with
 their separately configured adapter.
 
-## Private reading, files and Git
+## Shared files and Git
 
 GitHub is optional for messaging. For shared code/files, open **Manage group → Shared
 files** and copy the scoped setup prompt into your setup agent. It identifies this group’s
@@ -127,11 +127,9 @@ is separate from group membership. After setup, enable **Automatic sync** for re
 applied commits and clean checkouts. See [shared files and branches](GROUP_NATIVE_GIT.md).
 
 Private conversations, drafts, files and native history are not automatically published to
-the shared feed. **What mattered
-since last visit?** opens private catch-up without replacing your draft. It reads bounded
-shared evidence and retains its exact acknowledged snapshot across reload; unknown facts
-remain unknown. Notepad/draft conflicts require choosing a version rather than silently
-replacing your text.
+the shared feed. Previously saved private conversations and catch-up records stay private;
+the current two-tab Groups view does not expose those older controls. Notepad/draft conflicts
+require choosing a version rather than silently replacing your text.
 
 The older protected Git, captured-report and confirmed-action adapters remain separate
 from native mode and retain their records. Native shared-file sync uses ordinary task

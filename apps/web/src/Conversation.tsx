@@ -575,7 +575,11 @@ export function Conversation({
                 : row;
             const run = row.kind === 'user' && row.runId ? runsById.get(row.runId) : undefined;
             const delivery =
-              run?.status === 'queued' ? 'Queued' : run?.status === 'running' ? 'Sending' : null;
+              run?.status === 'queued'
+                ? 'Queued'
+                : run?.status === 'running'
+                  ? 'In progress'
+                  : null;
             return entry.image ? (
               <figure className="generated-image" key={entry.id}>
                 <ImagePreview

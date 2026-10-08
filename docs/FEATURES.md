@@ -186,7 +186,9 @@ Chats lists newest conversation activity first across managers, shared and offli
 connection/status changes do not reorder it. Shared dates require companion 0.2.15 or a
 native source that supplies timestamps; undated sources stay after dated chats.
 
-The compact **Queued messages** row opens a full-height list of short previews; **Read full
+The compact **Queued messages** row counts genuinely queued inputs separately from held
+edits, handoffs awaiting native confirmation and uncertain delivery. A running reply marks
+its owner message **In progress**. The row opens a full-height list of short previews; **Read full
 text** expands a message. App-managed messages and
 follow-ups queued here for shared VS Code chats can be held and edited in the notepad
 before dispatch; minimizing, reloads or another message completing never

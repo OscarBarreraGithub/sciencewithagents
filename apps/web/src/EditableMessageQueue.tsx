@@ -140,19 +140,20 @@ export function EditableMessageQueue({
       setBusy(false);
     }
   };
-  const held = shown.filter((run) => run.queueEdit?.state === 'editing').length;
-  const inspect = shown.filter(
-    (run) => run.queueEdit?.state === 'steering' || (run.status === 'uncertain' && !run.queueEdit),
-  ).length;
+  const counts = { queued: 0, handedOff: 0, uncertain: 0, held: 0 };
+  for (const run of shown) {
+    if (run.status === 'uncertain' || run.queueEdit?.state === 'steering') counts.uncertain++;
+    else if (run.status === 'running') counts.handedOff++;
+    else if (run.queueEdit?.state === 'editing') counts.held++;
+    else counts.queued++;
+  }
   const failure = error || (!clientId && workspace.error);
   return (
     <>
       <MessageQueue
         hasMore={hasMore}
         error={queueError}
-        detail={[held && `${held} held`, inspect && `${inspect} to inspect`]
-          .filter(Boolean)
-          .join(' · ')}
+        counts={counts}
         alert={
           (recoveries.length > 0 || failure) && (
             <>
