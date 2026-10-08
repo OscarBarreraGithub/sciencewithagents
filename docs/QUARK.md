@@ -111,7 +111,22 @@ configured when they were seen. See [Slurm cluster](CLUSTER.md).
 
 ## Managers need a QUARK lease
 
-An owner's app-managed manager conversation has a separate, off-by-default **Ignore QUARK**
+The manager chat's **… → Follow QUARK** switch controls its whole project, including
+workers. It defaults to On. Off skips QUARK allowance caps, reserves, rate/resource pacing
+and saved QUARK project pauses; it stays off until the owner switches it back on. Existing
+caps, usage and project-pause choices are retained and apply again when On. Held queue edits,
+Stop, explicit job/task holds, the host-wide pause, provider sign-in/permissions and native
+quota-rejection holds still apply. There is no automatic expiry. Normal app concurrency and
+conversation lifecycle rules remain in place.
+
+The owner-only `GET/POST /api/projects/:id/quark-scheduler` preference uses revision checks
+and durable receipts. It affects queued and running work without replacing native sessions.
+Acknowledged scheduler stops resume through the existing recovery path; an uncertain stop
+or actual native quota rejection is not replayed. QUARK continues accounting while Off but
+cannot automatically pause or send scheduling notices to an opted-out project. Explicit
+project controls supersede legacy reply-only exceptions. Global pacing is still optional.
+
+Misc manager conversations retain the separate, off-by-default **Ignore QUARK**
 preference. Its typed `GET/POST /api/agents/:id/chat-quark` contract saves an enabled value
 with a revision and idempotency receipt. Each new literal owner message captures that
 choice; an explicit preference save also updates its queued direct replies. A message receipt

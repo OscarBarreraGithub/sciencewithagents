@@ -690,7 +690,8 @@ export function ConfigPanel({
       </section>
       <section>
         <h3>Scheduling</h3>
-        {agent.role === 'manager' &&
+        {!managerView &&
+          agent.role === 'manager' &&
           !agent.taskId &&
           !agent.nativeRootId &&
           !agent.interview &&

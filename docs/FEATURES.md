@@ -161,6 +161,10 @@ refused autosave no longer blocks a corrected draft; uncertain saves keep their 
 retry identity. Shared editor delivery needs companion 0.2.14 or newer. Groups retain their
 separate shared-message limits. Model context limits remain provider-specific.
 
+Chats lists newest conversation activity first across managers, shared and offline records;
+connection/status changes do not reorder it. Shared dates require companion 0.2.15 or a
+native source that supplies timestamps; undated sources stay after dated chats.
+
 The compact **Queued messages** row opens a full-height list of short previews; **Read full
 text** expands a message. App-managed messages and
 follow-ups queued here for shared VS Code chats can be held and edited in the notepad
@@ -296,10 +300,11 @@ A reconnecting browser exposes its retained local draft for copying. Sends use d
 so retry does not silently resend accepted work. This does not make a powered-off computer
 available or cache the whole chat archive on the phone.
 
-A manager's Configure panel offers **Ignore QUARK for my replies**. It applies to existing
-queued and future direct owner messages; running replies retain their current choice. Manual
-pauses, edit holds, native permissions and provider limits still apply. Workers and observed
-native helper families remain under ordinary QUARK supervision.
+A project manager's **… → Follow QUARK** switch applies to the whole project and its
+workers. Off skips QUARK caps, reserves, pacing and saved project scheduling pauses until
+you turn it back on; limits and usage stay saved. Stop, held jobs, host-wide pause and native
+permissions/provider limits still apply. QUARK does not send automatic scheduling notices
+to opted-out projects. Misc conversations retain their separate reply-only preference.
 
 QUARK also reports spare capacity before a reset and projected reserve depletion. Its bounded
 coordinator wake-ups advise managers to advance suitable work while keeping provider choices,

@@ -8,6 +8,7 @@ export * from './work-items.js';
 export * from './archive.js';
 export * from './project-workflow.js';
 export * from './conversations.js';
+export * from './conversation-chronology.js';
 import { conversationSurfaceSchema } from './conversations.js';
 import {
   workItemPageQuerySchema,
@@ -160,6 +161,8 @@ export const agentSchema = z.object({
   checkpoint: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  // Derived from retained owner/reply entries; status/configuration changes are separate.
+  lastActivityAt: z.string().optional(),
   archivedAt: z.string().optional(),
 });
 export const projectSchema = z.object({

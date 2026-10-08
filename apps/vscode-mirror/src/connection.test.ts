@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { MirrorConnection, transcript, type Connection, type Provider } from './connection.js';
 import { patchedSource, supportedVersion } from './patch.js';
 
-function fixture() {
+function fixture(updatedAt?: number) {
   const providers = new Map<string, Provider>();
   const calls: { method: string; params: unknown }[] = [];
   let active = false;
@@ -28,6 +28,7 @@ function fixture() {
         result = {
           thread: {
             id: 'thread',
+            updatedAt,
             status: { type: active ? 'active' : 'idle' },
             turns: [
               {
@@ -56,6 +57,18 @@ function fixture() {
   return { connection, calls, mirror: new MirrorConnection(connection, 'Fixture') };
 }
 describe('native connection mirror', () => {
+  it('uses saved Codex conversation time without refreshing it on repeated reads', async () => {
+    const f = fixture(1760000000);
+    try {
+      await f.mirror.select('thread');
+      expect(f.mirror.summary.lastActivityAt).toBe('2025-10-09T08:53:20.000Z');
+      expect((await f.mirror.read(true)).lastActivityAt).toBe(f.mirror.summary.lastActivityAt);
+      await f.mirror.select(null);
+      expect(f.mirror.summary.lastActivityAt).toBeUndefined();
+    } finally {
+      f.mirror.dispose();
+    }
+  });
   it('does not replace newer desktop activity with a stale idle history response', async () => {
     const { mirror, connection, calls } = fixture();
     try {

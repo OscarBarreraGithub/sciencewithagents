@@ -1,4 +1,4 @@
-import { promptTextLimit } from '@dock/shared';
+import { promptTextLimit, latestConversationActivity } from '@dock/shared';
 import { randomUUID } from 'node:crypto';
 import type { MirrorState, MirrorSend, MirrorResult, MirrorControl } from '@dock/shared';
 import { object } from './connection.js';
@@ -447,6 +447,7 @@ export class ClaudeMirrorConnection {
     this.state = {
       ...this.state,
       threadId: id,
+      lastActivityAt: undefined,
       title: id ? 'Claude Code' : 'Sharing stopped',
       status: 'offline',
       entries: [],
@@ -513,6 +514,9 @@ export class ClaudeMirrorConnection {
             'Claude Code'
           ).slice(0, 500),
           entries,
+          lastActivityAt: latestConversationActivity(
+            response.messages.map((message) => object(message).timestamp),
+          ),
           status: 'idle',
           message: '',
         };

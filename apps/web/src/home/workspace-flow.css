@@ -2200,6 +2200,56 @@
 .conversation-menu-item:focus-visible {
   box-shadow: inset 0 0 0 2px var(--home-blue, #3f55d6);
 }
+.project-quark-toggle {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--home-line, #e6e0d5);
+  border-radius: 0 0 8px 8px;
+}
+.project-quark-toggle > span:first-child {
+  flex: 1;
+}
+.project-quark-toggle > .project-quark-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 66px;
+  font-size: var(--text-small);
+}
+.project-quark-switch {
+  display: block;
+  width: 36px;
+  height: 22px;
+  padding: 3px;
+  border-radius: 20px;
+  background: #717787;
+}
+.project-quark-switch::after {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  content: '';
+}
+.project-quark-toggle[aria-checked='true'] .project-quark-switch {
+  background: var(--home-blue, #3f55d6);
+}
+.project-quark-toggle[aria-checked='true'] .project-quark-switch::after {
+  transform: translateX(14px);
+}
+.project-quark-toggle:disabled {
+  cursor: default;
+}
+.project-quark-status {
+  max-width: 260px;
+  margin: 4px 12px;
+  font-size: var(--text-caption);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
 .chat-visibility-status:not(:empty) {
   display: flex;
   flex-shrink: 0;

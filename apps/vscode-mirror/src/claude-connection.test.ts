@@ -73,6 +73,26 @@ const input = () => ({
 });
 
 describe('Claude Code native mirror', () => {
+  it('uses the newest retained Claude message timestamp, including out-of-order history reads', async () => {
+    const f = fixture();
+    try {
+      Object.assign(f.messages[0]!, { timestamp: '2026-10-01T10:00:00Z' });
+      Object.assign(f.messages[1]!, { timestamp: '2026-10-02T10:00:00Z' });
+      await f.mirror.select('thread');
+      expect(f.mirror.summary.lastActivityAt).toBe('2026-10-02T10:00:00.000Z');
+      f.messages.push({
+        type: 'user',
+        uuid: 'imported-old',
+        timestamp: '2026-10-01T08:00:00Z',
+        message: { content: 'Late old import' },
+      });
+      expect((await f.mirror.read(true)).lastActivityAt).toBe('2026-10-02T10:00:00.000Z');
+      await f.mirror.select(null);
+      expect(f.mirror.summary.lastActivityAt).toBeUndefined();
+    } finally {
+      f.mirror.dispose();
+    }
+  });
   it('queues a follow-up during native work only after the matching provider queue acknowledgement', async () => {
     const f = fixture(false);
     try {

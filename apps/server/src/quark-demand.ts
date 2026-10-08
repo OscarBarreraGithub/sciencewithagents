@@ -8,6 +8,7 @@ import {
 import type { PrivateRun, Store } from './store.js';
 import type { Quark } from './quark.js';
 import { readCapacity } from './capacity.js';
+import { projectFollowsQuark } from './quark-project.js';
 
 type Provider = 'codex' | 'claude';
 /** Only the owner can lift these; an automatic model turn cannot help the blocked work. */
@@ -81,7 +82,7 @@ export function materialDemand(store: Store, quark: Quark, now: number) {
   const coordinator = coordinatorAgentId(store);
   const projects = new Map<string, ProjectDemand>();
   for (const project of store.projects()) {
-    if (internal.has(project.id)) continue;
+    if (internal.has(project.id) || !projectFollowsQuark(store, project.id)) continue;
     const policy = quarkProjectPolicySchema.parse(
       store.getSetting(`quark:project:${project.id}`) ?? {},
     );

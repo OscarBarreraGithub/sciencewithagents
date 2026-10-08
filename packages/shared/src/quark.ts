@@ -39,6 +39,17 @@ export const managerLeaseSchema = z
     scope: z.enum(['orchestration', 'conversation']).optional(),
   })
   .strict();
+/** Owner-controlled project switch, independent of the host's global pacing setting. */
+export const projectQuarkPolicySchema = z
+  .object({
+    projectId: id,
+    enabled: z.boolean().default(true),
+    revision: z.number().int().nonnegative().default(0),
+  })
+  .strict();
+export const projectQuarkPolicySaveSchema = z
+  .object({ key: id, enabled: z.boolean(), expectedRevision: z.number().int().nonnegative() })
+  .strict();
 export const chatQuarkPolicySchema = z
   .object({
     agentId: id,

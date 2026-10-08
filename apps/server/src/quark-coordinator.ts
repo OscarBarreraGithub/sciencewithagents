@@ -22,6 +22,7 @@ import type { Pulsar } from './pulsar.js';
 import type { DynamicTool } from './codex.js';
 import { readCapacity } from './capacity.js';
 import { isQuarkReport, materialDemand, notifyRelevance, windowMatches } from './quark-demand.js';
+import { projectFollowsQuark } from './quark-project.js';
 
 const materialSchema = z.object({
   runs: z.array(z.string()),
@@ -133,6 +134,8 @@ export class QuarkCoordinator {
     const previous = this.projectPolicy(action.projectId);
     if (previous.revision !== action.expectedRevision)
       throw new Conflict('Project instructions changed. Inspect current state before retrying.');
+    if (!owner && !projectFollowsQuark(this.store, action.projectId))
+      throw new Conflict('Automatic QUARK scheduling is off for this project.');
     if (
       !owner &&
       (action.paused !== true ||
@@ -585,6 +588,8 @@ export class QuarkCoordinator {
     }
     if ('projectId' in action && !this.status().projects.some((p) => p.id === action.projectId))
       throw new Conflict('Choose a work project from QUARK’s catalog.');
+    if (!owner && action.action === 'notify' && !projectFollowsQuark(this.store, action.projectId))
+      throw new Conflict('Automatic QUARK scheduling is off for this project.');
     if (action.action === 'notify' && !owner) {
       // Owner-directed notices are delivered as asked; automatic ones must be able to help.
       const manager = this.store.agent(this.store.project(action.projectId).managerId);

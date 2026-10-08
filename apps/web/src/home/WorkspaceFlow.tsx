@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import {
   conversationVisibilityIdentity,
+  compareConversationActivity,
   agentSchema,
   type ConversationVisibility,
   type ConversationVisibilityTarget,
@@ -64,6 +65,7 @@ import {
   ConversationVisibilityButton,
   ConversationVisibilityUndo,
 } from './ConversationVisibilityButton';
+import { ProjectQuarkPreference } from './ProjectQuarkPreference';
 import './workspace-flow.css';
 
 export const flowPages = new Set([
@@ -1075,7 +1077,6 @@ const rowLabels: Record<RowState, string> = {
   idle: 'Ready',
   offline: 'Offline',
 };
-const rowOrder: RowState[] = ['awaiting', 'working', 'queued', 'attention', 'idle', 'offline'];
 const filters: [ChatFilter, string][] = [
   ['manager', 'Managers'],
   // VS Code chats and native Codex sessions; the saved filter key stays 'vscode'.
@@ -1170,7 +1171,11 @@ function MainChat({
     if (notice && (!document.activeElement || document.activeElement === document.body))
       noticeText.current?.focus({ preventScroll: true });
   }, [notice]);
-  const visibilityAction = (target: ConversationVisibilityTarget, name?: string) => (
+  const visibilityAction = (
+    target: ConversationVisibilityTarget,
+    name?: string,
+    menuContent?: ReactNode,
+  ) => (
     <ConversationVisibilityButton
       key={conversationVisibilityIdentity(target)}
       target={target}
@@ -1178,6 +1183,7 @@ function MainChat({
       changed={changed(false)}
       name={name}
       unavailable={visibility.unavailable}
+      menuContent={menuContent}
     />
   );
   useEffect(() => {
@@ -1231,7 +1237,7 @@ function MainChat({
               : agent.interview
                 ? `Read-only discussion · ${projectName(agent.projectId)}`
                 : `${surface === 'misc' ? 'Saved chat' : projectName(agent.projectId)} · ${agent.provider === 'codex' ? 'Codex' : 'Claude'}`,
-          time: agent.updatedAt,
+          time: agent.lastActivityAt ?? agent.createdAt,
           state: rowState,
           label: rowLabels[rowState],
           href: go('chat', agent.id),
@@ -1259,7 +1265,16 @@ function MainChat({
           tag: daemon ? 'Codex session' : undefined,
           name: chat.title || 'Untitled conversation',
           caption: daemon ? chat.label : `${mirrorProvider(chat)} · ${chat.label}`,
-          time: null,
+          time:
+            chat.lastActivityAt ??
+            records.get(
+              conversationVisibilityIdentity({
+                kind: 'shared',
+                provider: chat.provider ?? 'codex',
+                threadId: chat.threadId,
+              }),
+            )?.lastActivityAt ??
+            null,
           state: rowState,
           label: mirrorStatus(chat),
           href: `#/chats/vscode/${encodeURIComponent(key)}`,
@@ -1267,11 +1282,7 @@ function MainChat({
         },
       ];
     }),
-  ].sort(
-    (a, b) =>
-      rowOrder.indexOf(a.state) - rowOrder.indexOf(b.state) ||
-      (b.time ?? '').localeCompare(a.time ?? ''),
-  );
+  ];
   // Saved shared summaries stay restorable even when the editor is offline or switched threads.
   for (const record of visibility.data ?? []) {
     if (
@@ -1291,13 +1302,14 @@ function MainChat({
       tag: record.source === 'codex-daemon' ? 'Codex session' : undefined,
       name: record.title || 'Untitled conversation',
       caption: record.caption,
-      time: record.updatedAt,
+      time: record.lastActivityAt ?? null,
       state: 'offline',
       label: 'Offline',
       href: `#/chats/vscode/${encodeURIComponent(key)}`,
       selected: key === editorKey,
     });
   }
+  rows.sort((a, b) => compareConversationActivity(a.time, b.time, a.key, b.key));
   const term = query.trim().toLowerCase();
   const shown = visibility.data
     ? rows.filter(
@@ -1544,7 +1556,15 @@ function MainChat({
               data,
               special,
               visibilityAction: state.agents.some((agent) => agent.id === agentId)
-                ? visibilityAction({ kind: 'agent', agentId })
+                ? visibilityAction(
+                    { kind: 'agent', agentId },
+                    undefined,
+                    state.agents
+                      .filter((agent) => agent.id === agentId && managesProject(agent, special))
+                      .map((agent) => (
+                        <ProjectQuarkPreference key={agent.projectId} projectId={agent.projectId} />
+                      )),
+                  )
                 : undefined,
               archived: !!records.get(conversationVisibilityIdentity({ kind: 'agent', agentId }))
                 ?.archived,

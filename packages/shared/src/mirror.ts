@@ -65,6 +65,8 @@ export const mirrorStateSchema = z.object({
   label: z.string().max(200),
   threadId: z.string().max(128).nullable(),
   title: z.string().max(500),
+  // Native conversation time, never bridge discovery or polling time.
+  lastActivityAt: z.string().datetime().optional(),
   status: z.enum(['idle', 'busy', 'attention', 'offline']),
   message: z.string().max(1000),
   // Native history may not be readable before the first turn; never imply an empty archive.

@@ -16,6 +16,8 @@ import {
   quotaHoldSchema,
   tokenUsageSnapshotSchema,
   managerLeaseSchema,
+  projectQuarkPolicySchema,
+  projectQuarkPolicySaveSchema,
   chatQuarkPolicySchema,
   chatQuarkPolicySaveSchema,
   type Allowance,
@@ -30,6 +32,7 @@ import { readCapacity, capacityMaxAge } from './capacity.js';
 import type { Pulsar } from './pulsar.js';
 import { currentRateSamples, rateHistory } from './quark-rates.js';
 import { managedChat, chatBypassRun, chatBypassAllowed } from './quark-chat.js';
+import { projectFollowsQuark, projectSchedulerKey } from './quark-project.js';
 import { adaptivePace, materialDemand, projectWeight, reservedPercent } from './quark-demand.js';
 
 const transientCauses: QuotaHold['cause'][] = [
@@ -144,6 +147,32 @@ export class Quark {
   }
   settings() {
     return quarkSettingsSchema.parse(this.store.getSetting('quark:settings') ?? {});
+  }
+  projectPolicy(projectId: string) {
+    this.store.project(projectId);
+    return projectQuarkPolicySchema.parse(
+      this.store.getSetting(projectSchedulerKey(projectId)) ?? { projectId },
+    );
+  }
+  saveProjectPolicy(projectId: string, raw: unknown) {
+    const input = projectQuarkPolicySaveSchema.parse(raw);
+    return this.store.operation(
+      `project-quark-policy:${input.key}`,
+      { projectId, ...input },
+      () => {
+        const previous = this.projectPolicy(projectId);
+        if (previous.revision !== input.expectedRevision)
+          throw new Conflict('Project scheduling changed. Refresh it before saving.');
+        const policy = projectQuarkPolicySchema.parse({
+          projectId,
+          enabled: input.enabled,
+          revision: previous.revision + 1,
+        });
+        this.store.setSetting(projectSchedulerKey(projectId), policy);
+        this.store.event('quark.project_scheduler', projectId, null, policy);
+        return policy;
+      },
+    );
   }
   chatPolicy(agentId: string) {
     this.store.agent(agentId);
@@ -1060,12 +1089,22 @@ export class Quark {
   ): { cause: QuotaHold['cause']; reason: string; budgetTargetId?: string } | null {
     const a = this.store.agent(run.agentId),
       rootId = a.nativeRootId ?? a.id;
-    const bypass = allowChatBypass && chatBypassAllowed(this.store, run);
+    const projectBypass = !projectFollowsQuark(this.store, a.projectId);
+    const bypass = projectBypass || (allowChatBypass && chatBypassAllowed(this.store, run));
     if (!ignoreHold) {
       const hold = this.holds().find((h) => h.agentId === rootId);
       if (
         hold &&
-        (!bypass || !['budget', 'hourly', 'headroom', 'monitoring', 'reset'].includes(hold.cause))
+        (hold.nativeExhaustion ||
+          !bypass ||
+          ![
+            'budget',
+            'hourly',
+            'headroom',
+            'monitoring',
+            'reset',
+            ...(projectBypass ? ['project'] : []),
+          ].includes(hold.cause))
       ) {
         const budget =
           hold.cause === 'budget'
@@ -1087,6 +1126,7 @@ export class Quark {
       }
     }
     if (
+      !projectBypass &&
       (this.store.getSetting(`quark:project:${a.projectId}`) as { paused?: boolean } | null)?.paused
     )
       return {
@@ -1397,10 +1437,27 @@ export class Quark {
   }
   recoverTransient(excluded: ReadonlySet<string>) {
     for (const h of this.holds()) {
-      if (!transientCauses.includes(h.cause) || !h.stopAcknowledgedAt || excluded.has(h.agentId))
+      if (
+        (!transientCauses.includes(h.cause) &&
+          !(
+            ['budget', 'project'].includes(h.cause) && !projectFollowsQuark(this.store, h.projectId)
+          )) ||
+        !h.stopAcknowledgedAt ||
+        excluded.has(h.agentId)
+      )
         continue;
       const run = this.store.run(h.runId);
       if (!['interrupted', 'completed'].includes(run.status)) continue;
+      // An explicit project opt-out releases scheduler-only stops after the owned
+      // provider has acknowledged stopping. Native exhaustion and manual pauses stay.
+      if (!h.nativeExhaustion && !projectFollowsQuark(this.store, h.projectId)) {
+        try {
+          this.store.transaction(() => this.release(h.runId, true));
+        } catch {
+          /* Another pause or active owned process still requires waiting. */
+        }
+        continue;
+      }
       // Automatic recovery always requires a new, successful report. A stale
       // reading accepted briefly for an already admitted turn is not admission.
       const cap = readCapacity(this.store, this.store.agent(h.agentId).provider, this.clock());

@@ -469,6 +469,19 @@ it('coalesces automatic wakes durably and never wakes an idle queue', async () =
   coordinator.tick();
   expect(store.runs().filter((r) => r.agentId === s.agentId)).toHaveLength(1);
 });
+it('excludes projects with Follow QUARK off from automatic demand until restored', async () => {
+  const s = await coordinator.start({ key: randomUUID() });
+  const p = store.register(join(root, 'Independent'), 'Independent', '');
+  const work = store.enqueue(p.managerId, randomUUID(), 'Saved project work');
+  quark.saveProjectPolicy(p.id, { key: randomUUID(), enabled: false, expectedRevision: 0 });
+  coordinator.tick();
+  expect(store.runs().filter((r) => r.agentId === s.agentId)).toHaveLength(0);
+  expect(store.run(work.id).status).toBe('queued');
+  quark.saveProjectPolicy(p.id, { key: randomUUID(), enabled: true, expectedRevision: 1 });
+  vi.advanceTimersByTime(31_000);
+  coordinator.tick();
+  expect(store.runs().filter((r) => r.agentId === s.agentId)).toHaveLength(1);
+});
 function zeroRate(projectId: string, provider: 'codex' | 'claude') {
   quark.saveBudget({
     key: randomUUID(),
@@ -488,6 +501,26 @@ function notify(agentId: string, run: ReturnType<typeof store.run>, projectId: s
     run,
   );
 }
+it('refuses automatic pause and advice for an opted-out project while retaining owner control', async () => {
+  const p = store.register(join(root, 'Independent'), 'Independent', '');
+  store.enqueue(p.managerId, randomUUID(), 'Saved project work');
+  quark.saveProjectPolicy(p.id, { key: randomUUID(), enabled: false, expectedRevision: 0 });
+  const { agent, run } = await active('report');
+  const pause = {
+    action: 'project' as const,
+    projectId: p.id,
+    expectedRevision: 0,
+    paused: true,
+    reason: 'Automatic slowdown',
+  };
+  expect(() => coordinator.tool(agent.id, randomUUID(), 'dock_quark_control', pause, run)).toThrow(
+    /scheduling is off/,
+  );
+  expect(() => notify(agent.id, run, p.id)).toThrow(/scheduling is off/);
+  expect(coordinator.projectPolicy(p.id).revision).toBe(0);
+  expect(store.runs(['queued']).filter((r) => r.agentId === p.managerId)).toHaveLength(1);
+  expect(coordinator.updateProjectPolicy(pause, true)).toMatchObject({ paused: true, revision: 1 });
+});
 it('never wakes or notifies a finished zero-limit project for its own pending notices', async () => {
   const s = await coordinator.start({ key: randomUUID() });
   const p = store.register(join(root, 'Thermal'), 'Thermal', '', 'codex');

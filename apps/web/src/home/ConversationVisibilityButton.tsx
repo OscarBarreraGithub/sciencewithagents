@@ -28,6 +28,7 @@ type VisibilityProps = {
   name?: string;
   unavailable?: string;
 };
+const menuItems = '[role="menuitem"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled)';
 
 /** App visibility only: never provider archiving, manager removal or queue cancellation.
  *  One request is retained until it is confirmed, so a retry repeats it exactly. */
@@ -93,8 +94,8 @@ function useVisibilityChange({ target, record, changed, name, unavailable }: Vis
   return { busy, restoring, label, submit, dialog };
 }
 
-/** A quiet "more" menu holding Archive or Restore for one conversation. */
-export function ConversationVisibilityButton(props: VisibilityProps) {
+/** A quiet "more" menu holding conversation actions and optional project controls. */
+export function ConversationVisibilityButton(props: VisibilityProps & { menuContent?: ReactNode }) {
   const change = useVisibilityChange(props);
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -151,6 +152,7 @@ export function ConversationVisibilityButton(props: VisibilityProps) {
               </small>
             </span>
           </button>
+          {props.menuContent}
         </ConversationMenu>
       )}
       {change.dialog}
@@ -213,9 +215,12 @@ function ConversationMenu({
       setPlace({ top: Math.max(8, Math.min(top, height - size.height - 8)), left });
     };
     position();
+    const observer = new ResizeObserver(position);
+    if (box.current) observer.observe(box.current);
     window.addEventListener('resize', position);
     document.addEventListener('scroll', position, true);
     return () => {
+      observer.disconnect();
       window.removeEventListener('resize', position);
       document.removeEventListener('scroll', position, true);
     };
@@ -223,7 +228,7 @@ function ConversationMenu({
   useEffect(() => {
     // Layout initially hides the unpositioned menu. Focus only after it becomes visible.
     if (place.visibility === 'hidden') return;
-    box.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({
+    box.current?.querySelector<HTMLElement>(menuItems)?.focus({
       preventScroll: true,
     });
   }, [place.visibility]);
@@ -247,9 +252,7 @@ function ConversationMenu({
     };
   }, []);
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
-    const items = [
-      ...(box.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []),
-    ];
+    const items = [...(box.current?.querySelectorAll<HTMLElement>(menuItems) ?? [])];
     const index = items.indexOf(document.activeElement as HTMLElement);
     const move = (next: number) => items[(next + items.length) % items.length]?.focus();
     if (event.key === 'Escape') {

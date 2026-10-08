@@ -14,6 +14,7 @@ type Thread = {
   id: string;
   ephemeral: boolean;
   canAcceptDirectInput?: boolean;
+  updatedAt?: number;
   source?: unknown;
   threadSource?: string;
   parentThreadId?: string;
@@ -127,6 +128,18 @@ function fixture() {
   };
   return { chats, locate, state, thread, sockets, frames, mutations, input, busy };
 }
+
+it('retains native conversation time across discovery and reads instead of using observation time', async () => {
+  const f = fixture();
+  f.thread.updatedAt = 1760000000;
+  await f.chats.discover();
+  const window = f.chats.windows()[0]!;
+  expect(window.lastActivityAt).toBe('2025-10-09T08:53:20.000Z');
+  expect((await f.chats.read(window.windowId)).lastActivityAt).toBe(window.lastActivityAt);
+  f.thread.updatedAt += 60;
+  expect((await f.chats.read(window.windowId)).lastActivityAt).toBe('2025-10-09T08:54:20.000Z');
+  expect(f.mutations()).toEqual([]);
+});
 
 function goalFixture() {
   const f = fixture();

@@ -1,4 +1,4 @@
-import { promptTextLimit } from '@dock/shared';
+import { promptTextLimit, latestConversationActivity } from '@dock/shared';
 import { requireQueueHold } from './queue-hold.js';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
@@ -123,6 +123,9 @@ export class Store extends EventEmitter {
       CREATE INDEX IF NOT EXISTS runs_queue ON runs(status);
       CREATE INDEX IF NOT EXISTS runs_agent ON runs(agent_id);
       CREATE INDEX IF NOT EXISTS entries_agent ON entries(agent_id);
+      CREATE INDEX IF NOT EXISTS entries_conversation_activity ON entries(agent_id, julianday(json_extract(body,'$.createdAt')) DESC)
+        WHERE json_extract(body,'$.kind') IN ('user','assistant') OR
+          (json_extract(body,'$.kind')='system' AND json_extract(body,'$.title')='Owner steering');
       CREATE INDEX IF NOT EXISTS events_agent ON events(agent_id, id);`);
     // A folder can host independent projects/conversations. Rebuild only this table;
     // its IDs, child references, private records and immutable events stay unchanged.
@@ -278,7 +281,7 @@ export class Store extends EventEmitter {
   projects() {
     return this.bodies<PrivateProject>('projects');
   }
-  agents() {
+  agents(withConversationActivity = false) {
     return this.bodies<PrivateAgent>('agents').map((a) => ({
       ...a,
       provider: a.provider ?? 'codex',
@@ -289,7 +292,22 @@ export class Store extends EventEmitter {
       imageGeneration: a.imageGeneration ?? false,
       nativeRootId: a.nativeRootId ?? null,
       nativePath: a.nativePath ?? null,
+      ...(withConversationActivity
+        ? { lastActivityAt: this.conversationActivityAt(a.id) ?? a.createdAt }
+        : {}),
     }));
+  }
+  /** Indexed saved message time; late imports and status updates cannot bump list recency. */
+  conversationActivityAt(agentId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT json_extract(body,'$.createdAt') AS at FROM entries
+      WHERE agent_id=? AND (json_extract(body,'$.kind') IN ('user','assistant') OR
+        (json_extract(body,'$.kind')='system' AND json_extract(body,'$.title')='Owner steering'))
+      ORDER BY julianday(json_extract(body,'$.createdAt')) DESC LIMIT 1`,
+      )
+      .get(agentId);
+    return latestConversationActivity([row?.at]);
   }
   tasks() {
     return this.bodies<PrivateTask>('tasks');

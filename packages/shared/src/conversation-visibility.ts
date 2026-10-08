@@ -30,6 +30,7 @@ export const conversationVisibilitySchema = z
     archived: z.boolean(),
     archivedAt: z.string().datetime().nullable(),
     updatedAt: z.string().datetime(),
+    lastActivityAt: z.string().datetime().optional(),
     provider: providerIdSchema,
     source: z.enum(['app', 'vscode', 'codex-daemon']),
     title: z.string().max(500),

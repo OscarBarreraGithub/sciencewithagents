@@ -141,7 +141,7 @@ export function registerConversationRoutes(
     const query = conversationListQuerySchema.parse(request.query);
     return {
       conversations: store
-        .agents()
+        .agents(true)
         .filter((agent) => agent.surface === 'misc' || agent.surface === 'terminal')
         .filter(
           (agent) =>
@@ -236,6 +236,9 @@ export function registerConversationVisibilityRoutes(
         archived: input.archived,
         archivedAt: input.archived ? (saved?.archivedAt ?? updatedAt) : null,
         updatedAt,
+        lastActivityAt: agent
+          ? (store.conversationActivityAt(agent.id) ?? agent.createdAt)
+          : (window?.lastActivityAt ?? saved?.lastActivityAt),
         provider: agent?.provider ?? window?.provider ?? saved?.provider ?? 'codex',
         source: agent ? 'app' : window ? (window.source ?? 'vscode') : saved!.source,
         title: (

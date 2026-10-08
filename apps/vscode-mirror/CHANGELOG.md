@@ -1,5 +1,12 @@
 # Changes
 
+## 0.2.15
+
+Include retained native conversation timestamps in shared summaries so Chats can sort by
+recent conversation activity. Polling, reconnecting and changing connection status do not
+change that time. Older providers without timestamps remain undated. Reload only when
+the editor's running work is safe; no reload is forced.
+
 ## 0.2.14
 
 Accept owner chat prompts up to 200,000 characters across the typed send and editor bridge.

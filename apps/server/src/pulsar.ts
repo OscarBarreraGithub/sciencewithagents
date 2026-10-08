@@ -25,6 +25,7 @@ import {
 import { Conflict, Store, type PrivateRun } from './store.js';
 import { readCapacity, capacityMaxAge } from './capacity.js';
 import { localJobPriority } from './local-jobs.js';
+import { projectFollowsQuark } from './quark-project.js';
 import { chatBypassAllowed } from './quark-chat.js';
 
 const leaseSchema = z.object({
@@ -457,6 +458,11 @@ export class Pulsar {
       return reject(
         'Paused. Release this job to let QUARK reconsider it. Running agent turns finish at their boundary.',
       );
+    if (!projectFollowsQuark(this.store, agent.projectId))
+      return {
+        eligible: true,
+        reason: 'QUARK scheduling is off for this project and its workers.',
+      };
     if (!protectedChat && chatBypassAllowed(this.store, run))
       return {
         eligible: true,
@@ -673,6 +679,8 @@ export class Pulsar {
     return { eligible: true, reason: 'Computer capacity is available.' };
   }
   localDecision(job: LocalJob, executing: ReadonlySet<string>) {
+    if (job.projectId && !projectFollowsQuark(this.store, job.projectId))
+      return { eligible: true, reason: 'QUARK scheduling is off for this project.' };
     if (
       job.projectId &&
       quarkProjectPolicySchema.parse(this.store.getSetting(`quark:project:${job.projectId}`) ?? {})

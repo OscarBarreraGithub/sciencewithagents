@@ -4,6 +4,7 @@ import {
   codexQueue,
   codexQueueUnsupported,
   isBackgroundCodexThread,
+  latestConversationActivity,
 } from '@dock/shared';
 export { codexTranscript as transcript } from '@dock/shared';
 import type { MirrorState, MirrorSend, MirrorResult, MirrorControl } from '@dock/shared';
@@ -314,6 +315,7 @@ export class MirrorConnection {
     this.state = {
       ...this.state,
       threadId,
+      lastActivityAt: undefined,
       entries: [],
       queuedMessages: undefined,
       queueReadError: undefined,
@@ -365,6 +367,7 @@ export class MirrorConnection {
         this.state = {
           ...this.state,
           title: (str(thread.name) || str(thread.preview) || threadId).slice(0, 500),
+          lastActivityAt: latestConversationActivity([thread.updatedAt, thread.createdAt]),
           entries,
           queuedMessages: undefined,
           queueHasMore: undefined,

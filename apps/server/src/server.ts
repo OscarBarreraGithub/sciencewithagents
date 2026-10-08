@@ -815,7 +815,7 @@ export async function createServer(
           internal: runtime.isInternalProject(p.id, internalProjects),
         }),
       ),
-      agents: store.agents().map((a) => agentSchema.parse(a)),
+      agents: store.agents(true).map((a) => agentSchema.parse(a)),
       tasks: store.tasks().map(publicTask),
       approvals: store
         .approvals()
@@ -1443,6 +1443,14 @@ export async function createServer(
     });
     runtime.kick();
     return reply.code(202).send(result);
+  });
+  app.get('/api/projects/:id/quark-scheduler', async (request) =>
+    runtime.quark.projectPolicy(agentId(request.params)),
+  );
+  app.post('/api/projects/:id/quark-scheduler', async (request) => {
+    const result = runtime.quark.saveProjectPolicy(agentId(request.params), request.body);
+    runtime.kick();
+    return result;
   });
   app.get('/api/agents/:id/chat-quark', async (request) =>
     runtime.quark.chatPolicy(agentId(request.params)),

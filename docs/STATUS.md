@@ -36,6 +36,11 @@ editable queues, and across shared VS Code delivery with companion 0.2.14. A rej
 autosave can be corrected without replaying that invalid save forever; ambiguous replies
 retain their existing retry identities. Oversized pastes remain recoverable without input
 truncation. Source checks and installation activation are recorded separately.
+Project managers offer **… → Follow QUARK** for the whole project and its workers.
+The saved switch bypasses QUARK scheduling while Off and restores the existing rules when
+On, retaining usage, limits, explicit Stop/held-job controls and native provider boundaries.
+Revisioned saves and stop-acknowledged recovery are covered by focused fixtures; live
+activation is checked separately.
 Shared VS Code follow-ups queued from this app remain editable until native handoff;
 messages already in the editor's queue retain its native controls. Shared queue delivery
 uses native turn boundaries without silently steering an active reply.

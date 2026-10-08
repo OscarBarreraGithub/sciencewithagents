@@ -1,3 +1,4 @@
+import { projectSchedulerKey } from './quark-project.js';
 import type { PrivateAgent, PrivateRun, Store } from './store.js';
 
 /** Owner chat preference never applies to workers, native children or automated messages. */
@@ -21,6 +22,9 @@ export function chatBypassRun(store: Store, run: PrivateRun) {
 /** Observed provider helpers belong to the owned family, never to chat-only authority. */
 export function chatBypassAllowed(store: Store, run: PrivateRun) {
   if (!chatBypassRun(store, run)) return false;
+  // Once the owner uses the project switch, it supersedes older reply-only choices.
+  if (store.getSetting(projectSchedulerKey(store.agent(run.agentId).projectId)) !== null)
+    return false;
   const active = new Set(store.runs(['queued', 'running']).map((item) => item.agentId));
   return !store
     .agents()

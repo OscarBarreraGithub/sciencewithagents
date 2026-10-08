@@ -447,3 +447,125 @@ it('upgrades an opted-in conversation when ordinary headroom permits an observed
   expect(runtime.quark.requireManagerLease(run).scope).toBe('orchestration');
   expect(runtime.quark.block(run)).toBeNull();
 });
+
+function followProject(enabled: boolean) {
+  return runtime.quark.saveProjectPolicy(projectId, {
+    key: randomUUID(),
+    enabled,
+    expectedRevision: runtime.quark.projectPolicy(projectId).revision,
+  });
+}
+
+it('project switch releases managers and workers, retains accounting, and restores saved caps immediately', () => {
+  usage(10);
+  const run = owner();
+  const { agent } = worker();
+  const child = store.run(
+    store.enqueue(agent.id, randomUUID(), 'Do the delegated work', 'delegation', manager).id,
+  );
+  runtime.quark.saveBudget({
+    key: randomUUID(),
+    projectId,
+    taskId: null,
+    provider: 'codex',
+    windowId: 'primary',
+    period: 'hour',
+    limitPercent: 0,
+  });
+  const caps = runtime.quark.budgets();
+  expect(runtime.quark.projectPolicy(projectId)).toMatchObject({ enabled: true, revision: 0 });
+  expect(runtime.pulsar.decision(run).eligible).toBe(false);
+  expect(runtime.pulsar.decision(child).eligible).toBe(false);
+  enable(); // A previous reply-only exception must not defeat an explicit project On.
+  followProject(false);
+  expect(runtime.pulsar.decision(run, new Set(), false, true).eligible).toBe(true);
+  expect(runtime.pulsar.decision(child).eligible).toBe(true);
+  expect(runtime.pulsar.reserve(run, new Set())).toBeTruthy();
+  runtime.quark.issueManagerLease(run);
+  store.updateRun(run.id, { status: 'running' });
+  expect(runtime.quark.requireManagerLease(store.run(run.id)).scope).not.toBe('conversation');
+  expect(runtime.quark.renewManagerLease(store.run(run.id))).toBeNull();
+  expect(runtime.pulsar.leases().some((l) => l.runId === run.id)).toBe(true);
+  const other = store.register(join(root, 'other'), 'Other project', '', 'codex');
+  const unrelated = store.run(
+    store.enqueue(other.managerId, randomUUID(), 'Unrelated owner request').id,
+  );
+  usage(95);
+  expect(runtime.pulsar.decision(child).eligible).toBe(true);
+  expect(runtime.pulsar.decision(unrelated).eligible).toBe(false);
+  followProject(true);
+  expect(runtime.quark.block(store.run(run.id))).not.toBeNull();
+  expect(runtime.pulsar.decision(child).eligible).toBe(false);
+  expect(runtime.quark.budgets()).toEqual(caps);
+});
+
+it('project scheduler API retains exact retries, rejects stale changes and persists across reopening', async () => {
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 2 });
+  app = await createServer(store, runtime, { port: 4330, ownsRuntime: false });
+  const url = `/api/projects/${projectId}/quark-scheduler`;
+  const headers = { host: '127.0.0.1:4330', origin: 'http://127.0.0.1:4330' };
+  const send = (payload: unknown) => app!.inject({ method: 'POST', url, headers, payload });
+  const input = { key: randomUUID(), enabled: false, expectedRevision: 0 };
+  const first = await send(input);
+  expect(first.statusCode).toBe(200);
+  expect(first.json()).toMatchObject({ projectId, enabled: false, revision: 1 });
+  expect((await send(input)).json()).toEqual(first.json());
+  expect((await send({ ...input, key: randomUUID(), enabled: true })).statusCode).toBe(409);
+  const on = await send({ key: randomUUID(), enabled: true, expectedRevision: 1 });
+  expect(on.statusCode).toBe(200);
+  expect((await send(input)).json()).toEqual(first.json());
+  expect((await app.inject({ url, headers })).json()).toMatchObject({ enabled: true, revision: 2 });
+  const reopened = new Store(join(root, 'dock.sqlite'));
+  try {
+    expect(reopened.getSetting(`quark:project-scheduler:${projectId}`)).toMatchObject({
+      enabled: true,
+      revision: 2,
+    });
+  } finally {
+    reopened.close();
+  }
+});
+
+it('project opt-out respects editing holds, manual pauses, and a native rate-limit rejection', () => {
+  const run = owner();
+  followProject(false);
+  store.setSetting(`pulsar:held:${run.id}`, true);
+  expect(runtime.pulsar.decision(run).eligible).toBe(false);
+  store.setSetting(`pulsar:held:${run.id}`, false);
+  store.setSetting(`quark:project:${projectId}`, { paused: true });
+  expect(runtime.quark.block(run)).toBeNull();
+  followProject(true);
+  expect(runtime.quark.block(run)?.cause).toBe('project');
+  followProject(false);
+  store.setSetting(`quark:project:${projectId}`, { paused: false });
+  runtime.quark.hold(run, 'Explicit Stop', false, 'manual');
+  expect(runtime.quark.block(run)?.cause).toBe('manual');
+  const { agent: nativeAgent } = worker();
+  const native = store.run(
+    store.enqueue(nativeAgent.id, randomUUID(), 'Native provider rejected this turn').id,
+  );
+  store.updateRun(native.id, { status: 'running' });
+  runtime.quark.nativeExhaustion(store.run(native.id), {
+    sessionId: randomUUID(),
+    rateLimitType: 'five_hour',
+    resetsAtSeconds: Math.floor(Date.now() / 1000) + 3600,
+  });
+  expect(runtime.quark.block(store.run(native.id))?.cause).toBe('reset');
+});
+
+it('project opt-out resumes an acknowledged scheduler stop once but not manual or native holds', () => {
+  const { agent } = worker();
+  const run = store.run(store.enqueue(agent.id, randomUUID(), 'Work', 'delegation', manager).id);
+  runtime.quark.hold(run, 'Scheduler budget pause', false, 'budget');
+  store.updateRun(run.id, { status: 'interrupted' });
+  store.updateAgent(agent.id, { status: 'waiting', turnId: null });
+  followProject(false);
+  runtime.quark.recoverTransient(new Set());
+  expect(store.runs().filter((r) => r.kind === 'resume')).toHaveLength(0);
+  runtime.quark.acknowledgeStop(run.id);
+  runtime.quark.recoverTransient(new Set());
+  runtime.quark.recoverTransient(new Set());
+  expect(store.agent(agent.id).status).toBe('queued');
+  expect(store.runs().filter((r) => r.kind === 'resume')).toHaveLength(1);
+  expect(runtime.quark.holds()).toHaveLength(0);
+});

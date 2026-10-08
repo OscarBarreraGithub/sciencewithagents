@@ -7,6 +7,7 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import {
   codexTranscript,
+  latestConversationActivity,
   codexQueue,
   codexQueueUnsupported,
   isBackgroundCodexThread,
@@ -280,6 +281,7 @@ export class CodexDaemonChats {
       label: 'Codex on this computer',
       threadId: thread.id,
       title: (thread.name || thread.preview || 'Codex conversation').slice(0, 500),
+      lastActivityAt: latestConversationActivity([thread.updatedAt, thread.createdAt]),
       status: state,
       message:
         state === 'attention'
