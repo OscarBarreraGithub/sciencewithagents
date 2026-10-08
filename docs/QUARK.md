@@ -102,6 +102,8 @@ Project rate cards keep current estimates, saved limits, sliders and save/retry 
 visible. **Details** opens the 12-hour chart, allowance-window choices and accounting.
 Board cards show a short waiting reason; longer explanations and resource readings are
 available through their **Details** button. Expanding details starts no model work.
+Queued work for a stopped agent points to its chat to continue or retry; a waiting agent
+points to its pending answer. Available capacity alone never resumes that work.
 
 A new empty installation starts with shared pacing and automatic coordinator checks off.
 Enable these deliberately in QUARK when wanted. Existing workspaces and saved choices are

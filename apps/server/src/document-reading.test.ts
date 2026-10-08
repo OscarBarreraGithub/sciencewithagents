@@ -304,6 +304,63 @@ Final prose.`,
     expect(laterOverride.html).toContain('Figure available in Original PDF');
   });
 
+  it('resolves exact figure paths at the registered root after explicit source and graphicspath matches', async () => {
+    const home = join(root, 'source');
+    await mkdir(join(home, 'PRL', 'declared'), { recursive: true });
+    await mkdir(join(home, 'figures'));
+    const local = Buffer.concat([png, Buffer.from('local')]);
+    const declared = Buffer.concat([png, Buffer.from('declared')]);
+    await writeFile(join(home, 'root.png'), png);
+    await writeFile(join(home, 'figures', 'diagram.png'), png);
+    await writeFile(join(home, 'PRL', 'local.png'), local);
+    await writeFile(join(home, 'local.png'), png);
+    await writeFile(join(home, 'PRL', 'declared', 'preferred.png'), declared);
+    await writeFile(join(home, 'preferred.png'), png);
+    const source = String.raw`\documentclass{article}\usepackage{graphicx}
+\graphicspath{{declared/}}\begin{document}
+Original prose $x=1$.\label{body:unchanged}
+\includegraphics{root.png}\includegraphics{figures/diagram}
+\includegraphics{local}\includegraphics{preferred}\includegraphics{root.jpg}
+\end{document}`;
+    const input = join(home, 'PRL', 'main.tex');
+    await writeFile(input, source);
+    const reading = await buildReading(input, home, join(root, 'assets'));
+    const images = [...reading.html.matchAll(/reader-asset:([a-f0-9]{64}\.png)/g)].map(
+      (match) => match[1]!,
+    );
+    expect(images).toHaveLength(4);
+    expect(images[0]).toBe(images[1]);
+    expect(images[2]).not.toBe(images[0]);
+    expect(images[3]).not.toBe(images[0]);
+    expect(await readFile(join(root, 'assets', images[2]!))).toEqual(local);
+    expect(await readFile(join(root, 'assets', images[3]!))).toEqual(declared);
+    expect(reading.html.match(/Figure available in Original PDF\./g)).toHaveLength(1);
+    expect(reading.html).toContain('Original prose');
+    expect(reading.html).toContain('x=1');
+    expect(reading.html).toContain('body:unchanged');
+    expect(await readFile(input, 'utf8')).toBe(source);
+  });
+
+  it('keeps registered-root figure fallback inside canonical bounds and the existing size limit', async () => {
+    const home = join(root, 'source');
+    await mkdir(join(home, 'PRL'));
+    await writeFile(join(root, 'outside.png'), png);
+    await symlink(join(root, 'outside.png'), join(home, 'linked.png'));
+    await writeFile(join(home, 'large.png'), Buffer.alloc(8 * 1024 ** 2 + 1));
+    const source = String.raw`\documentclass{article}\begin{document}
+Original body $x=1$.\includegraphics{linked.png}\includegraphics{large.png}
+\includegraphics{../../outside.png}\end{document}`;
+    const input = join(home, 'PRL', 'main.tex');
+    await writeFile(input, source);
+    const reading = await buildReading(input, home, join(root, 'assets'));
+    expect(reading.html).not.toContain('reader-asset:');
+    expect(reading.html.match(/Figure available in Original PDF\./g)).toHaveLength(3);
+    expect(reading.html).toContain('Original body');
+    expect(reading.html).toContain('x=1');
+    expect(await readFile(input, 'utf8')).toBe(source);
+    expectHumanMessages(reading);
+  });
+
   it('retains placeholders for unavailable, outside-root and oversized extensionless figures', async () => {
     const home = join(root, 'source');
     await writeFile(join(root, 'outside.png'), png);

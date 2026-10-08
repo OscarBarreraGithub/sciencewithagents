@@ -93,6 +93,9 @@ Reading also supports one literal, top-level preamble `\graphicspath` declaratio
 up to 16 local directories. It checks the source directory first, then the declared order,
 using the same extension and file guards. Macro, conditional and scoped path declarations
 still need Original PDF.
+For a main file in a subfolder, Reading finally tries the exact figure path at the
+registered document root. Source-directory and declared graphic-path matches take precedence;
+no folder scan or filename guessing runs.
 PDF figure conversion shares Reading’s 60-second conversion budget. When time runs out,
 the paper’s body, completed figures and raster images remain available; each unconverted
 figure keeps its Original PDF note.

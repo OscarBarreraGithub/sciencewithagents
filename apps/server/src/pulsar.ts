@@ -846,6 +846,18 @@ export class Pulsar {
                   : 'Running with shared QUARK monitoring.'),
           }
         : this.decision(run);
+    // Capacity eligibility does not wake a stopped agent or answer its pending request.
+    // This is the shared display projection; admission and saved budget targets stay intact.
+    const agentWait =
+      run.status !== 'queued'
+        ? null
+        : agent.status === 'waiting'
+          ? 'Waiting for your answer. Open the chat to respond.'
+          : agent.status === 'interrupted'
+            ? 'Agent is stopped. Open the chat to continue.'
+            : agent.status === 'failed'
+              ? 'Agent stopped after a failure. Open the chat to retry or continue.'
+              : null;
     const updates = coordinationCount(this.store, run);
     return {
       runId: run.id,
@@ -860,6 +872,7 @@ export class Pulsar {
       held,
       override: this.store.getSetting(`pulsar:override:${run.id}`) === true,
       ...decision,
+      ...(agentWait ? { eligible: false, reason: agentWait } : {}),
       expectedFinishAt:
         lease && !lease.finishedAt
           ? new Date(Date.parse(lease.startedAt) + estimate.expectedSeconds * 1000).toISOString()

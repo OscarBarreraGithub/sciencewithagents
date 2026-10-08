@@ -408,7 +408,7 @@ async function convertReading(
   text = mapFrontMatter(applySourceRules(text, health), health);
   // A single literal, top-level preamble declaration is data, not TeX execution.
   // Keep the source directory first; do not guess macro/conditional or scoped paths.
-  const figureDirectories = [''];
+  const figureDirectories = [dirname(source)];
   const preamble = text.slice(0, Math.max(0, bodyStart(text)));
   const declarations = text.matchAll(/\\graphicspath\b/g);
   const declaration = declarations.next().value;
@@ -424,8 +424,11 @@ async function convertReading(
     )
       for (const [, directory] of literal[1]!.matchAll(/\{([^{}]*)\}/g))
         if (directory && !/[:\0\\]/.test(directory) && !directory.startsWith('/'))
-          figureDirectories.push(directory);
+          figureDirectories.push(resolve(dirname(source), directory));
   }
+  // arXiv may name a main file in a subfolder while its literal figure paths
+  // start at the registered archive root. Existing explicit search paths win.
+  if (!figureDirectories.includes(root)) figureDirectories.push(root);
   const body = bodyStart(text);
   text = text.replace(missingMarker, (_, name: string, offset: number) =>
     offset > body
@@ -603,7 +606,7 @@ async function convertReading(
           ? ['']
           : ['', '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif']) {
           try {
-            path = await local(resolve(dirname(source), directory, name + suffix));
+            path = await local(resolve(directory, name + suffix));
             break search;
           } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;

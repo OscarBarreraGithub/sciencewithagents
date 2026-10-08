@@ -340,6 +340,75 @@ it('reads an admitted saved job outside recent history with its original model a
   expect(detail.finishedAt).toBe(template.finishedAt);
 });
 
+it.each([
+  ['interrupted', 'Agent is stopped. Open the chat to continue.'],
+  ['failed', 'Agent stopped after a failure. Open the chat to retry or continue.'],
+  ['waiting', 'Waiting for your answer. Open the chat to respond.'],
+] as const)(
+  'shows queued %s manager reports as needing chat action, without changing admission',
+  (status, reason) => {
+    const item = job('Stopped report');
+    const report = store.enqueue(
+      item.project.managerId,
+      randomUUID(),
+      'Retained completion report',
+      'report',
+      item.worker.id,
+    );
+    store.updateAgent(item.project.managerId, { status });
+    const run = store.run(report.id);
+    const admission = pulsar.decision(run);
+    expect(admission.eligible).toBe(true);
+    const row = pulsar.status(item.project.id).jobs.find((row) => row.runId === run.id)!;
+    expect(row).toMatchObject({ status: 'queued', eligible: false, reason });
+    expect(pulsar.jobDetail(run.id).job).toEqual(row);
+    expect(row.estimate).toEqual(pulsar.estimate(run));
+    expect(pulsar.decision(run)).toEqual(admission);
+    expect(store.run(run.id)).toEqual(run);
+    expect(store.agent(item.project.managerId).status).toBe(status);
+  },
+);
+
+it('keeps normal ready and running queue projections unchanged', () => {
+  const item = job('Normal projection');
+  store.updateAgent(item.worker.id, { status: 'queued' });
+  let row = pulsar.status(item.project.id).jobs[0]!;
+  expect(row).toMatchObject({
+    eligible: true,
+    reason: 'Capacity reserved at admission; ready for the next available work slot.',
+  });
+  expect(pulsar.jobDetail(item.run.id).job).toEqual(row);
+  store.updateRun(item.run.id, { status: 'running' });
+  store.updateAgent(item.worker.id, { status: 'running' });
+  row = pulsar.status(item.project.id).jobs[0]!;
+  expect(row).toMatchObject({ eligible: true, reason: 'Running with shared QUARK monitoring.' });
+  expect(pulsar.jobDetail(item.run.id).job).toEqual(row);
+});
+
+it('retains budget targets, estimates and hold flags behind stopped-agent queue reasons', () => {
+  const item = job('Stopped budget controls');
+  const budgetBlock = { kind: 'tokens' as const, targetId: item.task.id };
+  pulsar.allowanceDecision = () => ({ reason: 'Task token budget reached.', budgetBlock });
+  store.setSetting(`pulsar:held:${item.run.id}`, true);
+  store.updateAgent(item.worker.id, { status: 'interrupted' });
+  const admission = pulsar.decision(item.run);
+  const row = pulsar.status(item.project.id).jobs[0]!;
+  expect(row).toMatchObject({
+    eligible: false,
+    reason: 'Agent is stopped. Open the chat to continue.',
+    held: true,
+    budgetBlock,
+  });
+  expect(row.estimate).toEqual(pulsar.estimate(item.run));
+  expect(pulsar.jobDetail(item.run.id).job).toEqual(row);
+  expect(pulsar.decision(item.run)).toEqual(admission);
+  expect(admission).toMatchObject({
+    eligible: false,
+    reason: 'Task token budget reached.',
+    budgetBlock,
+  });
+});
+
 it('shows saved job queue-edit and approval waits without inferring paused execution', () => {
   const item = job('Saved job waits');
   store.updateRun(item.run.id, {
