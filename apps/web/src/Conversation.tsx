@@ -50,6 +50,7 @@ import { Notepad, type DraftSelection } from './Notepad';
 import { ChatCommands } from './ChatCommands';
 import { PromptHistory, scrollToPrompt } from './PromptHistory';
 import { promptLengthError } from './promptLength';
+import { providerErrorRows } from './providerErrors';
 
 function SendTiming({
   steer,
@@ -396,6 +397,8 @@ export function Conversation({
       ? attentionRun.id
       : undefined;
   const folded = foldedReplies(shown, (older ?? data)?.runs ?? []);
+  const providerErrors = providerErrorRows(shown);
+  const timelineEntries = shown.filter((entry) => !providerErrors.hidden.has(entry.id));
   const load = async () => {
     if (loadingHistory) return;
     const request = ++historyRequest.current;
@@ -557,7 +560,7 @@ export function Conversation({
               </div>
             </div>
           )}
-          {timeline(shown, folded).map((row, index, rows) => {
+          {timeline(timelineEntries, folded).map((row, index, rows) => {
             if (Array.isArray(row))
               return (
                 <ToolGroup
@@ -574,6 +577,7 @@ export function Conversation({
                 ? { ...row, kind: 'user', title: 'You' }
                 : row;
             const run = row.kind === 'user' && row.runId ? runsById.get(row.runId) : undefined;
+            const providerError = providerErrors.presentations.get(entry.id);
             const delivery =
               run?.status === 'queued'
                 ? 'Queued'
@@ -604,11 +608,42 @@ export function Conversation({
                 </details>
               </figure>
             ) : entry.kind === 'system' ? (
-              <div className="system-entry" key={entry.id}>
+              <div
+                className={`system-entry${providerError ? ' provider-error' : ''}`}
+                key={entry.id}
+              >
                 <Clock3 size={14} />
                 <div>
                   <strong>{entry.title}</strong>
-                  <p>{entry.text}</p>
+                  {providerError ? (
+                    <>
+                      <p>{providerError.cause}</p>
+                      <p>{providerError.action}</p>
+                      <details className="provider-error-details">
+                        <summary>Details</summary>
+                        <p>
+                          {providerError.records.length === 2
+                            ? 'The provider error and turn completion recorded the same failure. Both original records are retained.'
+                            : 'Original provider error record.'}
+                        </p>
+                        {providerError.records.map((record) => (
+                          <section key={record.id}>
+                            <strong>{record.title}</strong>
+                            <p>
+                              <time dateTime={record.createdAt}>{record.createdAt}</time>
+                            </p>
+                            <p>
+                              Record: {record.id}
+                              {record.runId ? ` · Run: ${record.runId}` : ''}
+                            </p>
+                            <pre>{record.text}</pre>
+                          </section>
+                        ))}
+                      </details>
+                    </>
+                  ) : (
+                    <p>{entry.text}</p>
+                  )}
                   {entry.urlRequest && <McpUrlLink request={entry.urlRequest} />}
                 </div>
               </div>

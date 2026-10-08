@@ -99,7 +99,8 @@ figure keeps its Original PDF note.
 
 Plain preamble `\usepackage` references may supply local `.sty` author macros as data.
 Reading restores only unique zero-argument definitions made from scoped font atoms
-(such as `\mathrm{opt}`), retaining source/provenance health. Conflicting, conditional,
+(such as `\mathrm{opt}`) or one Latin atom with a local roman subscript (`d_{\rm IF}`),
+retaining source/provenance health. Conflicting, conditional,
 scoped, recursive and unsupported definitions retain their source/PDF fallback. Styles
 are never executed and their package imports are not followed; no model call is made.
 

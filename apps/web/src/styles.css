@@ -852,6 +852,35 @@ small {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
 }
+.provider-error > div {
+  min-width: 0;
+}
+.provider-error-details > summary {
+  display: list-item;
+  width: fit-content;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 10px 14px 10px 28px;
+  border: 1px solid #d7ddcb;
+  border-radius: 8px;
+  background: #fffefa;
+  color: #536343;
+  cursor: pointer;
+}
+.provider-error-details > summary:focus-visible {
+  outline: 2px solid #536343;
+  outline-offset: 2px;
+}
+.provider-error-details section {
+  margin-top: 12px;
+}
+.provider-error-details pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .thinking {
   display: flex;
   align-items: center;

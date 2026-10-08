@@ -26,6 +26,38 @@ describe('bounded local author macro data', () => {
     ).not.toThrow();
   });
   it.each([
+    ['infd', String.raw`d_{\rm IF}`],
+    ['trd', String.raw`d_{\rm tr}`],
+    ['tvd', String.raw`d_{\rm tv}`],
+  ])('restores exact author subscript %s without leaking its roman font', (name, body) => {
+    const health = readingHealth();
+    const macros = localReadingMacros(
+      source,
+      [{ file: 'author.sty', text: `\\newcommand{\\${name}}{${body}}` }],
+      health,
+    );
+    expect(macros).toEqual({ ['\\' + name]: body });
+    expect(health.localMacros?.[0]?.status).toBe('restored');
+    const options = { throwOnError: true, trust: false, maxExpand: 1000, macros };
+    const expression = '\\' + name + '+x';
+    const rendered = katex.renderToString(expression, options);
+    // The expanded typesetting must match the exact source body, including the following x.
+    const withoutAnnotation = (value: string) =>
+      value.replace(/<annotation[^>]*>.*?<\/annotation>/g, '');
+    expect(withoutAnnotation(rendered)).toBe(
+      withoutAnnotation(katex.renderToString(body + '+x', options)),
+    );
+    expect(rendered).toContain('<mi>x</mi>');
+    expect(rendered).toContain(expression);
+    expect(
+      localReadingMacros(
+        source + String.raw`\renewcommand{\rm}{\bf}`,
+        [{ file: 'author.sty', text: `\\newcommand{\\${name}}{${body}}` }],
+        readingHealth(),
+      ),
+    ).toEqual({});
+  });
+  it.each([
     String.raw`\renewcommand{\opt}{x}`,
     String.raw`\def\opt{x}`,
     String.raw`\gdef\opt{x}`,
@@ -54,6 +86,10 @@ describe('bounded local author macro data', () => {
     String.raw`\newcommand{\opt}[1][x]{\mathrm{#1}}`,
     String.raw`\newcommand{\opt}{\bf x}`,
     String.raw`\newcommand{\opt}{\input{private}}`,
+    String.raw`\newcommand{\opt}{d_\rm IF}`,
+    String.raw`\newcommand{\opt}{d_{\bf IF}}`,
+    String.raw`\newcommand{\opt}{d_{\rm \other}}`,
+    String.raw`\newcommand{\opt}{d_{\rm IF}+x}`,
   ])('retains unsupported definitions as fallback %s', (text) => {
     const health = readingHealth();
     expect(localReadingMacros(source, [{ file: 'author.sty', text }], health)).toEqual({});

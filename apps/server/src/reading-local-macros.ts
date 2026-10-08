@@ -16,9 +16,10 @@ function undefinedNative(name: string) {
 }
 const programming =
   /\\(?:if[A-Za-z]*|else|fi|begingroup|endgroup|bgroup|egroup|begin|end|csname|catcode|makeatletter)\b/;
-// Only scoped font atoms: no definitions, file commands, argument syntax or stateful switches.
+// Scoped font atoms or one Latin atom with a locally scoped roman subscript.
+// No definitions, file commands, argument syntax or unscoped stateful switches.
 const literalBody =
-  /^\\(?:mathrm|mathbf|mathbb|mathcal|mathfrak|mathsf|mathtt)\{[A-Za-z0-9 ]{1,64}\}$/;
+  /^(?:\\(mathrm|mathbf|mathbb|mathcal|mathfrak|mathsf|mathtt)\{[A-Za-z0-9 ]{1,64}\}|[A-Za-z]_\{\\(rm) [A-Za-z0-9 ]{1,64}\})$/;
 export type LocalStyle = { file: string; text: string };
 
 /** This is a small data vocabulary, not a TeX interpreter. Collisions anywhere in the
@@ -58,6 +59,7 @@ export function localReadingMacros(source: string, styles: LocalStyle[], health:
       const open = opening ? match.index! + match[0].length + opening[0].length - 1 : -1;
       const end = open >= 0 ? groupEnd(text, open) : -1;
       const body = end >= 0 ? text.slice(open + 1, end - 1) : '';
+      const literal = literalBody.exec(body);
       const prefix = text.slice(0, match.index);
       const reason =
         counts.get(name.slice(1)) !== 1
@@ -67,9 +69,9 @@ export function localReadingMacros(source: string, styles: LocalStyle[], health:
               programming.test(preamble) ||
               opaque
             ? 'scoped-or-conditional'
-            : !literalBody.test(body)
+            : !literal
               ? 'unsupported-definition'
-              : counts.has(body.slice(1, body.indexOf('{'))) || !undefinedNative(name)
+              : counts.has(literal[1] ?? literal[2]!) || !undefinedNative(name)
                 ? 'conflicting-definition'
                 : null;
       bindings.push({

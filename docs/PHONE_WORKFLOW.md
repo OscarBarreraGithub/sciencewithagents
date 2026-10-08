@@ -4,6 +4,12 @@ Use this checklist when changing the phone UI so a redesign does not lose workin
 Actual runs belong in [Verification](VERIFICATION.md); person-only checks are in
 [Phone acceptance](PHONE_ACCEPTANCE.md). This contract is not a passing-test report.
 
+Native Codex error envelopes show their readable cause and next action in chat, with the
+original records behind **Details**. An immediately adjacent, identical provider-error and
+turn-failure pair may share one display row; both record IDs, timestamps and raw details
+remain available. Distinct failures and owner messages remain separate, and recovery uses
+the existing server-provided **Retry message** or **Continue** control.
+
 ## The normal journey
 
 1. In **Phone access**, copy the Cloudflare setup prompt into an external agent on the
