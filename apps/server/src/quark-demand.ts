@@ -8,6 +8,7 @@ import {
 import type { PrivateRun, Store } from './store.js';
 import type { Quark } from './quark.js';
 import { readCapacity } from './capacity.js';
+import { isManagerCoordination } from './coordination-reviews.js';
 import { projectFollowsQuark } from './quark-project.js';
 
 type Provider = 'codex' | 'claude';
@@ -41,10 +42,22 @@ export function coordinatorAgentId(store: Store) {
 }
 /** QUARK's own scheduling reports (current or retired identity) are output, never project demand. */
 export function isQuarkReport(store: Store, run: PrivateRun) {
-  if (run.kind !== 'report' || !run.sourceId) return false;
-  return (
-    run.sourceId === coordinatorAgentId(store) ||
-    store.getSetting('quark:coordinator:previous:' + run.sourceId) != null
+  if (run.kind !== 'report') return false;
+  const coordinator = coordinatorAgentId(store);
+  if (run.sourceId)
+    return (
+      run.sourceId === coordinator ||
+      store.getSetting('quark:coordinator:previous:' + run.sourceId) != null
+    );
+  if (!run.key.startsWith('coordination-review:')) return false;
+  return Boolean(
+    store.db
+      .prepare(
+        `SELECT 1 FROM coordination_review_sources s JOIN runs r ON r.id=s.source_run_id
+    WHERE s.batch_run_id=? AND (json_extract(r.body,'$.sourceId')=? OR EXISTS
+      (SELECT 1 FROM settings p WHERE p.key='quark:coordinator:previous:'||json_extract(r.body,'$.sourceId'))) LIMIT 1`,
+      )
+      .get(run.id, coordinator),
   );
 }
 function internalProjects(store: Store) {
@@ -104,6 +117,11 @@ export function materialDemand(store: Store, quark: Quark, now: number) {
     const demand = projects.get(agent.projectId);
     if (!demand || demand.paused || agent.id === coordinator || isQuarkReport(store, run)) continue;
     if (run.status === 'queued') {
+      if (
+        isManagerCoordination(store, run) ||
+        ['failed', 'interrupted', 'waiting'].includes(agent.status)
+      )
+        continue;
       if (run.queueEdit || store.getSetting(`pulsar:held:${run.id}`) === true) continue;
       if (quark.taskIds(run).some((id) => store.getSetting(`pulsar:held-task:${id}`) === true))
         continue;

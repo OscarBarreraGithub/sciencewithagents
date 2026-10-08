@@ -190,7 +190,7 @@ test('iPhone Safari outside the Home Screen app is told how to enable it', async
   await expectFits(page);
 });
 
-test('the real demo entry reports notifications as unavailable and serves a push-only worker', async ({
+test('the real demo entry reports notifications as unavailable and serves a push and static-assets worker', async ({
   page,
   request,
 }, info) => {
@@ -204,7 +204,8 @@ test('the real demo entry reports notifications as unavailable and serves a push
   expect(worker.headers()['cache-control']).toBe('no-store');
   const source = await worker.text();
   expect(source).toContain("addEventListener('push'");
-  expect(source).not.toContain("addEventListener('fetch'");
+  expect(source).toContain("addEventListener('fetch'");
+  expect(source).toContain('if (kind) event.respondWith(serveAsset(event, kind))');
   test.skip(info.project.name !== 'desktop', 'Real registration is checked once in Chromium.');
   const state = await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.register('/notifications-sw.js', {

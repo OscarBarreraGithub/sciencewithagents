@@ -479,7 +479,7 @@ export function GroupsApp({
           ) : !selected ? (
             <div className="chat-pane-empty">
               <h2>Choose a group</h2>
-              <p>Chat together, or ask your group manager to move the shared work forward.</p>
+              <p>Chat together, or ask your agent to move the shared work forward.</p>
             </div>
           ) : (
             <>

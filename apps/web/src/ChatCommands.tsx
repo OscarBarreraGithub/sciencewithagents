@@ -101,7 +101,7 @@ export function ChatCommands({
                   className="secondary"
                   onClick={() => choose(() => onCommand('resume'))}
                 >
-                  <code>/resume</code> Resume from history
+                  <code>/resume</code> Continue saved work
                 </button>
                 <button
                   type="button"

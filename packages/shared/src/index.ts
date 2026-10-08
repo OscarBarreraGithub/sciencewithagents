@@ -1,3 +1,5 @@
+export * from './coordination-reviews.js';
+import { coordinationReviewReadSchema } from './coordination-reviews.js';
 export * from './groups.js';
 export * from './prompt-text.js';
 import { draftTextSchema, promptTextSchema } from './prompt-text.js';
@@ -340,7 +342,15 @@ export const runSchema = z.object({
   sourceId: id.nullable(),
   text: z.string(),
   kind: z.enum(['user', 'delegation', 'message', 'report', 'resume']),
-  status: z.enum(['queued', 'running', 'completed', 'failed', 'interrupted', 'cancelled']),
+  status: z.enum([
+    'queued',
+    'running',
+    'completed',
+    'failed',
+    'interrupted',
+    'cancelled',
+    'coalesced',
+  ]),
   createdAt: z.string(),
   queueEditable: z.boolean().optional(),
   queueRevision: z.number().int().nonnegative().optional(),
@@ -540,7 +550,7 @@ export const reviewSchema = z
   .strict();
 // z.toJSONSchema cannot express the refinement below, so advertise it as text.
 const inspectTargetRule =
-  'Choose one inspection target per call: agentId, taskId, history, read, catalog, workItems, ownerRequests, goal, models, capacity, resources, scheduling, accounting or cluster. {} reads the project overview; changes:true requires taskId and provider applies only with models:true.';
+  'Choose one inspection target per call: agentId, taskId, history, read, catalog, workItems, ownerRequests, goal, models, capacity, resources, scheduling, accounting, coordination or cluster. {} reads the project overview; changes:true requires taskId and provider applies only with models:true.';
 export const inspectSchema = z
   .object({
     agentId: id.optional(),
@@ -550,6 +560,7 @@ export const inspectSchema = z
     catalog: catalogQuerySchema.optional(),
     workItems: workItemPageQuerySchema.optional(),
     ownerRequests: ownerRequestQuerySchema.optional(),
+    coordination: coordinationReviewReadSchema.optional(),
     goal: z.literal(true).optional(),
     models: z.literal(true).optional(),
     provider: providerIdSchema.optional(),
@@ -577,6 +588,7 @@ export const inspectSchema = z
         value.workItems,
         value.ownerRequests,
         value.goal,
+        value.coordination,
         value.models,
         value.capacity,
         value.resources,
@@ -711,3 +723,4 @@ export * from './publishing-accounts.js';
 export * from './owner-terminal.js';
 export * from './native-goal.js';
 export * from './managed-goal.js';
+export * from './run-recovery.js';

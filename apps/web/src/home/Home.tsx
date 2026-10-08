@@ -1,3 +1,4 @@
+import { agentName } from '../agentName';
 import { OwnerTerminal } from '../OwnerTerminal';
 import { BugReport } from './BugReport';
 import { IssueReport } from './IssueReport';
@@ -39,7 +40,6 @@ import { ActivityFlow, activityPages } from './ActivityFlow';
 import { ConnectionFlow, connectionPages } from './ConnectionFlow';
 import { AdvancedFlow } from './AdvancedFlow';
 import { Welcome } from './Welcome';
-import { useScrollHints } from './useScrollHints';
 import { useVisibleViewport } from '../useVisibleViewport';
 import { HomeOverview, ProviderMark, ago, providerName, resetLabel } from './HomeOverview';
 import { AppsGallery, SetupGuide } from './AppsGallery';
@@ -57,7 +57,7 @@ const titles: Record<string, string> = {
   apps: 'Apps',
   latex: 'LaTeX',
   chats: 'Chats',
-  managers: 'Managers',
+  managers: 'Projects',
   vscode: 'VS Code chats',
   assistant: 'Personal assistant',
   'assistant-settings': 'Assistant privacy',
@@ -336,7 +336,6 @@ export function Home() {
   const [dialog, setDialog] = useState<'help' | 'phone' | 'bug' | 'issue' | null>(null);
   const main = useRef<HTMLElement>(null);
   const back = useNavigation(currentRoute, main);
-  const scrollHint = useScrollHints(main, currentRoute);
   const previousRoute = useRef(currentRoute);
   const hasNavigated = useRef(false);
   const scrollPositions = useRef(new Map<string, number>());
@@ -378,7 +377,10 @@ export function Home() {
     const id = currentRoute.split('/')[1];
     const name =
       page === 'chat'
-        ? data.snapshot.data?.agents.find((agent) => agent.id === id)?.name
+        ? (() => {
+            const agent = data.snapshot.data?.agents.find((agent) => agent.id === id);
+            return agent ? agentName(agent) : undefined;
+          })()
         : page === 'project'
           ? data.snapshot.data?.projects.find((project) => project.id === id)?.name
           : page === 'task'
@@ -544,9 +546,6 @@ export function Home() {
             </section>
           )}
         </main>
-        <div className="home-scroll-hint" aria-hidden={!scrollHint}>
-          {scrollHint}
-        </div>
         {dialog === 'help' && (
           <Modal title="Help and setup" close={() => setDialog(null)} className="home-help-dialog">
             <div className="home-help" onClickCapture={closeOnLink}>

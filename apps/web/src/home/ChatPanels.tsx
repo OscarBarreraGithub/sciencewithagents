@@ -1,3 +1,4 @@
+import { agentName } from '../agentName';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowUpRight, Quote, X } from 'lucide-react';
 import { quarkStatusSchema, type Agent, type Project, type Snapshot } from '@dock/shared';
@@ -516,7 +517,7 @@ export function SubagentsPanel({ state, manager }: { state: Snapshot; manager: A
             return (
               <li key={agent.id} className="chat-item">
                 <div className="chat-item-text">
-                  <strong>{agent.name}</strong>
+                  <strong>{agentName(agent)}</strong>
                   <p>{summary}</p>
                   <small>
                     Spawned {when(agent.createdAt)} ·{' '}

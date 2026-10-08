@@ -198,12 +198,12 @@ export function DraftHandoff({
             and conversation never move per keystroke. Failures surface below as alerts; a hung
             save times out into one. Connecting and delivery receipts are genuine changes. */}
         {!draft.ready
-          ? 'Connecting your saved draft…'
+          ? 'Loading draft…'
           : draft.state?.own.submitted && !draft.unsaved && !draft.saving
             ? 'This draft has a delivery receipt. Retrying an unchanged copy will not send it twice.'
             : compact
-              ? 'Draft autosaves on this computer'
-              : 'Draft autosaves separately for this browser. Other devices cannot overwrite it.'}
+              ? 'Draft saved automatically'
+              : 'Draft saved automatically'}
       </p>
       {draft.error && (
         <div role="alert">

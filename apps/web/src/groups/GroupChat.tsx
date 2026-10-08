@@ -643,7 +643,7 @@ export function GroupChat({
           intro={
             mode
               ? {
-                  title: mode === 'group' ? 'Group chat' : 'Your group manager',
+                  title: mode === 'group' ? 'Group chat' : 'Your agent',
                   description:
                     mode === 'group'
                       ? 'Send a message to start the conversation with your group.'
@@ -841,7 +841,7 @@ export function GroupChat({
         onHelp={() =>
           setError(
             mode
-              ? 'Group chat sends a message to everyone. Group manager sends a request to your own agent; shared work appears in Group chat.'
+              ? 'Group chat sends a message to everyone. Your agent sends a request to your own agent; shared work appears in Group chat.'
               : 'Human messages are saved separately from native execution. Your private conversation is excluded from the shared feed.',
           )
         }
@@ -849,7 +849,7 @@ export function GroupChat({
           mode === 'group'
             ? 'Message the group…'
             : mode === 'manager'
-              ? 'Message your group manager…'
+              ? 'Message your agent…'
               : slot.context.visibility === 'private'
                 ? fixture
                   ? 'Message private test session…'

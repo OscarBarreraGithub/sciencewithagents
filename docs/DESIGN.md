@@ -49,10 +49,18 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 
 ## Chats and project setup
 
-- Distinguish Managers, VS Code chats and saved Misc conversations by provenance.
-  All, Managers, VS Code, Misc and Groups are filters in the same Chats frame. Groups lists
+- Name a project chat after the project; do not append “manager” to every visible title.
+  Keep internal roles and custom stored names intact. No “More above/below” overlays.
+- Opening a chat only reads saved work. Keep recent messages visible during refresh;
+  never flash a new-chat welcome over an existing conversation. Recovery belongs in chat
+  as **Retry message** or **Continue**, not behind advanced configuration or a remembered command.
+- Status text says what is happening in one short line. Put pacing calculations and
+  diagnostic detail behind **Details**. Scheduling off must read as off while work runs.
+
+- Distinguish project chats, VS Code chats and saved Misc conversations by provenance.
+  All, Projects, VS Code, Misc and Groups are filters in the same Chats frame. Groups lists
   shared conversations beside the selected group on desktop, with list/detail navigation on phones.
-  A group has two tabs: Group chat for everyone’s shared messages, and Group manager for
+  A group has two tabs: Group chat for everyone’s shared messages, and Your agent for
   the owner’s agent requests and shared work. No separate Groups page or private-chat controls.
   Keep setup, create/join and management in dialogs; preserve saved private history without
   publishing it. New invitations last seven days.

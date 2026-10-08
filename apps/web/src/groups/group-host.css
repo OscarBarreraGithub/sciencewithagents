@@ -321,9 +321,6 @@
 .group-host-workspace .group-chat .conversation-inner {
   max-width: 1050px;
 }
-.group-host-workspace .group-chat .conversation-scroll-hint[aria-hidden='true'] {
-  visibility: hidden;
-}
 /* Keep the conversation itself comfortably readable; status text is secondary. */
 .group-host-workspace .group-chat {
   --group-reading-size: max(20px, 1.25rem);

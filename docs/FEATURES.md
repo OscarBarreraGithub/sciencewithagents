@@ -29,7 +29,7 @@ This describes connected source behavior, not a blanket release certification.
 allowance; the app must remain running. See [local access](LOCAL_ACCESS.md#run-your-own-commands).
 
 Groups appears under **Chats → Groups** in the same list/detail frame as other chats.
-**Group chat** shows the shared conversation; **Group manager** directs your agent's shared
+**Group chat** shows the shared conversation; **Your agent** directs your agent's shared
 work. Create/join, setup, invitations and management use compact dialogs. Existing private
 histories remain saved and private; they are not shown or republished in these shared tabs.
 
@@ -160,6 +160,22 @@ stay available locally for editing or download, with a clear send limit. A defin
 refused autosave no longer blocks a corrected draft; uncertain saves keep their original
 retry identity. Shared editor delivery needs companion 0.2.14 or newer. Groups retain their
 separate shared-message limits. Model context limits remain provider-specific.
+
+Failed app-managed turns offer an inline **Retry message** when the host has retained proof
+that the original input never reached the provider, with unchanged model/account boundaries.
+It sends the saved prompt once and retains one owner message. **Continue** handles uncertain
+or interrupted work by asking the agent to inspect saved progress and unfinished requests
+before acting. Recovery receipts survive reloads and simultaneous taps; a later queued turn
+suppresses the old recovery action. Claude sign-in timeouts, unavailable commands and malformed
+status are distinguished from a verified signed-out account, without changing native sign-in.
+
+Reopening a recently read project chat shows a saved text copy while the fresh conversation
+loads. The browser keeps at most five conversations, with a combined 5 MB text budget and
+three-day expiry, plus up to 15 MB of hashed app bundles/fonts. Private text is partitioned by
+computer and cleared when authentication expires. Cached text never enables sending, approvals
+or recovery controls. Drafts and delivery receipts are separate and never evicted by this cache;
+PDFs, uploads and API responses are not service-worker cached. This is a loading aid, not an
+offline execution mode. Opening chats or checking their queue status makes no model call.
 
 Chats lists newest conversation activity first across managers, shared and offline records;
 connection/status changes do not reorder it. Shared dates require companion 0.2.15 or a

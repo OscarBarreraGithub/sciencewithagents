@@ -569,3 +569,49 @@ it('project opt-out resumes an acknowledged scheduler stop once but not manual o
   expect(store.runs().filter((r) => r.kind === 'resume')).toHaveLength(1);
   expect(runtime.quark.holds()).toHaveLength(0);
 });
+
+it('project opt-out admits saved resume with an expired meter and scheduler reset hold, while preserving actual native rejection', () => {
+  const original = owner();
+  runtime.quark.hold(original, 'Waiting for a verified allowance reset.', false, 'reset');
+  store.updateRun(original.id, { status: 'interrupted' });
+  const resumed = store.run(
+    store.enqueue(manager, randomUUID(), 'Continue saved work', 'resume').id,
+  );
+  const reading = store.getSetting('capacity:v1:codex') as { windows: { resetsAt: string }[] };
+  store.setSetting('capacity:v1:codex', {
+    ...reading,
+    windows: reading.windows.map((w) => ({
+      ...w,
+      resetsAt: new Date(Date.now() - 60000).toISOString(),
+    })),
+  });
+  expect(runtime.pulsar.decision(resumed).eligible).toBe(false);
+  followProject(false);
+  expect(runtime.quark.block(resumed, true)).toBeNull();
+  expect(runtime.pulsar.decision(resumed)).toMatchObject({
+    eligible: true,
+    reason: 'QUARK scheduling is off for this project and its workers.',
+  });
+  store.updateRun(resumed.id, { status: 'running' });
+  expect(runtime.pulsar.status().jobs.find((j) => j.runId === resumed.id)?.reason).toBe(
+    'Running · QUARK scheduling off.',
+  );
+  store.updateRun(resumed.id, { status: 'queued' });
+  const hold = store.getSetting(`quark:hold:${original.id}`) as Record<string, unknown>;
+  store.setSetting(`quark:hold:${original.id}`, {
+    ...hold,
+    nativeExhaustion: {
+      source: 'claude-rate-limit-event',
+      sessionId: randomUUID(),
+      runId: original.id,
+      rateLimitType: 'five_hour',
+      windowId: 'primary',
+      resetsAt: new Date(Date.now() + 3600000).toISOString(),
+      observedAt: new Date().toISOString(),
+    },
+  });
+  expect(runtime.pulsar.decision(resumed)).toMatchObject({
+    eligible: false,
+    reason: expect.stringContaining('Paused by QUARK'),
+  });
+});

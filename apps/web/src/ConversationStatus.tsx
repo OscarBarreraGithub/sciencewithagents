@@ -1,9 +1,15 @@
+import { compactQuarkReason } from './quark-waiting-reason';
+import { agentName } from './agentName';
 import { useEffect, useState } from 'react';
 import { schedulerStatusSchema, type Agent } from '@dock/shared';
 import { api } from './api';
 
 /** Read the same queue explanation in every app-managed conversation. */
-export function ConversationStatus({ agent }: { agent: Pick<Agent, 'id' | 'name' | 'status'> }) {
+export function ConversationStatus({
+  agent,
+}: {
+  agent: Pick<Agent, 'id' | 'name' | 'role' | 'status'>;
+}) {
   const [reading, setReading] = useState<{
     agentId: string;
     explanation: string | null;
@@ -51,6 +57,8 @@ export function ConversationStatus({ agent }: { agent: Pick<Agent, 'id' | 'name'
   }, [agent.id, agent.status]);
   if (!['running', 'queued'].includes(agent.status)) return null;
   const current = reading?.agentId === agent.id ? reading : null;
+  const explanation = current?.explanation;
+  const summary = explanation ? compactQuarkReason(explanation) : 'Queued';
   return (
     <div className="thinking" role="status">
       <span />
@@ -58,11 +66,17 @@ export function ConversationStatus({ agent }: { agent: Pick<Agent, 'id' | 'name'
       <span />
       <p>
         {agent.status === 'running'
-          ? `${agent.name} is working`
+          ? `${agentName(agent)} is working`
           : current?.unavailable
-            ? 'Queue status is unavailable. Your message is saved.'
-            : (current?.explanation ?? 'Checking why this message is waiting…')}
+            ? 'Queued · reconnecting…'
+            : summary}
       </p>
+      {agent.status === 'queued' && explanation && explanation !== summary && (
+        <details className="queue-status-detail">
+          <summary>Details</summary>
+          <p>{explanation}</p>
+        </details>
+      )}
     </div>
   );
 }

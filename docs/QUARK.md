@@ -26,6 +26,23 @@ tasks, branches, receipts and results already live together in the app.
 Internal `pulsar` API paths and storage keys retain their earlier names for compatibility.
 Use [current status](STATUS.md) for release blockers and unfinished utilization automation.
 
+Pending manager team messages and worker reports are retained updates, not separate work
+assignments. The host coalesces an eligible pending set into one durable review with links to
+every original record; its prompt carries bounded metadata and paged evidence, without a
+summarizer call. New arrivals wait for the current review. Held jobs and Group Work lineage
+keep their own controls. Owner messages stay ahead of automatic coordination. Coalescing
+never resumes a stopped manager or changes its automatic-turn limit. Home counts queued
+work separately from team updates, and QUARK shows one pending review per manager.
+Joint reviews retain source task ancestry: task holds and allowance caps still apply.
+The review counts conservatively within each applicable source task cap.
+
+For installation recovery, `GET /api/agents/:id/coordination-review/preview` reads an exact
+source preview. Authenticated `POST /api/agents/:id/coordination-review` accepts a UUID `key`
+and that preview's `expectedFingerprint`; a stale preview fails and an exact retry returns
+the same receipt. Originals acquire a `coalesced` status and retain their text/history;
+this is neither task completion nor proof that a model reviewed them. Interrupted or failed
+reviews require explicit recovery, and failed writes roll back their sources and receipt.
+
 Queue displays share advisory demand within one synchronous read. Admission still checks
 current holds, allowance and reservations for each job. Long rejected queue scans yield to
 owner controls after about 20 ms of work or 16 candidates; an individual check can take longer.

@@ -148,7 +148,14 @@ function Destinations({ data }: { data: HomeData }) {
   const sessions = visibleShared.filter((chat) => chat.daemon).length;
   const jobs = [...(data.work.data?.jobs ?? []), ...(data.local.data?.jobs ?? [])];
   const running = jobs.filter((j) => j.status === 'running').length;
-  const queued = jobs.filter((j) => j.status === 'queued').length;
+  const queued = jobs.filter(
+    (j) => j.status === 'queued' && !('coordination' in j && j.coordination),
+  ).length;
+  const updates = jobs.reduce(
+    (n, j) =>
+      n + (j.status === 'queued' && 'coordination' in j ? (j.coordination?.updates ?? 0) : 0),
+    0,
+  );
   const queueKnown = data.work.loaded && data.local.loaded && !data.work.error && !data.local.error;
   const items: { href: string; label: string; icon: ReactNode; detail: string; tone: string }[] = [
     {
@@ -179,7 +186,7 @@ function Destinations({ data }: { data: HomeData }) {
       icon: <Layers3 size={22} />,
       tone: 'quark',
       detail: queueKnown
-        ? `${running} running · ${queued} queued`
+        ? `${running} running · ${queued} queued${updates ? ` · ${plural(updates, 'team update')}` : ''}`
         : data.work.error || data.local.error
           ? 'Queue status unavailable'
           : 'Reading the work queue…',

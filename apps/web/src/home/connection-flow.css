@@ -190,9 +190,6 @@
   overflow: hidden;
   padding-bottom: 8px;
 }
-.home-shell:has(.editor-conversation-frame) .home-scroll-hint {
-  display: none;
-}
 .editor-back {
   align-self: flex-start;
   flex-shrink: 0;

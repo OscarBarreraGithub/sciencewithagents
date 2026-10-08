@@ -1,3 +1,4 @@
+import { compactQuarkReason } from '../quark-waiting-reason';
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpRight,
@@ -108,11 +109,6 @@ function shortReason(message: string) {
 
 /** A card shows a short reason whole; a long one leads with its first sentence and keeps the
  *  complete text in Details. */
-function brief(message: string) {
-  const text = message.replace(/\s+/g, ' ').trim();
-  if (text.length <= 140) return text;
-  return /^.{1,140}?[.!?](?= )/.exec(text)?.[0] ?? `${text.slice(0, 139).replace(/ \S*$/, '')}…`;
-}
 
 const windowExpired = (window: ProviderCapacity['windows'][number], now: number) =>
   !!window.resetsAt && Date.parse(window.resetsAt) <= now;
@@ -375,10 +371,12 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
       id: j.runId,
       column,
       project: j.projectName,
-      title: j.agentName,
+      title: j.coordination ? `${j.agentName} · team review` : j.agentName,
       model: agent?.model ?? j.provider,
-      href: `#/job/${j.runId}`,
-      reason: j.reason,
+      href: j.coordination && !j.held && !j.override ? `#/chat/${j.agentId}` : `#/job/${j.runId}`,
+      reason: j.coordination
+        ? `${count(j.coordination.updates, 'retained team update')} for one review. ${j.reason}`
+        : j.reason,
       priority: j.estimate.priority,
       weight: project?.policy.weight ?? 1,
       estimate: `~${j.estimate.quotaPercent}% allowance · ~${Math.ceil(j.estimate.expectedSeconds / 60)} min`,
@@ -860,7 +858,7 @@ export function QuarkWorkspace({ data, taskId }: { data: HomeData; taskId?: stri
                       .map((c) => {
                         // State, estimate, caps and actions stay on the card; the full reason
                         // and resource readings are one tap away.
-                        const reason = brief(c.reason);
+                        const reason = compactQuarkReason(c.reason);
                         const longReason = reason !== c.reason.replace(/\s+/g, ' ').trim();
                         const more =
                           column !== 'Completed' && (longReason || !!c.resources || !!c.actual);

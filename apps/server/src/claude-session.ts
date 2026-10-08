@@ -32,6 +32,25 @@ const frameLimit = 4 * 1024 * 1024;
 const coordinationName = /^dock_[a-z_]+$/;
 const execute = promisify(execFile);
 
+export type ClaudePreflightCode =
+  | 'signed_out'
+  | 'unsupported_auth'
+  | 'malformed_status'
+  | 'timeout'
+  | 'unavailable'
+  | 'account_changed'
+  | 'conflicting_environment';
+/** Sanitized native metadata failure, thrown only before this turn's input write. */
+export class ClaudePreflightError extends Error {
+  constructor(
+    readonly code: ClaudePreflightCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ClaudePreflightError';
+  }
+}
+
 /** Refuse routing/billing overrides instead of dropping credentials or silently
  * switching the owner's account. Values are never included in errors or logs.
  * Names/precedence: https://code.claude.com/docs/en/env-vars
@@ -47,7 +66,8 @@ export function assertClaudeSubscriptionEnvironment(env: NodeJS.ProcessEnv = pro
       credentialsOrRoutes.test(name) ||
       (providerFlags.test(name) && !/^(?:0|false|no|off)$/i.test(value.trim()))
     )
-      throw new Error(
+      throw new ClaudePreflightError(
+        'conflicting_environment',
         'Conflicting Claude authentication, API billing or provider-routing environment is configured. Managed Claude requires the existing local subscription sign-in; no request was sent.',
       );
   }
@@ -57,6 +77,21 @@ export type ClaudeIdentity = { affinity: string; authMethod: 'claude.ai'; provid
 
 /** Read the native CLI's sanitized identity projection, never its credential files. */
 export function parseClaudeIdentity(value: unknown): ClaudeIdentity {
+  const summary = z.object({ loggedIn: z.boolean() }).passthrough().safeParse(value);
+  if (summary.success && !summary.data.loggedIn)
+    throw new ClaudePreflightError(
+      'signed_out',
+      'Claude reports that it is signed out of its local subscription on this computer. Sign in through Claude, then retry this message. No model request was sent.',
+    );
+  if (
+    summary.success &&
+    ((typeof summary.data.authMethod === 'string' && summary.data.authMethod !== 'claude.ai') ||
+      (typeof summary.data.apiProvider === 'string' && summary.data.apiProvider !== 'firstParty'))
+  )
+    throw new ClaudePreflightError(
+      'unsupported_auth',
+      'Claude is using a different authentication or billing route. Restore the local subscription sign-in, then retry this message. No model request was sent.',
+    );
   const status = z
     .object({
       loggedIn: z.literal(true),
@@ -67,8 +102,9 @@ export function parseClaudeIdentity(value: unknown): ClaudeIdentity {
     })
     .safeParse(value);
   if (!status.success)
-    throw new Error(
-      'Claude must be signed into a subscription locally. sciencewithagents will not select API billing or sign in for you.',
+    throw new ClaudePreflightError(
+      'malformed_status',
+      'Claude returned an incomplete subscription sign-in status. Its account could not be verified; no model request was sent. Retry this message after checking the connection.',
     );
   return {
     affinity: createHash('sha256')
@@ -85,18 +121,52 @@ export function parseClaudeIdentity(value: unknown): ClaudeIdentity {
     provider: 'firstParty',
   };
 }
-export async function readClaudeIdentity(binary: string): Promise<ClaudeIdentity> {
+type IdentityCommand = (binary: string) => Promise<{ stdout: string }>;
+const nativeIdentityCommand: IdentityCommand = (binary) =>
+  execute(binary, ['auth', 'status', '--json'], {
+    timeout: 10_000,
+    maxBuffer: 64 * 1024,
+    windowsHide: true,
+  });
+export async function readClaudeIdentity(
+  binary: string,
+  command: IdentityCommand = nativeIdentityCommand,
+): Promise<ClaudeIdentity> {
   assertClaudeSubscriptionEnvironment();
   try {
-    const { stdout } = await execute(binary, ['auth', 'status', '--json'], {
-      timeout: 10_000,
-      maxBuffer: 64 * 1024,
-      windowsHide: true,
-    });
-    return parseClaudeIdentity(JSON.parse(stdout));
-  } catch {
-    throw new Error(
-      'Claude subscription sign-in could not be verified. Check Claude locally; no model request was sent.',
+    const { stdout } = await command(binary);
+    try {
+      return parseClaudeIdentity(JSON.parse(stdout));
+    } catch (error) {
+      if (error instanceof ClaudePreflightError) throw error;
+      throw new ClaudePreflightError(
+        'malformed_status',
+        'Claude returned an unreadable sign-in status. Its account could not be verified; no model request was sent. Retry this message after checking the connection.',
+      );
+    }
+  } catch (error) {
+    if (error instanceof ClaudePreflightError) throw error;
+    const failed = (error ?? {}) as {
+      code?: unknown;
+      stdout?: unknown;
+      killed?: unknown;
+      signal?: unknown;
+    };
+    if (failed.code === 1 && typeof failed.stdout === 'string') {
+      try {
+        const status: unknown = JSON.parse(failed.stdout);
+        if (z.object({ loggedIn: z.literal(false) }).safeParse(status).success)
+          return parseClaudeIdentity(status);
+      } catch (parsed) {
+        if (parsed instanceof ClaudePreflightError) throw parsed;
+      }
+    }
+    const timeout = failed.code === 'ETIMEDOUT' || (failed.killed === true && !!failed.signal);
+    throw new ClaudePreflightError(
+      timeout ? 'timeout' : 'unavailable',
+      timeout
+        ? 'Claude’s sign-in check timed out. This does not mean you are signed out. No model request was sent; retry this message.'
+        : 'Claude’s sign-in check is unavailable. Its account could not be verified; no model request was sent. Check the connection, then retry this message.',
     );
   }
 }
@@ -829,7 +899,8 @@ export class ClaudeSession extends EventEmitter {
       ? this.options.boundary.verifyClaudeIdentity(this.options.binary)
       : (this.dependencies.identity ?? readClaudeIdentity)(this.options.binary));
     if (identity.affinity !== this.options.accountAffinity)
-      throw new Error(
+      throw new ClaudePreflightError(
+        'account_changed',
         'Claude sign-in changed. This conversation will not be sent to another account.',
       );
   }

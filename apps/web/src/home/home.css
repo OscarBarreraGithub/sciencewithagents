@@ -529,26 +529,6 @@ body:has(.home-shell) {
 .home-shell ::-webkit-scrollbar-track {
   background: #f0ece4;
 }
-.home-scroll-hint {
-  display: none;
-  flex: 0 0 24px;
-  height: 24px;
-  text-align: center;
-  font-size: var(--text-small);
-  color: var(--home-muted);
-  background: var(--home-paper);
-}
-.conversation-scroll-hint {
-  pointer-events: none;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  height: 24px;
-  text-align: center;
-  font-size: var(--text-small);
-  color: #5e6680;
-  background: #ffffffed;
-}
 
 /* Shared by other screens. */
 .home-eyebrow {
@@ -828,10 +808,6 @@ dialog.home-help-dialog {
   .home-content {
     padding: 0 14px max(16px, env(safe-area-inset-bottom, 0px));
   }
-  .home-scroll-hint {
-    flex-basis: 20px;
-    height: 20px;
-  }
 }
 
 /* The alien alone keeps the phone header spacious, including its optional lock. */
@@ -861,10 +837,6 @@ dialog.home-help-dialog {
     padding-top: 0;
     /* Keeps the phone chip's border off the scroller's clipped edge. */
     padding-bottom: 2px;
-  }
-  .home-scroll-hint {
-    flex-basis: 18px;
-    height: 18px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

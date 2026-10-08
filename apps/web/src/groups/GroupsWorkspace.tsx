@@ -113,7 +113,7 @@ function Workspace(props: GroupsWorkspaceProps) {
             aria-controls="groups-chat-panel"
             onClick={() => select('manager')}
           >
-            Group manager
+            Your agent
           </button>
         </div>
       </div>

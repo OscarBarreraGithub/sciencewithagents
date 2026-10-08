@@ -5,6 +5,13 @@ projects and desktop/phone browser checks.** This is not a claim that every devi
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
 
+Current chat reliability changes add inline retry/continue, distinguish Claude sign-in check
+failures from verified sign-out, and keep bounded recent message copies during refresh.
+Internal team notifications can be combined into one durable review without deleting source
+records or waking stopped chats. Queue cards separate those updates from executable work;
+pacing explanations are collapsed. These changes have focused backend and emulated browser
+checks; recurring native sign-in failures and physical iPhone behavior remain separate limits.
+
 The beta covers provider routing, Claude review, manager leases, owned-process stopping,
 delayed allowance attribution, crowded attention/QUARK layouts, keyboard composers,
 concurrent drafts and helper search filtering. Product work below remains outside it.

@@ -333,18 +333,6 @@
   flex: 0 0 auto;
 }
 
-.groups-chat-slot .conversation-scroll-hint {
-  pointer-events: none;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  height: 24px;
-  text-align: center;
-  font-size: var(--text-small);
-  color: #5e6680;
-  background: #ffffffed;
-}
-
 /* Keep feed chrome visible on tall screens; short screens scroll it with evidence. */
 .groups-feed-chrome {
   position: sticky;

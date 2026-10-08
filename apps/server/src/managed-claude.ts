@@ -14,6 +14,7 @@ import { Conflict, Store, type PrivateAgent } from './store.js';
 import { beginClaudeUsageSession } from './usage.js';
 import {
   ClaudeSession,
+  ClaudePreflightError,
   inspectClaudeRuntime,
   readClaudeIdentity,
   readClaudeAccountState,
@@ -34,7 +35,7 @@ type Callbacks = {
   charter(agent: PrivateAgent): string;
   tools(agent: PrivateAgent): DynamicTool[];
   invoke(agentId: string, key: string, name: string, input: unknown): Promise<unknown>;
-  beforeSubmit?(agentId: string, runId: string): void;
+  beforeSubmit?(agentId: string, runId: string, phase?: 'input' | 'fork'): void;
   hook?(
     agentId: string,
     event: ClaudeHook,
@@ -201,7 +202,8 @@ export class ManagedClaude {
     const affinityKey = `claude:account:${agent.id}`;
     const saved = this.store.getSetting(affinityKey);
     if ((saved && saved !== identity.affinity) || (agent.threadId && !saved))
-      throw new Conflict(
+      throw new ClaudePreflightError(
+        'account_changed',
         'This Claude conversation belongs to its original local account. Restore that sign-in; sciencewithagents will not share its history with another account.',
       );
     const models = this.catalog.length ? this.catalog : await this.models();
@@ -303,7 +305,7 @@ export class ManagedClaude {
               throw new Conflict(
                 'This discussion was cancelled before Claude could copy its history.',
               );
-            this.callbacks.beforeSubmit?.(agent.id, run.id);
+            this.callbacks.beforeSubmit?.(agent.id, run.id, 'fork');
             // Native startup may write the fork before receiving our first question.
             // After an uncertain start, resume only this known target; never fork again.
             this.store.setSetting(`claude:fork-attempted:${threadId}`, true);

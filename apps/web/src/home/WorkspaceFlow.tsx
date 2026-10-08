@@ -1,3 +1,6 @@
+import { conversationCache } from '../conversation-cache';
+import type { CachedConversation, SavedCopy } from '../read-cache';
+import { agentName } from '../agentName';
 import { GroupsApp } from '../groups/GroupsApp';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -22,6 +25,7 @@ import {
   conversationVisibilityIdentity,
   compareConversationActivity,
   agentSchema,
+  entrySchema,
   type ConversationVisibility,
   type ConversationVisibilityTarget,
   type Agent,
@@ -79,7 +83,7 @@ export const flowPages = new Set([
 ]);
 export const stateNames: Record<string, string> = {
   idle: 'Ready',
-  queued: 'Waiting in QUARK',
+  queued: 'Queued',
   running: 'Working',
   waiting: 'Needs your input',
   interrupted: 'Paused',
@@ -141,7 +145,7 @@ function AgentLink({ agent, caption }: { agent: Agent; caption?: string }) {
         {agent.role === 'manager' ? <Users size={19} /> : <MessageCircle size={19} />}
       </span>
       <span>
-        <strong>{agent.name}</strong>
+        <strong>{agentName(agent)}</strong>
         <small>
           {caption ??
             `${agent.provider === 'codex' ? 'Codex' : 'Claude'} · ${agent.interview ? 'Read-only discussion' : agent.role}`}
@@ -478,7 +482,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
               <h2>{project.name}</h2>
               <p>{project.description || 'A place for your ideas, team and results.'}</p>
               <div className="flow-project-meta">
-                <span>{manager?.name ?? 'Project manager'}</span>
+                <span>{manager ? agentName(manager) : 'Project chat'}</span>
                 <span>{tasks.filter((t) => !closed(t)).length} active tasks</span>
               </div>
             </a>
@@ -531,6 +535,10 @@ export function ChatPage({
     detail: AgentDetail;
     channel?: AgentDetailChannel;
   } | null>(null);
+  const [savedCopy, setSavedCopy] = useState<{
+    channel?: AgentDetailChannel;
+    copy: SavedCopy<CachedConversation>;
+  } | null>(null);
   const [readError, setReadError] = useState('');
   const [error, setError] = useState('');
   const [connectedId, setConnectedId] = useState<string | null>(null);
@@ -557,6 +565,13 @@ export function ChatPage({
       const value = await detail(id, undefined, channel);
       if (alive.current && currentId.current === id && sequence === readSequence.current) {
         setConversation({ detail: value, channel });
+        setSavedCopy(null);
+        void conversationCache(channel)
+          .then(async (cache) => {
+            if (pane?.archived) await cache?.forgetConversation(id);
+            else await cache?.saveConversation(value);
+          })
+          .catch(() => {});
         setConnectedId(id);
         setReadError('');
       }
@@ -570,7 +585,33 @@ export function ChatPage({
         );
       }
     }
-  }, [id, channel]);
+  }, [id, channel, pane?.archived]);
+  useEffect(() => {
+    if (pane?.archived) return;
+    let active = true;
+    const startedAt = readSequence.current;
+    void conversationCache(channel)
+      .then(async (cache) => {
+        const copy = await cache?.readConversation(id);
+        // Never let a slower saved copy replace a response already returned by the server.
+        if (
+          active &&
+          copy &&
+          entrySchema
+            .array()
+            .safeParse(
+              copy.value.entries.map((entry) => ({ ...entry, runId: null, status: 'saved-copy' })),
+            ).success &&
+          currentId.current === id &&
+          readSequence.current <= startedAt + 1
+        )
+          setSavedCopy({ channel, copy });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [id, channel, pane?.archived]);
   useEffect(() => {
     alive.current = true;
     setReadError('');
@@ -602,6 +643,26 @@ export function ChatPage({
       ? conversation.detail
       : null;
   const agent = currentConversation?.agent ?? state.agents.find((a) => a.id === id);
+  const cached =
+    !pane?.archived &&
+    !currentConversation &&
+    savedCopy &&
+    savedCopy.channel === channel &&
+    savedCopy.copy.value.chat.id === id
+      ? savedCopy.copy
+      : null;
+  const displayedConversation: AgentDetail | null =
+    currentConversation ??
+    (cached && agent
+      ? {
+          agent,
+          entries: cached.value.entries.map((entry) =>
+            entrySchema.parse({ ...entry, runId: null, status: 'saved-copy' }),
+          ),
+          runs: [],
+          hasMore: cached.value.olderOmitted,
+        }
+      : null);
   const canForkDiscussion = currentConversation?.nativeDiscussion === 'available';
   useEffect(() => {
     if (agent && workspace.state && workspace.state.client.selectedAgentId !== id)
@@ -687,7 +748,7 @@ export function ChatPage({
             </span>
           )}
         </p>
-        <h1 tabIndex={-1}>{agent.name}</h1>
+        <h1 tabIndex={-1}>{agentName(agent)}</h1>
         <p className="chat-pane-meta">
           <span className={`chat-dot ${agent.status}`} aria-hidden="true" />
           {agent.provider === 'codex' ? 'Codex' : 'Claude'} ·{' '}
@@ -808,10 +869,10 @@ export function ChatPage({
                   : agent.interview
                     ? 'ABOUT THIS WORK'
                     : agent.role === 'manager'
-                      ? 'MANAGER CONVERSATION'
+                      ? 'PROJECT CHAT'
                       : 'WORKER AND ITS DECISIONS'
               }
-              title={agent.name}
+              title={agentName(agent)}
               action={
                 personal ? (
                   <a className="flow-button" href="#/assistant-settings">
@@ -843,10 +904,7 @@ export function ChatPage({
           {reconnect ? (
             // Technical detail stays in Open conversations; this offers the same saved retry.
             <div className="workspace-reconnect">
-              <p>
-                This browser’s conversation list needs to reconnect. Your messages and draft are
-                kept.
-              </p>
+              <p>Connection interrupted.</p>
               <button
                 type="button"
                 className="flow-button"
@@ -870,9 +928,11 @@ export function ChatPage({
           agent.nativeRootId ||
           readOnly
             ? !connected && !readError
-              ? 'Connecting to this computer. Your saved messages and draft are retained.'
+              ? cached
+                ? 'Saved messages · updating…'
+                : 'Connecting…'
               : agent.archivedAt
-                ? 'This manager was removed. Its files and conversation history are saved; it cannot start more work.'
+                ? 'Archived conversation.'
                 : agent.interview
                   ? agent.interview.continuity === 'native-fork'
                     ? `A separate read-only discussion using the saved ${agent.provider === 'claude' ? 'Claude' : 'Codex'} conversation. ${currentConversation?.nativeDiscussion === 'prepared' ? 'The native history has been copied.' : 'The copy is prepared when you send your first question.'} The original work and review stay unchanged. If that history is unavailable, open Original worker and choose Saved evidence only.`
@@ -881,7 +941,7 @@ export function ChatPage({
                     ? 'Native helper activity is retained here. Direct input and stop controls belong to the owning conversation.'
                     : readOnly
                       ? 'This is the saved record. Ask about the work in a separate read-only discussion.'
-                      : 'Your draft stays private to this browser. Sending is always your choice.'
+                      : null
             : null}
         </div>
       )}
@@ -903,9 +963,12 @@ export function ChatPage({
                 : undefined
             }
             agent={agent}
-            detail={currentConversation}
-            approvals={approvals}
+            detail={displayedConversation}
+            displayOnly={!connected}
+            promptNavigation={connected}
+            approvals={connected ? approvals : []}
             act={act}
+            recovery={!readOnly && connected}
           />
           {readOnly ? (
             <div className="flow-archive-action">
@@ -992,7 +1055,19 @@ export function ChatPage({
                   void act(() =>
                     api(`/agents/${id}/commands`, { command, key: crypto.randomUUID() }),
                   );
-                else location.hash = `${go('advanced', agent.id)}/${command}`;
+                else if (command === 'resume') {
+                  const recovery = document.querySelector(
+                    `.run-recovery[data-agent-id="${agent.id}"]`,
+                  );
+                  if (recovery) {
+                    recovery.scrollIntoView({ block: 'nearest' });
+                    recovery.querySelector('button')?.focus();
+                  } else if (!['queued', 'running', 'waiting'].includes(agent.status)) {
+                    void act(() =>
+                      api(`/agents/${id}/commands`, { command, key: crypto.randomUUID() }),
+                    );
+                  }
+                } else location.hash = `${go('advanced', agent.id)}/${command}`;
               }}
               onStop={() =>
                 void act(() =>
@@ -1072,19 +1147,19 @@ type ChatRow = {
 const rowLabels: Record<RowState, string> = {
   awaiting: 'Needs your response',
   working: 'Working',
-  queued: 'Waiting in QUARK',
+  queued: 'Queued',
   attention: 'Needs attention',
   idle: 'Ready',
   offline: 'Offline',
 };
 const filters: [ChatFilter, string][] = [
-  ['manager', 'Managers'],
+  ['manager', 'Projects'],
   // VS Code chats and native Codex sessions; the saved filter key stays 'vscode'.
   ['vscode', 'VS Code'],
   ['misc', 'Misc'],
 ];
 const kindLabels: Record<ChatKind, string> = {
-  manager: 'Manager',
+  manager: 'Project',
   vscode: 'VS Code',
   misc: 'Misc',
 };
@@ -1164,6 +1239,13 @@ function MainChat({
   );
   const changed = (undone: boolean) => (record: ConversationVisibility) => {
     visibility.changed(record);
+    if (record.archived && record.target.kind === 'agent') {
+      const removedId = record.target.agentId;
+      for (const channel of ['conversation', 'all'])
+        void conversationCache(channel)
+          .then((cache) => cache?.forgetConversation(removedId))
+          .catch(() => {});
+    }
     setNotice({ target: record.target, archived: record.archived, undone });
   };
   useEffect(() => {
@@ -1230,7 +1312,7 @@ function MainChat({
           key: agent.id,
           target: { kind: 'agent', agentId: agent.id },
           kind,
-          name: agent.name,
+          name: agentName(agent),
           caption:
             agent.id === personalId
               ? 'Personal conversation'
@@ -1599,8 +1681,8 @@ function MainChat({
             <MessageCircle size={26} />
             <h2>Choose a conversation</h2>
             <p>
-              Managers, shared VS Code chats, Codex sessions and saved discussions keep their own
-              history.
+              Project chats, shared VS Code chats, Codex sessions and saved discussions keep their
+              own history.
             </p>
           </div>
         )}
@@ -1718,7 +1800,7 @@ function NewMenu({ close }: { close: () => void }) {
           <a className="chat-new-option" href="#/new" onClick={close}>
             <Users size={19} />
             <span>
-              <strong>Project manager</strong>
+              <strong>New project</strong>
               <small>Set up a project, its manager and how its team works.</small>
             </span>
           </a>

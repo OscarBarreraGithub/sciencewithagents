@@ -8,7 +8,6 @@ import {
 } from '@dock/shared';
 import { apiScope } from '../api';
 import type { HomeData } from './useHomeData';
-import { useScrollHints } from './useScrollHints';
 import { HealthAssistant, useHealthModels, type HealthModels } from './HealthAssistant';
 import { HealthPlots } from './HealthPlots';
 import { AssistantFullscreen } from './AssistantFullscreen';
@@ -245,7 +244,6 @@ const cpuBasis = (sample: ResourceSample | null) =>
 function Apps({ sample }: { sample: ResourceSample | null }) {
   const [order, setOrder] = useState<'cpu' | 'memory'>('cpu');
   const scroll = useRef<HTMLDivElement>(null);
-  const hint = useScrollHints(scroll, order);
   const total = sample?.machine?.memoryTotalBytes ?? null;
   const groups = [...(sample?.groups ?? [])].sort((a, b) =>
     order === 'cpu' ? (b.cpuPercent ?? -1) - (a.cpuPercent ?? -1) : b.memoryBytes - a.memoryBytes,
@@ -311,9 +309,6 @@ function Apps({ sample }: { sample: ResourceSample | null }) {
           </p>
         )}
       </div>
-      <div className="health-panel-hint" aria-hidden={!hint}>
-        {hint}
-      </div>
     </section>
   );
 }
@@ -328,7 +323,6 @@ type ProjectGroup = {
 };
 function Projects({ sample }: { sample: ResourceSample | null }) {
   const scroll = useRef<HTMLDivElement>(null);
-  const hint = useScrollHints(scroll, sample?.observedAt ?? '');
   const map = new Map<string, ProjectGroup>();
   for (const job of sample?.jobs ?? []) {
     const id = job.projectId ?? 'none';
@@ -397,9 +391,6 @@ function Projects({ sample }: { sample: ResourceSample | null }) {
         {!groups.length && (
           <p className="health-empty">No app-managed work was visible in this reading.</p>
         )}
-      </div>
-      <div className="health-panel-hint" aria-hidden={!hint}>
-        {hint}
       </div>
       <p className="health-footnote">
         Each job includes its tools and helpers. Work started outside this app, or detached from a

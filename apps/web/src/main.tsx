@@ -7,6 +7,9 @@ import { PhoneGate } from './PhoneAccess';
 import './styles.css';
 import { apiScope, selectComputer } from './api';
 import { readPairingCode } from './pairing-link';
+import { startClientCache } from './cache-bootstrap';
+
+startClientCache({ registerWorker: import.meta.env.PROD });
 
 // Keep scan input only in this document. StrictMode may initialize components twice;
 // consuming the URL inside a component would discard the code on its second mount.

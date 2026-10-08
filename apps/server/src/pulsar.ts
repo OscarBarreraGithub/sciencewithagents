@@ -1,3 +1,8 @@
+import {
+  coordinationCount,
+  coordinationTaskIds,
+  isBatchableCoordination,
+} from './coordination-reviews.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -453,7 +458,10 @@ export class Pulsar {
       return typeof allowance === 'string' ? reject(allowance) : { eligible: false, ...allowance };
     if (
       this.store.getSetting(`pulsar:held:${run.id}`) === true ||
-      (taskId && this.store.getSetting(`pulsar:held-task:${taskId}`) === true)
+      (taskId && this.store.getSetting(`pulsar:held-task:${taskId}`) === true) ||
+      coordinationTaskIds(this.store, run).some(
+        (id) => this.store.getSetting(`pulsar:held-task:${id}`) === true,
+      )
     )
       return reject(
         'Paused. Release this job to let QUARK reconsider it. Running agent turns finish at their boundary.',
@@ -813,7 +821,10 @@ export class Pulsar {
     const taskId = lease ? lease.taskId : this.taskId(run);
     const held =
       this.store.getSetting(`pulsar:held:${run.id}`) === true ||
-      (!!taskId && this.store.getSetting(`pulsar:held-task:${taskId}`) === true);
+      (!!taskId && this.store.getSetting(`pulsar:held-task:${taskId}`) === true) ||
+      coordinationTaskIds(this.store, run).some(
+        (id) => this.store.getSetting(`pulsar:held-task:${id}`) === true,
+      );
     const ended = !['queued', 'running'].includes(run.status);
     const runningAllowance = run.status === 'running' ? this.allowanceDecision(run) : null;
     const runningBlock =
@@ -830,11 +841,15 @@ export class Pulsar {
               runningBlock ??
               (held
                 ? 'Finishing this turn; following task turns are paused.'
-                : 'Running with shared QUARK monitoring.'),
+                : !projectFollowsQuark(this.store, agent.projectId)
+                  ? 'Running · QUARK scheduling off.'
+                  : 'Running with shared QUARK monitoring.'),
           }
         : this.decision(run);
+    const updates = coordinationCount(this.store, run);
     return {
       runId: run.id,
+      ...(updates ? { coordination: { updates } } : {}),
       agentId: agent.id,
       taskId,
       projectName: this.store.project(agent.projectId).name,
@@ -965,10 +980,31 @@ export class Pulsar {
       )
       .all(...args)
       .reverse();
+    const reviews = new Map<string, { run: PrivateRun; updates: number }>();
+    const displayed = [...active, ...history].flatMap((row) => {
+      const run = JSON.parse(String(row.body)) as PrivateRun;
+      if (
+        run.status !== 'queued' ||
+        run.key.startsWith('coordination-review:') ||
+        !isBatchableCoordination(this.store, run)
+      )
+        return [run];
+      const previous = reviews.get(run.agentId);
+      if (previous) {
+        previous.updates += coordinationCount(this.store, run);
+        return [];
+      }
+      reviews.set(run.agentId, { run, updates: coordinationCount(this.store, run) });
+      return [run];
+    });
     const jobs = this.statusRead(() =>
-      [...active, ...history]
-        .map((row) => JSON.parse(String(row.body)) as PrivateRun)
-        .map((run) => this.statusRow(run)),
+      displayed.map((run) => {
+        const row = this.statusRow(run);
+        const review = reviews.get(run.agentId);
+        return review?.run.id === run.id
+          ? { ...row, coordination: { updates: review.updates } }
+          : row;
+      }),
     );
     return pulsarStatusSchema.parse({
       name: 'QUARK',

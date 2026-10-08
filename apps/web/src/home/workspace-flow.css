@@ -776,9 +776,6 @@
 .home-content:has(> .main-chat) {
   padding-bottom: 0;
 }
-.home-shell:has(.main-chat) .home-scroll-hint {
-  display: none;
-}
 .main-chat.flow-page {
   display: grid;
   grid-template-columns: minmax(270px, 330px) minmax(0, 1fr);

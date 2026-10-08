@@ -1843,6 +1843,16 @@ dialog .session-confirm input {
 .recovery-note p {
   margin: 6px 0 0;
 }
+.run-recovery > div {
+  min-width: 0;
+}
+.run-recovery .secondary {
+  margin-top: 10px;
+}
+.run-recovery-error {
+  color: #a33e32;
+  overflow-wrap: anywhere;
+}
 .load-history {
   display: block;
   margin: 0 auto 20px;

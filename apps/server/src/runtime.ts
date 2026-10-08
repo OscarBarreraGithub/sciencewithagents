@@ -48,6 +48,7 @@ import {
 } from '@dock/shared';
 import { CodexRpc, threadResponse, toolCall, turnResponse, type Provider } from './codex.js';
 import { Conflict, Store, now, publicTask, type PrivateAgent, type PrivateRun } from './store.js';
+import { prepareRunDelivery, markRunHandoff, recordRunFailure } from './run-recovery.js';
 import {
   managerCharter,
   workerCharter,
@@ -65,6 +66,7 @@ import {
   reconcileTask,
 } from './workspaces.js';
 import { projectWorkflow } from './project-workflow.js';
+import { CoordinationReviews } from './coordination-reviews.js';
 import { WorkItems } from './work-items.js';
 import { ManagedGoals } from './managed-goals.js';
 import { ProjectApps } from './project-apps.js';
@@ -424,7 +426,10 @@ export class Runtime {
         tools: (agent) => this.tools(agent),
         invoke: async (agentId, key, name, input) =>
           this.managerToolResult(agentId, await this.tool(agentId, key, name, input)),
-        beforeSubmit: (_agentId, runId) => this.checkManagerStart(store.run(runId)),
+        beforeSubmit: (_agentId, runId, phase) => {
+          this.checkManagerStart(store.run(runId));
+          markRunHandoff(store, store.run(runId), phase);
+        },
         hook: (agentId, event, runId, receipt) => this.claudeHook(agentId, event, runId, receipt),
         event: (agentId, event) => {
           const source = this.claude.get(agentId);
@@ -1239,6 +1244,7 @@ export class Runtime {
             .map((a) => a.id),
         ]),
       );
+      new CoordinationReviews(this.store).coalescePending();
       if (!this.fixture) this.coordinator.tick();
       const allQueued = this.store.runs(['queued']);
       const conversationHeads = new Map<string, string>();
@@ -2210,6 +2216,7 @@ export class Runtime {
       if (this.managedGoals.admissionReason(this.store.run(run.id))) return null;
       const current = this.store.claimQueuedRun(run.id);
       if (!current) return null;
+      prepareRunDelivery(this.store, current);
       this.store.updateAgent(agent.id, {
         status: 'running',
         autoTurns: run.kind === 'user' ? 0 : agent.autoTurns + 1,
@@ -2321,6 +2328,7 @@ export class Runtime {
       this.kick();
       return;
     }
+    markRunHandoff(this.store, this.store.run(run.id));
     const response = turnResponse.parse(
       await client.request('turn/start', {
         threadId,
@@ -5015,6 +5023,8 @@ export class Runtime {
                 : null,
             localJobs: this.localJobs.status(agent.projectId).jobs,
           };
+        if (value.coordination)
+          return new CoordinationReviews(this.store).read(agent.projectId, value.coordination);
         if (value.history) return historyPage(this.store, agent.projectId, value.history);
         if (value.read) return historyRead(this.store, agent.projectId, value.read);
         if (value.catalog) return projectCatalog(this.store, agent.projectId, value.catalog);
@@ -5777,7 +5787,8 @@ export class Runtime {
       this.kick();
       return;
     }
-    await this.runtimeFailure(run.agentId, error);
+    recordRunFailure(this.store, this.store.run(run.id), error);
+    await this.runtimeFailure(run.agentId, error, false);
     if (this.stopped) return;
     this.store.updateRun(run.id, { status: 'failed' });
     this.store.updateAgent(run.agentId, { status: 'failed', turnId: null });
@@ -5802,7 +5813,7 @@ export class Runtime {
     this.executing.delete(run.agentId);
     this.kick();
   }
-  private runtimeFailure(agentId: string, error: unknown): Promise<void> {
+  private runtimeFailure(agentId: string, error: unknown, present = true): Promise<void> {
     if (this.stopped) return Promise.resolve();
     const rootId = this.nativeChildren.rootId(agentId);
     const existing = this.failures.get(rootId);
@@ -5835,7 +5846,7 @@ export class Runtime {
         this.clients.delete(member.id);
         this.executing.delete(member.id);
       }
-      this.system(rootId, 'Runtime unavailable', this.errorText(error));
+      if (present) this.system(rootId, 'Runtime unavailable', this.errorText(error));
       if (this.externalControl.has(rootId))
         this.store.event('terminal.session_left', this.store.agent(rootId).projectId, rootId, {
           reason: 'host_connection_lost',

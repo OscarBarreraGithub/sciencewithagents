@@ -1,7 +1,9 @@
+import { agentName } from './agentName';
 import './Composer.css';
 import { flushSync } from 'react-dom';
 import { AppMessageQueue } from './AppMessageQueue';
 import { ConversationStatus } from './ConversationStatus';
+import { RunRecovery } from './RunRecovery';
 import { ChatMarkdown } from './ChatMarkdown';
 import { ChatAttachmentPicker, useChatAttachmentUpload } from './ChatImages';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -44,7 +46,6 @@ import { DraftHandoff } from './WorkspacePanel';
 import { McpFormFields } from './McpFormFields';
 import { McpUrlLink } from './McpUrlLink';
 import { Notepad, type DraftSelection } from './Notepad';
-import { useScrollHints } from './home/useScrollHints';
 import { ChatCommands } from './ChatCommands';
 import { PromptHistory, scrollToPrompt } from './PromptHistory';
 import { promptLengthError } from './promptLength';
@@ -80,7 +81,7 @@ function SendTiming({
 export const time = (value: string) =>
   new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 export const roleLabel = {
-  manager: 'Manager',
+  manager: 'Agent',
   planner: 'Planner',
   implementer: 'Builder',
   reviewer: 'Reviewer',
@@ -285,6 +286,8 @@ export function Conversation({
   formatEntry,
   channel,
   promptNavigation = true,
+  recovery = true,
+  displayOnly = false,
 }: {
   agent: Agent;
   detail: AgentDetail | null;
@@ -297,9 +300,11 @@ export function Conversation({
   channel?: AgentDetailChannel;
   /** Custom group feeds do not use the retained agent history route. */
   promptNavigation?: boolean;
+  recovery?: boolean;
+  /** Saved text can be read while live controls reconnect. */
+  displayOnly?: boolean;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
-  const scrollHint = useScrollHints(scroll, agent.id);
   const pinned = useRef(true);
   const lastTop = useRef(0);
   const shownApproval = useRef<string | null>(null);
@@ -482,9 +487,6 @@ export function Conversation({
         }}
       >
         <div className="conversation-inner">
-          <div className="conversation-scroll-hint" aria-hidden={!scrollHint}>
-            {scrollHint}
-          </div>
           <div className="conversation-date">
             <span />
             {new Date(agent.createdAt).toLocaleDateString([], { month: 'long', day: 'numeric' })}
@@ -502,7 +504,8 @@ export function Conversation({
               Latest messages
             </button>
           )}
-          {(older || !promptNavigation || channel === 'coordination') &&
+          {!displayOnly &&
+            (older || !promptNavigation || channel === 'coordination') &&
             (older?.hasMore ?? data?.hasMore) && (
               <button
                 className="load-history"
@@ -512,16 +515,16 @@ export function Conversation({
                 Load earlier messages
               </button>
             )}
-          {entries.length === 0 && (
+          {!displayOnly && data && entries.length === 0 && (
             <div className="conversation-intro">
               <Avatar role={agent.role} />
-              <h2>{intro?.title ?? agent.name}</h2>
+              <h2>{intro?.title ?? agentName(agent)}</h2>
               <p>
                 {intro?.description ??
                   (personal
-                    ? 'Talk through your priorities, ask about saved progress, or pass a request to a project manager you have chosen to share.'
+                    ? 'What would you like help with?'
                     : agent.role === 'manager'
-                      ? 'Describe the project or send the next task. Your manager can delegate work and ask for input here.'
+                      ? 'What would you like to work on?'
                       : 'Assignments, questions, tool results and handoffs will stay in this conversation.')}
               </p>
               <div className="starter-note">
@@ -620,19 +623,13 @@ export function Conversation({
           {approvals.map((approval) => (
             <ApprovalCard key={approval.id} approval={approval} act={act} />
           ))}
-          <ConversationStatus agent={agent} />
-          {['interrupted', 'failed'].includes(agent.status) && (
-            <div className="recovery-note">
-              <RefreshCw size={16} />
-              <div>
-                <strong>History is safe.</strong>
-                <p>
-                  Inspect the last result, then send a message or choose Resume from history to
-                  continue.
-                </p>
-              </div>
-            </div>
-          )}
+          {!displayOnly && <ConversationStatus agent={agent} />}
+          {recovery &&
+            !agent.nativeRootId &&
+            !agent.archivedAt &&
+            ['interrupted', 'failed'].includes(agent.status) && (
+              <RunRecovery key={`${apiScope()}:${agent.id}`} agent={agent} act={act} />
+            )}
         </div>
       </div>
       <AppMessageQueue agent={agent} runs={data?.runs ?? []} />
@@ -1226,7 +1223,7 @@ export function Composer({
     <div className={`composer${draftSteady ? ' draft-steady' : ''}`}>
       <textarea
         ref={textarea}
-        aria-label={`Message ${agent.name}`}
+        aria-label={`Message ${agentName(agent)}`}
         placeholder={
           messagePlaceholder ??
           (steer
@@ -1237,7 +1234,7 @@ export function Composer({
                 ? 'Add a follow-up…'
                 : agent.role === 'manager'
                   ? 'Describe an idea, ask a question, or move the work forward…'
-                  : `Message ${agent.name}…`)
+                  : `Message ${agentName(agent)}…`)
         }
         value={withoutChatAttachments(text)}
         onChange={(event) => {
@@ -1444,7 +1441,7 @@ export function Composer({
           localOnly={!!draftOverride}
           localHistory={localHistory}
           maxLength={maxLength}
-          agentName={agent.name}
+          agentName={agentName(agent)}
           mode={expanded}
           selection={selection}
           canSend={canSend}

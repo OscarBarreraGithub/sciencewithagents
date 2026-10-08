@@ -34,6 +34,7 @@ import { currentRateSamples, rateHistory } from './quark-rates.js';
 import { managedChat, chatBypassRun, chatBypassAllowed } from './quark-chat.js';
 import { projectFollowsQuark, projectSchedulerKey } from './quark-project.js';
 import { adaptivePace, materialDemand, projectWeight, reservedPercent } from './quark-demand.js';
+import { coordinationTaskIds } from './coordination-reviews.js';
 
 const transientCauses: QuotaHold['cause'][] = [
   'hourly',
@@ -408,7 +409,7 @@ export class Quark {
       result.push(taskId);
       taskId = task.parentId;
     }
-    return result;
+    return [...new Set([...result, ...coordinationTaskIds(this.store, run)])];
   }
   begin(run: PrivateRun) {
     if (this.store.db.prepare('SELECT 1 FROM quark_runs WHERE run_id=?').get(run.id)) return;

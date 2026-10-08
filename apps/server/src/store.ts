@@ -96,6 +96,12 @@ export class Store extends EventEmitter {
       CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), key TEXT UNIQUE NOT NULL, status TEXT NOT NULL, body TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS coordination_reviews (run_id TEXT PRIMARY KEY REFERENCES runs(id), fingerprint TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS coordination_review_sources (batch_run_id TEXT NOT NULL REFERENCES coordination_reviews(run_id), source_run_id TEXT PRIMARY KEY REFERENCES runs(id), position INTEGER NOT NULL, UNIQUE(batch_run_id,position));
+      CREATE TRIGGER IF NOT EXISTS coordination_reviews_no_update BEFORE UPDATE ON coordination_reviews BEGIN SELECT RAISE(ABORT,'immutable review receipt'); END;
+      CREATE TRIGGER IF NOT EXISTS coordination_reviews_no_delete BEFORE DELETE ON coordination_reviews BEGIN SELECT RAISE(ABORT,'retain review receipt'); END;
+      CREATE TRIGGER IF NOT EXISTS coordination_review_sources_no_update BEFORE UPDATE ON coordination_review_sources BEGIN SELECT RAISE(ABORT,'immutable review sources'); END;
+      CREATE TRIGGER IF NOT EXISTS coordination_review_sources_no_delete BEFORE DELETE ON coordination_review_sources BEGIN SELECT RAISE(ABORT,'retain review sources'); END;
       CREATE TABLE IF NOT EXISTS entries (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS approvals (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), body TEXT NOT NULL);
@@ -432,7 +438,7 @@ export class Store extends EventEmitter {
         projectId: p.id,
         parentId: null,
         taskId: null,
-        name: `${name} manager`,
+        name,
         role: 'manager',
         cwd: root,
         provider,
@@ -663,6 +669,7 @@ export class Store extends EventEmitter {
     text: string,
     kind: Run['kind'] = 'user',
     sourceId: string | null = null,
+    runId = randomUUID(),
   ) {
     const old = this.db.prepare('SELECT body FROM runs WHERE key=?').get(key);
     if (old) {
@@ -679,7 +686,7 @@ export class Store extends EventEmitter {
     const a = this.agent(agentId);
     this.requireActiveAgent(agentId);
     const run: PrivateRun = {
-      id: randomUUID(),
+      id: runId,
       agentId,
       sourceId,
       key,
@@ -702,7 +709,14 @@ export class Store extends EventEmitter {
       status: 'queued',
       createdAt: now(),
     });
-    if (!['running', 'waiting'].includes(a.status))
+    if (
+      !['running', 'waiting'].includes(a.status) &&
+      !(
+        a.role === 'manager' &&
+        ['report', 'message'].includes(kind) &&
+        ['interrupted', 'failed'].includes(a.status)
+      )
+    )
       this.updateAgent(agentId, { status: 'queued', ...(kind === 'user' ? { autoTurns: 0 } : {}) });
     else if (kind === 'user') this.updateAgent(agentId, { autoTurns: 0 });
     this.event('run.queued', a.projectId, agentId, runSchema.parse(run));

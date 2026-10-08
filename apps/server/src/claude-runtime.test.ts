@@ -12,6 +12,7 @@ import { DemoProvider } from './demo.js';
 import {
   ClaudeSession,
   ClaudeSubmissionCancelled,
+  ClaudePreflightError,
   parseClaudeIdentity,
   type ClaudeModel,
   type ClaudeEvent,
@@ -20,6 +21,7 @@ import {
 import { git } from './workspaces.js';
 import { createInterview, nativeDiscussionBoundary } from './interviews.js';
 import { parseCapacity } from './capacity.js';
+import { recoverRun, runRecoveryView } from './run-recovery.js';
 
 const identity = parseClaudeIdentity({
   loggedIn: true,
@@ -1507,4 +1509,122 @@ it('retains text from a native local command result without requiring an assista
       .entries(manager)
       .some((entry) => entry.runId === run.id && entry.text === 'Native context summary'),
   ).toBe(true);
+});
+
+it('a typed Claude preflight failure has one visible error and one explicit original-message retry', async () => {
+  auth.mockRejectedValueOnce(
+    new ClaudePreflightError(
+      'timeout',
+      'Claude sign-in check timed out. No model request was sent.',
+    ),
+  );
+  const original = store.enqueue(manager, randomUUID(), 'Original prompt retained once');
+  await vi.waitFor(() => expect(store.run(original.id).status).toBe('failed'));
+  expect(instances).toHaveLength(0);
+  expect(
+    store
+      .entries(manager)
+      .filter((e) => ['Runtime unavailable', 'Could not complete this turn'].includes(e.title)),
+  ).toHaveLength(1);
+  const view = runRecoveryView(store, manager)!;
+  expect(view.action).toBe('retry');
+  const request = {
+    key: randomUUID(),
+    runId: view.runId,
+    failureId: view.failureId,
+    action: view.action,
+  };
+  const receipt = recoverRun(store, manager, request);
+  expect(recoverRun(store, manager, { ...request, key: randomUUID() })).toEqual(receipt);
+  runtime.kick();
+  await vi.waitFor(() => expect(instances[0]?.submit).toHaveBeenCalledOnce());
+  expect(instances[0]!.submit.mock.calls[0]![0]).toMatchObject({
+    deliveryId: receipt.runId,
+    text: expect.stringContaining('Original prompt retained once'),
+  });
+  expect(store.entries(manager).filter((e) => e.kind === 'user')).toHaveLength(1);
+});
+
+it('a failure after durable Claude write intent cannot offer original-message replay', async () => {
+  configureSession = (session) =>
+    session.submit.mockImplementation(async (input) => {
+      session.options.beforeWrite?.(input.deliveryId);
+      throw new ClaudePreflightError('timeout', 'Uncertain failure after write intent');
+    });
+  const original = store.enqueue(manager, randomUUID(), 'Potential side effect');
+  await vi.waitFor(() => expect(store.run(original.id).status).toBe('failed'));
+  const view = runRecoveryView(store, manager)!;
+  expect(view.action).toBe('continue');
+  expect(() =>
+    recoverRun(store, manager, {
+      runId: view.runId,
+      failureId: view.failureId,
+      key: randomUUID(),
+      action: 'retry',
+    }),
+  ).toThrow('cannot be safely resent');
+  expect(instances[0]!.submit).toHaveBeenCalledOnce();
+});
+
+it('Stop during an explicit retry preflight prevents input and receipt replay does not unpause it', async () => {
+  auth.mockRejectedValueOnce(new ClaudePreflightError('unavailable', 'No model request was sent.'));
+  const original = store.enqueue(
+    manager,
+    randomUUID(),
+    'Owner request stopped before retry delivery',
+  );
+  await vi.waitFor(() => expect(store.run(original.id).status).toBe('failed'));
+  const view = runRecoveryView(store, manager)!;
+  const request = {
+    key: randomUUID(),
+    runId: view.runId,
+    failureId: view.failureId,
+    action: view.action,
+  };
+  let release!: () => void;
+  auth.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = () => resolve(identity);
+      }),
+  );
+  const receipt = recoverRun(store, manager, request);
+  runtime.kick();
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+  await runtime.interrupt(manager);
+  expect(store.run(receipt.runId).status).toBe('interrupted');
+  expect(recoverRun(store, manager, request)).toEqual(receipt);
+  expect(store.agent(manager).status).toBe('interrupted');
+  release();
+  await vi.waitFor(() => expect(runtime.executing.has(manager)).toBe(false));
+  expect(instances.every((session) => session.submit.mock.calls.length === 0)).toBe(true);
+  expect(store.run(receipt.runId).status).toBe('interrupted');
+});
+
+it('a changed Claude account sends no input and explicit Retry resumes only the original account and session', async () => {
+  const first = await start(manager, 'First original-account objective');
+  finish(first.session, first.run.id);
+  await vi.waitFor(() => expect(store.run(first.run.id).status).toBe('completed'));
+  const sessionId = first.session.options.sessionId;
+  await runtime.claude.forget(manager);
+  auth.mockResolvedValue({ ...identity, affinity: 'f'.repeat(64) });
+  const original = store.enqueue(manager, randomUUID(), 'Never send this to a different account');
+  await vi.waitFor(() => expect(store.run(original.id).status).toBe('failed'));
+  expect(instances).toHaveLength(1);
+  expect(first.session.submit).toHaveBeenCalledOnce();
+  const view = runRecoveryView(store, manager)!;
+  expect(view.action).toBe('retry');
+  expect(store.getSetting(`claude:account:${manager}`)).toBe(identity.affinity);
+  auth.mockResolvedValue(identity);
+  const receipt = recoverRun(store, manager, {
+    key: randomUUID(),
+    runId: view.runId,
+    failureId: view.failureId,
+    action: view.action,
+  });
+  runtime.kick();
+  await vi.waitFor(() => expect(instances[1]?.submit).toHaveBeenCalledOnce());
+  expect(instances[1]!.options.sessionId).toBe(sessionId);
+  expect(instances[1]!.submit.mock.calls[0]![0].deliveryId).toBe(receipt.runId);
+  expect(codexFactory).not.toHaveBeenCalled();
 });

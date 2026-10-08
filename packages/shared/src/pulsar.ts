@@ -90,6 +90,7 @@ export const pulsarJobSchema = z
     override: z.boolean(),
     reason: z.string(),
     eligible: z.boolean(),
+    coordination: z.object({ updates: z.number().int().positive() }).strict().optional(),
     // Optional for compatibility with hosts awaiting a safe restart.
     budgetBlock: z
       .object({ kind: z.enum(['tokens', 'allowance']), targetId: z.string().uuid() })

@@ -1,3 +1,4 @@
+import { agentName } from '../agentName';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { ArrowUpRight, Download, Layers3, Pause, Play, Plus, Terminal } from 'lucide-react';
 import { commandSchema, type Agent } from '@dock/shared';
@@ -50,7 +51,7 @@ export function AdvancedFlow({ route, data }: { route: string; data: HomeData })
     <section className="flow-page connection-page advanced-page">
       <FlowHeading
         label="ADVANCED CONTROLS"
-        title={agent ? agent.name : 'Advanced controls'}
+        title={agent ? agentName(agent) : 'Advanced controls'}
         action={
           agent ? (
             <a

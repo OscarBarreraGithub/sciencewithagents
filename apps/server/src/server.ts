@@ -1,3 +1,4 @@
+import { CoordinationReviews } from './coordination-reviews.js';
 import { promptBodyLimit, promptTextLimit } from '@dock/shared';
 import { registerGroupHostRoutes } from './group-host-routes.js';
 import type { GroupHost } from './group-host.js';
@@ -11,6 +12,8 @@ import { repoRoot } from './paths.js';
 import { registerDocumentRoutes } from './documents.js';
 import { registerChatImageRoutes } from './chat-images.js';
 import { registerQueuedMessageRoutes } from './queued-messages.js';
+import { recoverRun, runRecoveryReceipt, runRecoveryView } from './run-recovery.js';
+import { runRecoveryRequestSchema } from '@dock/shared';
 import { registerDocumentFormattingRoutes } from './document-formatting.js';
 import { registerWorkItemRoutes } from './work-items.js';
 import { registerProjectAppRoutes } from './project-apps.js';
@@ -888,6 +891,26 @@ export async function createServer(
     const agent = store.agent(agentId(request.params));
     return latestRecovery(store, agent.projectId, agent.id);
   });
+  app.get('/api/agents/:id/run-recovery', async (request) =>
+    runRecoveryView(store, agentId(request.params)),
+  );
+  app.get('/api/agents/:id/run-recovery/receipts/:key', async (request) => {
+    const params = z.object({ id, key: id }).parse(request.params);
+    return runRecoveryReceipt(store, params.id, params.key);
+  });
+  app.post('/api/agents/:id/run-recovery', async (request) => {
+    const target = agentId(request.params);
+    const input = runRecoveryRequestSchema.parse(request.body);
+    return runtime.withLock(`run-recovery:${target}`, async () => {
+      runtime.requireDirectControl(target);
+      requireActiveAssignment(store, store.agent(target));
+      if (terminals.active(target))
+        throw new Conflict('Return from the native terminal before recovering this chat.');
+      const result = recoverRun(store, target, input, (run) => runtime.quark.captureOwnerChat(run));
+      runtime.kick();
+      return result;
+    });
+  });
   app.get('/api/attention', async () => attention(readSnapshot()));
   const notificationProjects = () => {
     const internal = runtime.internalProjectIds();
@@ -1012,6 +1035,14 @@ export async function createServer(
     return result;
   });
   app.post('/api/resources/stop', async (request) => runtime.resources.stop(request.body));
+  app.get('/api/agents/:id/coordination-review/preview', async (request) =>
+    new CoordinationReviews(store).preview(agentId(request.params)),
+  );
+  app.post('/api/agents/:id/coordination-review', async (request) => {
+    const result = new CoordinationReviews(store).apply(agentId(request.params), request.body);
+    runtime.kick();
+    return result;
+  });
   app.get('/api/pulsar', async () => runtime.pulsar.status());
   app.get('/api/pulsar/jobs/:id', async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).strict().parse(request.params);
