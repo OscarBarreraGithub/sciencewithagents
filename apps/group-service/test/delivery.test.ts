@@ -134,7 +134,10 @@ it.each(['original', 'summary'] as const)(
         state.storage.sql
           .exec<{
             source_id: string;
-          }>('SELECT source_id FROM delivery_messages WHERE message_id=?', raw.header.event.scope.source.messageId)
+          }>(
+            'SELECT source_id FROM delivery_messages WHERE message_id=?',
+            raw.header.event.scope.source.messageId,
+          )
           .one().source_id,
     );
     const source = groupPromotionSourceSchema.parse({

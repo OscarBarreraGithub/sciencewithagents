@@ -65,16 +65,19 @@ it('metadata refresh reads independently and neither caches an unknown account n
 });
 
 it('recovers a transient metadata timeout once without reusing an old identity', async () => {
-  const reader = vi.fn()
+  const reader = vi
+    .fn()
     .mockRejectedValueOnce({ killed: true, signal: 'SIGTERM' })
     .mockResolvedValueOnce({ stdout: JSON.stringify(status) });
   await expect(readClaudeIdentity('/fixture/claude', reader)).resolves.toMatchObject({
-    authMethod: 'claude.ai', provider: 'firstParty',
+    authMethod: 'claude.ai',
+    provider: 'firstParty',
   });
   expect(reader).toHaveBeenCalledTimes(2);
 });
 it('stops after a timeout if the fresh metadata reports signed out', async () => {
-  const reader = vi.fn()
+  const reader = vi
+    .fn()
     .mockRejectedValueOnce({ code: 'ETIMEDOUT' })
     .mockResolvedValueOnce({ stdout: JSON.stringify({ loggedIn: false }) });
   await expect(readClaudeIdentity('/fixture/claude', reader)).rejects.toMatchObject({

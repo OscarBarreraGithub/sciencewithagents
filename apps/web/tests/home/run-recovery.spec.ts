@@ -212,7 +212,10 @@ test('an older connected computer keeps a direct Continue button with a retained
   await button.click();
   await expect(page.locator('.run-recovery')).toContainText('Response lost');
   await second.goto(`/#/chat/${f.agent.id}`);
-  await second.locator('.run-recovery').getByRole('button', { name: 'Continue', exact: true }).click();
+  await second
+    .locator('.run-recovery')
+    .getByRole('button', { name: 'Continue', exact: true })
+    .click();
   await page.reload();
   await expect(page.locator('.run-recovery')).toHaveCount(0);
   expect(requests).toHaveLength(2);

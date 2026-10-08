@@ -141,7 +141,9 @@ test('chat screenshots close with Back, Close and Escape without losing scroll o
     const viewer = page.getByRole('dialog', { name: 'Image viewer', exact: true });
     await expect(viewer).toBeVisible();
     await expect(viewer.getByRole('button', { name: 'Close', exact: true })).toBeInViewport();
-    const closeBox = (await viewer.getByRole('button', { name: 'Close', exact: true }).boundingBox())!;
+    const closeBox = (await viewer
+      .getByRole('button', { name: 'Close', exact: true })
+      .boundingBox())!;
     expect(closeBox.x + closeBox.width).toBeLessThanOrEqual(page.viewportSize()!.width + 0.5);
     await expect
       .poll(() => viewer.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth))

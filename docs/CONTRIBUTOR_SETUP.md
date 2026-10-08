@@ -35,10 +35,10 @@ On Mac, open Terminal with Spotlight (Command–Space, type Terminal, Return).
 
 For a new macOS/Linux CLI installation, use the provider's official installer:
 
-| Provider | Install latest |
-| --- | --- |
-| Codex | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` |
-| Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash` |
+| Provider    | Install latest                                          |
+| ----------- | ------------------------------------------------------- |
+| Codex       | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` |
+| Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash`       |
 
 Open a **new Terminal window** and run `codex --version` or `claude --version`, then
 `codex` or `claude`. Complete native sign-in with your own ChatGPT/Claude subscription if
@@ -48,13 +48,13 @@ For an existing CLI, have the setup agent identify the executable and its instal
 method first (`command -v codex` / `command -v claude`; respect explicit host overrides).
 Update through that same method rather than adding a competing copy:
 
-| Existing installation | Update command |
-| --- | --- |
-| Codex standalone | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` |
-| Codex npm | `npm install -g @openai/codex@latest` |
-| Codex Homebrew (Mac) | `brew update`, then `brew upgrade --cask codex` |
-| Claude native / npm | `claude update` |
-| Claude Homebrew stable (Mac) | `brew update`, then `brew upgrade --cask claude-code` |
+| Existing installation        | Update command                                               |
+| ---------------------------- | ------------------------------------------------------------ |
+| Codex standalone             | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh`      |
+| Codex npm                    | `npm install -g @openai/codex@latest`                        |
+| Codex Homebrew (Mac)         | `brew update`, then `brew upgrade --cask codex`              |
+| Claude native / npm          | `claude update`                                              |
+| Claude Homebrew stable (Mac) | `brew update`, then `brew upgrade --cask claude-code`        |
 | Claude Homebrew latest (Mac) | `brew update`, then `brew upgrade --cask claude-code@latest` |
 
 Respect intentional pins and organization policies. For other installers, use their

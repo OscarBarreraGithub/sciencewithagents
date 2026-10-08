@@ -40,7 +40,9 @@ test('reopening keeps saved text while refreshing, without a blank introduction 
   page.on('request', (request) => {
     if (
       request.method() === 'POST' &&
-      /\/(?:messages|send|commands|run-recovery|spawn|resources\/ask|quark\/chat)(?:\?|$)/.test(request.url())
+      /\/(?:messages|send|commands|run-recovery|spawn|resources\/ask|quark\/chat)(?:\?|$)/.test(
+        request.url(),
+      )
     )
       starts.push(request.url());
   });
