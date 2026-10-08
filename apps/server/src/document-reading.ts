@@ -126,13 +126,19 @@ export async function expandReadingSource(
     );
     for (const alias of aliases)
       text = text.replace(new RegExp('\\\\' + alias + '\\s+(?!\\\\)', 'g'), '\\input ');
-    const include = /\\(?:input|include)\b\s*(?:\{([^{}]+)\}|([^\s{}\\]+))/g;
+    // BibTeX writes the current TeX job's .bbl, not one .bbl per database name.
+    // Supply that existing file to sandboxed Pandoc exactly where TeX would read it.
+    const include =
+      /\\(?:input|include)\b\s*(?:\{([^{}]+)\}|([^\s{}\\]+))|\\(bibliography)\b\s*\{[^{}]*\}/g;
     let output = '',
       at = 0;
     for (const match of text.matchAll(include)) {
       output += text.slice(at, match.index);
       at = match.index! + match[0].length;
-      const name = match[1] ?? match[2]!;
+      const bibliography = match[3] === 'bibliography';
+      const name = bibliography
+        ? basename(source, extname(source)) + '.bbl'
+        : (match[1] ?? match[2]!);
       // Only local files are read; a URL-like or absent include is skipped.
       if (/[:\0]/.test(name)) {
         output += missing(name);
@@ -143,7 +149,12 @@ export async function expandReadingSource(
         () => true,
         () => false,
       );
-      output += present ? await expand(included, [...ancestors, path]) : missing(name);
+      if (present) {
+        output += await expand(included, [...ancestors, path]);
+        if (bibliography && health)
+          health.rules['bibliography-bbl-inlined'] =
+            (health.rules['bibliography-bbl-inlined'] ?? 0) + 1;
+      } else output += missing(name);
     }
     return output + text.slice(at);
   }

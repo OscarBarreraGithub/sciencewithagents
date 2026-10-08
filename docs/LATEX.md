@@ -72,6 +72,12 @@ The browser sanitizes converted HTML and typesets equations with local KaTeX. Co
 sandboxing blocks network/file access; a bounded loader supplies local includes and image
 assets from the registered folder. Source files are never edited.
 
+When a source uses `\bibliography`, Reading includes its supplied same-name `.bbl`
+under the same folder and size limits. Bibliography prose and the supported numeric citation
+links are retained; an absent `.bbl` shows a note. Reading does not run BibTeX or generate
+references from `.bib` databases. Broader author-year citation forms and non-equation
+cross-reference numbering still need Original PDF.
+
 Reading mode interprets LaTeX content, not every package's print layout. Complex package
 commands may need Original PDF; missing figures are marked. An ordinary PDF without its
 LaTeX source keeps the PDF viewer rather than claiming reliable mathematical reflow.

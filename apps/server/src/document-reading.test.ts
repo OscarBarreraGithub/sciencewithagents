@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, it, expect } from 'vitest';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -166,6 +166,73 @@ describe.skipIf(!readerExecutable('pandoc'))('arXiv source rules', () => {
     expect(reading.html).toContain('Part of this paper (nothere.tex) is only in the Original PDF.');
     expect(reading.warnings.join('\n')).toContain('nothere.tex');
     expectHumanMessages(reading);
+  });
+
+  it('inlines the main job bibliography with its original prose and citation links', async () => {
+    const home = join(root, 'source');
+    const bbl = String.raw`\begin{thebibliography}{9}
+\bibitem[First(2024)]{first}A. First. Original reference with $E=mc^2$.
+\bibitem{second}B. Second. A qualified result, under the stated assumptions.
+\end{thebibliography}`;
+    await writeFile(join(home, 'main.bbl'), bbl);
+    // The argument names BibTeX databases. Their similarly named .bbl is not this job's output.
+    await writeFile(join(home, 'database.bbl'), 'WRONG BIBLIOGRAPHY SENTINEL');
+    const reading = await read(String.raw`Body \cite{first,second}.
+\bibliography{database,other-database}`);
+    expect(reading.html).toContain('A. First. Original reference');
+    expect(reading.html).toContain('E=mc^2');
+    expect(reading.html).toContain('under the stated assumptions');
+    expect(reading.html).toContain('href="#bib-first"');
+    expect(reading.html).toContain('href="#bib-second"');
+    expect(reading.html).not.toContain('WRONG BIBLIOGRAPHY');
+    expect(reading.warnings).toEqual([]);
+    expect(reading.health?.rules['bibliography-bbl-inlined']).toBe(1);
+    expect(await readFile(join(home, 'main.bbl'), 'utf8')).toBe(bbl);
+  });
+
+  it('reads an included bibliography command from the main job and ignores commented commands', async () => {
+    const home = join(root, 'source');
+    await mkdir(join(home, 'parts'));
+    await writeFile(join(home, 'parts', 'ending.tex'), String.raw`\bibliography{references}`);
+    await writeFile(
+      join(home, 'main.bbl'),
+      String.raw`\begin{thebibliography}{9}
+\bibitem{source}Main job reference.\end{thebibliography}`,
+    );
+    const reading = await read(String.raw`\cite{source}
+% \bibliography{commented}
+\input{parts/ending}`);
+    expect(reading.html).toContain('Main job reference');
+    expect(reading.html).toContain('href="#bib-source"');
+    expect(reading.health?.rules['bibliography-bbl-inlined']).toBe(1);
+    expect(reading.warnings).toEqual([]);
+  });
+
+  it('keeps a missing bibliography visible without generating or guessing its contents', async () => {
+    await writeFile(
+      join(root, 'source', 'references.bib'),
+      '@article{source,title={PRIVATE BIB SENTINEL}}',
+    );
+    const reading = await read(String.raw`Opening prose.\bibliography{references}Closing prose.`);
+    expect(reading.html).toContain('Opening prose.');
+    expect(reading.html).toContain('Closing prose.');
+    expect(reading.html).toContain('main.bbl');
+    expect(reading.html).not.toContain('PRIVATE BIB SENTINEL');
+    expect(reading.health?.missingIncludes).toEqual(['main.bbl']);
+    expect(reading.health?.conversion).toBe('partial');
+    expectHumanMessages(reading);
+  });
+
+  it('applies the existing root and byte limits to supplied bibliographies', async () => {
+    const home = join(root, 'source');
+    const input = join(home, 'main.tex');
+    await writeFile(input, String.raw`\bibliography{references}`);
+    await writeFile(join(root, 'outside.bbl'), 'OUTSIDE BIBLIOGRAPHY SENTINEL');
+    await symlink(join(root, 'outside.bbl'), join(home, 'main.bbl'));
+    await expect(expandReadingSource(input, home)).rejects.toThrow(/outside/);
+    await rm(join(home, 'main.bbl'));
+    await writeFile(join(home, 'main.bbl'), 'x'.repeat(8 * 1024 ** 2));
+    await expect(expandReadingSource(input, home)).rejects.toThrow(/combined/);
   });
 
   it('7: expands environment shortcuts without grouping them', async () => {
