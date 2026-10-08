@@ -398,12 +398,16 @@ describe('isolated computer connections', () => {
       forward.listen(0, '127.0.0.1');
       await once(forward, 'listening');
       const port = (forward.address() as { port: number }).port;
-      const delayed = new Hosts(root, async () => ({
-        port,
-        connectionStartTimeoutMs: 15_000,
-        alive: () => true,
-        close: async () => {},
-      }), [config]);
+      const delayed = new Hosts(
+        root,
+        async () => ({
+          port,
+          connectionStartTimeoutMs: 15_000,
+          alive: () => true,
+          close: async () => {},
+        }),
+        [config],
+      );
       try {
         if (identity === 'wrong-host') {
           await expect(delayed.connection(config.id)).rejects.toThrow(
