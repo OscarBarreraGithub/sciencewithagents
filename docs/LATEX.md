@@ -97,6 +97,12 @@ PDF figure conversion shares Reading’s 60-second conversion budget. When time 
 the paper’s body, completed figures and raster images remain available; each unconverted
 figure keeps its Original PDF note.
 
+Plain preamble `\usepackage` references may supply local `.sty` author macros as data.
+Reading restores only unique zero-argument definitions made from scoped font atoms
+(such as `\mathrm{opt}`), retaining source/provenance health. Conflicting, conditional,
+scoped, recursive and unsupported definitions retain their source/PDF fallback. Styles
+are never executed and their package imports are not followed; no model call is made.
+
 Reading mode interprets LaTeX content, not every package's print layout. Complex package
 commands may need Original PDF; missing figures are marked. An ordinary PDF without its
 LaTeX source keeps the PDF viewer rather than claiming reliable mathematical reflow.

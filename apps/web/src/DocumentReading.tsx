@@ -104,6 +104,7 @@ export function DocumentReading({
         displayMode: display,
         throwOnError: false,
         trust: false,
+        macros: { ...reading.macros },
         strict: 'ignore',
         maxExpand: 1000,
         maxSize: 20,
@@ -120,6 +121,7 @@ export function DocumentReading({
           displayMode: true,
           throwOnError: false,
           trust: false,
+          macros: { ...reading.macros },
           strict: 'ignore',
           maxExpand: 1000,
           maxSize: 20,
@@ -133,7 +135,10 @@ export function DocumentReading({
         katex.render(`(${number.replace(/^\$|\$$/g, '')})`, tag, {
           throwOnError: false,
           trust: false,
+          macros: { ...reading.macros },
           strict: 'ignore',
+          maxExpand: 1000,
+          maxSize: 20,
         });
         content.append(tag);
       }
@@ -147,7 +152,7 @@ export function DocumentReading({
         katex.render(
           link.getAttribute('data-reference-type') === 'eqref' ? `(${value})` : value,
           link,
-          { throwOnError: false, trust: false },
+          { throwOnError: false, trust: false, macros: { ...reading.macros }, maxExpand: 1000 },
         );
       }
       if (/^https?:\/\//.test(href)) {
@@ -180,7 +185,7 @@ export function DocumentReading({
       wrap.append(hint);
     }
     return document.body.innerHTML;
-  }, [id, endpoint, reading.html, reading.labels]);
+  }, [id, endpoint, reading.html, reading.labels, reading.macros]);
   // React 19 re-applies dangerouslySetInnerHTML whenever its object changes, so an inline
   // object would rebuild the whole document (and reset equation scroll positions and overflow
   // cues) on every parent render, such as each poll during a rebuild.

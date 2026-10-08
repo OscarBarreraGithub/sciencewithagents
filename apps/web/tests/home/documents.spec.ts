@@ -990,3 +990,27 @@ test('ambiguous Reading tables retain their original structure and horizontal fa
   });
   await expect(fallback.locator('..').getByText('← More table', { exact: true })).toBeVisible();
 });
+
+test('Reading uses source-backed local macros in original and wrapped math', async ({ page }) => {
+  const data = await fixture(page);
+  const tex = String.raw`\opt = ${'a+'.repeat(20)}b`;
+  await page.route('**/api/documents/*/reading', (route) =>
+    route.fulfill({
+      json: {
+        available: true,
+        html: `<p>Infidelity <span class="math inline">\\(\\opt\\)</span> remains source-backed.</p><span class="math display">\\[${tex}\\]</span>`,
+        macros: { '\\opt': String.raw`\mathrm{opt}` },
+        labels: {},
+        warnings: [],
+      },
+    }),
+  );
+  await page.goto(`/#/latex/${data.doc.id}`);
+  const reader = page.getByRole('dialog', { name: 'PDF reader' });
+  await expect(reader.locator('.reading-equation-wrapped')).toBeVisible();
+  await expect(reader.locator('.katex-error')).toHaveCount(0);
+  expect(await reader.locator('.math.inline annotation').textContent()).toBe(String.raw`\opt`);
+  expect(await reader.locator('.math.inline .katex-html').textContent()).toBe('opt');
+  expect(await reader.locator('.reading-equation-original annotation').textContent()).toBe(tex);
+  await expect(reader.getByText('remains source-backed.', { exact: false })).toBeVisible();
+});

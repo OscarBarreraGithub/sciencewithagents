@@ -87,6 +87,60 @@ describe.skipIf(!readerExecutable('pandoc'))('arXiv source rules', () => {
     expect(visible(reading)).not.toContain(root);
   }
 
+  it('loads only bounded explicitly referenced local style macro data', async () => {
+    const home = join(root, 'source');
+    const definition = String.raw`\newcommand{\opt}{\mathrm{opt}}`;
+    await writeFile(join(home, 'author.sty'), definition);
+    const reading = await read(
+      String.raw`Before. $\opt$ and $\opt+x$. After.`,
+      String.raw`\usepackage{author}`,
+    );
+    expect(reading.macros).toEqual({ '\\opt': String.raw`\mathrm{opt}` });
+    expect(reading.health?.localMacros).toContainEqual({
+      name: '\\opt',
+      file: 'author.sty',
+      status: 'restored',
+      reason: null,
+      occurrences: 2,
+    });
+    expect(reading.html).toContain(String.raw`\opt`);
+    expect(reading.html).toContain('Before.');
+    expect(reading.html).toContain('After.');
+    expect(await readFile(join(home, 'author.sty'), 'utf8')).toBe(definition);
+    // Existing client responses omit macros; malformed/new unknown fields remain tolerated.
+    expect(
+      documentReadingResponseSchema.parse({ available: true, html: '', warnings: [] }).macros,
+    ).toBeUndefined();
+    expect(
+      documentReadingResponseSchema.parse({ ...reading, macros: { bad: 'x' } }).macros,
+    ).toEqual({});
+    expect(documentReadingSchema.safeParse({ ...reading, macros: { bad: 'x' } }).success).toBe(
+      false,
+    );
+    await writeFile(join(root, 'outside.sty'), String.raw`\newcommand{\outside}{\mathrm{PRIVATE}}`);
+    await symlink(join(root, 'outside.sty'), join(home, 'linked.sty'));
+    const guarded = await read('Body remains.', String.raw`\usepackage{linked}`);
+    expect(guarded.macros).toBeUndefined();
+    expect(guarded.html).toContain('Body remains.');
+    expect(JSON.stringify(guarded)).not.toContain('PRIVATE');
+    const unrequested = await read(String.raw`$\opt$`);
+    expect(unrequested.macros).toBeUndefined();
+    const names = Array.from({ length: 17 }, (_, index) => 'style' + index);
+    for (const name of names) await writeFile(join(home, name + '.sty'), definition);
+    const bounded = await read('Bounded body.', `\\usepackage{${names.join(',')}}`);
+    expect(bounded.health?.localMacros).toBeUndefined();
+    expect(bounded.health?.notes).toContain(
+      'Some local styles exceed Reading’s bounded macro support.',
+    );
+    expect(bounded.macros).toBeUndefined();
+    await writeFile(join(home, names[0] + '.sty'), definition);
+    for (const name of names.slice(1, 16)) await writeFile(join(home, name + '.sty'), '');
+    // The unread seventeenth style could override an otherwise unique first binding.
+    expect(
+      (await read('Bounded body.', `\\usepackage{${names.join(',')}}`)).macros,
+    ).toBeUndefined();
+  });
+
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBbkAAAAASUVORK5CYII=',
     'base64',

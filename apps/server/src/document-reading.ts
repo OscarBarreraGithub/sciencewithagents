@@ -5,6 +5,7 @@ import { basename, delimiter, dirname, extname, join, resolve, sep } from 'node:
 import { createHash } from 'node:crypto';
 import type { DocumentReading, ReadingHealth } from '@dock/shared';
 import { mapFrontMatter, withFrontMatter } from './reading-front-matter.js';
+import { localMacroLimits, localReadingMacros, type LocalStyle } from './reading-local-macros.js';
 import {
   applySourceRules,
   bodyStart,
@@ -201,7 +202,48 @@ async function loadReadingSource(source: string, root: string, health?: ReadingH
     return output + text.slice(at);
   }
   const text = await expand(source);
-  return { text, bibliography: [...databases.values()].join('\n') };
+  const styles: LocalStyle[] = [];
+  let incompleteStyles = false;
+  const seen = new Set<string>();
+  const requested = new Set<string>();
+  const preamble = text.slice(0, Math.max(0, bodyStart(text)));
+  packages: for (const reference of preamble.matchAll(/\\usepackage\s*\{([^{}\\]+)\}/g)) {
+    const prefix = preamble.slice(0, reference.index);
+    if (
+      braceBalance(prefix) ||
+      /\\(?:if[A-Za-z]*|else|fi|begingroup|endgroup|bgroup|egroup|begin|end)\b/.test(prefix)
+    )
+      continue;
+    for (const name of reference[1]!.split(',').map((name) => name.trim())) {
+      if (!/^[A-Za-z0-9_./-]+$/.test(name) || name.startsWith('/')) continue;
+      if (requested.has(name)) continue;
+      if (requested.size === localMacroLimits.styles) {
+        health?.notes.push('Some local styles exceed Reading’s bounded macro support.');
+        incompleteStyles = true;
+        break packages;
+      }
+      requested.add(name);
+      try {
+        const path = await local(
+          resolve(dirname(source), name.endsWith('.sty') ? name : name + '.sty'),
+        );
+        if (seen.has(path)) continue;
+        seen.add(path);
+        const content = (await boundedText(path)).replace(/(?<!\\)%[^\n]*/g, '');
+        styles.push({ file: path.slice(root.length + 1), text: content });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          incompleteStyles = true;
+          health?.notes.push('A local style could not supply bounded Reading macro definitions.');
+        }
+      }
+    }
+  }
+  // An unread referenced local style may override an otherwise eligible definition.
+  const macros = incompleteStyles
+    ? {}
+    : localReadingMacros(text, styles, health ?? readingHealth());
+  return { text, macros, bibliography: [...databases.values()].join('\n') };
 }
 const plainTexSentence =
   'This paper is written in plain TeX, which Reading cannot reflow. Use Original PDF to read it.';
@@ -600,5 +642,16 @@ async function convertReading(
       src === encoded ? replacement : tag,
     );
   }
-  return { available: true, html, warnings: [...warnings], labels, health };
+  for (const binding of health.localMacros ?? [])
+    binding.occurrences = [
+      ...html.matchAll(new RegExp('\\\\' + binding.name.slice(1) + '(?![A-Za-z])', 'g')),
+    ].length;
+  return {
+    available: true,
+    html,
+    warnings: [...warnings],
+    labels,
+    health,
+    ...(Object.keys(loaded.macros).length ? { macros: loaded.macros } : {}),
+  };
 }

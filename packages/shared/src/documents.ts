@@ -39,6 +39,9 @@ export const documentLibrarySchema = z
  * What the deterministic Reading rules did to a source. Later slices (bibliography, KaTeX
  * checks, the light fixer) add optional fields here; names are relative, never absolute paths.
  */
+export const readingMacrosSchema = z
+  .record(z.string().regex(/^\\[A-Za-z]{1,40}$/), z.string().max(1024))
+  .refine((value) => Object.keys(value).length <= 64 && JSON.stringify(value).length <= 32768);
 export const readingHealthSchema = z
   .object({
     /** complete: every passage converted; partial: some passages are only in the PDF. */
@@ -61,6 +64,22 @@ export const readingHealthSchema = z
     /** Deterministic source rules applied, by name, with how often each applied. */
     rules: z.record(z.string(), z.number().int().nonnegative()).default({}),
     notes: z.array(z.string()).default([]),
+    localMacros: z
+      .array(
+        z
+          .object({
+            name: z.string().max(41),
+            file: z.string(),
+            status: z.enum(['restored', 'declined']),
+            reason: z
+              .enum(['conflicting-definition', 'scoped-or-conditional', 'unsupported-definition'])
+              .nullable(),
+            occurrences: z.number().int().nonnegative(),
+          })
+          .strict(),
+      )
+      .max(64)
+      .optional(),
   })
   .strict();
 export type ReadingHealth = z.infer<typeof readingHealthSchema>;
@@ -71,6 +90,7 @@ export const documentReadingSchema = z
     warnings: z.array(z.string()),
     labels: z.record(z.string(), z.string()).default({}),
     health: readingHealthSchema.optional(),
+    macros: readingMacrosSchema.optional(),
   })
   .strict();
 export type DocumentReading = z.infer<typeof documentReadingSchema>;
@@ -80,6 +100,7 @@ export type DocumentReading = z.infer<typeof documentReadingSchema>;
  * restarts.
  */
 export const documentReadingResponseSchema = documentReadingSchema.strip().extend({
+  macros: readingMacrosSchema.catch({}).optional(),
   warnings: z.array(z.string()).default([]),
   health: z
     .object({
@@ -91,6 +112,7 @@ export const documentReadingResponseSchema = documentReadingSchema.strip().exten
         .default([]),
       rules: z.record(z.string(), z.number()).default({}),
       notes: z.array(z.string()).default([]),
+      localMacros: readingHealthSchema.shape.localMacros,
     })
     .strip()
     .optional(),
