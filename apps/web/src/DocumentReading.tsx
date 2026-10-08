@@ -17,15 +17,19 @@ export function DocumentReading({
   size,
   close,
   endpoint = `/documents/${id}`,
+  onOverflow,
 }: {
   id: string;
   endpoint?: string;
   reading: Reading;
   size: number;
   close: () => void;
+  onOverflow?: (wide: boolean) => void;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const touch = useRef<{ x: number; y: number; equation: boolean } | null>(null);
+  const overflowRef = useRef(onOverflow);
+  overflowRef.current = onOverflow;
   const html = useMemo(() => {
     const source = reading.html.replace(
       /reader-asset:([a-f0-9]{64}\.(?:png|jpg|jpeg|webp|gif))/g,
@@ -213,6 +217,8 @@ export function DocumentReading({
     ];
     let disposed = false;
     let frame = 0;
+    let settled: ReturnType<typeof setTimeout> | undefined;
+    let fontsReady = false;
     const pending = new Set<HTMLElement>();
     // Batch geometry reads before each stage's writes: relation layout, number placement,
     // then overflow cues. Never alternate reads/writes once per equation.
@@ -286,6 +292,19 @@ export function DocumentReading({
       for (const { content, stack } of stacks) content.classList.toggle('stack-number', stack);
       const cues = [...targets].map(cue);
       for (const item of cues) show(item);
+      if (fontsReady && overflowRef.current) {
+        clearTimeout(settled);
+        settled = setTimeout(() => {
+          if (!disposed && root.clientWidth > 0)
+            overflowRef.current?.(
+              equations.some(
+                (equation) =>
+                  equation.classList.contains('display') &&
+                  equation.scrollWidth > equation.clientWidth + 3,
+              ),
+            );
+        }, 500);
+      }
     };
     // Observe each scroller and its content: late KaTeX fonts widen the content only.
     const owner = new Map<Element, HTMLElement>();
@@ -316,10 +335,13 @@ export function DocumentReading({
     }
     update(equations);
     void document.fonts.ready.then(() => {
+      fontsReady = true;
       if (!disposed) schedule(equations);
     });
     return () => {
       disposed = true;
+      clearTimeout(settled);
+      overflowRef.current?.(false);
       cancelAnimationFrame(frame);
       resize.disconnect();
       for (const equation of equations) equation.removeEventListener('scroll', scrolled);

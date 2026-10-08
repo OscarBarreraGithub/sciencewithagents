@@ -91,6 +91,11 @@ export const documentReadingSchema = z
     labels: z.record(z.string(), z.string()).default({}),
     health: readingHealthSchema.optional(),
     macros: readingMacrosSchema.optional(),
+    /** Hash of the bounded, expanded original input used for a formatting copy. */
+    sourceHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
   })
   .strict();
 export type DocumentReading = z.infer<typeof documentReadingSchema>;
@@ -188,6 +193,26 @@ export const documentFormatStatusSchema = z
   })
   .strict();
 export type DocumentFormatStatus = z.infer<typeof documentFormatStatusSchema>;
+
+export const documentAutomaticFormatSchema = z
+  .object({
+    revision: z.number().int().nonnegative(),
+    enabled: z.boolean(),
+    provider: z.enum(['codex', 'claude']).nullable(),
+    model: z.string().min(1).max(100).nullable(),
+    effort: z.string().min(1).max(40).nullable(),
+  })
+  .strict();
+export type DocumentAutomaticFormat = z.infer<typeof documentAutomaticFormatSchema>;
+export const documentAutomaticFormatSaveSchema = documentAutomaticFormatSchema
+  .omit({ revision: true })
+  .extend({ key: z.string().uuid(), expectedRevision: z.number().int().nonnegative() })
+  .refine((input) => !input.enabled || (input.provider && input.model && input.effort), {
+    message: 'Choose a provider, model and thinking level for automatic copies.',
+  });
+export const documentAutomaticFormatTriggerSchema = z
+  .object({ sourceHash: z.string().regex(/^[a-f0-9]{64}$/) })
+  .strict();
 
 /** The client sends only an arXiv link or ID; the server chooses every URL and path. */
 export const arxivImportRequestSchema = z

@@ -46,3 +46,10 @@ private reading copy and leaves the source/PDF untouched. The host checks source
 labels, references, tags and the preamble before allowing the copy to open. These checks
 are not a proof of mathematical equivalence: compare important equations with the original.
 A failed/interrupted pass retains the original. Opening a document alone spends no AI allowance.
+
+You can opt in per document to **Automatically request a copy when equations stay wide**.
+It uses the selected model after fonts and layout settle, at most once per source version and
+model settings. The original stays selected until you choose **Read formatted copy**.
+Failed passes need an explicit **Create reading copy** retry; reopening does not repeat them.
+The option is off by default and uses the same QUARK-supervised formatter, not a separate
+automatic scientific repair service.

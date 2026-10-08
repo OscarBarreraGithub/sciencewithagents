@@ -453,6 +453,12 @@ const postPaths = new RegExp(
 const groupDocumentReadPath = new RegExp(
   `^/groups/(?:documents|reports)/${uuid}/${uuid}/[a-f0-9]{64}(?:/(?:source|pdf|reading|assets/[a-f0-9]{64}\\.(?:png|jpg|jpeg|webp|gif)))?$`,
 );
+const documentFormatReadPath = new RegExp(
+  `^/documents/${uuid}/(?:format(?:/automatic)?|formatted/${uuid})$`,
+);
+const documentFormatWritePath = new RegExp(
+  `^/documents/${uuid}/format(?:/automatic(?:/request)?)?$`,
+);
 const groupDocumentWritePath = new RegExp(
   `^/groups/(?:reports|documents/${uuid}/grants|documents/${uuid}/${uuid}/[a-f0-9]{64}/(?:open|build|share|revoke|publish)|reports/${uuid}/${uuid}/[a-f0-9]{64}/(?:open|build|revoke))$`,
 );
@@ -528,9 +534,17 @@ export function proxyPath(
     socket
       ? method !== 'GET' || !terminalPath.test(pathname) || query !== undefined
       : method === 'GET'
-        ? !(getPaths.test(pathname) || groupDocumentReadPath.test(pathname))
+        ? !(
+            getPaths.test(pathname) ||
+            groupDocumentReadPath.test(pathname) ||
+            documentFormatReadPath.test(pathname)
+          )
         : method === 'POST'
-          ? !(postPaths.test(pathname) || groupDocumentWritePath.test(pathname))
+          ? !(
+              postPaths.test(pathname) ||
+              groupDocumentWritePath.test(pathname) ||
+              documentFormatWritePath.test(pathname)
+            )
           : true
   )
     return null;

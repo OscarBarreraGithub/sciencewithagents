@@ -55,6 +55,14 @@ an older copy; deterministic checks protect labels, references, tags and the pre
 not arbitrary mathematical equivalence. Follow [phone LaTeX conventions](TEX_AUTHORING.md)
 across manager and worker reports. Larger text and some matrices still need local scrolling.
 
+The optional **Automatically request a copy when equations stay wide** setting belongs to
+this document and starts off disabled. It uses the selected model only after the rendered
+equations still overflow, keeping one automatic attempt per source version and model settings
+across tabs and reopening. You still choose when to read the copy. Failed attempts do not
+repeat automatically; **Create reading copy** explicitly retries. Use **Save automatic model**
+to apply changed model settings to future automatic requests. This uses the existing
+QUARK-supervised formatter; it is not the separate proposed lightweight scientific repair helper.
+
 ## Share from a manager
 
 Use `dock_document` with a project-relative path, for example

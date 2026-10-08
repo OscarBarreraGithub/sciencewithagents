@@ -1,15 +1,20 @@
 import { constants } from 'node:fs';
 import { mkdir, open, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   documentFormatRequestSchema,
   documentFormatStatusSchema,
+  documentAutomaticFormatSchema,
+  documentAutomaticFormatSaveSchema,
+  documentAutomaticFormatTriggerSchema,
   jobEstimateSchema,
   latexCommandValues,
   type DocumentFormatStatus,
+  type DocumentAutomaticFormat,
+  type Assignment,
 } from '@dock/shared';
 import { Conflict, Missing, Store } from './store.js';
 import { Documents } from './documents.js';
@@ -17,6 +22,11 @@ import { ModelPolicy } from './model-policy.js';
 import { latexAuthoringCharter } from './latex-authoring.js';
 
 const prefix = 'document-format:';
+type Prepared = {
+  source: Awaited<ReturnType<Documents['formattingSource']>>;
+  assignment: Assignment;
+  automaticRevision: number;
+};
 type Job = {
   id: string;
   documentId: string;
@@ -48,6 +58,104 @@ export class DocumentFormatting {
   }
   projectId() {
     return this.store.getSetting(prefix + 'project') as string | undefined;
+  }
+  automaticPreference(documentId: string): DocumentAutomaticFormat {
+    this.documents.get(documentId);
+    return documentAutomaticFormatSchema.parse(
+      this.store.getSetting(prefix + 'automatic:' + documentId) ?? {
+        revision: 0,
+        enabled: false,
+        provider: null,
+        model: null,
+        effort: null,
+      },
+    );
+  }
+  saveAutomaticPreference(documentId: string, raw: unknown) {
+    const input = documentAutomaticFormatSaveSchema.parse(raw);
+    this.documents.get(documentId);
+    return this.store.operation(
+      prefix + 'automatic-save:' + input.key,
+      { documentId, input },
+      () => {
+        const previous = this.automaticPreference(documentId);
+        if (previous.revision !== input.expectedRevision)
+          throw new Conflict(
+            'Automatic formatting changed on another device. Reopen this document.',
+          );
+        const preference = documentAutomaticFormatSchema.parse({
+          enabled: input.enabled,
+          provider: input.provider,
+          model: input.model,
+          effort: input.effort,
+          revision: previous.revision + 1,
+        });
+        this.store.setSetting(prefix + 'automatic:' + documentId, preference);
+        this.store.event('document.automatic_format_changed', null, null, {
+          documentId,
+          ...preference,
+        });
+        return preference;
+      },
+    );
+  }
+  /** Geometry is observed by the reader; only a saved owner opt-in can authorize a copy.
+   * Stable source/effective-model receipts survive tabs, reopening, failures and restarts. */
+  async automatic(documentId: string, raw: unknown): Promise<DocumentFormatStatus | null> {
+    const input = documentAutomaticFormatTriggerSchema.parse(raw);
+    const preference = this.automaticPreference(documentId);
+    if (!preference.enabled) return null;
+    const source = await this.documents.formattingSource(documentId);
+    if (source.hash !== input.sourceHash)
+      throw new Conflict(
+        'The source changed. Reopen Reading before requesting its formatting copy.',
+      );
+    const choice = {
+      provider: preference.provider ?? undefined,
+      model: preference.model ?? undefined,
+      effort: preference.effort ?? undefined,
+    };
+    const assignment = await this.resolve(choice);
+    const digest = createHash('sha256')
+      .update(
+        JSON.stringify([
+          'phone-format-v1',
+          documentId,
+          source.hash,
+          assignment.provider,
+          assignment.model,
+          assignment.effort,
+        ]),
+      )
+      .digest('hex');
+    const key = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+    const request = {
+      key,
+      provider: assignment.provider,
+      model: assignment.model,
+      effort: assignment.effort,
+    };
+    const latestId = this.store.getSetting(prefix + 'latest:' + documentId) as string | undefined;
+    if (latestId) {
+      const latest = this.job(latestId),
+        agent = this.store.agent(latest.agentId);
+      if (
+        latest.hash === source.hash &&
+        agent.provider === assignment.provider &&
+        agent.model === assignment.model &&
+        agent.effort === assignment.effort
+      ) {
+        this.store.operation(prefix + key, { documentId, input: request }, () => latestId);
+        return this.statusOf(latestId);
+      }
+      if (['queued', 'running'].includes(this.store.run(latest.runId).status))
+        return this.statusOf(latestId);
+    }
+    return this.ask(documentId, request, {
+      source,
+      assignment,
+      automaticRevision: preference.revision,
+    });
   }
   private job(id: string) {
     const job = this.store.getSetting(prefix + 'job:' + z.string().uuid().parse(id)) as
@@ -151,7 +259,7 @@ export class DocumentFormatting {
       throw new Conflict('That reading copy is not ready.');
     return this.documents.reading(documentId, await this.output(job));
   }
-  async ask(documentId: string, raw: unknown) {
+  async ask(documentId: string, raw: unknown, prepared?: Prepared) {
     const input = documentFormatRequestSchema.parse(raw);
     const pendingKey = documentId + ':' + input.key;
     const pending = this.pending.get(pendingKey);
@@ -160,7 +268,7 @@ export class DocumentFormatting {
         throw new Conflict('This retry key belongs to a different formatting request.');
       return pending.work;
     }
-    const work = this.create(documentId, input);
+    const work = this.create(documentId, input, prepared);
     this.pending.set(pendingKey, { input: JSON.stringify(input), work });
     try {
       return await work;
@@ -171,6 +279,7 @@ export class DocumentFormatting {
   private async create(
     documentId: string,
     input: z.infer<typeof documentFormatRequestSchema>,
+    prepared?: Prepared,
   ): Promise<DocumentFormatStatus> {
     const operation = prefix + input.key;
     if (this.store.db.prepare('SELECT 1 FROM operations WHERE key=?').get(operation)) {
@@ -182,39 +291,37 @@ export class DocumentFormatting {
     const previous = await this.status(documentId);
     if (previous && ['running', 'queued'].includes(previous.state))
       throw new Conflict('This document already has a formatting pass in progress.');
-    const defaults = this.policy.policy().documentFormatter;
-    const provider = input.provider ?? defaults.provider;
-    const assignment = await this.policy.resolve(
-      'routine',
-      {
-        mode: 'manual',
-        difficulty: 'low',
-        provider,
-        model: input.model,
-        effort: input.effort,
-        reason: 'Requested phone typography; no calculations or new math',
-      },
-      false,
-      provider === defaults.provider ? defaults : undefined,
-    );
-    const source = await this.documents.formattingSource(documentId);
+    const assignment = prepared?.assignment ?? (await this.resolve(input));
+    const provider = assignment.provider;
+    const source = prepared?.source ?? (await this.documents.formattingSource(documentId));
     const id = randomUUID();
     let directory = join(this.dataDir, 'document-formatting', id);
     await mkdir(directory, { recursive: true, mode: 0o700 });
     directory = await realpath(directory);
     await writeFile(join(directory, 'source.tex'), source.text, { mode: 0o400, flag: 'wx' });
+    if (prepared) {
+      const preference = this.automaticPreference(documentId);
+      if (!preference.enabled || preference.revision !== prepared.automaticRevision)
+        throw new Conflict('Automatic formatting changed. No new copy was requested.');
+    }
+    // No await between this check and registration: concurrent requests in this host
+    // reuse the project. register owns its transaction and cannot nest in operation.
     let projectId = this.projectId();
     if (!projectId) {
-      const project = this.store.register(
+      projectId = this.store.register(
         join(this.dataDir, 'document-formatting'),
         'Document formatting',
         'Private phone reading copies',
         provider,
-      );
-      projectId = project.id;
+      ).id;
       this.store.setSetting(prefix + 'project', projectId);
     }
-    this.store.operation(operation, { documentId, input }, () => {
+    const jobId = this.store.operation(operation, { documentId, input }, () => {
+      if (prepared) {
+        const preference = this.automaticPreference(documentId);
+        if (!preference.enabled || preference.revision !== prepared.automaticRevision)
+          throw new Conflict('Automatic formatting changed. No new copy was requested.');
+      }
       const latestId = this.store.getSetting(prefix + 'latest:' + documentId) as string | undefined;
       if (
         latestId &&
@@ -277,7 +384,24 @@ export class DocumentFormatting {
       this.store.event('document.format_requested', projectId, agent.id, { id, documentId });
       return id;
     });
-    return this.statusOf(id);
+    return this.statusOf(jobId);
+  }
+  private resolve(input: { provider?: 'codex' | 'claude'; model?: string; effort?: string }) {
+    const defaults = this.policy.policy().documentFormatter;
+    const provider = input.provider ?? defaults.provider;
+    return this.policy.resolve(
+      'routine',
+      {
+        mode: 'manual',
+        difficulty: 'low',
+        provider,
+        model: input.model,
+        effort: input.effort,
+        reason: 'Requested phone typography; no calculations or new math',
+      },
+      false,
+      provider === defaults.provider ? defaults : undefined,
+    );
   }
 }
 export function registerDocumentFormattingRoutes(
@@ -295,4 +419,13 @@ export function registerDocumentFormattingRoutes(
       .parse(request.params);
     return formatting.reading(p.id, p.formatId);
   });
+  app.get('/api/documents/:id/format/automatic', (request) =>
+    formatting.automaticPreference(id(request.params)),
+  );
+  app.post('/api/documents/:id/format/automatic', (request) =>
+    formatting.saveAutomaticPreference(id(request.params), request.body),
+  );
+  app.post('/api/documents/:id/format/automatic/request', (request) =>
+    formatting.automatic(id(request.params), request.body),
+  );
 }

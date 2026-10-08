@@ -1,25 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   documentFormatStatusSchema,
+  documentAutomaticFormatSchema,
   effortLabel,
   latestFamily,
   modelPolicyStatusSchema,
   modelSchema,
   policyDefaultEffort,
   type DocumentFormatStatus,
+  type DocumentAutomaticFormat,
   type Model,
   type ProviderId,
 } from '@dock/shared';
-import { api } from './api';
+import { api, ApiError } from './api';
 
 export function DocumentFormatControls({
   id,
   selected,
   select,
+  overflowSource = null,
 }: {
   id: string;
   selected: string | null;
   select: (id: string | null) => void;
+  overflowSource?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState<DocumentFormatStatus | null>(null);
@@ -30,33 +34,84 @@ export function DocumentFormatControls({
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [automatic, setAutomatic] = useState<DocumentAutomaticFormat | null>(null);
+  const [savingAutomatic, setSavingAutomatic] = useState(false);
+  const [automaticIntent, setAutomaticIntent] = useState<boolean | null>(null);
+  const automaticAttempts = useRef(new Set<string>());
+  const saveAttempt = useRef<{ input: string; key: string } | null>(null);
+  const generation = useRef(0);
+  const statusGeneration = useRef(0);
   const key = useRef(crypto.randomUUID());
   useEffect(() => {
+    generation.current++;
+    return () => {
+      generation.current++;
+    };
+  }, [id]);
+  useEffect(() => {
     const abort = new AbortController();
+    const version = statusGeneration.current;
     void api(`/documents/${id}/format`, undefined, abort.signal)
       .then((value) => {
-        if (!abort.signal.aborted)
+        if (!abort.signal.aborted && statusGeneration.current === version)
           setStatus(value === null ? null : documentFormatStatusSchema.parse(value));
       })
       .catch((error) => {
-        if (!abort.signal.aborted) setError(error.message);
+        if (!abort.signal.aborted && statusGeneration.current === version) setError(error.message);
       });
     return () => abort.abort();
   }, [id]);
   useEffect(() => {
+    const abort = new AbortController();
+    void api(`/documents/${id}/format/automatic`, undefined, abort.signal)
+      .then(documentAutomaticFormatSchema.parse)
+      .then((value) => {
+        if (!abort.signal.aborted) setAutomatic(value);
+      })
+      .catch((error) => {
+        // Older hosts retain their explicit formatter without an automatic option.
+        if (!abort.signal.aborted && !(error instanceof ApiError && error.status === 404))
+          setError(error.message);
+      });
+    return () => abort.abort();
+  }, [id]);
+  useEffect(() => {
+    if (!automatic?.enabled || !overflowSource || selected || savingAutomatic) return;
+    const observation = `${automatic.revision}:${overflowSource}`;
+    if (automaticAttempts.current.has(observation)) return;
+    automaticAttempts.current.add(observation);
+    const scope = generation.current;
+    const version = ++statusGeneration.current;
+    // Do not abort an authorized request when a subsequent geometry sample arrives.
+    // A lost acknowledgement can be read safely after reopening via the host receipt.
+    void api(`/documents/${id}/format/automatic/request`, { sourceHash: overflowSource })
+      .then((value) => {
+        const next = value === null ? null : documentFormatStatusSchema.parse(value);
+        if (generation.current === scope && statusGeneration.current === version && next) {
+          setStatus(next);
+          setError('');
+        }
+      })
+      .catch((error) => {
+        if (generation.current === scope && statusGeneration.current === version)
+          setError(error.message);
+      });
+  }, [id, automatic, overflowSource, selected, savingAutomatic]);
+  useEffect(() => {
     if (!status || !['queued', 'running'].includes(status.state)) return;
     const abort = new AbortController();
+    const version = statusGeneration.current;
     const timer = setTimeout(() => {
       void api(`/documents/${id}/format`, undefined, abort.signal)
         .then((value) => {
           const next = documentFormatStatusSchema.parse(value);
-          if (!abort.signal.aborted) {
+          if (!abort.signal.aborted && statusGeneration.current === version) {
             setStatus(next);
             setError('');
           }
         })
         .catch((error) => {
-          if (!abort.signal.aborted) {
+          if (!abort.signal.aborted && statusGeneration.current === version) {
             setError(error.message);
             setStatus({ ...status });
           }
@@ -78,7 +133,7 @@ export function DocumentFormatControls({
       );
       const choice = config.policy.documentFormatter;
       if (!provider) {
-        if (!abort.signal.aborted) setProvider(choice.provider);
+        if (!abort.signal.aborted) setProvider(automatic?.provider ?? choice.provider);
         return;
       }
       const found = modelSchema
@@ -86,7 +141,11 @@ export function DocumentFormatControls({
         .parse(await api(`/models?provider=${provider}`, undefined, abort.signal));
       if (abort.signal.aborted) return;
       const preferred =
-        provider === choice.provider ? choice : config.policy.models[provider].undergrad;
+        automatic?.enabled && provider === automatic.provider
+          ? { ...automatic, family: '' }
+          : provider === choice.provider
+            ? choice
+            : config.policy.models[provider].undergrad;
       const chosen =
         found.find((m) => m.id === preferred.model) ?? latestFamily(found, preferred.family);
       setModels(found);
@@ -103,20 +162,59 @@ export function DocumentFormatControls({
   }, [expanded, provider]);
   async function start() {
     if (!provider) return;
+    const scope = generation.current;
+    const version = ++statusGeneration.current;
     setSending(true);
     setError('');
     try {
       const next = documentFormatStatusSchema.parse(
         await api(`/documents/${id}/format`, { key: key.current, provider, model, effort }),
       );
-      setStatus(next);
-      key.current = crypto.randomUUID();
+      if (generation.current === scope && statusGeneration.current === version) {
+        setStatus(next);
+        key.current = crypto.randomUUID();
+      }
+    } catch (error) {
+      if (generation.current === scope && statusGeneration.current === version)
+        setError((error as Error).message);
+    } finally {
+      if (generation.current === scope) setSending(false);
+    }
+  }
+  async function saveAutomatic(enabled: boolean) {
+    if (!automatic) return;
+    const input = {
+      expectedRevision: automatic.revision,
+      enabled,
+      provider: enabled ? provider : automatic.provider,
+      model: enabled ? model : automatic.model,
+      effort: enabled ? effort : automatic.effort,
+    };
+    const serialized = JSON.stringify(input);
+    if (saveAttempt.current?.input !== serialized)
+      saveAttempt.current = { input: serialized, key: crypto.randomUUID() };
+    setSavingAutomatic(true);
+    setAutomaticIntent(enabled);
+    setError('');
+    try {
+      setAutomatic(
+        documentAutomaticFormatSchema.parse(
+          await api(`/documents/${id}/format/automatic`, {
+            ...input,
+            key: saveAttempt.current.key,
+          }),
+        ),
+      );
     } catch (error) {
       setError((error as Error).message);
     } finally {
-      setSending(false);
+      setSavingAutomatic(false);
+      setAutomaticIntent(null);
     }
   }
+  const automaticModelChanged =
+    automatic?.enabled &&
+    (provider !== automatic.provider || model !== automatic.model || effort !== automatic.effort);
   const busy = sending || (!!status && ['running', 'queued'].includes(status.state));
   return (
     <details
@@ -132,7 +230,9 @@ export function DocumentFormatControls({
             ? '· Queued'
             : status?.state === 'ready'
               ? '· Copy ready'
-              : ''}
+              : status && ['failed', 'interrupted', 'stale'].includes(status.state)
+                ? '· Check copy'
+                : ''}
       </summary>
       {expanded && (
         <div className="document-format-content">
@@ -199,6 +299,39 @@ export function DocumentFormatControls({
               </select>
             </label>
           </div>
+          {automatic && (
+            <div className="document-format-automatic">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={automaticIntent ?? automatic.enabled}
+                  disabled={
+                    savingAutomatic || (!automatic.enabled && (!loaded || !model || !effort))
+                  }
+                  onChange={(event) => void saveAutomatic(event.target.checked)}
+                />
+                Automatically request a copy when equations stay wide
+              </label>
+              <p>
+                Uses your AI allowance. The original stays selected. Failed passes need an explicit
+                retry.
+              </p>
+              {automatic.enabled && (
+                <p>
+                  Automatic model:{' '}
+                  {models.find((model) => model.id === automatic.model)?.label ?? automatic.model}
+                </p>
+              )}
+              {automaticModelChanged && (
+                <button
+                  disabled={savingAutomatic || busy || !loaded || !model || !effort}
+                  onClick={() => void saveAutomatic(true)}
+                >
+                  Save automatic model
+                </button>
+              )}
+            </div>
+          )}
           {status && <p role="status">{status.message}</p>}
           {error && <p role="alert">{error}</p>}
           <div className="document-format-actions">

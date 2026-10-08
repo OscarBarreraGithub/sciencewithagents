@@ -323,6 +323,7 @@ function Reader({
   });
   const [readingVersion, setReadingVersion] = useState(0);
   const [formatId, setFormatId] = useState<string | null>(null);
+  const [overflow, setOverflow] = useState(false);
   useEffect(() => {
     const abort = new AbortController();
     void api(
@@ -516,6 +517,9 @@ function Reader({
       {reading?.available && !scoped && (
         <DocumentFormatControls
           id={id}
+          overflowSource={
+            mode === 'reading' && !formatId && overflow ? (reading.sourceHash ?? null) : null
+          }
           selected={formatId}
           select={(value) => {
             setFormatId(value);
@@ -622,6 +626,7 @@ function Reader({
             reading={reading}
             size={size}
             close={close}
+            onOverflow={setOverflow}
           />
         ) : mode === 'pdf' && doc?.hasPdf ? (
           <PdfPages

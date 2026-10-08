@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import type { SavedDocument } from '@dock/shared';
+import type { SavedDocument, DocumentAutomaticFormat, DocumentFormatStatus } from '@dock/shared';
 import { readingEqualityLayout } from '../../src/readingMathLayout';
 
 // A tiny standards-compliant PDF with two real, selectable-text pages; no binary fixture is shipped.
@@ -29,8 +29,8 @@ function pdfFixture() {
     .join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return Buffer.from(pdf);
 }
-async function fixture(page: Page) {
-  const id = randomUUID(),
+async function fixture(page: Page, documentId = randomUUID()) {
+  const id = documentId,
     folder = randomUUID();
   // Match the paired-phone content security policy, including the PDF worker/font boundaries.
   await page.route(/\/($|\?)/, async (route) => {
@@ -61,6 +61,16 @@ async function fixture(page: Page) {
   await page.route('**/api/documents**', (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/format')) return route.fulfill({ json: null });
+    if (url.pathname.endsWith('/format/automatic'))
+      return route.fulfill({
+        json: {
+          enabled: false,
+          revision: 0,
+          provider: null,
+          model: null,
+          effort: null,
+        },
+      });
     if (url.pathname.endsWith('/reading'))
       return route.fulfill({ json: { available: false, html: '', warnings: [] } });
     if (url.pathname.endsWith('/pdf'))
@@ -1013,4 +1023,189 @@ test('Reading uses source-backed local macros in original and wrapped math', asy
   expect(await reader.locator('.math.inline .katex-html').textContent()).toBe('opt');
   expect(await reader.locator('.reading-equation-original annotation').textContent()).toBe(tex);
   await expect(reader.getByText('remains source-backed.', { exact: false })).toBeVisible();
+});
+
+function automaticCopyState(documentId: string, hold = false) {
+  let release!: () => void;
+  const acknowledgement = hold
+    ? new Promise<void>((resolve) => {
+        release = resolve;
+      })
+    : Promise.resolve();
+  const terms = Array.from({ length: 18 }, (_, i) => `V_{${i + 1}}`);
+  const original = String.raw`\begin{equation}\label{energy}\begin{gathered}E=mc^2+${terms.join('+')}\end{gathered}\end{equation}`;
+  const formatted = String.raw`\begin{equation}\label{energy}\begin{aligned}E&=mc^2\\&+${terms.join(String.raw`\\&+`)}\end{aligned}\end{equation}`;
+  return {
+    documentId,
+    original,
+    formatted,
+    sourceHash: 'a'.repeat(64),
+    automaticRequests: 0,
+    paidPasses: 0,
+    preference: {
+      enabled: false,
+      revision: 0,
+      provider: null,
+      model: null,
+      effort: null,
+    } as DocumentAutomaticFormat,
+    status: null as DocumentFormatStatus | null,
+    acknowledgement,
+    release: () => release?.(),
+  };
+}
+async function automaticCopyRoutes(page: Page, state: ReturnType<typeof automaticCopyState>) {
+  await fixture(page, state.documentId);
+  const reading = (copy: boolean) => ({
+    available: true,
+    sourceHash: state.sourceHash,
+    warnings: [],
+    labels: {},
+    html: `<h1>${copy ? 'Reading copy' : 'Original report'}</h1><p>Every original term remains.</p><span class="math display">\\[${copy ? state.formatted : state.original}\\]</span>`,
+  });
+  const makeJob = () => {
+    state.paidPasses++;
+    state.status = {
+      id: randomUUID(),
+      documentId: state.documentId,
+      agentId: randomUUID(),
+      model: state.preference.model ?? 'claude-sonnet-5-5',
+      state: 'queued',
+      message: 'Waiting to format this reading copy.',
+    };
+  };
+  await page.route('**/api/documents/*/reading', (route) =>
+    route.fulfill({ json: reading(false) }),
+  );
+  await page.route('**/api/documents/*/formatted/*', (route) =>
+    route.fulfill({ json: reading(true) }),
+  );
+  await page.route('**/api/documents/*/format', (route) => {
+    if (route.request().method() === 'POST') makeJob();
+    return route.fulfill({ json: state.status });
+  });
+  await page.route('**/api/documents/*/format/automatic', (route) => {
+    if (route.request().method() === 'POST') {
+      const input = route.request().postDataJSON();
+      state.preference = {
+        enabled: input.enabled,
+        provider: input.provider,
+        model: input.model,
+        effort: input.effort,
+        revision: state.preference.revision + 1,
+      };
+    }
+    return route.fulfill({ json: state.preference });
+  });
+  await page.route('**/api/documents/*/format/automatic/request', async (route) => {
+    state.automaticRequests++;
+    expect(route.request().postDataJSON()).toEqual({ sourceHash: state.sourceHash });
+    // Real SQLite receipt/concurrency behavior is tested in document-formatting-automatic.test.ts.
+    if (!state.status) makeJob();
+    await state.acknowledgement;
+    return route.fulfill({ json: state.status });
+  });
+  await page.route('**/api/models?provider=claude', (route) =>
+    route.fulfill({
+      json: [
+        { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', efforts: ['low', 'high'], isDefault: true },
+        { id: 'claude-opus-5-5', label: 'Opus 5.5', efforts: ['high'], isDefault: false },
+      ],
+    }),
+  );
+}
+
+test('automatic phone copy is opt-in, survives repeated geometry and tabs, and keeps original selected', async ({
+  page,
+}, info) => {
+  const state = automaticCopyState(randomUUID(), true);
+  const scientificTokens = (tex: string) =>
+    tex.replace(/\\(?:begin|end)\{[^{}]+\}|\\label\{[^{}]+\}|\\\\|&|\s/g, '');
+  expect(scientificTokens(state.formatted)).toBe(scientificTokens(state.original));
+  await automaticCopyRoutes(page, state);
+  await page.goto(`/#/latex/${state.documentId}`);
+  const reader = page.getByRole('dialog', { name: 'PDF reader' });
+  await expect(
+    reader.locator('.reading-overflow-hint').filter({ hasText: 'More equation' }),
+  ).toBeVisible();
+  expect(state.automaticRequests).toBe(0);
+  await page.screenshot({ path: info.outputPath('original-wide-equation.png') });
+  await reader.getByText('Format for phone', { exact: true }).click();
+  const controls = reader.locator('.document-format');
+  const optIn = controls.getByRole('checkbox', {
+    name: 'Automatically request a copy when equations stay wide',
+  });
+  await expect(optIn).not.toBeChecked();
+  await expect(controls.getByLabel('Model', { exact: true })).toHaveValue('claude-sonnet-5-5');
+  await optIn.check();
+  await expect.poll(() => state.automaticRequests).toBe(1);
+  await reader.getByRole('button', { name: 'Larger text' }).click();
+  await reader.getByRole('button', { name: 'Larger text' }).click();
+  state.release();
+  await expect(controls.locator('summary')).toContainText('Queued');
+  await expect(reader.getByRole('heading', { name: 'Original report' })).toBeVisible();
+  const second = await page.context().newPage();
+  try {
+    await automaticCopyRoutes(second, state);
+    await second.goto(`/#/latex/${state.documentId}`);
+    await expect.poll(() => state.automaticRequests).toBe(2);
+    expect(state.paidPasses).toBe(1);
+    state.status = {
+      ...state.status!,
+      state: 'ready',
+      message: 'AI-formatted reading copy. Compare equations with the original.',
+    };
+    await expect(controls.locator('summary')).toContainText('Copy ready');
+    await expect(reader.getByRole('heading', { name: 'Original report' })).toBeVisible();
+    await controls.getByRole('button', { name: 'Read formatted copy' }).click();
+    await expect(reader.getByRole('heading', { name: 'Reading copy' })).toBeVisible();
+    await expect(reader.locator('.reading-overflow-hint')).toBeHidden();
+    expect(await reader.locator('.math.display annotation').first().textContent()).toContain(
+      'V_{18}',
+    );
+    await page.screenshot({ path: info.outputPath('automatic-phone-copy.png') });
+    await controls.getByRole('button', { name: 'Read original' }).click();
+    await expect(reader.getByRole('heading', { name: 'Original report' })).toBeVisible();
+    await page.reload();
+    await expect.poll(() => state.automaticRequests).toBe(3);
+    expect(state.paidPasses).toBe(1);
+    await expect(page.getByRole('heading', { name: 'Original report' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  } finally {
+    await second.close();
+  }
+});
+
+test('failed automatic phone copy never loops and a new pass requires an explicit retry', async ({
+  page,
+}) => {
+  const state = automaticCopyState(randomUUID());
+  await automaticCopyRoutes(page, state);
+  await page.goto(`/#/latex/${state.documentId}`);
+  const reader = page.getByRole('dialog', { name: 'PDF reader' });
+  await reader.getByText('Format for phone', { exact: true }).click();
+  const controls = reader.locator('.document-format');
+  await controls
+    .getByRole('checkbox', { name: 'Automatically request a copy when equations stay wide' })
+    .check();
+  await expect.poll(() => state.automaticRequests).toBe(1);
+  state.status = {
+    ...state.status!,
+    state: 'interrupted',
+    message: 'Formatting stopped. Your original is unchanged; you can try again.',
+  };
+  await expect(controls.getByRole('status')).toContainText('Formatting stopped');
+  await reader.getByRole('button', { name: 'Larger text' }).click();
+  await reader.getByRole('button', { name: 'Larger text' }).click();
+  await page.reload();
+  await expect.poll(() => state.automaticRequests).toBe(2);
+  await controls.locator('summary').click();
+  await expect(controls.getByRole('status')).toContainText('Formatting stopped');
+  expect(state.paidPasses).toBe(1);
+  await controls.getByRole('button', { name: 'Create reading copy' }).click();
+  await expect(controls.locator('summary')).toContainText('Queued');
+  expect(state.paidPasses).toBe(2);
+  await expect(reader.getByRole('heading', { name: 'Original report' })).toBeVisible();
 });

@@ -353,6 +353,7 @@ async function convertReading(
   }
   const deadline = Date.now() + (options.budgetMs ?? 60000);
   const loaded = await loadReadingSource(source, root, health);
+  const sourceHash = createHash('sha256').update(loaded.text).digest('hex');
   let text = formattedText ?? loaded.text;
   let references: Parameters<typeof withFrontMatter>[0]['meta']['references'] | undefined;
   if (loaded.bibliography) {
@@ -399,6 +400,7 @@ async function convertReading(
       warnings: [...warnings],
       labels,
       health,
+      sourceHash,
     };
   };
   if (isPlainTex(text)) {
@@ -655,6 +657,7 @@ async function convertReading(
     warnings: [...warnings],
     labels,
     health,
+    sourceHash,
     ...(Object.keys(loaded.macros).length ? { macros: loaded.macros } : {}),
   };
 }
