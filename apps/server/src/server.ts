@@ -1,3 +1,4 @@
+import { promptBodyLimit, promptTextLimit } from '@dock/shared';
 import { registerGroupHostRoutes } from './group-host-routes.js';
 import type { GroupHost } from './group-host.js';
 import { registerGroupFixtureRoutes, type GroupFixtureHost } from './group-fixture-host.js';
@@ -268,7 +269,7 @@ export async function createServer(
   };
   app.setErrorHandler((error, _request, reply) => {
     const status =
-      options.groupFixture && (error as { statusCode?: number }).statusCode === 413
+      (error as { statusCode?: number }).statusCode === 413
         ? 413
         : error instanceof ZodError
           ? 400
@@ -305,14 +306,26 @@ export async function createServer(
         .type('text/html')
         .send(page.html);
     }
-    const message =
-      error instanceof ZodError
-        ? 'The request does not match the input contract.'
-        : error instanceof Error
-          ? runtime.errorText(error)
-          : 'The operation failed.';
+    const oversizedPrompt =
+      error instanceof ZodError &&
+      error.issues.some(
+        (issue) =>
+          issue.code === 'too_big' &&
+          issue.maximum === promptTextLimit &&
+          issue.path.at(-1) === 'text',
+      );
+    const message = oversizedPrompt
+      ? `This message is longer than ${promptTextLimit.toLocaleString('en-US')} characters. Shorten it or attach it as a file; your draft is retained.`
+      : status === 413
+        ? 'This request is too large. Your draft is retained; shorten it or attach the text as a file.'
+        : error instanceof ZodError
+          ? 'The request does not match the input contract.'
+          : error instanceof Error
+            ? runtime.errorText(error)
+            : 'The operation failed.';
     reply.code(status).send({
       error: message,
+      ...(oversizedPrompt ? { code: 'PROMPT_TOO_LONG' } : {}),
       ...(error instanceof Conflict && error.code ? { code: error.code } : {}),
     });
   });
@@ -854,10 +867,14 @@ export async function createServer(
       .parse(request.query);
     return workspace.draftHistory(value.id, value.agentId, query.before);
   });
-  app.post('/api/workspace/:id/drafts/:agentId', async (request) => {
-    const value = z.object({ id, agentId: id }).parse(request.params);
-    return workspace.saveDraft(value.id, value.agentId, request.body);
-  });
+  app.post(
+    '/api/workspace/:id/drafts/:agentId',
+    { bodyLimit: promptBodyLimit },
+    async (request) => {
+      const value = z.object({ id, agentId: id }).parse(request.params);
+      return workspace.saveDraft(value.id, value.agentId, request.body);
+    },
+  );
   app.post('/api/projects/:id/history', async (request) =>
     historyPage(store, agentId(request.params), request.body),
   );
@@ -1352,7 +1369,7 @@ export async function createServer(
     if (runtime.conversationSearch.isAgent(target)) runtime.requireDirectControl(target);
     return createInterview(store, target, request.body);
   });
-  app.post('/api/agents/:id/messages', async (request, reply) => {
+  app.post('/api/agents/:id/messages', { bodyLimit: promptBodyLimit }, async (request, reply) => {
     const target = agentId(request.params);
     runtime.requireDirectControl(target);
     const value = sendSchema.parse(request.body);

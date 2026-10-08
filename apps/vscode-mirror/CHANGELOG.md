@@ -1,5 +1,10 @@
 # Changes
 
+## 0.2.14
+
+Accept owner chat prompts up to 200,000 characters across the typed send and editor bridge.
+Update the companion and reload when active editor work is safe; no reload is forced.
+
 ## 0.2.13
 
 Recognize the native parser's explicit rejection of `thread/queue/list` as an unsupported

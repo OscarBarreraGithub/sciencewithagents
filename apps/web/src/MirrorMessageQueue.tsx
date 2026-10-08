@@ -4,6 +4,7 @@ import {
   mirrorQueuedMessageSchema,
   mirrorQueuedMessagesSchema,
   mirrorQueuedReceiptSchema,
+  promptTextLimit,
   type MirrorQueuedMessage,
   type MirrorState,
 } from '@dock/shared';
@@ -123,7 +124,7 @@ export function MirrorMessageQueue({
           id: threadId,
           name: provider === 'claude' ? 'Claude Code' : 'Codex',
           canSteer: provider === 'codex' && canSteer,
-          maxLength: 32_000,
+          maxLength: promptTextLimit,
         }}
         messages={[
           ...items,

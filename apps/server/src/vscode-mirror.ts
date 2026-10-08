@@ -1,3 +1,4 @@
+import { promptBodyLimit, promptTextLimit } from '@dock/shared';
 import { MirrorOutbox } from './mirror-outbox.js';
 import { randomUUID, createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
@@ -357,7 +358,7 @@ export class VscodeMirrors {
           message:
             'Remote files cannot be sent here. Attach them in the native remote editor. Nothing was queued.',
         } as MirrorResult;
-      if (this.prepareText(input.text).length > 32000)
+      if (this.prepareText(input.text).length > promptTextLimit)
         throw new Conflict(
           'Shorten the message slightly to leave room for its attachments. Nothing was queued.',
         );
@@ -403,7 +404,7 @@ export class VscodeMirrors {
           'Files cannot be sent to this remote editor. Remove attachments from this draft and attach them in the native remote editor instead. Nothing was sent.',
       };
     const delivery = { ...input, text: this.prepareText(input.text) };
-    if (delivery.text.length > 32000)
+    if (delivery.text.length > promptTextLimit)
       throw new Conflict(
         'Shorten the message slightly to leave room for its attachments. Nothing was sent.',
       );
@@ -705,7 +706,7 @@ export function registerMirrorRoutes(
     const params = z.object({ id: z.uuid(), key: z.uuid() }).parse(request.params);
     return mirrors.queue.receipt(params.id, params.key);
   });
-  app.post('/api/vscode/queued/:id', async (request) =>
+  app.post('/api/vscode/queued/:id', { bodyLimit: promptBodyLimit }, async (request) =>
     mirrors.queue.action(windowId(request.params), mirrorQueuedActionSchema.parse(request.body)),
   );
 
@@ -721,8 +722,10 @@ export function registerMirrorRoutes(
       await mirrors.read(windowId(request.params), mirrorPageQuerySchema.parse(request.query)),
     ),
   );
-  app.post('/api/vscode/windows/:id/send', discover, async (request) =>
-    mirrors.send(windowId(request.params), mirrorSendSchema.parse(request.body)),
+  app.post(
+    '/api/vscode/windows/:id/send',
+    { ...discover, bodyLimit: promptBodyLimit },
+    async (request) => mirrors.send(windowId(request.params), mirrorSendSchema.parse(request.body)),
   );
   app.post('/api/vscode/windows/:id/control', discover, async (request) =>
     mirrors.control(windowId(request.params), mirrorControlSchema.parse(request.body)),

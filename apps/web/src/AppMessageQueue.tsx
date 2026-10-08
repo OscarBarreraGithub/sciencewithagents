@@ -1,4 +1,10 @@
-import { queuedMessageReceiptSchema, type Agent, type AgentDetail, type Run } from '@dock/shared';
+import {
+  promptTextLimit,
+  queuedMessageReceiptSchema,
+  type Agent,
+  type AgentDetail,
+  type Run,
+} from '@dock/shared';
 import { api } from './api';
 import { EditableMessageQueue, type QueuedMessageOperations } from './EditableMessageQueue';
 import {
@@ -31,7 +37,7 @@ export function AppMessageQueue({ agent, runs }: { agent: Agent; runs: readonly 
         id: agent.id,
         name: agent.name,
         canSteer: !agent.nativeRootId && agent.provider === 'codex' && agent.status === 'running',
-        maxLength: 24_000,
+        maxLength: promptTextLimit,
       }}
       messages={messages.map((run) => ({
         ...run,

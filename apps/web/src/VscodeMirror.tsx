@@ -27,6 +27,7 @@ import {
   mirrorResultSchema,
   mirrorSendSchema,
   mirrorPage,
+  promptTextLimit,
   type MirrorState,
   type MirrorSend,
 } from '@dock/shared';
@@ -46,6 +47,7 @@ import { ChatCommands } from './ChatCommands';
 import { Notepad, type DraftSelection } from './Notepad';
 import { useBrowserNotepad } from './useBrowserNotepad';
 import { useVisibleViewport } from './useVisibleViewport';
+import { promptLengthError } from './promptLength';
 import { PromptHistory, scrollToPrompt } from './PromptHistory';
 
 // A native Codex daemon session lives on the computer, never in a VS Code window.
@@ -424,6 +426,7 @@ export function VscodeMirror({
   const draftKey = `dock:mirror:${apiScope()}:${chat.provider === 'claude' ? 'claude:' : ''}${chat.threadId}`;
   const [state, setState] = useState<MirrorState | null>(null);
   const [text, setText] = useState('');
+  const lengthError = promptLengthError(text);
   const [goalOpen, setGoalOpen] = useState<string | null>(null);
   const resizeInput = () => {
     const element = input.current;
@@ -485,7 +488,7 @@ export function VscodeMirror({
   const attachmentUpload = useChatAttachmentUpload({
     currentText: browserNotepad.draft.currentText,
     setText: browserNotepad.draft.setText,
-    maxLength: 32000,
+    maxLength: promptTextLimit,
     onBusy: setUploading,
   });
   useEffect(() => {
@@ -691,6 +694,9 @@ export function VscodeMirror({
       return;
     }
     if (busyRef.current || uploading || !chat.threadId || (!pending && !canSend)) return;
+    if (!pending && promptLengthError(browserNotepad.draft.currentText())) {
+      return;
+    }
     const input = pending ?? {
       key: crypto.randomUUID(),
       threadId: chat.threadId,
@@ -1002,7 +1008,7 @@ export function VscodeMirror({
             aria-label={`Message ${provider}`}
             value={withoutChatAttachments(text)}
             rows={1}
-            maxLength={32000}
+            aria-invalid={!!lengthError || undefined}
             placeholder={
               canSteer && !queueSelected
                 ? 'Update the current task…'
@@ -1045,7 +1051,8 @@ export function VscodeMirror({
               busy ||
               uploading ||
               (!pending &&
-                (!text.trim() ||
+                (!!lengthError ||
+                  !text.trim() ||
                   (!canSend && !/^\/goal(?:\s|$)/.test(withoutChatAttachments(text).trim()))))
             }
           >
@@ -1113,6 +1120,11 @@ export function VscodeMirror({
             Remote attachments are unavailable. Remove saved files to send text; attach in VS Code.
           </p>
         )}
+        {lengthError && (
+          <p className="mirror-receipt" role="alert">
+            {lengthError}
+          </p>
+        )}
         <details className="mirror-delivery-status" title={receipt || undefined}>
           <summary aria-live="polite">{receipt || '\u00a0'}</summary>
           {receipt && <p>{receipt}</p>}
@@ -1127,12 +1139,14 @@ export function VscodeMirror({
             selection={selection}
             localOnly
             localHistory={browserNotepad.history}
-            maxLength={32000}
+            maxLength={promptTextLimit}
             canSend={
-              !busy && !uploading && (!!pending || (!!text.trim() && (canSend || localGoal)))
+              !busy &&
+              !uploading &&
+              (!!pending || (!lengthError && !!text.trim() && (canSend || localGoal)))
             }
             sending={busy}
-            notice={receipt}
+            notice={lengthError || receipt}
             onMinimize={() => {
               browserNotepad.checkpoint();
               refocus.current = true;

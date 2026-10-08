@@ -31,6 +31,11 @@ edited-message holds, retained attachments, original request evidence and shorte
 trails. Chromium and WebKit checks exercise keyboard viewport changes, focus and drafts;
 they do not reproduce every physical iOS keyboard transition. Installation activation and
 the latest published CI result must be checked separately from these source checks.
+Prompt delivery now shares a 200,000-character limit across manager drafts, sends and
+editable queues, and across shared VS Code delivery with companion 0.2.14. A rejected
+autosave can be corrected without replaying that invalid save forever; ambiguous replies
+retain their existing retry identities. Oversized pastes remain recoverable without input
+truncation. Source checks and installation activation are recorded separately.
 Shared VS Code follow-ups queued from this app remain editable until native handoff;
 messages already in the editor's queue retain its native controls. Shared queue delivery
 uses native turn boundaries without silently steering an active reply.

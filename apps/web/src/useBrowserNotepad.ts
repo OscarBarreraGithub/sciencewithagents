@@ -4,6 +4,16 @@ import type { SharedDraft } from './useWorkspaceState';
 type Version = { text: string; at: string };
 type Archive = { text: string; at: string; versions: Version[] };
 
+// Keep recent versions without multiplying a long prompt past browser storage quotas.
+// The newest full version always survives, even when the draft exceeds the send limit.
+function retainedVersions(versions: Version[]) {
+  let characters = 0;
+  return versions.filter((version, index) => {
+    characters += version.text.length;
+    return index === 0 || (index < 50 && characters <= 200_000);
+  });
+}
+
 /** Primary drafts/receipts stay per-tab. Each mounted draft owns a separate recovery
  * record, so another tab can only offer copies, never overwrite this draft. */
 export function useBrowserNotepad(key: string, text: string, save: (text: string) => void) {
@@ -21,12 +31,7 @@ export function useBrowserNotepad(key: string, text: string, save: (text: string
         const record = JSON.parse(localStorage.getItem(name) ?? 'null') as Archive | null;
         if (!record || !Array.isArray(record.versions)) continue;
         for (const v of [{ text: record.text, at: record.at }, ...record.versions])
-          if (
-            typeof v.text === 'string' &&
-            v.text.length <= 32000 &&
-            v.text.trim() &&
-            typeof v.at === 'string'
-          )
+          if (typeof v.text === 'string' && v.text.trim() && typeof v.at === 'string')
             found.push(v);
       }
     } catch {
@@ -57,10 +62,10 @@ export function useBrowserNotepad(key: string, text: string, save: (text: string
   const checkpoint = () => {
     const value = current.current;
     if (savedVersions.current[0]?.text !== value) {
-      savedVersions.current = [
+      savedVersions.current = retainedVersions([
         { text: value, at: new Date().toISOString() },
         ...savedVersions.current,
-      ].slice(0, 50);
+      ]);
       setVersions(savedVersions.current);
     }
     persist();
@@ -80,10 +85,10 @@ export function useBrowserNotepad(key: string, text: string, save: (text: string
     const retain = () => {
       const value = current.current;
       if (savedVersions.current[0]?.text !== value)
-        savedVersions.current = [
+        savedVersions.current = retainedVersions([
           { text: value, at: new Date().toISOString() },
           ...savedVersions.current,
-        ].slice(0, 50);
+        ]);
       try {
         localStorage.setItem(
           recoveryKey,

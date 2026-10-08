@@ -189,3 +189,21 @@ describe('private editor transport', () => {
     expect(mirror.socket?.readyState).toBe(WebSocket.OPEN);
   });
 });
+
+it('receives a large Unicode prompt over the editor bridge without closing the socket', async () => {
+  const socketPath = privatePath();
+  await listen(socketPath);
+  const text = '科学 🧪'.repeat(25_000);
+  const message = JSON.stringify({ type: 'send', input: { text } });
+  expect(Buffer.byteLength(message)).toBeGreaterThan(128 * 1024);
+  ws!.on('connection', (peer) => peer.send(message));
+  const received: string[] = [];
+  const mirror = transport(
+    () => bridgeTarget(4330, socketPath, 'ssh-remote'),
+    (peer) => {
+      peer.on('message', (data) => received.push(data.toString()));
+    },
+  );
+  await expect.poll(() => received).toEqual([message]);
+  expect(mirror.socket?.readyState).toBe(WebSocket.OPEN);
+});

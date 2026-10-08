@@ -1,3 +1,4 @@
+import { promptTextLimit } from '@dock/shared';
 import { randomUUID } from 'node:crypto';
 import type { MirrorState, MirrorSend, MirrorResult, MirrorControl } from '@dock/shared';
 import { object } from './connection.js';
@@ -403,7 +404,8 @@ export class ClaudeMirrorConnection {
                   .filter((entry) => entry.role === 'user' && entry.id.startsWith(`${id}:`))
                   .map((entry) => entry.text)
                   .join('\n')
-                  .slice(0, 32000) || 'Queued in Claude Code; message text is unavailable.',
+                  .slice(0, promptTextLimit) ||
+                'Queued in Claude Code; message text is unavailable.',
             }))
           : undefined,
       queueHasMore: (channel?.queuedCommandUuids.size ?? 0) > 100,

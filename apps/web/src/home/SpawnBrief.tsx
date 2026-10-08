@@ -5,6 +5,7 @@ import { ChatAttachmentPicker, useChatAttachmentUpload } from '../ChatImages';
 import { Notepad } from '../Notepad';
 import { useBrowserNotepad } from '../useBrowserNotepad';
 import './spawn-brief.css';
+import { promptLengthError } from '../promptLength';
 
 type SendReceipt = { key: string; text: string };
 export type ProjectBriefSeed = {
@@ -149,10 +150,8 @@ export function SpawnBrief({
   }, [receipt, managerId, sendError]);
   const submit = () => {
     if (sending || uploading) return;
-    if (!receipt && draft.currentText().length > 24_000) {
-      setSendError(
-        'Keep this message under 24,000 characters. Your full draft and original ideas are retained.',
-      );
+    if (!receipt && promptLengthError(draft.currentText(), 24_000)) {
+      setSendError(promptLengthError(draft.currentText(), 24_000));
       return;
     }
     checkpoint();
@@ -168,12 +167,13 @@ export function SpawnBrief({
   return (
     <Notepad
       draft={draft}
+      maxLength={24_000}
       agentId={identity}
       clientId={null}
       agentName={name}
       mode="brief"
       selection={selection}
-      canSend={!uploading && (!!text.trim() || !!receipt)}
+      canSend={!uploading && (!!receipt || (!!text.trim() && !promptLengthError(text, 24_000)))}
       sending={sending || waiting}
       readOnly={!!receipt}
       localOnly

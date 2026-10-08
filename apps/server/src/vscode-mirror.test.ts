@@ -770,3 +770,27 @@ describe('VS Code mirror gateway', () => {
     expect(mirrors.windows()).toEqual([]);
   });
 });
+
+it('delivers a long Unicode owner message through HTTP and the editor with one receipt', async () => {
+  const sent: unknown[] = [];
+  await connect((command) => {
+    if (command.type === 'send') {
+      sent.push(command.input);
+      return { state: 'sent', message: 'Delivered.' };
+    }
+    return state;
+  });
+  const input = { key: randomUUID(), threadId: 'thread', text: '科学 🧪'.repeat(25_000) };
+  const request = {
+    method: 'POST' as const,
+    url: `/api/vscode/windows/${windowId}/send`,
+    headers,
+    payload: input,
+  };
+  expect(Buffer.byteLength(JSON.stringify(input))).toBeGreaterThan(128 * 1024);
+  const first = await app.inject(request);
+  expect(first.statusCode).toBe(200);
+  expect(first.json().state).toBe('sent');
+  expect((await app.inject(request)).json()).toEqual(first.json());
+  expect(sent).toEqual([input]);
+});

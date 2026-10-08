@@ -1,3 +1,4 @@
+import { promptBodyLimit } from '@dock/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { id, queuedMessageActionSchema, queuedMessageReceiptSchema, runSchema } from '@dock/shared';
@@ -38,7 +39,7 @@ export function registerQueuedMessageRoutes(
       run: runSchema.parse(run),
     });
   });
-  app.post('/api/agents/:id/queued/:runId', async (request) => {
+  app.post('/api/agents/:id/queued/:runId', { bodyLimit: promptBodyLimit }, async (request) => {
     const params = z.object({ id, runId: id }).parse(request.params);
     const input = queuedMessageActionSchema.parse(request.body);
     runtime.requireDirectControl(params.id);

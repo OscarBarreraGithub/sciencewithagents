@@ -62,6 +62,11 @@ hook preparation fails. Do not redistribute provider binaries or patched proprie
 
 ## History, drafts and delivery
 
+Owner prompts and editable app-queued messages allow up to 200,000 characters with
+companion 0.2.14 or newer. Update/reload the editor only when its running work is safe.
+The notepad retains an over-limit paste for editing or download instead of cutting it off.
+Provider context limits still apply.
+
 Phone pages contain at most 40 entries and 64,000 text characters. Very long entries have
 part navigation. Consecutive tool/reasoning activity is grouped so it does not displace the
 latest actual message. Tool bodies load on demand. Legacy full responses have an explicit

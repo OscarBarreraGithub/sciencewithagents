@@ -1,3 +1,4 @@
+import { promptTextLimit } from '@dock/shared';
 import { requireQueueHold } from './queue-hold.js';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
@@ -61,7 +62,7 @@ const queuedRun = (run: PrivateRun): PrivateRun => ({
     run.kind === 'user' &&
     run.sourceId === null &&
     /^[0-9a-f-]{36}$/i.test(run.key) &&
-    run.text.length <= 24_000,
+    run.text.length <= promptTextLimit,
   queueRevision: run.queueRevision ?? 0,
 });
 export type PrivateApproval = Approval & {

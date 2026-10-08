@@ -154,6 +154,13 @@ Older Codex manager conversations retain their native identity and tool catalog.
 admitted turn receives a typed local-client route for recording goal progress when its original
 catalog lacks the new tool; saved requests retain the original turn and retry receipt.
 
+Manager and shared VS Code chat prompts, saved drafts and editable follow-ups accept up to
+200,000 characters. Pasting into the notepad never silently truncates text. Longer drafts
+stay available locally for editing or download, with a clear send limit. A definitively
+refused autosave no longer blocks a corrected draft; uncertain saves keep their original
+retry identity. Shared editor delivery needs companion 0.2.14 or newer. Groups retain their
+separate shared-message limits. Model context limits remain provider-specific.
+
 The compact **Queued messages** row opens a full-height list of short previews; **Read full
 text** expands a message. App-managed messages and
 follow-ups queued here for shared VS Code chats can be held and edited in the notepad

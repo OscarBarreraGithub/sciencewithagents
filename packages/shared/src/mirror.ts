@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { draftTextSchema, promptTextSchema, promptTextLimit } from './prompt-text.js';
 import { nativeGoalActionSchema } from './native-goal.js';
 
 export const mirrorSendSchema = z
@@ -10,7 +11,7 @@ export const mirrorSendSchema = z
     expectedTurnId: z.string().min(1).max(128).optional(),
     // Native input queue; does not steer or interrupt the current reply.
     mode: z.literal('queue').optional(),
-    text: z.string().trim().min(1).max(32_000),
+    text: promptTextSchema,
   })
   .strict()
   .refine((input) => !(input.expectedTurnId && input.mode === 'queue'), {
@@ -79,7 +80,7 @@ export const mirrorStateSchema = z.object({
   // Omission preserves local behavior for older companions.
   canAttachImages: z.boolean().optional(),
   queuedMessages: z
-    .array(z.object({ id: z.string().min(1).max(128), text: z.string().max(32000) }).strict())
+    .array(z.object({ id: z.string().min(1).max(128), text: draftTextSchema }).strict())
     .max(100)
     .optional(),
   queueHasMore: z.boolean().optional(),
@@ -176,7 +177,7 @@ export function codexQueue(value: unknown): Pick<MirrorState, 'queuedMessages' |
           .filter((input) => input.type === 'text')
           .map((input) => input.text ?? '')
           .join('\n')
-          .slice(0, 32000) || '[Native attachment]',
+          .slice(0, promptTextLimit) || '[Native attachment]',
     })),
     queueHasMore: !!response.nextCursor,
   };

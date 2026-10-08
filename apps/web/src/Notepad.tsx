@@ -10,13 +10,19 @@ import {
   RefreshCw,
   RotateCcw,
 } from 'lucide-react';
-import { withoutChatAttachments, withChatAttachmentText, type WorkspaceDraft } from '@dock/shared';
+import {
+  promptTextLimit,
+  withoutChatAttachments,
+  withChatAttachmentText,
+  type WorkspaceDraft,
+} from '@dock/shared';
 import { api, ApiError } from './api';
 import { parseDraftHistory } from './home/chat-contracts';
 import type { SharedDraft } from './useWorkspaceState';
 import { DraftHandoff } from './WorkspacePanel';
 import { fitToVisibleViewport } from './useVisibleViewport';
 import './Notepad.css';
+import { promptLengthError } from './promptLength';
 
 export type DraftSelection = { start: number; end: number };
 // Every autosave is a version, so older pages stay behind an explicit request.
@@ -47,7 +53,7 @@ export function Notepad({
   onMinimize,
   localOnly = false,
   localHistory,
-  maxLength = 24_000,
+  maxLength = promptTextLimit,
   readOnly = false,
   title,
   sendLabel = 'Send',
@@ -85,10 +91,11 @@ export function Notepad({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(initialOptionsOpen);
   const [exported, setExported] = useState('');
+  const lengthError = promptLengthError(draft.text, maxLength);
   useEffect(() => {
     // Saving and device-transfer problems must stay actionable, even with options tucked away.
-    if (draft.error || draft.conflict || notice) setOptionsOpen(true);
-  }, [draft.error, draft.conflict, notice]);
+    if (draft.error || draft.conflict || notice || lengthError) setOptionsOpen(true);
+  }, [draft.error, draft.conflict, notice, lengthError]);
   useEffect(() => {
     const element = dialog.current;
     const stop = element && fitToVisibleViewport(element, 'notepad');
@@ -217,7 +224,7 @@ export function Notepad({
             ref={editor}
             aria-label={mode === 'brief' ? 'Project description' : `Long message to ${agentName}`}
             value={withoutChatAttachments(draft.text)}
-            maxLength={maxLength}
+            aria-invalid={!!lengthError || undefined}
             readOnly={readOnly}
             placeholder={
               mode === 'brief'
@@ -296,9 +303,9 @@ export function Notepad({
               {draft.error}
             </p>
           )}
-          {notice && (
+          {(lengthError || notice) && (!lengthError || draft.error !== lengthError) && (
             <p className="notepad-notice" role="alert">
-              {notice}
+              {lengthError || notice}
             </p>
           )}
           {controls}

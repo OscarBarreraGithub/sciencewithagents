@@ -16,7 +16,8 @@ import {
   type WorkspaceRestoreResults,
   type WorkspaceUpdate,
 } from '@dock/shared';
-import { api, apiScope, ApiError } from './api';
+import { api, apiScope, ApiError, connectionLost } from './api';
+import { promptLengthError } from './promptLength';
 
 const message = (error: unknown) =>
   error instanceof Error
@@ -272,12 +273,24 @@ export function useWorkspaceState(label = 'This browser') {
   };
 }
 
-export type SharedDraft = ReturnType<typeof useSharedDraft>;
+export type SharedDraft = Omit<ReturnType<typeof useSharedDraft>, 'rejectedDraft'> & {
+  rejectedDraft?: string | null;
+};
 
 /** Per-browser CAS drafts. A remote update never replaces unsaved local typing. */
 export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: string) {
   const scope = useRef(apiScope()).current;
   const storageKey = `dock:${scope}:workspace:draft:${agentId}`;
+  const [rejectedDraft, setRejectedDraft] = useState<string | null>(() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(`${storageKey}:rejected-save`) ?? 'null',
+      ) as WorkspaceDraftUpdate | null;
+      return saved?.action.kind === 'save' ? saved.action.text : null;
+    } catch {
+      return null;
+    }
+  });
   const request = (path: string, body?: unknown) => {
     if (apiScope() !== scope)
       throw new Error('The selected computer changed. Your draft stays on its original computer.');
@@ -335,6 +348,17 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
       setError(reason);
     }
   };
+  const retainRejectedSave = (raw: string, input: WorkspaceDraftUpdate) => {
+    // A definite refusal is not an uncertain receipt. Keep its complete evidence
+    // before allowing a corrected draft to get a fresh save key.
+    localStorage.setItem(`${storageKey}:rejected-save`, raw);
+    if (input.action.kind === 'save') {
+      setRejectedDraft(input.action.text);
+    }
+    if (localStorage.getItem(`${storageKey}:save`) === raw)
+      localStorage.removeItem(`${storageKey}:save`);
+    pending.current = null;
+  };
   const refresh = async (initial = false) => {
     const next = workspaceDraftsSchema.parse(await request(path));
     if (!alive.current) return;
@@ -345,8 +369,20 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
       const raw = localStorage.getItem(storageKey);
       const saved = raw ? (JSON.parse(raw) as { text?: string; baseRevision?: number }) : null;
       const savedPending = localStorage.getItem(`${storageKey}:save`);
-      if (savedPending)
-        pending.current = workspaceDraftUpdateSchema.parse(JSON.parse(savedPending));
+      if (savedPending) {
+        const raw = JSON.parse(savedPending) as WorkspaceDraftUpdate;
+        const parsed = workspaceDraftUpdateSchema.safeParse(raw);
+        if (parsed.success) pending.current = parsed.data;
+        else if (
+          raw.action?.kind === 'save' &&
+          typeof raw.action.text === 'string' &&
+          promptLengthError(raw.action.text) &&
+          workspaceDraftUpdateSchema.safeParse({ ...raw, action: { kind: 'save', text: '' } })
+            .success
+        )
+          retainRejectedSave(savedPending, raw);
+        else workspaceDraftUpdateSchema.parse(raw);
+      }
       if (saved && typeof saved.text === 'string') {
         dirty.current = textRef.current !== next.own.text;
         if (dirty.current && !pending.current && saved.baseRevision !== next.own.revision)
@@ -412,6 +448,8 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
       }
       try {
         while (pending.current || dirty.current) {
+          if (!pending.current && promptLengthError(textRef.current))
+            throw new Error(promptLengthError(textRef.current));
           const input = pending.current ?? {
             key: crypto.randomUUID(),
             hostId,
@@ -420,7 +458,22 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
           };
           pending.current = input;
           localStorage.setItem(`${storageKey}:save`, JSON.stringify(input));
-          const result = workspaceDraftUpdateResultSchema.parse(await request(path, input));
+          let response: unknown;
+          try {
+            response = await request(path, input);
+          } catch (reason) {
+            if (
+              input.action.kind === 'save' &&
+              reason instanceof ApiError &&
+              !connectionLost(reason) &&
+              [400, 413, 422].includes(reason.status)
+            ) {
+              retainRejectedSave(JSON.stringify(input), input);
+              if (textRef.current !== input.action.text) continue;
+            }
+            throw reason;
+          }
+          const result = workspaceDraftUpdateResultSchema.parse(response);
           pending.current = null;
           localStorage.removeItem(`${storageKey}:save`);
           if (own.current.own.revision > result.state.own.revision) {
@@ -529,6 +582,7 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
     saving,
     unsaved: Boolean(state && text !== state.own.text),
     error,
+    rejectedDraft,
     conflict,
     flush,
     retry: () => (own.current ? flush() : refresh(true)),

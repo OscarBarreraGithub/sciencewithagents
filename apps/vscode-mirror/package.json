@@ -3,7 +3,7 @@
   "displayName": "sciencewithagents",
   "icon": "icon.png",
   "description": "Unofficial, reversible live Codex and Claude Code chats for your paired sciencewithagents phone.",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "publisher": "oscarphysics",
   "license": "MIT",
   "repository": {

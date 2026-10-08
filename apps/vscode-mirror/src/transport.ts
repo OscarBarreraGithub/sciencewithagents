@@ -1,3 +1,4 @@
+import { promptBodyLimit } from '@dock/shared';
 import { lstatSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import WebSocket from 'ws';
@@ -124,7 +125,7 @@ export class MirrorTransport {
       : `ws://127.0.0.1:${target.port}/api/vscode/bridge`;
     const socket = new WebSocket(address, {
       perMessageDeflate: false,
-      maxPayload: 128 * 1024,
+      maxPayload: promptBodyLimit,
       handshakeTimeout: 5000,
       followRedirects: false,
       // ws+unix sets the HTTP socketPath, which VS Code's proxy patch passes

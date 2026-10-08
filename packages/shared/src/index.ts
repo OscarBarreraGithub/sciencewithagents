@@ -1,4 +1,6 @@
 export * from './groups.js';
+export * from './prompt-text.js';
+import { draftTextSchema, promptTextSchema } from './prompt-text.js';
 export * from './group-membership.js';
 export * from './mirror-outbox.js';
 export * from './queued-message.js';
@@ -342,7 +344,7 @@ export const runSchema = z.object({
   queueEdit: z
     .object({
       clientId: id,
-      text: z.string().max(24_000),
+      text: draftTextSchema,
       state: z.enum(['editing', 'steering']),
       operationKey: id.optional(),
     })
@@ -434,7 +436,7 @@ export const detailSchema = z.object({
 export const sendSchema = z
   .object({
     key: id,
-    text,
+    text: promptTextSchema,
     steer: z.boolean().default(false),
     draft: workspaceDraftSubmissionSchema.optional(),
     scheduling: jobEstimateSchema.optional(),

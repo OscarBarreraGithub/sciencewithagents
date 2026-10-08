@@ -781,6 +781,7 @@ export function GroupChat({
           )
         }
         key={slot.context.sessionId}
+        maxLength={24_000}
         agent={chat?.detail.agent ?? slot.agent}
         workspace={null}
         disabled={!view.ready || refused || groupMessages.revoked}

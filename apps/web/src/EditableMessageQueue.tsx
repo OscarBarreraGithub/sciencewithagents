@@ -5,6 +5,7 @@ import { apiScope } from './api';
 import { MessageQueue } from './MessageQueue';
 import { Notepad, type DraftSelection } from './Notepad';
 import { useBrowserNotepad } from './useBrowserNotepad';
+import { promptLengthError } from './promptLength';
 import { useWorkspaceState } from './useWorkspaceState';
 import type { QueueRecovery } from './queued-action-recovery';
 
@@ -390,6 +391,12 @@ function QueueEditor({
   const local = useBrowserNotepad(`dock:${scope}:queue:${run.id}`, text, setText);
   const send = (action: QueuedMessageAction['action'], retry = false): Promise<boolean> => {
     if (working.current) return working.current;
+    if (
+      ['save', 'queue', 'steer'].includes(action) &&
+      !pending.current &&
+      promptLengthError(currentText.current, target.maxLength)
+    )
+      return Promise.resolve(false);
     const task = Promise.resolve().then(async () => {
       setBusy(true);
       setError('');
@@ -512,7 +519,7 @@ function QueueEditor({
       statusLabel={
         uncertain ? 'Held · inspect steering outcome' : busy ? 'Held · saving…' : 'Held for editing'
       }
-      canSend={!uncertain && !error && !!text.trim()}
+      canSend={!uncertain && !error && !!text.trim() && !promptLengthError(text, target.maxLength)}
       sending={finishing || (busy && pending.current?.action !== 'save')}
       readOnly={finishing || uncertain || (busy && pending.current?.action !== 'save')}
       notice={

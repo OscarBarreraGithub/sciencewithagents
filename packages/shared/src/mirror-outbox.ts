@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { draftTextSchema } from './prompt-text.js';
 import { queuedMessageActionSchema } from './queued-message.js';
 
 export const mirrorQueueQuerySchema = z
@@ -12,14 +13,14 @@ export const mirrorQueuedMessageSchema = z
     id: z.uuid(),
     provider: z.enum(['codex', 'claude']),
     threadId: z.string().min(1).max(128),
-    text: z.string().max(32_000),
+    text: draftTextSchema,
     createdAt: z.string().datetime(),
     status: z.enum(['queued', 'running', 'completed', 'uncertain', 'cancelled']),
     queueRevision: z.number().int().nonnegative(),
     queueEdit: z
       .object({
         clientId: z.uuid(),
-        text: z.string().max(32_000),
+        text: draftTextSchema,
         state: z.enum(['editing', 'steering']),
         operationKey: z.uuid().optional(),
       })
@@ -34,7 +35,7 @@ export const mirrorQueuedMessagesSchema = z
   })
   .strict();
 export const mirrorQueuedActionSchema = queuedMessageActionSchema.extend({
-  text: z.string().max(32_000).optional(),
+  text: draftTextSchema.optional(),
 });
 export const mirrorQueuedReceiptSchema = z
   .object({

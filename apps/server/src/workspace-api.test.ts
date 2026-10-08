@@ -1,3 +1,4 @@
+import { promptTextLimit } from '@dock/shared';
 import { modelFixture } from './model-policy.fixture.js';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -211,4 +212,89 @@ it('serves project-bound history and recovery without changing provider session 
   expect((await get(`/api/agents/${project.managerId}/recovery`)).json()).toBeNull();
   expect(store.agent(project.managerId).threadId).toBeNull();
   expect(store.runs()).toHaveLength(0);
+});
+
+it('saves and delivers a long Unicode phone draft exactly once, including queue edits', async () => {
+  const { store, project, get, post } = await fixture();
+  const client = (
+    await post('/api/workspace/clients', { key: randomUUID(), label: 'Phone' })
+  ).json();
+  const path = `/api/workspace/${client.client.id}/drafts/${project.managerId}`;
+  const text = 'Long prompt: ' + '科学 🧪 \n'.repeat(20_000) + 'END';
+  expect(text.length).toBeGreaterThan(100_000);
+  const input = {
+    key: randomUUID(),
+    hostId: client.hostId,
+    revision: 0,
+    action: { kind: 'save', text },
+  };
+  const response = await post(path, input);
+  expect(response.statusCode).toBe(200);
+  const saved = response.json().state.own;
+  expect(saved.text).toBe(text);
+  expect((await post(path, input)).json()).toEqual(response.json());
+  expect((await get(path)).json().own.text).toBe(text);
+  const send = {
+    key: randomUUID(),
+    text,
+    draft: {
+      clientId: client.client.id,
+      hostId: client.hostId,
+      revision: saved.revision,
+      deliveryKey: saved.deliveryKey,
+    },
+  };
+  const first = await post(`/api/agents/${project.managerId}/messages`, send);
+  expect(first.statusCode).toBe(202);
+  expect((await post(`/api/agents/${project.managerId}/messages`, send)).json().id).toBe(
+    first.json().id,
+  );
+  expect(store.runs()).toHaveLength(1);
+  expect(store.run(first.json().id).text).toBe(text);
+  const queuePath = `/api/agents/${project.managerId}/queued/${first.json().id}`;
+  const edit = await post(queuePath, {
+    key: randomUUID(),
+    clientId: client.client.id,
+    revision: 0,
+    action: 'edit',
+  });
+  expect(edit.statusCode).toBe(200);
+  const revised = text + ' edited';
+  const queued = await post(queuePath, {
+    key: randomUUID(),
+    clientId: client.client.id,
+    revision: edit.json().queueRevision,
+    action: 'queue',
+    text: revised,
+  });
+  expect(queued.statusCode).toBe(200);
+  expect(store.run(first.json().id).text).toBe(revised);
+});
+
+it('accepts the full character boundary and rejects oversized saves without changing the draft', async () => {
+  const { post, get, project } = await fixture();
+  const client = (
+    await post('/api/workspace/clients', { key: randomUUID(), label: 'Phone' })
+  ).json();
+  const path = `/api/workspace/${client.client.id}/drafts/${project.managerId}`;
+  const save = (text: string, revision: number) =>
+    post(path, {
+      key: randomUUID(),
+      hostId: client.hostId,
+      revision,
+      action: { kind: 'save', text },
+    });
+  const accepted = await save('界'.repeat(promptTextLimit), 0);
+  expect(accepted.statusCode).toBe(200);
+  const invalid = await save('a'.repeat(promptTextLimit + 1), 1);
+  expect(invalid.statusCode).toBe(400);
+  expect(invalid.json()).toMatchObject({ code: 'PROMPT_TOO_LONG' });
+  expect(invalid.json().error).toContain('200,000');
+  expect((await get(path)).json().own.text).toBe('界'.repeat(promptTextLimit));
+  const shorter = await save('Short follow-up after refused save', 1);
+  expect(shorter.statusCode).toBe(200);
+  expect(shorter.json().state.own.text).toBe('Short follow-up after refused save');
+  const tooLarge = await save('a'.repeat(3 * 1024 * 1024), 2);
+  expect(tooLarge.statusCode).toBe(413);
+  expect((await get(path)).json().own.text).toBe('Short follow-up after refused save');
 });

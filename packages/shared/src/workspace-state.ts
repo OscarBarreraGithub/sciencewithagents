@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { draftTextSchema } from './prompt-text.js';
 
 const uuid = z.string().uuid();
 const revision = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -66,7 +67,7 @@ export const workspaceDraftSchema = z
     clientId: uuid,
     agentId: uuid,
     revision,
-    text: z.string().max(24_000),
+    text: draftTextSchema,
     deliveryKey: uuid.nullable(),
     submitted: z.boolean(),
     updatedAt: z.string(),
@@ -87,7 +88,7 @@ export const workspaceDraftUpdateSchema = z
     hostId: uuid,
     revision,
     action: z.discriminatedUnion('kind', [
-      z.object({ kind: z.literal('save'), text: z.string().max(24_000) }).strict(),
+      z.object({ kind: z.literal('save'), text: draftTextSchema }).strict(),
       z
         .object({ kind: z.literal('copy'), sourceClientId: uuid, sourceRevision: revision })
         .strict(),

@@ -26,6 +26,7 @@ import {
   withChatAttachmentText,
   jobEstimateSchema,
   nativeCommandReceiptSchema,
+  promptTextLimit,
   type Agent,
   type AgentDetail,
   type AgentDetailChannel,
@@ -46,6 +47,7 @@ import { Notepad, type DraftSelection } from './Notepad';
 import { useScrollHints } from './home/useScrollHints';
 import { ChatCommands } from './ChatCommands';
 import { PromptHistory, scrollToPrompt } from './PromptHistory';
+import { promptLengthError } from './promptLength';
 
 function SendTiming({
   steer,
@@ -653,7 +655,7 @@ export function Composer({
   reference,
   onNotepadClose,
   draftOverride,
-  maxLength = 24_000,
+  maxLength = promptTextLimit,
   specialized = false,
   attachments = true,
   preserveWhitespace = false,
@@ -717,6 +719,7 @@ export function Composer({
     },
   };
   const { text, setText } = draft;
+  const lengthError = promptLengthError(text, maxLength);
   // The notepad is another view of this same draft, never a second draft.
   const [expanded, setExpanded] = useState<false | 'brief' | 'message'>(notepad ?? false);
   const [notice, setNotice] = useState('');
@@ -946,6 +949,10 @@ export function Composer({
     )
       return false;
     if (apiScope() !== scope) return false;
+    if (!retry.current && promptLengthError(draft.currentText(), maxLength)) {
+      fail(promptLengthError(draft.currentText(), maxLength));
+      return false;
+    }
     setNotice('');
     // Keep the draft and attachments; /goal never becomes a model message.
     if (goalCommand) {
@@ -1088,6 +1095,7 @@ export function Composer({
     draft.ready &&
     !draft.conflict &&
     !unknownLegacyMode &&
+    (!lengthError || retry.current !== null) &&
     (!!text.trim() || pendingText !== null);
   const openNotepad = (mode: 'brief' | 'message') => {
     const area = textarea.current;
@@ -1238,7 +1246,7 @@ export function Composer({
           rememberSelection();
         }}
         onSelect={rememberSelection}
-        maxLength={maxLength}
+        aria-invalid={!!lengthError || undefined}
         rows={1}
         onKeyDown={(event) => {
           if (
@@ -1269,6 +1277,11 @@ export function Composer({
         )}
       </button>
       <DraftHandoff draft={draft} compact />
+      {lengthError && draft.error !== lengthError && (
+        <p className="draft-handoff" role="alert">
+          {lengthError}
+        </p>
+      )}
       {rejectedText !== null && (
         <details className="draft-handoff">
           <summary>Previous unsent message</summary>

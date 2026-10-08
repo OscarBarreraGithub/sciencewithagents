@@ -235,6 +235,28 @@ export function DraftHandoff({
           </button>
         </>
       )}
+      {draft.rejectedDraft && draft.rejectedDraft !== draft.text && (
+        <details>
+          <summary>Earlier draft refused by this computer</summary>
+          <pre className="draft-preview">{draft.rejectedDraft}</pre>
+          <button
+            className="secondary"
+            type="button"
+            onClick={() => {
+              const url = URL.createObjectURL(
+                new Blob([draft.rejectedDraft!], { type: 'text/plain' }),
+              );
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = 'retained-draft.txt';
+              link.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Download earlier draft
+          </button>
+        </details>
+      )}
       {Boolean(draft.state?.others.length) && (
         <details
           open={showOtherDrafts}
