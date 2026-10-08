@@ -816,3 +816,53 @@
 .document-reading .stack-number > .reading-equation-number {
   align-self: flex-end;
 }
+
+/* Preserve table/header semantics while repeating full labels visually on narrow columns. */
+.document-reading .reading-card-label {
+  display: none;
+}
+.document-reading .reading-card-active,
+.document-reading .reading-card-active tbody {
+  display: block;
+}
+.document-reading .reading-card-active thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.document-reading .reading-card-active tbody > tr {
+  display: block;
+  border: 1px solid #deddd5;
+  border-radius: 8px;
+  margin-bottom: 0.9em;
+  padding: 0.35em;
+}
+.document-reading .reading-card-active td {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.15em;
+  white-space: normal;
+  text-align: left;
+}
+.document-reading .reading-card-active td:last-child {
+  border-bottom: 0;
+}
+.document-reading .reading-card-active .reading-card-label {
+  display: block;
+  min-width: 0;
+  font-weight: 600;
+}
+.document-reading .reading-card-value {
+  min-width: 0;
+}
+.document-reading .reading-numeric > .reading-card-value {
+  white-space: nowrap;
+}
+
+.document-reading .reading-card-active caption {
+  display: block;
+  text-align: left;
+}

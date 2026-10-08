@@ -809,3 +809,184 @@ test('cached attention equality fits the Reading column without changing its sci
   await expect.poll(() => errors).toEqual([]);
   await page.screenshot({ path: info.outputPath('attention-reflow.png') });
 });
+
+test('simple cached atmosphere table keeps full header associations in narrow Reading cards', async ({
+  page,
+}, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const data = await fixture(page);
+  // Exact header and first two rows from cached2610.07861, atmosphere-grid comparison.
+  const html = String.raw`<table>
+<thead>
+<tr>
+<th style="text-align: left;">Model</th>
+<th style="text-align: left;"><span class="math inline">\({T_{\rm eff}}\)</span> [K]</th>
+<th style="text-align: left;"><span class="math inline">\({\log g}\)</span></th>
+<th style="text-align: left;"><span class="math inline">\({[\mathrm{M/H}]}\)</span></th>
+<th style="text-align: left;">Other parameters</th>
+<th style="text-align: left;">Physical scale / interpretation</th>
+<th style="text-align: left;"><span class="math inline">\(\overline{\chi^2}_{\rm spec}\)</span></th>
+<th style="text-align: left;"><span class="math inline">\(\overline{\chi^2}_{{\rm phot},w}\)</span></th>
+<th style="text-align: left;">Cosine</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Sonora Elf Owl</td>
+<td style="text-align: left;">700</td>
+<td style="text-align: left;">5.50</td>
+<td style="text-align: left;"><span class="math inline">\(-0.50\)</span></td>
+<td style="text-align: left;">C/O<span class="math inline">\(=1.00\)</span>, <span class="math inline">\(\log K_{zz}=2.0\)</span></td>
+<td style="text-align: left;">Best balanced score; cloud-free disequilibrium-chemistry solution.</td>
+<td style="text-align: left;">1.11</td>
+<td style="text-align: left;">0.18</td>
+<td style="text-align: left;">0.959</td>
+</tr>
+<tr>
+<td style="text-align: left;">LOWZ grid</td>
+<td style="text-align: left;">700</td>
+<td style="text-align: left;">5.00</td>
+<td style="text-align: left;"><span class="math inline">\(-1.00\)</span></td>
+<td style="text-align: left;">C/O<span class="math inline">\(=0.55\)</span>, <span class="math inline">\(\log K_{zz}=-1.0\)</span></td>
+<td style="text-align: left;">Low-metallicity grid solution; used as the basis for the MCMC posterior below.</td>
+<td style="text-align: left;">1.25</td>
+<td style="text-align: left;">0.15</td>
+<td style="text-align: left;">0.953</td>
+</tr></tbody></table>`;
+  const fitting =
+    '<table><thead><tr><th>A</th><th>B</th><th>C</th></tr></thead><tbody><tr><td>1</td><td>2</td><td>3</td></tr></tbody></table>';
+  await page.route('**/api/documents/*/reading', (route) =>
+    route.fulfill({ json: { available: true, html: html + fitting, labels: {}, warnings: [] } }),
+  );
+  await page.goto(`/#/latex/${data.doc.id}`);
+  const reader = page.getByRole('dialog', { name: 'PDF reader' });
+  const table = reader.locator('table').first();
+  await expect(table).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const dimensions = await table
+    .locator('..')
+    .evaluate((element) => ({ available: element.clientWidth, rendered: element.scrollWidth }));
+  await info.attach('table-width', {
+    body: JSON.stringify(dimensions),
+    contentType: 'application/json',
+  });
+  expect(dimensions.rendered).toBeLessThanOrEqual(dimensions.available + 3);
+  const inspect = async () => {
+    await expect(table).toHaveClass(
+      dimensions.available < 600 ? /reading-card-active/ : /^(?!.*reading-card-active)/,
+    );
+    const fittingTable = reader.locator('table').nth(1);
+    await expect(fittingTable).toHaveClass(/reading-card-table/);
+    await expect(fittingTable).not.toHaveClass(/reading-card-active/);
+    await expect(fittingTable.getByRole('columnheader').first()).toBeVisible();
+    await expect(fittingTable.locator('.reading-card-label').first()).toBeHidden();
+    await expect(table.getByRole('columnheader')).toHaveCount(9);
+    await expect(table.getByRole('cell')).toHaveCount(18);
+    if (dimensions.available < 600) {
+      expect(
+        await table
+          .locator('tbody td')
+          .first()
+          .evaluate((cell) => {
+            const label = cell.querySelector('.reading-card-label')!.getBoundingClientRect();
+            const value = cell.querySelector('.reading-card-value')!.getBoundingClientRect();
+            const style = getComputedStyle(cell);
+            const available =
+              cell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+            return (
+              value.top >= label.bottom - 1 &&
+              Math.abs(value.left - label.left) < 1 &&
+              label.width >= available - 1 &&
+              value.width >= available - 1
+            );
+          }),
+      ).toBe(true);
+    }
+    // Every visual label is the complete original rendered header, including math/units.
+    expect(
+      await table.evaluate((element, source) => {
+        const original = new DOMParser()
+          .parseFromString(source, 'text/html')
+          .querySelector('table')!;
+        const headers = [...element.querySelectorAll('thead th')];
+        const cells = [...element.querySelectorAll('tbody td')];
+        const originalCells = [...original.querySelectorAll('tbody td')];
+        return cells.every((cell, index) => {
+          const header = headers[index % headers.length]!;
+          const value = cell.querySelector('.reading-card-value')!;
+          const label = cell.querySelector('.reading-card-label')!;
+          const expected = originalCells[index]!.cloneNode(true) as Element;
+          const actual = value.cloneNode(true) as Element;
+          const sourceTex = [...expected.querySelectorAll('.math')].map((math) =>
+            math.textContent!.replace(/^\\[([]|\\[)\]]$/g, ''),
+          );
+          const actualTex = [...actual.querySelectorAll('annotation')].map(
+            (math) => math.textContent,
+          );
+          expected.querySelectorAll('.math').forEach((math) => math.remove());
+          actual.querySelectorAll('.math').forEach((math) => math.remove());
+          return (
+            cell.getAttribute('headers') === header.id &&
+            header.getAttribute('scope') === 'col' &&
+            label.innerHTML === header.innerHTML &&
+            label.getAttribute('aria-hidden') === 'true' &&
+            expected.textContent === actual.textContent &&
+            JSON.stringify(sourceTex) === JSON.stringify(actualTex)
+          );
+        });
+      }, html),
+    ).toBe(true);
+    expect(
+      await table
+        .locator('..')
+        .evaluate((element) => element.scrollWidth <= element.clientWidth + 3),
+    ).toBe(true);
+  };
+  await inspect();
+  await page.screenshot({ path: info.outputPath('atmosphere-cards-default.png') });
+  for (let at = 0; at < 2; at++) await reader.getByRole('button', { name: 'Larger text' }).click();
+  await inspect();
+  if (dimensions.available < 600) {
+    const viewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 915, height: 412 });
+    await expect(table).not.toHaveClass(/reading-card-active/);
+    await expect(table.getByRole('columnheader').first()).toBeVisible();
+    await page.setViewportSize(viewport);
+    await inspect();
+  }
+  await expect(reader.locator('.katex-error')).toHaveCount(0);
+  await expect.poll(() => errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath('atmosphere-cards.png') });
+});
+
+test('ambiguous Reading tables retain their original structure and horizontal fallback', async ({
+  page,
+}) => {
+  const data = await fixture(page);
+  const long = '7'.repeat(180);
+  const candidates = [
+    `<thead><tr><th colspan="2">Merged quantity</th><th>Unit</th></tr></thead><tbody><tr><td>${long}</td><td>2</td><td>K</td></tr></tbody>`,
+    '<thead><tr><th>A</th><th>B</th><th>C</th></tr><tr><th>D</th><th>E</th><th>F</th></tr></thead><tbody><tr><td>1</td><td>2</td><td>3</td></tr></tbody>',
+    '<tbody><tr><td>A</td><td>B</td><td>C</td></tr><tr><td>1</td><td>2</td><td>3</td></tr></tbody>',
+    '<thead><tr><th>A</th><th></th><th>C</th></tr></thead><tbody><tr><td>1</td><td>2</td><td>3</td></tr></tbody>',
+    '<thead><tr><th>A</th><th>B</th><th>C</th></tr></thead><tbody><tr><td rowspan="2">1</td><td>2</td><td>3</td></tr><tr><td>4</td><td>5</td></tr></tbody>',
+    '<thead><tr><th>A</th><th>B</th><th>C</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody>',
+    '<tbody><tr><td><table><thead><tr><th>A</th><th>B</th><th>C</th></tr></thead><tbody><tr><td>1</td><td>2</td><td>3</td></tr></tbody></table></td></tr></tbody>',
+  ];
+  const html = candidates.map((body) => `<table>${body}</table>`).join('');
+  await page.route('**/api/documents/*/reading', (route) =>
+    route.fulfill({ json: { available: true, html, labels: {}, warnings: [] } }),
+  );
+  await page.goto(`/#/latex/${data.doc.id}`);
+  const reader = page.getByRole('dialog', { name: 'PDF reader' });
+  await expect(reader.locator('table')).toHaveCount(candidates.length + 1);
+  await expect(reader.locator('.reading-card-table')).toHaveCount(0);
+  await expect(reader.locator('.reading-card-label')).toHaveCount(0);
+  const fallback = reader.getByRole('region', { name: 'Table', exact: true }).first();
+  await expect(fallback.locator('..').getByText('More table →', { exact: true })).toBeVisible();
+  await fallback.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  await expect(fallback.locator('..').getByText('← More table', { exact: true })).toBeVisible();
+});

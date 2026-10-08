@@ -8,6 +8,7 @@ import {
 } from '@dock/shared';
 import { apiScope, apiUrl } from './api';
 import { readingEqualityLayout } from './readingMathLayout';
+import { prepareReadingTable } from './readingTableLayout';
 import 'katex/dist/katex.min.css';
 
 export function DocumentReading({
@@ -154,12 +155,14 @@ export function DocumentReading({
         link.rel = 'noreferrer noopener';
       } else if (!href.startsWith('#')) link.removeAttribute('href');
     }
+    let tableIndex = 0;
     for (const table of document.querySelectorAll('table')) {
       for (const cell of table.querySelectorAll('td'))
         if (
           /^[+−\-]?[\d.,]+(?:\s*[eE][+−\-]?\d+)?(?:\s*[%°])?$/.test(cell.textContent?.trim() ?? '')
         )
           cell.classList.add('reading-numeric');
+      prepareReadingTable(table, `reading-table-column-${tableIndex++}`);
       const wrap = document.createElement('div');
       wrap.className = 'reading-math-wrap';
       const area = document.createElement('div');
@@ -231,6 +234,18 @@ export function DocumentReading({
     };
     const update = (targets: Iterable<HTMLElement>) => {
       if (disposed) return;
+      // Measure original table layout in batches before choosing cards. A narrow table
+      // that already fits stays a table, including after text-size or column changes.
+      const tables = [...targets].flatMap((area) => {
+        const table = area.querySelector<HTMLElement>(':scope > table.reading-card-table');
+        return table ? [{ area, table }] : [];
+      });
+      for (const { table } of tables) table.classList.remove('reading-card-active');
+      const cards = tables.map(({ area, table }) => ({
+        table,
+        active: area.clientWidth < 600 && table.scrollWidth > area.clientWidth + 3,
+      }));
+      for (const { table, active } of cards) table.classList.toggle('reading-card-active', active);
       const layouts = [];
       for (const equation of targets) {
         const original = equation.querySelector<HTMLElement>('.reading-equation-original');
