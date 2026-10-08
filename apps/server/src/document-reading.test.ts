@@ -208,6 +208,64 @@ describe.skipIf(!readerExecutable('pandoc'))('arXiv source rules', () => {
     expect(reading.warnings).toEqual([]);
   });
 
+  it('preserves supplied natbib author-year labels and notes in textual and parenthetical citations', async () => {
+    const bbl = String.raw`\begin{thebibliography}{9}
+\providecommand{\natexlab}[1]{#1}
+\bibitem[Aster et~al.(2020)Aster, Birch, and Cedar]{aster}Original first reference.
+\bibitem[{Birch} \& Cedar(2021{\natexlab{a}})Birch and Cedar]{birch}Original second reference.
+\end{thebibliography}`;
+    await writeFile(join(root, 'source', 'main.bbl'), bbl);
+    const reading = await read(String.raw`According to \citet{aster}, the result is $E=mc^2$.
+Compare \citep[see][pp.~4--6]{aster,birch} with \citet[chap.~2]{birch}.
+\bibliography{references}`);
+    const prose = reading.html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+    expect(prose).toContain('According to Aster et al. (2020), the result');
+    expect(prose).toContain('(see Aster et al., 2020; Birch &amp; Cedar, 2021a, pp. 4–6)');
+    expect(prose).toContain('Birch &amp; Cedar (2021a, chap. 2)');
+    expect(reading.html).toContain('href="#bib-aster"');
+    expect(reading.html).toContain('href="#bib-birch"');
+    expect(reading.html).toContain('E=mc^2');
+    expect(reading.html).toContain('Original first reference');
+    expect(reading.html).toContain('Original second reference');
+    expect(reading.warnings).toEqual([]);
+    expect(await readFile(join(root, 'source', 'main.bbl'), 'utf8')).toBe(bbl);
+  });
+
+  it('retains citation notes and missing-key evidence without guessing authors from reference prose', async () => {
+    const reading = await read(String.raw`Numeric \citep[see][p.~7]{numbered}.
+Unknown \citep[compare][p.~9]{absent}. Unsupported label \citet{alpha}.
+\begin{thebibliography}{9}
+\bibitem{numbered}A. Scientist. Original numbered reference, 2020.
+\bibitem[AB21]{alpha}A. Author and B. Author. Original alpha reference, 2021.
+\end{thebibliography}`);
+    const prose = reading.html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+    expect(prose).toContain('Numeric see [1], p. 7.');
+    expect(prose).toContain('Unknown compare [absent], p. 9.');
+    expect(prose).toContain('Unsupported label [2].');
+    expect(reading.html).toContain('Original numbered reference');
+    expect(reading.warnings).toContain(
+      'Some citations need the original PDF for their bibliography labels.',
+    );
+  });
+
+  it.each([
+    String.raw`\usepackage[numbers]{natbib}`,
+    String.raw`\usepackage[numbers]{graphicx,natbib,url}`,
+    String.raw`\PassOptionsToPackage{numbers}{natbib}`,
+    String.raw`\setcitestyle{numbers,square}`,
+  ])('retains the numeric fallback when the source explicitly selects %s', async (preamble) => {
+    const reading = await read(
+      String.raw`Numeric \citep{aster} and \citet{aster}.
+\begin{thebibliography}{9}
+\bibitem[Aster(2020)]{aster}Original reference.\end{thebibliography}`,
+      preamble,
+    );
+    expect(reading.html).toContain('<a href="#bib-aster">[1]</a>');
+    expect(reading.html).not.toContain('Aster (2020)');
+    expect(reading.html).not.toContain('Aster, 2020');
+    expect(reading.warnings).toEqual([]);
+  });
+
   it('keeps a missing bibliography visible without generating or guessing its contents', async () => {
     await writeFile(
       join(root, 'source', 'references.bib'),

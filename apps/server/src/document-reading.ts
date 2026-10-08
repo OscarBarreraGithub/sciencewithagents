@@ -305,24 +305,71 @@ async function convertReading(
   } catch {
     /* A never-compiled source still has reading-local equation references. */
   }
-  // Pandoc reads the bibliography prose but otherwise drops manual citation labels.
-  const bibliography = new Map<string, number>();
-  text = text.replace(/\\bibitem(?:\[[^\]]*\])?\{([^{}]+)\}/g, (_, key: string) => {
-    const number = bibliography.size + 1;
-    bibliography.set(key, number);
-    return `\\hypertarget{bib-${key}}{[${number}]} `;
-  });
-  text = text.replace(/\\cite[tp]?(?:\[[^\]]*\])?\{([^{}]+)\}/g, (_, keys: string) =>
-    keys
-      .split(',')
-      .map((key) => {
+  // Pandoc drops manual citation labels. Use supplied natbib Author(Year) data,
+  // never infer author/year from bibliography prose or execute a bibliography tool.
+  const numericCitations =
+    [...text.matchAll(/\\(?:usepackage|RequirePackage)\s*\[([^\]]*)\]\s*\{([^}]+)\}/g)].some(
+      ([, options, packages]) =>
+        /(?:^|,)\s*(?:numbers|super)\s*(?:,|$)/.test(options!) &&
+        packages!.split(',').some((name) => name.trim() === 'natbib'),
+    ) ||
+    /\\PassOptionsToPackage\s*\{[^}]*\b(?:numbers|super)\b[^}]*\}\s*\{natbib\}/.test(text) ||
+    /\\setcitestyle\s*\{[^}]*\b(?:numbers|super)\b/.test(text);
+  const bibliography = new Map<
+    string,
+    { number: number; authorYear: { author: string; year: string } | null }
+  >();
+  text = text.replace(
+    /\\bibitem\s*(?:\[([^\]]*)\]\s*)?\{([^{}]+)\}/g,
+    (_, label: string | undefined, key: string) => {
+      const number = bibliography.size + 1;
+      const parts = label?.match(/^(.+?)\(([^()]*)\)/s);
+      const year = parts?.[2]?.replace(/\\natexlab\{([a-z])\}/g, '$1').replace(/[{}]/g, '');
+      const authorYear =
+        parts && year && /^\d{4}[a-z]?$/.test(year) ? { author: parts[1]!.trim(), year } : null;
+      bibliography.set(key, { number, authorYear });
+      return `\\hypertarget{bib-${key}}{[${number}]} `;
+    },
+  );
+  text = text.replace(
+    /\\cite([tp]?)\s*(?:\[([^\]]*)\]\s*)?(?:\[([^\]]*)\]\s*)?\{([^{}]+)\}/g,
+    (_, kind: string, first: string | undefined, second: string | undefined, keys: string) => {
+      const prenote = second === undefined ? '' : (first ?? '');
+      const postnote = second ?? first ?? '';
+      const prefix = prenote ? `${prenote} ` : '';
+      const suffix = postnote ? `, ${postnote}` : '';
+      const citations = keys.split(',').map((key) => {
         key = key.trim();
-        const number = bibliography.get(key);
-        if (!number)
+        const entry = bibliography.get(key);
+        if (!entry)
           warnings.add('Some citations need the original PDF for their bibliography labels.');
-        return `\\hyperlink{bib-${key}}{[${number ?? key}]}`;
-      })
-      .join(', '),
+        return { key, entry };
+      });
+      const link = (key: string, label: string) => `\\hyperlink{bib-${key}}{${label}}`;
+      if (
+        !numericCitations &&
+        (kind === 'p' || kind === 't') &&
+        citations.every(({ entry }) => entry?.authorYear)
+      ) {
+        const rendered = citations.map(({ key, entry }, index) => {
+          const { author, year } = entry!.authorYear!;
+          return link(
+            key,
+            kind === 'p'
+              ? `${author}, ${year}`
+              : `${author} (${year}${index === citations.length - 1 ? suffix : ''})`,
+          );
+        });
+        return kind === 'p'
+          ? `(${prefix}${rendered.join('; ')}${suffix})`
+          : `${prefix}${rendered.join('; ')}`;
+      }
+      return (
+        prefix +
+        citations.map(({ key, entry }) => link(key, `[${entry?.number ?? key}]`)).join(', ') +
+        suffix
+      );
+    },
   );
   await mkdir(assets, { recursive: true, mode: 0o700 });
   const parsed = await readLatex(
