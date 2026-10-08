@@ -94,6 +94,10 @@ export async function expandReadingSource(
   root: string,
   health?: ReadingHealth,
 ): Promise<string> {
+  return (await loadReadingSource(source, root, health)).text;
+}
+async function loadReadingSource(source: string, root: string, health?: ReadingHealth) {
+  const databases = new Map<string, string>();
   ({ root, source } = await canonicalSource(source, root));
   let total = 0,
     files = 0;
@@ -111,14 +115,20 @@ export async function expandReadingSource(
     if (health && !health.missingIncludes.includes(file)) health.missingIncludes.push(file);
     return `\\readingmissinginput{${file}}`;
   };
-  async function expand(path: string, ancestors: string[] = []): Promise<string> {
-    path = await local(path);
-    if (ancestors.includes(path) || ++files > 100)
+  async function boundedText(path: string) {
+    if (++files > 100)
       throw new ReadingProblem('This document has recursive or too many included files.');
-    let text = await readFile(path, 'utf8');
+    const text = await readFile(path, 'utf8');
     total += Buffer.byteLength(text);
     if (total > limit)
       throw new ReadingProblem('The combined LaTeX source exceeds the 8 MB reading limit.');
+    return text;
+  }
+  async function expand(path: string, ancestors: string[] = []): Promise<string> {
+    path = await local(path);
+    if (ancestors.includes(path))
+      throw new ReadingProblem('This document has recursive or too many included files.');
+    let text = await boundedText(path);
     // TeX comments are not content, and must not introduce file reads.
     text = text.replace(/(?<!\\)%[^\n]*/g, '');
     const aliases = [...text.matchAll(/\\let\\([a-zA-Z]+)\\(?:@@input|input)\b/g)].map(
@@ -129,7 +139,7 @@ export async function expandReadingSource(
     // BibTeX writes the current TeX job's .bbl, not one .bbl per database name.
     // Supply that existing file to sandboxed Pandoc exactly where TeX would read it.
     const include =
-      /\\(?:input|include)\b\s*(?:\{([^{}]+)\}|([^\s{}\\]+))|\\(bibliography)\b\s*\{[^{}]*\}/g;
+      /\\(?:input|include)\b\s*(?:\{([^{}]+)\}|([^\s{}\\]+))|\\(bibliography)\b\s*\{([^{}]*)\}/g;
     let output = '',
       at = 0;
     for (const match of text.matchAll(include)) {
@@ -154,11 +164,43 @@ export async function expandReadingSource(
         if (bibliography && health)
           health.rules['bibliography-bbl-inlined'] =
             (health.rules['bibliography-bbl-inlined'] ?? 0) + 1;
+      } else if (bibliography) {
+        // No compiled bibliography: read only the named local databases, under the same
+        // aggregate limits. Pandoc receives their bytes on stdin, never their paths.
+        let found = false;
+        const absent: string[] = [];
+        for (const database of match[4]!.split(',').map((name) => name.trim())) {
+          const name = extname(database) ? database : database + '.bib';
+          if (!database || /[:\0]/.test(name) || !/\.bib$/i.test(name)) {
+            absent.push(name);
+            continue;
+          }
+          const candidate = resolve(dirname(source), name);
+          if (
+            !(await stat(candidate).then(
+              () => true,
+              () => false,
+            ))
+          ) {
+            absent.push(name);
+            continue;
+          }
+          const canonical = await local(candidate);
+          found = true;
+          if (!databases.has(canonical)) {
+            databases.set(canonical, await boundedText(canonical));
+            if (health)
+              health.rules['bibliography-bib-loaded'] =
+                (health.rules['bibliography-bib-loaded'] ?? 0) + 1;
+          }
+        }
+        output += found ? absent.map(missing).join('\n') : missing(name);
       } else output += missing(name);
     }
     return output + text.slice(at);
   }
-  return expand(source);
+  const text = await expand(source);
+  return { text, bibliography: [...databases.values()].join('\n') };
 }
 const plainTexSentence =
   'This paper is written in plain TeX, which Reading cannot reflow. Use Original PDF to read it.';
@@ -267,7 +309,37 @@ async function convertReading(
     return canonical;
   }
   const deadline = Date.now() + (options.budgetMs ?? 60000);
-  let text = formattedText ?? (await expandReadingSource(source, root, health));
+  const loaded = await loadReadingSource(source, root, health);
+  let text = formattedText ?? loaded.text;
+  let references: Parameters<typeof withFrontMatter>[0]['meta']['references'] | undefined;
+  if (loaded.bibliography) {
+    try {
+      const remaining = deadline - htmlReserveMs - Date.now();
+      if (remaining <= 0) throw new ConversionFailure('', true);
+      const parsed = JSON.parse(
+        await command(
+          pandoc,
+          ['--sandbox', '--from=biblatex', '--to=json', '+RTS', '-M256M', '-RTS'],
+          dirname(source),
+          loaded.bibliography,
+          Math.min(options.timeoutMs ?? 20000, remaining),
+        ),
+      ) as Parameters<typeof withFrontMatter>[0];
+      if (
+        parsed.meta.references?.t !== 'MetaList' ||
+        !Array.isArray(parsed.meta.references.c) ||
+        !parsed.meta.references.c.length
+      )
+        throw new ConversionFailure('', false);
+      references = parsed.meta.references;
+    } catch (error) {
+      if (!(error instanceof ConversionFailure)) throw error;
+      health.conversion = 'partial';
+      warnings.add(
+        'This bibliography could not be converted. Read its references in Original PDF.',
+      );
+    }
+  }
   // A formatted copy carries the markers of the source it was made from.
   for (const [, name] of text.matchAll(missingMarker))
     if (!health.missingIncludes.includes(name!)) health.missingIncludes.push(name!);
@@ -334,6 +406,7 @@ async function convertReading(
   text = text.replace(
     /\\cite([tp]?)\s*(?:\[([^\]]*)\]\s*)?(?:\[([^\]]*)\]\s*)?\{([^{}]+)\}/g,
     (_, kind: string, first: string | undefined, second: string | undefined, keys: string) => {
+      if (references && !bibliography.size) return _;
       const prenote = second === undefined ? '' : (first ?? '');
       const postnote = second ?? first ?? '';
       const prefix = prenote ? `${prenote} ` : '';
@@ -388,6 +461,33 @@ async function convertReading(
       'Some passages could not be converted. Each is marked where it is only in the Original PDF.',
     );
   }
+  if (references && !bibliography.size) {
+    warnings.add(
+      'Citations use Reading’s author–date style. Original PDF keeps the publisher’s bibliography style.',
+    );
+    // Only inline, already-loaded data reaches citeproc. Do not let source metadata choose
+    // CSL, abbreviation or bibliography files (or network addresses).
+    for (const key of ['csl', 'bibliography', 'citation-abbreviations']) delete parsed.meta[key];
+    parsed.meta.references = references;
+    parsed.meta['link-citations'] = { t: 'MetaBool', c: true };
+    const ids = new Set(
+      (references.c as { c: { id?: { c?: unknown } } }[]).map((entry) => entry.c.id?.c),
+    );
+    const unknown = (node: unknown): boolean => {
+      if (Array.isArray(node)) return node.some(unknown);
+      if (!node || typeof node !== 'object') return false;
+      const record = node as Record<string, unknown>;
+      if (
+        typeof record.citationId === 'string' &&
+        record.citationId !== '*' &&
+        !ids.has(record.citationId)
+      )
+        return true;
+      return Object.values(record).some(unknown);
+    };
+    if (unknown(parsed.blocks))
+      warnings.add('Some citations need the original PDF for their bibliography labels.');
+  }
   // The HTML pass shares the total budget; when it is nearly spent, the title block is the
   // part left out.
   const remaining = deadline - Date.now();
@@ -401,6 +501,7 @@ async function convertReading(
       [
         '--sandbox',
         '--from=json',
+        ...(references && !bibliography.size ? ['--citeproc'] : []),
         '--to=html5',
         '--mathjax',
         '--wrap=none',

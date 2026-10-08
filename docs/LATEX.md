@@ -74,8 +74,11 @@ assets from the registered folder. Source files are never edited.
 
 When a source uses `\bibliography`, Reading includes its supplied same-name `.bbl`
 under the same folder and size limits. Bibliography prose and the supported numeric citation
-links are retained; an absent `.bbl` shows a note. Reading does not run BibTeX or generate
-references from `.bib` databases. Supplied natbib `Author(Year)` labels with a four-digit
+links are retained. Without a `.bbl`, named local `.bib` databases use the same aggregate
+limits and sandboxed Pandoc citeproc, with a labelled author–date Reading style and linked
+references at the end. Missing or unreadable databases stay explicit. No TeX/BibTeX command,
+source-selected CSL file or remote bibliography runs; Original PDF retains publisher styles.
+Supplied natbib `Author(Year)` labels with a four-digit
 year retain author–year text for `\citet` and `\citep`, including explicit citation notes.
 Other author–year styles and non-equation cross-reference numbering still need Original PDF.
 

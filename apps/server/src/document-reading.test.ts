@@ -267,10 +267,6 @@ Unknown \citep[compare][p.~9]{absent}. Unsupported label \citet{alpha}.
   });
 
   it('keeps a missing bibliography visible without generating or guessing its contents', async () => {
-    await writeFile(
-      join(root, 'source', 'references.bib'),
-      '@article{source,title={PRIVATE BIB SENTINEL}}',
-    );
     const reading = await read(String.raw`Opening prose.\bibliography{references}Closing prose.`);
     expect(reading.html).toContain('Opening prose.');
     expect(reading.html).toContain('Closing prose.');
@@ -291,6 +287,156 @@ Unknown \citep[compare][p.~9]{absent}. Unsupported label \citet{alpha}.
     await rm(join(home, 'main.bbl'));
     await writeFile(join(home, 'main.bbl'), 'x'.repeat(8 * 1024 ** 2));
     await expect(expandReadingSource(input, home)).rejects.toThrow(/combined/);
+  });
+
+  it('renders cited local bib-only references with author-date links and notes without changing source', async () => {
+    const home = join(root, 'source');
+    const bib =
+      '@article{aster,author={Ann Aster},title={{Original reference title}},year={2020},journal={Journal of Results}}\n' +
+      '@article{unused,author={Ben Birch},title={Uncited reference sentinel},year={2021}}';
+    await writeFile(join(home, 'references.bib'), bib);
+    const reading = await read(String.raw`According to \citet{aster}, $E=mc^2$ remains unchanged.
+Compare \citep[see][p.~7]{aster}.\bibliography{references}`);
+    const prose = reading.html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+    expect(prose).toMatch(/According to Aster\s*\(2020\)/);
+    expect(prose).toContain('see');
+    expect(prose).toContain('7');
+    expect(reading.html).toContain('href="#ref-aster"');
+    expect(reading.html).toContain('id="ref-aster"');
+    expect(reading.html).toContain('Original reference title');
+    expect(reading.html).not.toContain('Uncited reference sentinel');
+    expect(reading.html).toContain('E=mc^2');
+    expect(reading.health?.missingIncludes).toEqual([]);
+    expect(reading.health?.rules['bibliography-bib-loaded']).toBe(1);
+    expect(reading.health?.conversion).toBe('complete');
+    expect(reading.warnings.join(' ')).toContain('author–date');
+    expect(await readFile(join(home, 'references.bib'), 'utf8')).toBe(bib);
+    const expanded = await expandReadingSource(join(home, 'main.tex'), home);
+    const formatted = await buildReading(
+      join(home, 'main.tex'),
+      home,
+      join(root, 'formatted'),
+      expanded,
+    );
+    expect(formatted.html).toContain('id="ref-aster"');
+    expect(formatted.html).toContain('E=mc^2');
+  });
+
+  it('loads multiple bib databases named by an included command and ignores comments', async () => {
+    const home = join(root, 'source');
+    await mkdir(join(home, 'parts'));
+    await writeFile(join(home, 'parts', 'end.tex'), String.raw`\bibliography{first.bib,second}`);
+    await writeFile(
+      join(home, 'first.bib'),
+      '@article{one,title={First supplied title},author={A. First},year={2020}}',
+    );
+    await writeFile(
+      join(home, 'second.bib'),
+      '@book{two,title={Second supplied title},author={B. Second},year={2021}}',
+    );
+    const reading = await read(String.raw`\citep{one,two}
+% \bibliography{not-present}
+\input{parts/end}`);
+    expect(reading.html).toContain('id="ref-one"');
+    expect(reading.html).toContain('id="ref-two"');
+    expect(reading.html).toMatch(/First supplied title/i);
+    expect(reading.html).toMatch(/Second supplied title/i);
+    expect(reading.health?.rules['bibliography-bib-loaded']).toBe(2);
+    expect(reading.health?.missingIncludes).toEqual([]);
+  });
+
+  it('prefers the supplied bbl without accessing its bib databases', async () => {
+    const home = join(root, 'source');
+    await writeFile(
+      join(home, 'main.bbl'),
+      String.raw`\begin{thebibliography}{9}\bibitem{one}Supplied final reference.\end{thebibliography}`,
+    );
+    await writeFile(join(root, 'outside.bib'), '@article{one,title={OUTSIDE DATABASE SENTINEL}}');
+    await symlink(join(root, 'outside.bib'), join(home, 'references.bib'));
+    const reading = await read(String.raw`\cite{one}\bibliography{references}`);
+    expect(reading.html).toContain('Supplied final reference');
+    expect(reading.html).toContain('href="#bib-one"');
+    expect(reading.html).not.toContain('OUTSIDE DATABASE SENTINEL');
+    expect(reading.health?.rules['bibliography-bib-loaded']).toBeUndefined();
+    expect(reading.warnings).toEqual([]);
+  });
+
+  it('retains missing database and unknown citation evidence beside available bib references', async () => {
+    await writeFile(
+      join(root, 'source', 'references.bib'),
+      '@article{one,title={Available reference},author={A. First},year={2020}}',
+    );
+    const reading = await read(
+      String.raw`Body \cite{one,unknown}.\bibliography{references,absent}`,
+    );
+    expect(reading.html).toMatch(/Available reference/i);
+    expect(reading.html).toContain('unknown');
+    expect(reading.health?.missingIncludes).toContain('absent.bib');
+    expect(reading.health?.conversion).toBe('partial');
+    expect(reading.warnings.join(' ')).toContain('bibliography labels');
+    expectHumanMessages(reading);
+  });
+
+  it('applies canonical root, combined byte and file-count limits to bib databases', async () => {
+    const home = join(root, 'source'),
+      input = join(home, 'main.tex');
+    await writeFile(input, String.raw`\bibliography{references}`);
+    await writeFile(join(root, 'outside.bib'), '@article{one,title={OUTSIDE DATABASE SENTINEL}}');
+    await symlink(join(root, 'outside.bib'), join(home, 'references.bib'));
+    await expect(expandReadingSource(input, home)).rejects.toThrow(/outside/);
+    await rm(join(home, 'references.bib'));
+    await writeFile(join(home, 'references.bib'), 'x'.repeat(8 * 1024 ** 2));
+    await expect(expandReadingSource(input, home)).rejects.toThrow(/combined/);
+    await rm(join(home, 'references.bib'));
+    const names = Array.from({ length: 100 }, (_, i) => `db${i}`);
+    for (const name of names) await writeFile(join(home, name + '.bib'), '@comment{empty}');
+    await writeFile(input, `\\bibliography{${names.join(',')}}`);
+    await expect(expandReadingSource(input, home)).rejects.toThrow(/too many/);
+  });
+
+  it('keeps body and unresolved citation when bib parsing fails', async () => {
+    await writeFile(join(root, 'source', 'references.bib'), '@article{broken, title={unterminated');
+    const reading = await read(
+      String.raw`Original body $x=1$.\cite{broken}\bibliography{references}`,
+    );
+    expect(reading.html).toContain('Original body');
+    expect(reading.html).toContain('x=1');
+    expect(reading.html).toContain('broken');
+    expect(reading.health?.conversion).toBe('partial');
+    expect(reading.warnings.join(' ')).toContain('bibliography');
+    expectHumanMessages(reading);
+  });
+
+  it('bounds bib parsing time and retains body content after a bibliography timeout', async () => {
+    const realPandoc = readerExecutable('pandoc')!;
+    const bin = join(root, 'bin');
+    await mkdir(bin);
+    await writeFile(
+      join(bin, 'pandoc'),
+      `#!/bin/sh\nfor arg in "$@"; do\n  if [ "$arg" = "--from=biblatex" ]; then sleep 5; exit 1; fi\ndone\nexec "${realPandoc}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    await writeFile(
+      join(root, 'source', 'references.bib'),
+      '@article{one,title={One},year={2020}}',
+    );
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}${delimiter}${path}`;
+    try {
+      const started = Date.now();
+      const reading = await read(
+        String.raw`Preserved body $x=1$.\cite{one}\bibliography{references}`,
+        '',
+        { timeoutMs: 300 },
+      );
+      expect(Date.now() - started).toBeLessThan(4000);
+      expect(reading.html).toContain('Preserved body');
+      expect(reading.html).toContain('x=1');
+      expect(reading.health?.conversion).toBe('partial');
+      expect(reading.warnings.join(' ')).toContain('bibliography could not be converted');
+    } finally {
+      process.env.PATH = path;
+    }
   });
 
   it('7: expands environment shortcuts without grouping them', async () => {
