@@ -77,6 +77,13 @@ async function fixture(
       status = value;
     },
     getStatus: () => status,
+    replaceFailure: () => {
+      runId = randomUUID();
+      view.runId = runId;
+      view.failureId = randomUUID();
+      view.explanation = 'A newer saved message needs its own retry.';
+      agent.updatedAt = new Date().toISOString();
+    },
     setRunId: (value: string) => {
       runId = value;
     },
@@ -230,4 +237,114 @@ test('an older connected computer keeps a direct Continue button with a retained
   expect(requests).toHaveLength(3);
   expect(requests[2]!.key).not.toBe(requests[0]!.key);
   await second.close();
+});
+
+test('a late recovery acknowledgement cannot label a later failure as still queued', async ({
+  page,
+}) => {
+  const f = await fixture(page);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const requests: RunRecoveryRequest[] = [];
+  let latestFailureRead = false;
+  const firstFailureId = f.view.failureId;
+  await page.route(`**/api/agents/${f.agent.id}/run-recovery`, async (route) => {
+    if (route.request().method() === 'GET') {
+      latestFailureRead ||= f.view.failureId !== firstFailureId;
+      return route.fulfill({ json: f.view });
+    }
+    const input = route.request().postDataJSON() as RunRecoveryRequest;
+    requests.push(input);
+    await held;
+    await route.fulfill({
+      json: {
+        sourceRunId: input.runId,
+        failureId: input.failureId,
+        runId: randomUUID(),
+        action: input.action,
+      },
+    });
+  });
+  await page.goto(`/#/chat/${f.agent.id}`);
+  const recovery = page.locator('.run-recovery');
+  await recovery.getByRole('button', { name: 'Retry message', exact: true }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  f.replaceFailure();
+  // The next authoritative poll observes a later stopped run; the short native turn
+  // itself need not have been visible between polls. No second recovery is submitted.
+  await expect.poll(() => latestFailureRead, { timeout: 8000 }).toBe(true);
+  await expect(recovery).toContainText('A newer saved message needs its own retry.');
+  const acknowledgement = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/agents/${f.agent.id}/run-recovery`) &&
+      response.request().method() === 'POST',
+  );
+  release();
+  await (await acknowledgement).finished();
+  // Let the completed acknowledgement commit any React state before inspecting it.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  await expect(recovery).not.toContainText('Recovery queued');
+  await expect(recovery.getByRole('button', { name: 'Retry message', exact: true })).toBeEnabled();
+  expect(requests).toHaveLength(1);
+});
+
+test('legacy Continue does not post after its view changes during the key digest', async ({
+  page,
+}) => {
+  const f = await fixture(page, 'continue');
+  const requests: unknown[] = [];
+  await page.route(`**/api/agents/${f.agent.id}/run-recovery`, (route) =>
+    route.fulfill({ status: 404, json: { error: 'Route not found' } }),
+  );
+  await page.route(`**/api/agents/${f.agent.id}/commands`, (route) => {
+    requests.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.goto(`/#/chat/${f.agent.id}`);
+  await expect(
+    page.locator('.run-recovery').getByRole('button', { name: 'Continue', exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    const control = window as Window & { digestWaiting?: boolean; releaseDigest?: () => void };
+    crypto.subtle.digest = async (algorithm, data) => {
+      const result = await digest(algorithm, data);
+      if (new TextDecoder().decode(data).startsWith('sciencewithagents:legacy-continue:')) {
+        control.digestWaiting = true;
+        await new Promise<void>((resolve) => {
+          control.releaseDigest = resolve;
+        });
+      }
+      return result;
+    };
+  });
+  await page
+    .locator('.run-recovery')
+    .getByRole('button', { name: 'Continue', exact: true })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => (window as Window & { digestWaiting?: boolean }).digestWaiting))
+    .toBe(true);
+  await page.evaluate(() => {
+    location.hash = '#/chats';
+  });
+  await expect(page.locator('.run-recovery')).toHaveCount(0);
+  await page.evaluate(() => (window as Window & { releaseDigest?: () => void }).releaseDigest?.());
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  expect(requests).toHaveLength(0);
+  expect(
+    await page.evaluate(() => Object.keys(localStorage).some((key) => key.includes(':continue:'))),
+  ).toBe(false);
 });

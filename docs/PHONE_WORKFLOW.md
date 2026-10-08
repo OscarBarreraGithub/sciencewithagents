@@ -9,6 +9,7 @@ original records behind **Details**. An immediately adjacent, identical provider
 turn-failure pair may share one display row; both record IDs, timestamps and raw details
 remain available. Distinct failures and owner messages remain separate, and recovery uses
 the existing server-provided **Retry message** or **Continue** control.
+Late recovery acknowledgements cannot replace the controls for a newer stopped run.
 
 Known internal agent-tool input corrections appear in the existing activity disclosure,
 with their exact original validation text and record identity. Their raw arrays do not

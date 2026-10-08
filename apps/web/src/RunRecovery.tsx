@@ -41,12 +41,15 @@ export function RunRecovery({
   const [legacy, setLegacy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const pending = useRef<RunRecoveryRequest | null>(null);
+  const generation = useRef(0);
   const scope = apiScope();
   const storageKey = `run-recovery:${scope}:${agent.id}`;
   useEffect(() => {
     let alive = true;
+    generation.current++;
     setView(null);
     setError('');
+    setBusy(false);
     setAccepted(false);
     setLegacy(false);
     pending.current = null;
@@ -61,6 +64,7 @@ export function RunRecovery({
             const receipt = await api(
               `/agents/${agent.id}/run-recovery/receipts/${parsed.data.key}`,
             );
+            if (!alive) return;
             if (receipt) {
               runRecoveryReceiptSchema.parse(receipt);
               localStorage.removeItem(storageKey);
@@ -86,11 +90,14 @@ export function RunRecovery({
     })();
     return () => {
       alive = false;
+      generation.current++;
     };
   }, [agent.id, agent.status, agent.updatedAt, legacyRunId, scope, storageKey, refresh]);
   if (!['failed', 'interrupted'].includes(agent.status)) return null;
   const recover = async () => {
     if ((!view && !legacy) || busy || apiScope() !== scope) return;
+    const started = generation.current;
+    const current = () => started === generation.current && apiScope() === scope;
     setBusy(true);
     setError('');
     try {
@@ -98,8 +105,10 @@ export function RunRecovery({
         if (!legacyRunId) return;
         const legacyKey = `${storageKey}:continue:${legacyRunId}`;
         const key = await legacyContinueKey(scope, agent.id, legacyRunId);
+        if (!current()) return;
         localStorage.setItem(legacyKey, key);
         await api(`/agents/${agent.id}/commands`, { command: 'resume', key });
+        if (!current()) return;
         localStorage.removeItem(legacyKey);
         setAccepted(true);
         await act(async () => undefined);
@@ -119,18 +128,22 @@ export function RunRecovery({
         pending.current = input;
       }
       runRecoveryReceiptSchema.parse(await api(`/agents/${agent.id}/run-recovery`, input));
+      // A later stopped run can arrive before this acknowledgement. Its recovery
+      // controls belong to that new failure, even when this older request succeeded.
+      if (!current()) return;
       localStorage.removeItem(storageKey);
       pending.current = null;
       setAccepted(true);
       await act(async () => undefined);
     } catch (reason) {
+      if (!current()) return;
       setError(
         reason instanceof Error
           ? reason.message
           : 'Recovery was not acknowledged. Tap again to check the same request.',
       );
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   };
   if (!view && !error && !legacy) return null;
