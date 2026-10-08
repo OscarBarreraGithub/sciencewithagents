@@ -10,6 +10,10 @@ reflows the source; **Original PDF** preserves printed pages.
 - Break before a binary operator. When breaking a juxtaposed product, make the continued
   multiplication explicit with `\times`. Use fixed `\bigl` / `\bigr` delimiters across
   lines; never split a `\left` / `\right` pair across rows.
+- Keep continuation indentation shallow. If rows remain wide after the first layout
+  pass, reduce leading `\quad` / `\qquad` padding and break long products of scalar
+  factors inside brackets, preserving factor order and grouping. Spend the remaining
+  layout pass on the widest rows before introducing new notation.
 - Move explanatory sentences into prose. Clearly defined subexpressions can shorten a
   formula, but keep every definition, bound, sign, index, unit and condition explicit.
   Never cancel, divide, factor or regroup an expression just to save width.
@@ -34,10 +38,13 @@ E &= E_{\mathrm{kinetic}} \\
 \end{equation}
 ```
 
-Check the actual Reading view at 360 and 412 pixels, with default and larger text.
-Check desktop and landscape too. A successful TeX compile or an estimated width does not
-prove that the phone layout fits. Keep at most two formatting passes per expression;
-retain and identify anything still wide.
+Check the actual Reading view at 360 and 412 pixels, at the current default 20px text
+size and at least 24px larger text. Measure against the available math column, including
+indentation: a 360px viewport currently leaves about 320px for math. A row that fits at
+20px can still overflow at 24px. Check desktop and landscape too. A successful TeX compile
+or a standalone KaTeX check at smaller type does not prove the app layout fits. Report
+the viewports and text sizes actually checked. Keep at most two formatting passes per
+expression; retain and identify anything still wide without shrinking type or changing math.
 
 **Format for phone** in the LaTeX reader requests one QUARK-supervised formatting turn.
 The default follows the latest Sonnet family in the live catalog (currently Sonnet 5.5);
