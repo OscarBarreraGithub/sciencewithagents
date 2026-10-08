@@ -159,8 +159,8 @@ and model choices remain. Active work is never discarded by an inactivity timer.
 
 - **Fresh installs:** QUARK pacing and automatic coordinator checks start off. Existing
   saved choices are preserved.
-- **Apps:** the gallery starts empty and contains only registered project apps. Existing
-  apps are retained. LaTeX/PDF reading remains in Help and through document links.
+- **Apps:** new galleries start empty. Registered project apps and the LaTeX tile on
+  computers with recent documents are retained. Help and document links also open the reader.
   Local app ports and optional published HTTPS links are recorded; registration does not
   publish or tunnel a project site. Remote devices need a reachable published address.
 - **Setup progress:** GitHub/Cloudflare status checks detect native sign-in and collapse

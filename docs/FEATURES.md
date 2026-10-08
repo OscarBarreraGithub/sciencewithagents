@@ -232,7 +232,8 @@ See [project apps](APPS.md).
 All chat views render inline and displayed LaTeX equations automatically, including saved
 and shared VS Code messages. Wide equations scroll within their message; code remains literal.
 
-Help includes a LaTeX/PDF reader with computer-side compilation, folder browsing, recent
+Apps retains a LaTeX tile on computers with recent documents; Help also opens the reader.
+It supports computer-side compilation, folder browsing, recent
 files, selectable text, page navigation and zoom. Manager links open over chat and return
 to the same reading position and draft. Failed builds retain the previous PDF; existing
 LaTeX-backed reports also have adjustable, reflowing Reading mode: phone-width text, figures and individually scrollable equations with visible overflow cues. An explicit **Format for phone** request creates a separate reading copy using a selectable model, defaulting to the live Sonnet family; originals stay unchanged. Saved local report links open inside the chat. PDFs need no compiler. See [LaTeX](LATEX.md) for setup and conversion limits.

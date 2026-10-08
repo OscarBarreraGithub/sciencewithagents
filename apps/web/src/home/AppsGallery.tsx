@@ -8,6 +8,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import {
+  documentLibrarySchema,
   projectAppsStatusSchema,
   publishingAccountsSchema,
   type PublishingAccounts,
@@ -240,7 +241,7 @@ function SetupGuideView({
   );
 }
 
-/** Only apps explicitly registered on this computer; fresh installations start empty. */
+/** Registered apps and the reader already used on this computer; fresh installs stay empty. */
 export function AppsGallery({ route, computer }: { route: string; computer: string }) {
   const reading = useAppsReading();
   const id = route.split('/')[1];
@@ -252,6 +253,8 @@ export function AppsGallery({ route, computer }: { route: string; computer: stri
 }
 
 function Gallery({ reading, computer }: { reading: AppsReading; computer: string }) {
+  const library = useReading('/documents', documentLibrarySchema.parse);
+  const hasReader = !!library.data?.documents.length;
   const heading = useRef<HTMLHeadingElement>(null);
   // A display preference, not a claim that an account is authenticated.
   const setupKey = `dock:${apiScope()}:apps:hide-setup`;
@@ -285,6 +288,17 @@ function Gallery({ reading, computer }: { reading: AppsReading; computer: string
         <p>Tools for your projects.</p>
       </header>
       <ul className="apps-grid">
+        {hasReader && (
+          <li>
+            <a href="#/latex" className="apps-tile" aria-label="LaTeX / PDF reader">
+              <span className="latex-app-icon" aria-hidden="true">
+                T<span>E</span>X
+              </span>
+              <span className="apps-tile-name">LaTeX</span>
+              <span className="apps-tile-project">PDFs &amp; reading</span>
+            </a>
+          </li>
+        )}
         {apps.map((app) => (
           <li key={app.id}>
             <a
@@ -304,9 +318,9 @@ function Gallery({ reading, computer }: { reading: AppsReading; computer: string
           </li>
         ))}
       </ul>
-      {!reading.loaded ? (
+      {!reading.loaded || !library.loaded ? (
         <p className="apps-note" role="status">
-          Checking project apps…
+          Checking apps…
         </p>
       ) : reading.error ? (
         <div className="apps-note apps-problem" role="status">
@@ -316,12 +330,25 @@ function Gallery({ reading, computer }: { reading: AppsReading; computer: string
           </button>
         </div>
       ) : (
-        !apps.length && (
+        !apps.length &&
+        !hasReader &&
+        !library.error && (
           <p className="apps-note">
             No apps added yet. Web apps your project managers build appear here after they register
             them.
           </p>
         )
+      )}
+      {library.error && (
+        <div className="apps-note apps-problem" role="status">
+          <p>Saved documents could not be checked.</p>
+          <a className="setup-link" href="#/latex">
+            Open LaTeX / PDF reader
+          </a>
+          <button type="button" className="setup-link" onClick={library.retry}>
+            Retry documents
+          </button>
+        </div>
       )}
       {!hideSetup &&
         (setup.complete ? (

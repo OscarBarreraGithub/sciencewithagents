@@ -15,6 +15,9 @@ export const documentSchema = z
   })
   .strict();
 export type SavedDocument = z.infer<typeof documentSchema>;
+export const documentLibrarySchema = z
+  .object({ compiler: z.string().nullable(), documents: documentSchema.array() })
+  .strict();
 export const documentReadingSchema = z
   .object({
     available: z.boolean(),

@@ -112,8 +112,12 @@ test('LaTeX app browses, zooms, navigates pages, survives build errors and reope
 }, info) => {
   const data = await fixture(page);
   await page.goto('/#/apps');
-  await page.getByRole('button', { name: 'Help and setup', exact: true }).click();
-  await page.getByRole('link', { name: 'LaTeX / PDF reader', exact: true }).click();
+  const tile = page
+    .locator('.apps-grid')
+    .getByRole('link', { name: 'LaTeX / PDF reader', exact: true });
+  await expect(tile).toBeVisible();
+  await page.reload();
+  await tile.click();
   await page.getByRole('button', { name: 'Browse this computer' }).click();
   const files = page.getByRole('region', { name: 'Files on this computer' });
   await files.getByRole('button', { name: /Thermal report/ }).click();

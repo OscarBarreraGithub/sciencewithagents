@@ -17,7 +17,8 @@ opened with the reader below. Source messages are retained unchanged.
 
 ## Read documents
 
-Open **? → LaTeX / PDF reader**. Browse the selected computer’s folders, choose a `.tex` or `.pdf`,
+Open **Apps → LaTeX** on a computer with recent documents, or **? → LaTeX / PDF reader**
+to get started. Browse the selected computer’s folders, choose a `.tex` or `.pdf`,
 or reopen a recent document. PDF files need no compiler. LaTeX builds on the computer;
 the phone displays the result. Both devices use the existing authenticated connection.
 If macOS blocks an iCloud or protected folder, allow sciencewithagents folder access in

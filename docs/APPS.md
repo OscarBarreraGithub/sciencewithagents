@@ -1,9 +1,9 @@
 # Apps
 
-**Apps** starts empty and shows only web apps explicitly registered on the selected
-computer. Updates preserve existing registered apps; no examples or built-in tiles are added.
-The [LaTeX/PDF reader](LATEX.md) remains available through **? → LaTeX / PDF reader** and
-saved document links.
+**Apps** starts empty on a new computer. It shows registered web apps and restores the
+**LaTeX** tile when that computer has recent documents. Updates preserve existing apps
+and document history. The [LaTeX/PDF reader](LATEX.md) is also available through
+**? → LaTeX / PDF reader** and saved document links.
 
 ## Project apps
 
