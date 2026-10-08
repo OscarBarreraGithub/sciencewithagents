@@ -496,7 +496,7 @@ test('an unsupported controller does not suppress review discovery on another co
     }
     if (path === '/cluster') return route.fulfill({ json: f.cluster });
     url.pathname = '/api' + path;
-    return route.fulfill({ response: await route.fetch({ url: url.toString() }) });
+    return route.continue({ url: url.toString() });
   });
   // Computer selection is document-pinned; its supported UI action saves and reloads.
   await page.evaluate((id) => localStorage.setItem('dock:host', id), computer);

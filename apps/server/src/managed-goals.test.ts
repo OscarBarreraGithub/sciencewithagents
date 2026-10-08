@@ -133,8 +133,10 @@ async function create() {
     objective: 'Complete the original bounded objective',
   });
 }
-function admitted() {
-  const run = store.runs().find((run) => run.agentId === manager && run.status === 'queued')!;
+function admitted(runId?: string) {
+  const run = runId
+    ? store.run(runId)
+    : store.runs().find((run) => run.agentId === manager && run.status === 'queued')!;
   expect(runtime.pulsar.reserve(run, new Set())).toBe(true);
   runtime.quark.issueManagerLease(run);
   store.updateRun(run.id, { status: 'running', turnId: run.id });
@@ -800,10 +802,206 @@ it('waits on an explicit dependency checkpoint, then yields a queued automatic r
   const automatic = (await view()).goal!.continuationRunId!;
   const owner = store.enqueue(manager, randomUUID(), 'A further owner ask');
   runtime.managedGoals.queued(store.run(owner.id));
-  expect(store.run(automatic).status).toBe('cancelled');
+  expect(store.run(automatic).status).toBe('queued');
+  expect(runtime.managedGoals.admissionReason(store.run(automatic))).toMatch(/owner input/i);
   expect(store.run(owner.id).status).toBe('queued');
   expect((await view()).goal?.objective).toBe('Complete the original bounded objective');
 });
+
+it('retains an authorized unstarted continuation after a successful status-only owner reply', async () => {
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  await create();
+  const first = admitted();
+  await progress(first);
+  boundary(first);
+  const before = (await view()).goal!,
+    automatic = before.continuationRunId!;
+  const owner = store.enqueue(manager, randomUUID(), 'What is the current status?');
+  runtime.managedGoals.queued(store.run(owner.id));
+  const retained = store.run(automatic);
+  expect(runtime.managedGoals.admissionReason(retained)).toMatch(/owner input/i);
+  await app.close();
+  await open();
+  expect(store.run(automatic)).toEqual(retained);
+  const ownerRun = admitted(owner.id);
+  // The owner asks only for status; no new goal checkpoint or next action is invented.
+  boundary(ownerRun);
+  const after = await view();
+  expect(after.goal?.status).toBe('active');
+  expect(after.goal?.continuationRunId).toBe(automatic);
+  expect(after.goal?.progress).toEqual(before.progress);
+  expect(store.run(automatic).status).toBe('queued');
+  expect(store.runs(['queued']).map((run) => run.id)).toEqual([automatic]);
+  runtime.managedGoals.finish(store.run(owner.id), true);
+  expect(store.runs(['queued']).map((run) => run.id)).toEqual([automatic]);
+  // This exemption cannot create a no-progress automatic loop after the action starts.
+  const continuation = admitted(automatic);
+  boundary(continuation);
+  expect((await view()).goal?.status).toBe('waiting');
+  expect(store.runs(['queued'])).toHaveLength(0);
+  const laterStatus = store.enqueue(manager, randomUUID(), 'And now?');
+  boundary(admitted(laterStatus.id));
+  expect((await view()).goal?.status).toBe('waiting');
+  expect(store.runs(['queued'])).toHaveLength(0);
+});
+
+it('drains a team report ahead of its yielded continuation and restores only that receipt', async () => {
+  await app.close();
+  await open('codex', true);
+  await create();
+  await vi.waitFor(() => expect(store.agent(manager).turnId).toBeTruthy());
+  const first = store.runs(['running']).find((run) => run.agentId === manager)!;
+  await progress(first);
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  codex.find((client) => client.starts.length)!.finish(first);
+  await vi.waitFor(() => expect(store.run(first.id).status).toBe('completed'));
+  const automatic = (await view()).goal!.continuationRunId!;
+  const worker = store.addAgent({
+    projectId: store.agent(manager).projectId,
+    parentId: manager,
+    taskId: null,
+    role: 'researcher',
+    name: 'Existing report source',
+    cwd: root,
+  });
+  const report = store.enqueue(
+    manager,
+    randomUUID(),
+    'Existing worker outcome',
+    'report',
+    worker.id,
+  );
+  expect((await view()).goal?.status).toBe('waiting');
+  store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 4 });
+  runtime.kick();
+  await vi.waitFor(() => expect(store.run(report.id).status).toBe('running'));
+  expect(store.run(automatic).status).toBe('queued');
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  codex.find((client) => client.starts.length)!.finish(store.run(report.id));
+  await vi.waitFor(() => expect(store.run(report.id).status).toBe('completed'));
+  expect((await view()).goal?.status).toBe('active');
+  expect(store.runs(['queued']).map((run) => run.id)).toEqual([automatic]);
+  store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 4 });
+  runtime.kick();
+  await vi.waitFor(() => expect(store.run(automatic).status).toBe('running'));
+  codex.find((client) => client.starts.length)!.finish(store.run(automatic));
+  await vi.waitFor(() => expect(store.run(automatic).status).toBe('completed'));
+  expect((await view()).goal?.status).toBe('waiting');
+  expect(store.runs(['queued'])).toHaveLength(0);
+  expect(codex.flatMap((client) => client.starts)).toHaveLength(3);
+});
+
+it('drains the same receipt after cancelled ordinary input and explicit goal Resume', async () => {
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  await create();
+  const first = admitted();
+  await progress(first);
+  boundary(first);
+  const automatic = (await view()).goal!.continuationRunId!;
+  const owner = store.enqueue(manager, randomUUID(), 'A status question subsequently cancelled');
+  runtime.managedGoals.queued(store.run(owner.id));
+  store.updateRun(owner.id, { status: 'cancelled' });
+  expect((await view()).goal?.status).toBe('waiting');
+  expect(runtime.managedGoals.admissionReason(store.run(automatic))).toBeTruthy();
+  await app.close();
+  await open('codex', true);
+  await action({
+    key: randomUUID(),
+    action: 'resume',
+    expectedRevision: (await view()).goal!.revision,
+  });
+  expect((await view()).goal?.continuationRunId).toBe(automatic);
+  store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 4 });
+  runtime.kick();
+  await vi.waitFor(() => expect(store.run(automatic).status).toBe('running'));
+  codex.find((client) => client.starts.length)!.finish(store.run(automatic));
+  await vi.waitFor(() => expect(store.run(automatic).status).toBe('completed'));
+  expect((await view()).goal?.status).toBe('waiting');
+  expect(store.runs(['queued'])).toHaveLength(0);
+  expect(codex.flatMap((client) => client.starts)).toHaveLength(1);
+});
+
+it('retains only one yielded receipt until all ordinary input finishes', async () => {
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  await create();
+  const first = admitted();
+  await progress(first);
+  boundary(first);
+  const automatic = (await view()).goal!.continuationRunId!;
+  const firstOwner = store.enqueue(manager, randomUUID(), 'Status first');
+  runtime.managedGoals.queued(store.run(firstOwner.id));
+  const secondOwner = store.enqueue(manager, randomUUID(), 'Another status question');
+  runtime.managedGoals.queued(store.run(secondOwner.id));
+  boundary(admitted(firstOwner.id));
+  expect((await view()).goal?.status).toBe('waiting');
+  expect(store.run(automatic).status).toBe('queued');
+  expect(runtime.managedGoals.admissionReason(store.run(automatic))).toMatch(/owner input/i);
+  boundary(admitted(secondOwner.id));
+  expect((await view()).goal?.status).toBe('active');
+  expect(store.runs(['queued']).map((run) => run.id)).toEqual([automatic]);
+  const restored = (await view()).goal;
+  runtime.managedGoals.finish(store.run(firstOwner.id), true);
+  expect((await view()).goal).toEqual(restored);
+  expect(store.runs(['queued']).map((run) => run.id)).toEqual([automatic]);
+});
+
+it.each(['wait', 'blocked', 'complete', 'continue'])(
+  'a newer %s checkpoint supersedes yielded goal work',
+  async (mode) => {
+    store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+    await create();
+    const first = admitted();
+    await progress(first);
+    boundary(first);
+    const automatic = (await view()).goal!.continuationRunId!;
+    const owner = store.enqueue(manager, randomUUID(), 'Status and a new disposition');
+    runtime.managedGoals.queued(store.run(owner.id));
+    const ownerRun = admitted(owner.id);
+    if (mode === 'complete') reconcileOwnerRequests();
+    await progress(ownerRun, mode, 'Newer explicit checkpoint', 'A different useful next action');
+    boundary(ownerRun);
+    expect(store.run(automatic).status).toBe('cancelled');
+    const after = await view();
+    expect(after.goal?.status).toBe(
+      { wait: 'waiting', blocked: 'blocked', complete: 'completed', continue: 'active' }[mode],
+    );
+    if (mode === 'continue') {
+      expect(after.goal?.continuationRunId).not.toBe(automatic);
+      expect(store.runs(['queued']).map((run) => run.id)).toEqual([after.goal?.continuationRunId]);
+    } else expect(store.runs(['queued'])).toHaveLength(0);
+  },
+);
+
+it.each(['pause', 'stop', 'failure'])(
+  'a newer %s prevents automatic restoration of yielded work',
+  async (mode) => {
+    store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+    await create();
+    const first = admitted();
+    await progress(first);
+    boundary(first);
+    const automatic = (await view()).goal!.continuationRunId!;
+    const owner = store.enqueue(manager, randomUUID(), 'Only a status question');
+    runtime.managedGoals.queued(store.run(owner.id));
+    const ownerRun = admitted(owner.id);
+    if (mode !== 'failure')
+      await action({
+        key: randomUUID(),
+        action: mode as 'pause' | 'stop',
+        expectedRevision: (await view()).goal!.revision,
+      });
+    boundary(ownerRun, mode !== 'failure');
+    const after = await view();
+    expect(after.goal?.status).toBe({ pause: 'paused', stop: 'stopped', failure: 'blocked' }[mode]);
+    expect(store.run(automatic).status).toBe(mode === 'pause' ? 'queued' : 'cancelled');
+    if (mode === 'pause') {
+      expect(runtime.managedGoals.admissionReason(store.run(automatic))).toContain('paused');
+      await action({ key: randomUUID(), action: 'resume', expectedRevision: after.goal!.revision });
+      expect((await view()).goal?.status).toBe('active');
+      expect(store.runs(['queued']).map((run) => run.id)).toEqual([automatic]);
+    } else expect(store.runs(['queued'])).toHaveLength(0);
+  },
+);
 
 it('never replays failed/interrupted work or silently resumes it after restart', async () => {
   store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });

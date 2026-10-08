@@ -17,6 +17,7 @@ type SavedGoal = {
   lastQueuedAfterRunId: string | null;
   lastProgressFingerprint: string | null;
   excludedRunId: string | null;
+  yieldedContinuationRunId?: string | null;
   message: string;
 };
 const terminalTasks = new Set(['done', 'integrated', 'cancelled', 'split']);
@@ -176,11 +177,54 @@ export class ManagedGoals {
     const value = this.saved(run.agentId);
     if (!value?.goal.continuationRunId || value.goal.continuationRunId === run.id) return;
     if (this.store.run(value.goal.continuationRunId).status !== 'queued') return;
+    const continuation = this.unstartedContinuation(value);
+    if (continuation && ['active', 'waiting', 'paused'].includes(value.goal.status)) {
+      value.yieldedContinuationRunId = continuation.id;
+      if (value.goal.status === 'active') value.goal.status = 'waiting';
+      value.message =
+        'Owner input or a team report takes the next turn. The already authorized, unstarted continuation remains saved under the same goal controls and QUARK admission.';
+      this.save(value);
+      return;
+    }
+    value.yieldedContinuationRunId = null;
     this.cancelQueued(value);
     if (value.goal.status === 'active') value.goal.status = 'waiting';
     value.message =
       'Saved owner input or a team report supplies the next turn. The unstarted automatic continuation was cancelled, preserving its receipt.';
     this.save(value);
+  }
+  /** Only a checkpoint-backed receipt that has never started can be yielded/restored. */
+  isYieldedContinuation(run: PrivateRun) {
+    if (run.status !== 'queued' || !this.store.getSetting(`managed-goal:run:${run.id}`))
+      return false;
+    const value = this.saved(run.agentId);
+    return !!(
+      value &&
+      value.yieldedContinuationRunId === run.id &&
+      this.unstartedContinuation(value)?.id === run.id &&
+      this.store
+        .runs(['queued'])
+        .some(
+          (input) =>
+            input.agentId === run.agentId && !this.store.getSetting(`managed-goal:run:${input.id}`),
+        )
+    );
+  }
+  private unstartedContinuation(value: SavedGoal) {
+    const id = value.goal.continuationRunId;
+    if (
+      !id ||
+      value.mode !== 'continue' ||
+      !value.progressRunId ||
+      value.lastQueuedAfterRunId !== value.progressRunId ||
+      this.store.run(value.progressRunId).status !== 'completed' ||
+      this.store.getSetting(`managed-goal:run:${id}`) !== value.goal.id
+    )
+      return null;
+    const run = this.store.run(id);
+    return run.status === 'queued' && run.kind === 'report' && run.sourceId === value.goal.agentId
+      ? run
+      : null;
   }
   ownerAction(agentId: string, raw: unknown) {
     const input = managedGoalActionSchema.parse(raw);
@@ -252,6 +296,7 @@ export class ManagedGoals {
         value.message =
           'Automatic continuation paused. An active reply remains supervised; Stop reply can stop it.';
       } else {
+        value.yieldedContinuationRunId = null;
         this.cancelQueued(value);
         value.goal.status = 'stopped';
         value.message =
@@ -306,6 +351,10 @@ export class ManagedGoals {
         const problem = this.completionProblem(agentId);
         if (problem) throw new Conflict(problem, 'GOAL_OPEN_WORK');
       }
+      if (value.yieldedContinuationRunId) {
+        this.cancelQueued(value);
+        value.yieldedContinuationRunId = null;
+      }
       value.mode = input.action;
       value.progressRunId = run.id;
       value.goal.progress = { summary: input.summary, nextAction: input.nextAction ?? null };
@@ -356,9 +405,13 @@ export class ManagedGoals {
       ['completed', 'stopped'].includes(value.goal.status)
     )
       return;
-    if (value.goal.lastRunId === run.id) return;
+    const receipt = `managed-goal:finished:${value.goal.id}:${run.id}`;
+    if (value.goal.lastRunId === run.id || this.store.getSetting(receipt)) return;
+    this.store.setSetting(receipt, true);
     value.goal.lastRunId = run.id;
     if (!success) {
+      if (value.yieldedContinuationRunId) this.cancelQueued(value);
+      value.yieldedContinuationRunId = null;
       if (value.goal.status !== 'paused') value.goal.status = 'blocked';
       value.mode = null;
       value.message =
@@ -372,6 +425,24 @@ export class ManagedGoals {
   }
   private afterSuccess(value: SavedGoal, run: PrivateRun) {
     if (value.progressRunId !== run.id) {
+      const continuation = this.unstartedContinuation(value);
+      if (
+        continuation &&
+        run.status === 'completed' &&
+        !this.store.getSetting(`managed-goal:run:${run.id}`) &&
+        continuation.id === value.yieldedContinuationRunId &&
+        ['active', 'waiting'].includes(value.goal.status)
+      ) {
+        const problem = this.waitProblem(run.agentId);
+        value.goal.status = problem ? 'waiting' : 'active';
+        if (!problem) value.yieldedContinuationRunId = null;
+        value.message =
+          problem ??
+          'The intervening input finished. The same authorized, unstarted continuation remains in the ordinary queue under QUARK admission.';
+        this.save(value);
+        return;
+      }
+      value.yieldedContinuationRunId = null;
       value.goal.status = 'waiting';
       value.message =
         'No useful next-action checkpoint was recorded in this turn. Waiting for an existing report or owner input.';

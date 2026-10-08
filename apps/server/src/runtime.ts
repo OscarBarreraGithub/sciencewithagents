@@ -1373,7 +1373,9 @@ export class Runtime {
         conversationHeads.clear();
         inputHeads.clear();
         for (const run of runs) {
-          if (!conversationHeads.has(run.agentId)) conversationHeads.set(run.agentId, run.id);
+          // A saved goal receipt yields its head position without losing its identity or holds.
+          if (!conversationHeads.has(run.agentId) && !this.managedGoals.isYieldedContinuation(run))
+            conversationHeads.set(run.agentId, run.id);
           // Recovery and held owner input retain FIFO ahead of automatic coordination.
           if (
             run.sourceId === null &&

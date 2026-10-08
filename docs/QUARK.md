@@ -59,7 +59,10 @@ Opening or refreshing the goal makes no model call. Shared Codex native goals ar
 Pause holds the same unstarted goal request; Resume reevaluates its saved checkpoint and
 admission. Stop cancels only unstarted goal work and does not claim completion or stop a
 running reply. Failed or interrupted work requires the existing conversation Inspect/Resume
-controls. Wait/blocked checkpoints and unchanged progress produce no polling turns; useful
+controls. Ordinary owner/team input takes priority without discarding a checkpoint-backed,
+unstarted continuation: after a successful reply it retains the same saved receipt unless
+a newer checkpoint, pause, stop or failure supersedes it. Started actions are never replayed.
+Wait/blocked checkpoints and unchanged progress produce no polling turns; useful
 independent work can continue while another item awaits a worker or human. Adjacent owner
 requests remain additive. Completion requires reconciliation of this manager's internal and
 human work, responsible tasks and retained owner requests; unrelated owner Notes/ideas are
