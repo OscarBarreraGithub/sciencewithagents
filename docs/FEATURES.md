@@ -243,7 +243,9 @@ remaining slots or contains an empty/oversized file is rejected before uploading
 batches retain completed attachments; Retry upload resumes the remaining files without
 duplicating them. Discard remaining uploads leaves completed attachments in the draft.
 Sending waits until remaining uploads are retried or discarded. You can remove attachments before
-sending. Images retain previews and native vision support. Documents and other files are stored privately on the selected computer and handed to a capable native
+sending. Images open above the chat with **Close**, Escape and browser Back returning to the
+same scroll position and unfinished draft. Images retain previews and native vision support.
+Documents and other files are stored privately on the selected computer and handed to a capable native
 agent by reference. Completed attachments in drafts survive reloads; unfinished selections
 must be chosen again after closing or reloading the chat. Attaching a file does not execute it or
 guarantee the selected assistant can interpret every format; coordination-only QUARK reads

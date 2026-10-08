@@ -14,6 +14,7 @@ import {
   type ChatFile,
 } from '@dock/shared';
 import { api, apiScope, apiUrl } from './api';
+import { ImagePreview } from './ImagePreview';
 import './chatImages.css';
 
 async function png(file: File) {
@@ -293,14 +294,11 @@ export function ChatFileCard({
   return (
     <span className="chat-file-card">
       {file?.image ? (
-        <a
-          href={apiUrl(`/chat-files/${id}/preview`)}
-          target="_blank"
-          rel="noreferrer"
-          aria-label={`Open image ${file.name}`}
-        >
-          <img src={apiUrl(`/chat-files/${id}/preview`)} alt={`Attached image ${file.name}`} />
-        </a>
+        <ImagePreview
+          src={apiUrl(`/chat-files/${id}/preview`)}
+          alt={`Attached image ${file.name}`}
+          label={`Open image ${file.name}`}
+        />
       ) : (
         <FileText size={28} aria-hidden="true" />
       )}
@@ -426,9 +424,10 @@ export function ChatAttachmentPicker({
           ))}
           {images.map((id, index) => (
             <div key={id} className="chat-legacy-image">
-              <a href={apiUrl(`/chat-images/${id}`)} target="_blank" rel="noreferrer">
-                <img src={apiUrl(`/chat-images/${id}`)} alt={`Attached screenshot ${index + 1}`} />
-              </a>
+              <ImagePreview
+                src={apiUrl(`/chat-images/${id}`)}
+                alt={`Attached screenshot ${index + 1}`}
+              />
               <button
                 type="button"
                 aria-label={`Remove screenshot ${index + 1}`}

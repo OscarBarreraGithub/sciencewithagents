@@ -4,6 +4,7 @@ import { flushSync } from 'react-dom';
 import { AppMessageQueue } from './AppMessageQueue';
 import { ConversationStatus } from './ConversationStatus';
 import { RunRecovery } from './RunRecovery';
+import { ImagePreview } from './ImagePreview';
 import { ChatMarkdown } from './ChatMarkdown';
 import { ChatAttachmentPicker, useChatAttachmentUpload } from './ChatImages';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -341,7 +342,8 @@ export function Conversation({
       !older &&
       !selectedPrompt &&
       pinned.current &&
-      !document.documentElement.dataset.pdfOpen
+      !document.documentElement.dataset.pdfOpen &&
+      !document.documentElement.dataset.imageOpen
     )
       container.scrollTop = container.scrollHeight;
     shownApproval.current = first;
@@ -361,7 +363,11 @@ export function Conversation({
     // Keep the newest message in view only for a reader already at the bottom; anyone
     // reading history keeps their place.
     const observer = new ResizeObserver(() => {
-      if (pinned.current && !document.documentElement.dataset.pdfOpen)
+      if (
+        pinned.current &&
+        !document.documentElement.dataset.pdfOpen &&
+        !document.documentElement.dataset.imageOpen
+      )
         container.scrollTop = container.scrollHeight;
     });
     observer.observe(container);
@@ -572,20 +578,13 @@ export function Conversation({
               run?.status === 'queued' ? 'Queued' : run?.status === 'running' ? 'Sending' : null;
             return entry.image ? (
               <figure className="generated-image" key={entry.id}>
-                <a
-                  href={apiUrl(`/agents/${entry.agentId}/images/${entry.image.id}`)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Open generated image"
-                >
-                  <img
-                    src={apiUrl(`/agents/${entry.agentId}/images/${entry.image.id}`)}
-                    alt="Generated image"
-                    width={entry.image.width}
-                    height={entry.image.height}
-                    loading="lazy"
-                  />
-                </a>
+                <ImagePreview
+                  src={apiUrl(`/agents/${entry.agentId}/images/${entry.image.id}`)}
+                  alt="Generated image"
+                  label="Open generated image"
+                  width={entry.image.width}
+                  height={entry.image.height}
+                />
                 <figcaption>
                   <strong>Generated image</strong>
                   <a

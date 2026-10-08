@@ -10,6 +10,7 @@ import 'katex/dist/katex.min.css';
 import './chatMath.css';
 import { savedDocumentLinks, chatImageId, chatFileId } from '@dock/shared';
 import { ChatFileCard } from './ChatImages';
+import { ImagePreview } from './ImagePreview';
 import { apiUrl } from './api';
 import './chatImages.css';
 
@@ -92,18 +93,11 @@ export const ChatMarkdown = memo(
             img: ({ src, alt, ...props }) => {
               const id = typeof src === 'string' ? chatImageId(src) : null;
               return id ? (
-                <a
+                <ImagePreview
                   className="chat-uploaded-image"
-                  href={apiUrl(`/chat-images/${id}`)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <img
-                    src={apiUrl(`/chat-images/${id}`)}
-                    alt={alt || 'Screenshot'}
-                    loading="lazy"
-                  />
-                </a>
+                  src={apiUrl(`/chat-images/${id}`)}
+                  alt={alt || 'Screenshot'}
+                />
               ) : (
                 <OtherImage src={src} alt={alt} {...props} />
               );
