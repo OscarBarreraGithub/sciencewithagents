@@ -551,6 +551,8 @@ async function convertReading(
       const key = createHash('sha256').update(data).digest('hex');
       let output: string;
       if (extension === '.pdf' && data.subarray(0, 5).toString() === '%PDF-') {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new Error('Figure conversion time ran out');
         const converter = readerExecutable('pdftoppm');
         if (!converter) throw new Error('PDF figures need Poppler');
         output = key + '.png';
@@ -558,6 +560,8 @@ async function convertReading(
           converter,
           ['-f', '1', '-singlefile', '-scale-to', '1600', '-png', path, join(assets, key)],
           dirname(source),
+          undefined,
+          Math.min(30000, remaining),
         );
       } else if (['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(extension)) {
         output = key + extension;

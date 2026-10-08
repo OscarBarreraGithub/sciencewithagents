@@ -91,6 +91,63 @@ describe.skipIf(!readerExecutable('pandoc'))('arXiv source rules', () => {
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBbkAAAAASUVORK5CYII=',
     'base64',
   );
+  it('shares one deadline across PDF figures while retaining converted figures, raster images and body', async () => {
+    const home = join(root, 'source');
+    const bin = join(root, 'bin');
+    const calls = join(root, 'figure-calls');
+    await mkdir(bin);
+    for (const name of ['converted', 'slow', 'later-one', 'later-two'])
+      await writeFile(join(home, name + '.pdf'), `%PDF-1.4\n${name}\n`);
+    await writeFile(join(home, 'before.png'), png);
+    await writeFile(join(home, 'after.png'), png);
+    // The slow converter owns only its Node process; timeout cleanup leaves no shell children.
+    await writeFile(
+      join(bin, 'pdftoppm'),
+      `#!${process.execPath}
+const fs = require('node:fs');
+const path = require('node:path');
+const source = path.basename(process.argv.at(-2));
+fs.appendFileSync(${JSON.stringify(calls)}, source + '\\n');
+if (source === 'converted.pdf') {
+  fs.writeFileSync(process.argv.at(-1) + '.png', Buffer.from('${png.toString('base64')}', 'base64'));
+} else {
+  setTimeout(() => process.exit(1), 60000);
+}
+`,
+      { mode: 0o755 },
+    );
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${bin}${delimiter}${originalPath}`;
+    try {
+      const started = Date.now();
+      const reading = await read(
+        String.raw`Original prose $x=1$.
+\includegraphics{before.png}\includegraphics{converted.pdf}\includegraphics{slow.pdf}
+\includegraphics{later-one.pdf}\includegraphics{later-two.pdf}\includegraphics{after.png}
+Final prose.`,
+        '',
+        { budgetMs: 5500 },
+      );
+      expect(Date.now() - started).toBeLessThan(8500);
+      expect((await readFile(calls, 'utf8')).trim().split('\n')).toEqual([
+        'converted.pdf',
+        'slow.pdf',
+      ]);
+      expect(reading.available).toBe(true);
+      expect(reading.html).toContain('Original prose');
+      expect(reading.html).toContain('Final prose');
+      expect(reading.html).toContain('x=1');
+      expect(reading.html.match(/reader-asset:/g)).toHaveLength(3);
+      expect(reading.html.match(/Figure available in Original PDF\./g)).toHaveLength(3);
+      expect(await readdir(join(root, 'assets'))).toHaveLength(2);
+      expect(await readFile(join(home, 'after.png'))).toEqual(png);
+      expect(await readFile(join(home, 'slow.pdf'), 'utf8')).toBe('%PDF-1.4\nslow\n');
+      expectHumanMessages(reading);
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  }, 10000);
+
   it('resolves an explicitly named extensionless figure without changing source or math', async () => {
     const home = join(root, 'source');
     await mkdir(join(home, 'Figures'));

@@ -85,6 +85,9 @@ Other author–year styles and non-equation cross-reference numbering still need
 An explicitly named local figure may omit its extension. Reading tries the exact name,
 then PDF, PNG, JPG, JPEG, WebP and GIF under the same folder and file-size checks. It does
 not search folders or infer missing paths; unavailable figures keep an Original PDF note.
+PDF figure conversion shares Reading’s 60-second conversion budget. When time runs out,
+the paper’s body, completed figures and raster images remain available; each unconverted
+figure keeps its Original PDF note.
 
 Reading mode interprets LaTeX content, not every package's print layout. Complex package
 commands may need Original PDF; missing figures are marked. An ordinary PDF without its
