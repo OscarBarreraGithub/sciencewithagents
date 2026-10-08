@@ -168,6 +168,9 @@ or interrupted work by asking the agent to inspect saved progress and unfinished
 before acting. Recovery receipts survive reloads and simultaneous taps; a later queued turn
 suppresses the old recovery action. Claude sign-in timeouts, unavailable commands and malformed
 status are distinguished from a verified signed-out account, without changing native sign-in.
+Older connected computers keep an inline **Continue** action with one command receipt per
+stopped run. Saved owner bubbles show **Queued** or **Sending** from the current run state;
+the message remains visible and its queue label clears when the run finishes.
 
 Reopening a recently read project chat shows a saved text copy while the fresh conversation
 loads. The browser keeps at most five conversations, with a combined 5 MB text budget and

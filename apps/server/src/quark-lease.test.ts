@@ -482,6 +482,39 @@ async function native(agentId = manager, extra: object = {}) {
   })!;
   return { ...attached, transition };
 }
+it('project opt-out bypasses occupied QUARK slots for native input while keeping host pause and same-agent serialization', async () => {
+  const peer = worker();
+  runtime.executing.add(peer.id);
+  store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 1 });
+  const attached = await runtime.attach(manager);
+  runtime.externalControl.add(manager);
+  const params = {
+    threadId: attached.threadId,
+    input: [{ type: 'text', text: 'Native owner input' }],
+  };
+  expect(() => runtime.prepareNativeContext(manager, 'turn/start', params)).toThrow(
+    'all work slots',
+  );
+  runtime.quark.saveProjectPolicy(project, {
+    key: randomUUID(),
+    enabled: false,
+    expectedRevision: 0,
+  });
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 1 });
+  expect(() => runtime.prepareNativeContext(manager, 'turn/start', params)).toThrow(
+    'admission is paused',
+  );
+  store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 1 });
+  const transition = runtime.prepareNativeContext(manager, 'turn/start', params)!;
+  await transition.before!();
+  expect(store.runs().find((run) => run.agentId === manager)?.status).toBe('running');
+  expect(providers.get(manager)!.starts).toBe(0);
+  expect(() => runtime.prepareNativeContext(manager, 'turn/start', params)).toThrow(
+    'earlier queued work',
+  );
+  transition.cancel();
+  runtime.executing.delete(peer.id);
+});
 it('admits a native manager before provider input, binds the effective native model and monitors its lease', async () => {
   const { threadId, client, transition } = await native(manager, {
     model: 'other-choice',

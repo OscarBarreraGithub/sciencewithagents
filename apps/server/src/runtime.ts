@@ -78,6 +78,7 @@ import { pluginPolicy } from './plugins.js';
 import { NativeChildren, nativeChildConfig } from './native-children.js';
 import { decodeGeneratedImage } from './images.js';
 import { schedulerSettings } from './scheduler.js';
+import { projectFollowsQuark } from './quark-project.js';
 import {
   historyPage,
   historyRead,
@@ -1218,6 +1219,22 @@ export class Runtime {
     this.schedulingError =
       'QUARK could not check the queue. New starts wait while it retries automatically. Saved chats and drafts remain available.';
   }
+  /** Opted-out projects neither wait for nor occupy QUARK's shared work slots. */
+  private quarkSlotCount() {
+    return (
+      [...this.executing].filter((id) => {
+        const agent = this.store.agent(id);
+        return !agent.nativeRootId && projectFollowsQuark(this.store, agent.projectId);
+      }).length +
+      this.localJobs
+        .all()
+        .filter(
+          (job) =>
+            job.status === 'running' &&
+            (!job.projectId || projectFollowsQuark(this.store, job.projectId)),
+        ).length
+    );
+  }
   private async drain() {
     this.draining = true;
     this.drainRequested = false;
@@ -1334,10 +1351,12 @@ export class Runtime {
         // Owner controls may change while an I/O yield or local start is awaited.
         scheduling = schedulerSettings(this.store);
         if (scheduling.paused) break;
+        const projectId = candidate.run
+          ? this.store.agent(candidate.run.agentId).projectId
+          : candidate.local?.projectId;
         if (
-          [...this.executing].filter((id) => !this.store.agent(id).nativeRootId).length +
-            this.localJobs.runningCount() >=
-          scheduling.maxConcurrent + Number(!!diagnosticSlot)
+          (!projectId || projectFollowsQuark(this.store, projectId)) &&
+          this.quarkSlotCount() >= scheduling.maxConcurrent + Number(!!diagnosticSlot)
         )
           continue;
         if (candidate.local) {
@@ -3432,9 +3451,8 @@ export class Runtime {
       if (scheduling.paused)
         throw new Conflict('QUARK admission is paused. Resume the work queue before sending.');
       if (
-        [...this.executing].filter((id) => !this.store.agent(id).nativeRootId).length +
-          this.localJobs.runningCount() >=
-        scheduling.maxConcurrent
+        projectFollowsQuark(this.store, current.projectId) &&
+        this.quarkSlotCount() >= scheduling.maxConcurrent
       )
         throw new Conflict(
           'QUARK is using all work slots. Wait for a slot before sending this native turn.',

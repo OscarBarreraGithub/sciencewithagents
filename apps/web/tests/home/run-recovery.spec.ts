@@ -2,7 +2,11 @@ import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { detailSchema, snapshotSchema, type Agent, type RunRecoveryRequest } from '@dock/shared';
 
-async function fixture(page: Page, action: 'retry' | 'continue' = 'retry') {
+async function fixture(
+  page: Page,
+  action: 'retry' | 'continue' = 'retry',
+  sourceRunId = randomUUID(),
+) {
   const state = snapshotSchema.parse(await (await page.request.get('/api/snapshot')).json());
   const project = state.projects.find((p) => !p.internal)!;
   const agent = state.agents.find((a) => a.id === project.managerId)!;
@@ -10,8 +14,8 @@ async function fixture(page: Page, action: 'retry' | 'continue' = 'retry') {
     await (await page.request.get(`/api/agents/${agent.id}`)).json(),
   );
   let status: Agent['status'] = action === 'retry' ? 'failed' : 'interrupted';
-  const runId = randomUUID(),
-    failureId = randomUUID();
+  let runId = sourceRunId;
+  const failureId = randomUUID();
   const view = {
     runId,
     failureId,
@@ -73,6 +77,9 @@ async function fixture(page: Page, action: 'retry' | 'continue' = 'retry') {
       status = value;
     },
     getStatus: () => status,
+    setRunId: (value: string) => {
+      runId = value;
+    },
   };
 }
 
@@ -175,4 +182,49 @@ test('uncertain work offers Continue and recovers an unavailable recovery read w
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({ action: 'continue', runId: f.view.runId });
   expect(JSON.stringify(requests[0])).not.toContain('Original saved objective');
+});
+
+test('an older connected computer keeps a direct Continue button with a retained command key', async ({
+  page,
+}) => {
+  const f = await fixture(page, 'continue');
+  const second = await page.context().newPage();
+  const other = await fixture(second, 'continue', f.view.runId);
+  const requests: { key: string; command: string }[] = [];
+  for (const tab of [page, second]) {
+    await tab.route(`**/api/agents/${f.agent.id}/run-recovery`, (route) =>
+      route.fulfill({ status: 404, json: { error: 'Route not found' } }),
+    );
+    await tab.route(`**/api/agents/${f.agent.id}/commands`, (route) => {
+      requests.push(route.request().postDataJSON());
+      if (requests.length === 1)
+        return route.fulfill({ status: 502, json: { error: 'Response lost' } });
+      f.setStatus('queued');
+      other.setStatus('queued');
+      return route.fulfill({ json: { ok: true } });
+    });
+  }
+  await page.goto(`/#/chat/${f.agent.id}`);
+  const button = page
+    .locator('.run-recovery')
+    .getByRole('button', { name: 'Continue', exact: true });
+  await expect(button).toBeVisible();
+  await button.click();
+  await expect(page.locator('.run-recovery')).toContainText('Response lost');
+  await second.goto(`/#/chat/${f.agent.id}`);
+  await second.locator('.run-recovery').getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.reload();
+  await expect(page.locator('.run-recovery')).toHaveCount(0);
+  expect(requests).toHaveLength(2);
+  expect(requests[0]).toEqual(requests[1]);
+  expect(requests[0]!.command).toBe('resume');
+  // A later stopped continuation needs a new receipt, not the prior lost-ack key.
+  f.setRunId(randomUUID());
+  f.setStatus('interrupted');
+  await page.reload();
+  await button.click();
+  await expect(page.locator('.run-recovery')).toHaveCount(0);
+  expect(requests).toHaveLength(3);
+  expect(requests[2]!.key).not.toBe(requests[0]!.key);
+  await second.close();
 });

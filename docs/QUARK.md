@@ -129,12 +129,13 @@ configured when they were seen. See [Slurm cluster](CLUSTER.md).
 ## Managers need a QUARK lease
 
 The manager chat's **… → Follow QUARK** switch controls its whole project, including
-workers. It defaults to On. Off skips QUARK allowance caps, reserves, rate/resource pacing
+workers. It defaults to On. Off skips QUARK allowance caps, reserves, shared work-slot limits, rate/resource pacing
 and saved QUARK project pauses; it stays off until the owner switches it back on. Existing
 caps, usage and project-pause choices are retained and apply again when On. Held queue edits,
 Stop, explicit job/task holds, the host-wide pause, provider sign-in/permissions and native
-quota-rejection holds still apply. There is no automatic expiry. Normal app concurrency and
-conversation lifecycle rules remain in place.
+quota-rejection holds still apply. There is no automatic expiry. Opted-out running work
+does not occupy QUARK slots. Same-agent turn order, task workspace ownership and conversation
+lifecycle rules remain in place; the host-wide pause still stops new queued/native starts.
 
 The owner-only `GET/POST /api/projects/:id/quark-scheduler` preference uses revision checks
 and durable receipts. It affects queued and running work without replacing native sessions.

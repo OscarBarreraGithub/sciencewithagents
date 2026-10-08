@@ -37,7 +37,8 @@ it.each([
     expect((failure as Error).message.toLowerCase()).toContain('no model request was sent');
     expect((failure as Error).message).not.toContain('private-provider-text');
     expect((failure as Error).message).not.toContain(status.email);
-    expect(reader).toHaveBeenCalledExactlyOnceWith('/fixture/claude');
+    expect(reader).toHaveBeenCalledTimes(code === 'timeout' ? 2 : 1);
+    expect(reader).toHaveBeenLastCalledWith('/fixture/claude');
   },
 );
 it('metadata refresh reads independently and neither caches an unknown account nor retries a model turn', async () => {
@@ -61,4 +62,23 @@ it('metadata refresh reads independently and neither caches an unknown account n
   expect(JSON.stringify(identity)).not.toContain(status.email);
   expect(first).toHaveBeenCalledOnce();
   expect(unavailable).toHaveBeenCalledOnce();
+});
+
+it('recovers a transient metadata timeout once without reusing an old identity', async () => {
+  const reader = vi.fn()
+    .mockRejectedValueOnce({ killed: true, signal: 'SIGTERM' })
+    .mockResolvedValueOnce({ stdout: JSON.stringify(status) });
+  await expect(readClaudeIdentity('/fixture/claude', reader)).resolves.toMatchObject({
+    authMethod: 'claude.ai', provider: 'firstParty',
+  });
+  expect(reader).toHaveBeenCalledTimes(2);
+});
+it('stops after a timeout if the fresh metadata reports signed out', async () => {
+  const reader = vi.fn()
+    .mockRejectedValueOnce({ code: 'ETIMEDOUT' })
+    .mockResolvedValueOnce({ stdout: JSON.stringify({ loggedIn: false }) });
+  await expect(readClaudeIdentity('/fixture/claude', reader)).rejects.toMatchObject({
+    code: 'signed_out',
+  });
+  expect(reader).toHaveBeenCalledTimes(2);
 });

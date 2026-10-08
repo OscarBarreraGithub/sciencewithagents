@@ -374,6 +374,21 @@ export function Conversation({
   const shown = entries.filter(
     (entry) => !(entry.kind === 'system' && entry.title === 'Original queued message'),
   );
+  // A saved entry is not a delivery receipt. Latest run state wins even while an
+  // earlier history page remains open; entry.status may still say "queued".
+  const liveRuns = data?.runs ?? [];
+  const runsById = new Map([...(older?.runs ?? []), ...liveRuns].map((run) => [run.id, run]));
+  const attentionRun = liveRuns
+    .filter((run) => !['queued', 'cancelled'].includes(run.status))
+    .at(-1);
+  const legacyRunId =
+    attentionRun &&
+    ['failed', 'interrupted'].includes(attentionRun.status) &&
+    !liveRuns
+      .slice(liveRuns.indexOf(attentionRun) + 1)
+      .some((run) => ['user', 'resume'].includes(run.kind) || run.status === 'running')
+      ? attentionRun.id
+      : undefined;
   const folded = foldedReplies(shown, (older ?? data)?.runs ?? []);
   const load = async () => {
     if (loadingHistory) return;
@@ -552,6 +567,9 @@ export function Conversation({
               row.kind === 'system' && row.title === 'Owner steering'
                 ? { ...row, kind: 'user', title: 'You' }
                 : row;
+            const run = row.kind === 'user' && row.runId ? runsById.get(row.runId) : undefined;
+            const delivery =
+              run?.status === 'queued' ? 'Queued' : run?.status === 'running' ? 'Sending' : null;
             return entry.image ? (
               <figure className="generated-image" key={entry.id}>
                 <a
@@ -610,6 +628,19 @@ export function Conversation({
                     {entry.kind === 'message' && (
                       <span className="handoff-label">TEAM MESSAGE</span>
                     )}
+                    {delivery && (
+                      <span
+                        className={`message-delivery ${run!.status}`}
+                        role="status"
+                        title={
+                          delivery === 'Queued'
+                            ? 'Saved in the queue. The agent has not started this message.'
+                            : 'The agent is handling this message.'
+                        }
+                      >
+                        {delivery}
+                      </span>
+                    )}
                     <time>{time(entry.createdAt)}</time>
                   </div>
                   <div className="markdown">
@@ -628,7 +659,12 @@ export function Conversation({
             !agent.nativeRootId &&
             !agent.archivedAt &&
             ['interrupted', 'failed'].includes(agent.status) && (
-              <RunRecovery key={`${apiScope()}:${agent.id}`} agent={agent} act={act} />
+              <RunRecovery
+                key={`${apiScope()}:${agent.id}`}
+                agent={agent}
+                legacyRunId={legacyRunId}
+                act={act}
+              />
             )}
         </div>
       </div>

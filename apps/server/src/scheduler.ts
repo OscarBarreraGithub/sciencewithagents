@@ -4,6 +4,7 @@ import {
   schedulerUpdateSchema,
 } from '@dock/shared';
 import { Store, type PrivateRun } from './store.js';
+import { projectFollowsQuark } from './quark-project.js';
 
 export function schedulerSettings(store: Store) {
   return schedulerSettingsSchema.parse(
@@ -56,7 +57,9 @@ export function schedulerStatus(
                 : (hold(run) ??
                   (['interrupted', 'failed', 'waiting'].includes(agent.status)
                     ? 'Inspect this agent’s pending request or stopped work before continuing.'
-                    : 'Waiting for an available slot and this agent’s earlier work. Task workspace ownership still applies.'));
+                    : !projectFollowsQuark(store, project.id)
+                      ? 'QUARK scheduling is off. Waiting for this agent’s earlier work or task workspace ownership.'
+                      : 'Waiting for an available slot and this agent’s earlier work. Task workspace ownership still applies.'));
       return [
         {
           id: run.id,

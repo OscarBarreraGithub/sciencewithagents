@@ -8,20 +8,37 @@ import {
   type RunRecoveryRequest,
   type RunRecoveryView,
 } from '@dock/shared';
-import { api, apiScope } from './api';
+import { api, apiScope, ApiError } from './api';
+
+/** Same stopped run gets the same command receipt across tabs and lost responses. */
+async function legacyContinueKey(scope: string, agentId: string, runId: string) {
+  const bytes = new Uint8Array(
+    await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(`sciencewithagents:legacy-continue:${scope}:${agentId}:${runId}`),
+    ),
+  ).slice(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x80;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 /** The server chooses safe replay versus inspection; the browser never guesses from error text. */
 export function RunRecovery({
   agent,
+  legacyRunId,
   act,
 }: {
   agent: Agent;
+  legacyRunId?: string;
   act: (fn: () => Promise<unknown>) => Promise<void>;
 }) {
   const [view, setView] = useState<RunRecoveryView | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  const [legacy, setLegacy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const pending = useRef<RunRecoveryRequest | null>(null);
   const scope = apiScope();
@@ -31,6 +48,7 @@ export function RunRecovery({
     setView(null);
     setError('');
     setAccepted(false);
+    setLegacy(false);
     pending.current = null;
     if (!['failed', 'interrupted'].includes(agent.status)) return;
     void (async () => {
@@ -52,20 +70,42 @@ export function RunRecovery({
         }
         const value = await api(`/agents/${agent.id}/run-recovery`);
         if (alive) setView(value === null ? null : runRecoveryViewSchema.parse(value));
-      } catch {
-        if (alive) setError('Recovery could not be checked. Try again.');
+      } catch (reason) {
+        // Connected computers may update at different times. Only an explicit JSON
+        // unsupported response permits the older durable Continue command.
+        if (
+          alive &&
+          reason instanceof ApiError &&
+          [404, 501].includes(reason.status) &&
+          reason.code !== 'INTERRUPTED' &&
+          legacyRunId
+        )
+          setLegacy(true);
+        else if (alive) setError('Recovery could not be checked. Try again.');
       }
     })();
     return () => {
       alive = false;
     };
-  }, [agent.id, agent.status, agent.updatedAt, scope, storageKey, refresh]);
+  }, [agent.id, agent.status, agent.updatedAt, legacyRunId, scope, storageKey, refresh]);
   if (!['failed', 'interrupted'].includes(agent.status)) return null;
   const recover = async () => {
-    if (!view || busy || apiScope() !== scope) return;
+    if ((!view && !legacy) || busy || apiScope() !== scope) return;
     setBusy(true);
     setError('');
     try {
+      if (legacy) {
+        if (!legacyRunId) return;
+        const legacyKey = `${storageKey}:continue:${legacyRunId}`;
+        const key = await legacyContinueKey(scope, agent.id, legacyRunId);
+        localStorage.setItem(legacyKey, key);
+        await api(`/agents/${agent.id}/commands`, { command: 'resume', key });
+        localStorage.removeItem(legacyKey);
+        setAccepted(true);
+        await act(async () => undefined);
+        return;
+      }
+      if (!view) return;
       let input = pending.current;
       if (!input || input.failureId !== view.failureId || input.action !== view.action) {
         input = {
@@ -93,13 +133,19 @@ export function RunRecovery({
       setBusy(false);
     }
   };
-  if (!view && !error) return null;
+  if (!view && !error && !legacy) return null;
   return (
     <div className="recovery-note run-recovery" data-agent-id={agent.id} role="status">
       <RefreshCw size={16} />
       <div>
         <strong>{accepted ? 'Recovery queued' : 'Your message and history are saved.'}</strong>
-        <p>{accepted ? 'The saved request is in the work queue.' : view?.explanation}</p>
+        <p>
+          {accepted
+            ? 'The saved request is in the work queue.'
+            : legacy
+              ? 'Continue from saved progress.'
+              : view?.explanation}
+        </p>
         {error && (
           <p className="run-recovery-error" role="alert">
             {error}
@@ -114,14 +160,14 @@ export function RunRecovery({
             Check recovery
           </button>
         )}
-        {view && !accepted && (
+        {(view || legacy) && !accepted && (
           <button
             type="button"
             className="secondary"
             disabled={busy}
             onClick={() => void recover()}
           >
-            {busy ? 'Checking…' : view.action === 'retry' ? 'Retry message' : 'Continue'}
+            {busy ? 'Checking…' : view?.action === 'retry' ? 'Retry message' : 'Continue'}
           </button>
         )}
       </div>

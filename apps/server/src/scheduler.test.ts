@@ -1,6 +1,6 @@
 import { modelFixture } from './model-policy.fixture.js';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -151,6 +151,119 @@ describe('bounded deterministic queue controls', () => {
     expect(schedulerStatus(store, runtime.externalControl).items[0].explanation).toContain(
       'pending request',
     );
+  });
+  it('starts an opted-out project manager and worker past occupied QUARK slots without consuming slots or reordering their conversation', async () => {
+    const finishes = new Map<string, () => void>();
+    const request = DemoProvider.prototype.request;
+    const calls = vi.spyOn(DemoProvider.prototype, 'request').mockImplementation(async function (
+      this: DemoProvider,
+      method,
+      raw,
+    ) {
+      if (method !== 'turn/start') return request.call(this, method, raw);
+      const turnId = randomUUID();
+      finishes.set(this.threadId, () => {
+        this.emit('notification', 'turn/completed', {
+          threadId: this.threadId,
+          turn: { id: turnId, status: 'completed' },
+        });
+      });
+      return { turn: { id: turnId, status: 'inProgress' } };
+    });
+    settings(false, 1);
+    const first = store.enqueue(manager, randomUUID(), 'Occupy the one QUARK slot');
+    runtime.kick();
+    await vi.waitFor(() => expect(store.run(first.id).status).toBe('running'));
+    const offRoot = join(root, 'off');
+    mkdirSync(offRoot);
+    const off = store.register(offRoot, 'Opted out', '');
+    runtime.quark.saveProjectPolicy(off.id, {
+      key: randomUUID(),
+      enabled: false,
+      expectedRevision: 0,
+    });
+    const worker = store.addAgent({
+      projectId: off.id,
+      parentId: off.managerId,
+      taskId: null,
+      role: 'researcher',
+      name: 'Opted-out worker',
+      cwd: offRoot,
+    });
+    const resumed = store.enqueue(
+      off.managerId,
+      randomUUID(),
+      'Continue the saved request',
+      'resume',
+    );
+    const later = store.enqueue(off.managerId, randomUUID(), 'Later owner request');
+    const child = store.enqueue(
+      worker.id,
+      randomUUID(),
+      'Independent worker',
+      'delegation',
+      off.managerId,
+    );
+    const onPeer = store.addManager(store.agent(manager).projectId, 'On peer', 'Independent work');
+    const queued = store.enqueue(onPeer.id, randomUUID(), 'Still respects the one QUARK slot');
+    runtime.kick();
+    await vi.waitFor(() => {
+      expect(store.run(resumed.id).status).toBe('running');
+      expect(store.run(child.id).status).toBe('running');
+    });
+    expect(store.run(later.id).status).toBe('queued');
+    expect(store.run(queued.id).status).toBe('queued');
+    expect(calls.mock.calls.filter(([method]) => method === 'turn/start')).toHaveLength(3);
+    finishes.get(store.agent(manager).threadId!)!();
+    await vi.waitFor(() => expect(store.run(queued.id).status).toBe('running'));
+    expect(store.run(resumed.id).status).toBe('running');
+    expect(store.run(child.id).status).toBe('running');
+    expect(store.run(later.id).status).toBe('queued');
+    expect(calls.mock.calls.filter(([method]) => method === 'turn/start')).toHaveLength(4);
+  });
+  it.each([
+    'global pause',
+    'failed agent',
+    'job hold',
+    'native control',
+    'task workspace',
+  ] as const)('project opt-out preserves %s before provider preparation', async (guard) => {
+    const projectId = store.agent(manager).projectId;
+    runtime.quark.saveProjectPolicy(projectId, {
+      key: randomUUID(),
+      enabled: false,
+      expectedRevision: 0,
+    });
+    settings(guard === 'global pause', 1);
+    const run = store.enqueue(manager, randomUUID(), 'Preserve explicit ownership');
+    if (guard === 'failed agent') store.updateAgent(manager, { status: 'failed' });
+    if (guard === 'job hold') store.setSetting(`pulsar:held:${run.id}`, true);
+    if (guard === 'native control') runtime.externalControl.add(manager);
+    if (guard === 'task workspace') {
+      const task = store.addTask(projectId, {
+        title: 'Owned workspace',
+        goal: 'One writer',
+        acceptance: 'Evidence',
+        parentId: null,
+      });
+      store.updateAgent(manager, { taskId: task.id });
+      const peer = store.addAgent({
+        projectId,
+        parentId: manager,
+        taskId: task.id,
+        role: 'implementer',
+        name: 'Workspace owner',
+        cwd: root,
+      });
+      runtime.executing.add(peer.id);
+    }
+    const starts = vi.spyOn(DemoProvider.prototype, 'request');
+    await (runtime as unknown as { drain(): Promise<void> }).drain();
+    expect(store.run(run.id).status).toBe('queued');
+    expect(starts.mock.calls.some(([method]) => method === 'turn/start')).toBe(false);
+    expect(runtime.pulsar.lease(run.id)).toBeNull();
+    runtime.executing.clear();
+    runtime.externalControl.clear();
   });
   it('explains an actual paused allowance grant instead of a slot wait when slots are free', () => {
     const now = Date.now();

@@ -682,6 +682,17 @@ small {
   font-size: var(--text-caption);
   color: #a3aa99;
 }
+.message-delivery {
+  display: inline-flex;
+  padding: 1px 6px;
+  border: 1px solid #bdc9e8;
+  border-radius: 999px;
+  background: #ffffff80;
+  color: #52648d;
+  font-size: var(--text-caption);
+  line-height: 1.4;
+  white-space: nowrap;
+}
 .markdown {
   font-size: var(--text-small);
   line-height: 1.75;

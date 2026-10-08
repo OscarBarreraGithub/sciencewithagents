@@ -132,6 +132,20 @@ export async function readClaudeIdentity(
   binary: string,
   command: IdentityCommand = nativeIdentityCommand,
 ): Promise<ClaudeIdentity> {
+  // A local metadata timeout can be transient (for example a busy keychain).
+  // Retry that read once, before any provider input. Never retry signed-out,
+  // malformed or changed-account results, and never replay a model turn here.
+  try {
+    return await readClaudeIdentityOnce(binary, command);
+  } catch (error) {
+    if (!(error instanceof ClaudePreflightError) || error.code !== 'timeout') throw error;
+    return readClaudeIdentityOnce(binary, command);
+  }
+}
+async function readClaudeIdentityOnce(
+  binary: string,
+  command: IdentityCommand,
+): Promise<ClaudeIdentity> {
   assertClaudeSubscriptionEnvironment();
   try {
     const { stdout } = await command(binary);

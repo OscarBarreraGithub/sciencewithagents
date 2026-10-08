@@ -1249,7 +1249,12 @@ export async function createServer(
             ? 'available'
             : undefined,
       entries: page.entries,
-      runs: store.runsForAgent(target).map((r) => runSchema.parse(r)),
+      // Superseded notification inputs are retained in source receipts/history, not executable
+      // chat turns. Keeping them out also lets already-open older clients read this route.
+      runs: store
+        .runsForAgent(target)
+        .filter((r) => r.status !== 'coalesced')
+        .map((r) => runSchema.parse(r)),
       hasMore: page.hasMore,
     });
   });

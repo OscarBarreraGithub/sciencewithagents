@@ -244,6 +244,16 @@ it('offers read-only exact preview and retry-safe supported apply while the owne
     );
     expect(store.agent(manager)).toMatchObject({ status: 'interrupted', autoTurns: 100 });
     expect(runtime.clients.size).toBe(0);
+    const chat = (await request(`/api/agents/${manager}`)).json();
+    expect(
+      chat.runs.every((run: { status: string }) =>
+        ['queued', 'running', 'completed', 'failed', 'interrupted', 'cancelled'].includes(
+          run.status,
+        ),
+      ),
+    ).toBe(true);
+    expect(chat.entries.length).toBeGreaterThan(0);
+    expect(store.runs(['coalesced'])).toHaveLength(216);
   } finally {
     await app.close();
   }
