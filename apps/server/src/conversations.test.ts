@@ -84,7 +84,7 @@ it('creates one empty private conversation through duplicate requests without a 
   expect(store.agents()).toHaveLength(1);
   expect(store.events().filter((event) => event.type === 'conversation.created')).toHaveLength(1);
   expect((await app.inject({ url: '/api/conversations', headers })).json().conversations).toEqual([
-    first.json(),
+    { ...first.json(), lastActivityAt: agent.createdAt },
   ]);
   const work = store.register(join(root, 'work-project'), 'Actual project', '');
   const projects = (await app.inject({ url: '/api/snapshot', headers })).json().projects;

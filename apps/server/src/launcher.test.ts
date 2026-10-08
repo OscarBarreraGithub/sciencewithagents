@@ -664,7 +664,7 @@ describe('manual app launcher ownership', () => {
     expect(snapshot.agents).toEqual([]);
     expect(snapshot.projects).toEqual([]);
     const pacing = await read('/api/pulsar');
-    expect(pacing.policy.enabled).toBe(true);
+    expect(pacing.policy.enabled).toBe(false);
     expect(pacing.jobs).toEqual([]);
     expect(await command(value, 'stop')).toBe('stopped');
     await eventually(() => absent(value.port));

@@ -1232,7 +1232,7 @@ describe('manager capabilities and task convergence', () => {
       agentId: module.id,
       message: 'Please share the interface acceptance evidence.',
     });
-    expect(store.entries(module.id).at(-1)?.title).toBe('Fixture manager');
+    expect(store.entries(module.id).at(-1)?.title).toBe('Fixture');
     await runtime.initialize();
     await expect
       .poll(() =>
@@ -1680,7 +1680,7 @@ describe('manager capabilities and task convergence', () => {
       agentId: a.id,
       message: 'Please inspect this evidence.',
     });
-    expect(store.entries(a.id)[0].title).toBe('Fixture manager');
+    expect(store.entries(a.id)[0].title).toBe('Fixture');
     expect(store.runs().find((r) => r.agentId === a.id)?.sourceId).toBe(manager);
     const other = store.register(join(root, 'other'), 'Other', '');
     await expect(

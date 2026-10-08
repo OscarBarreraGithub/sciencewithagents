@@ -36,8 +36,9 @@ Enabled local native access also batches that member's new confirmed shared orig
 for inexpensive feed summaries and labels through the central Bulk model level. Each
 computer handles its own sources; no selected writer or private history is required.
 Originals remain readable, opening a chat starts no summary turn, and failed/uncertain
-summary runs are retained without replay. This new local lane still needs real-provider
-and separate-computer acceptance; see [summary limits](GROUP_PROMOTION.md#per-member-local-feed-summaries).
+summary runs are retained without replay. One real Claude batch passed with synthetic
+publication receipts; real group publication and separate-computer acceptance remain open.
+See [summary limits](GROUP_PROMOTION.md#per-member-local-feed-summaries).
 
 ## Report an issue
 

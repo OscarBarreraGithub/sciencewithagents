@@ -26,8 +26,10 @@ Summary publication retries use one saved operation and the existing authenticat
 source/delivery protocol. Summaries are append-only revisions with the exact original
 payload, author and source reference; feed/chat presentation shows one latest revision.
 No private messages, personal history or other members' originals enter this lane.
-Labels are reading aids, not task or execution authority. These limits are local-runtime
-checks, not real-provider or two-person acceptance.
+Labels are reading aids, not task or execution authority. A bounded real Claude batch
+returned valid summaries for two supplied originals without tools or a repeated run.
+That check used synthetic publication receipts; it does not establish live group
+publication or two-person acceptance.
 
 The selected-writer protocol below remains separate for older retained activity. It
 does not gate direct original delivery or these member-owned batches.

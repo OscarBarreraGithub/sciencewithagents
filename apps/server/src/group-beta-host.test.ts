@@ -121,7 +121,7 @@ function fixture() {
           memberId: randomUUID(),
           installationId: randomUUID(),
           displayName: body.displayName,
-          state: 'pending' as const,
+          state: 'active' as const,
         });
       members.set(bearer, identity);
       return reply({ kind: 'identity', identity });
@@ -169,7 +169,7 @@ function fixture() {
   };
 }
 
-it('fresh beta hosts create, invite and approve with separate local bearers and no operator capabilities in invitations', async () => {
+it('fresh beta hosts create and join directly with separate local bearers and no operator capabilities in invitations', async () => {
   const f = fixture(),
     creator = f.installation('creator'),
     member = f.installation('member');
@@ -197,14 +197,9 @@ it('fresh beta hosts create, invite and approve with separate local bearers and 
     displayName: 'Mateo',
     invitation: `http://127.0.0.1/#${invite.fragment}`,
   });
-  const pending = await creator.pending({ handle: opened.group.handle });
-  await creator.approve({
-    handle: opened.group.handle,
-    key: randomUUID(),
-    requestId: pending.requests[0].requestId,
-    confirmation: joined.confirmation,
-  });
+  expect(joined.group.state).toBe('active');
   expect((await member.open({ handle: joined.group.handle })).member.displayName).toBe('Mateo');
+  expect(f.calls.some((c) => c.body.kind === 'pending' || c.body.kind === 'approve')).toBe(false);
   expect(
     new Set(
       f.calls.filter((c) => ['initialize', 'join'].includes(c.body.kind)).map((c) => c.bearer),

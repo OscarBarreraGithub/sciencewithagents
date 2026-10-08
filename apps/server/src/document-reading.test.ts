@@ -241,7 +241,8 @@ describe.skipIf(!readerExecutable('pandoc'))('arXiv source rules', () => {
       '\\newcommand{\\be}{\\begin{equation}}\\newcommand{\\ee}{\\end{equation}}',
     );
     const math = /<span class="math display">([^<]*)<\/span>/.exec(reading.html)?.[1] ?? '';
-    expect(math).toMatch(/\\begin\{equation\}\s*x=1\s*\\end\{equation\}/);
+    // Pandoc versions retain the equation environment inside \[...\] or normalize it.
+    expect(math).toMatch(/^\\\[\s*(?:x=1|\\begin\{equation\}\s*x=1\s*\\end\{equation\})\s*\\\]$/);
     expect(math).not.toMatch(/^\\\[\s*\}|\{\s*\\\]$/);
   });
 

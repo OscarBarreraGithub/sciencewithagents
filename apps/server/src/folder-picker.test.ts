@@ -273,9 +273,7 @@ it.each([false, true])(
     expect(store.projects()).toHaveLength(1);
     expect(result.json().project.name).toBe('Planetary observations');
     expect(store.projects()[0]!.root).toBe(await git(folder, ['rev-parse', '--show-toplevel']));
-    expect(store.agent(result.json().project.managerId).name).toBe(
-      'Planetary observations manager',
-    );
+    expect(store.agent(result.json().project.managerId).name).toBe('Planetary observations');
     expect(store.agent(result.json().project.managerId).provider).toBe('claude');
     await app.close();
     await open();
