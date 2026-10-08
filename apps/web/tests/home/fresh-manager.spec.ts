@@ -136,7 +136,7 @@ test('Spawn a fresh manager in a reused folder, send an idea and remove it witho
     await expect
       .poll(async () => (await (await page.request.get(`/api/agents/${id}`)).json()).agent.model)
       .toBe('demo');
-    expect(detail.agent.name).toBe(`${name} manager`);
+    expect(detail.agent.name).toBe(name);
     expect(detail.entries).toEqual([]);
     expect(detail.runs).toEqual([]);
     await brief
@@ -174,10 +174,10 @@ test('Spawn a fresh manager in a reused folder, send an idea and remove it witho
     );
     expect(readFileSync(join(folder, 'old-session.jsonl'), 'utf8')).toContain('Do not import');
     await page.goto(`/#/chat/${id}`);
-    await expect(page.getByText('This manager was removed.', { exact: false })).toBeVisible();
-    await expect(
-      page.getByRole('textbox', { name: `Message ${name} manager`, exact: true }),
-    ).toHaveCount(0);
+    await expect(page.getByText('Archived conversation.', { exact: false })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: `Message ${name}`, exact: true })).toHaveCount(
+      0,
+    );
   } finally {
     releaseSelection();
     await page.unrouteAll({ behavior: 'wait' });

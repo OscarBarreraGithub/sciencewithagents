@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { chatImageReference, mirrorPage, type MirrorState } from '@dock/shared';
+import { chatImageReference, mirrorPage, promptTextLimit, type MirrorState } from '@dock/shared';
 
 const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==',
@@ -60,6 +60,14 @@ test('a mixed batch keeps typing while uploading across managed Notepad and relo
       'Nothing from the new selection was uploaded',
     );
     await expect(composer.getByRole('link', { name: 'paper.pdf', exact: true })).toBeVisible();
+    const fit = await composer.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      available: element.parentElement!.getBoundingClientRect().height,
+    }));
+    expect(fit.height).toBeLessThanOrEqual(fit.available * 0.65 + 2);
+    const attached = composer.getByRole('link', { name: 'paper.pdf', exact: true });
+    await attached.scrollIntoViewIfNeeded();
+    await expect(attached).toBeInViewport();
     await expect(composer.getByRole('button', { name: 'Send message' })).toBeDisabled();
     await composer.getByRole('button', { name: 'Open notepad', exact: true }).click();
     const pad = page.getByRole('dialog');
@@ -225,7 +233,7 @@ test('a confirmed upload that cannot fit the draft retries attachment without an
   await page.goto(`/#/chat/${id}`);
   const composer = page.locator('.composer'),
     area = composer.getByRole('textbox');
-  await area.fill('x'.repeat(24000));
+  await area.fill('x'.repeat(promptTextLimit));
   await expect(composer.getByRole('button', { name: 'Attach files', exact: true })).toBeEnabled();
   await composer.getByLabel('Choose files').setInputFiles([textFile('fit.txt')]);
   await expect(composer.getByRole('alert')).toContainText('Shorten your message');

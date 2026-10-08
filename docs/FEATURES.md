@@ -3,6 +3,10 @@
 This describes connected source behavior, not a blanket release certification.
 [Current status](STATUS.md) lists open failures, unfinished features and device limits.
 
+Short phone views keep chat tools beside the title and shrink the draft with the visible
+keyboard area. Upload previews and errors scroll within a bounded composer, leaving the
+conversation accessible. Desktop and phone-size checks are separate from physical iPhone acceptance.
+
 | Area                 | Available behavior                                                                                                    | Boundary                                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Home                 | Remaining allowances, computer snapshot, running projects, Ideas, To-dos, Completed/Undo and human action items       | Readings show freshness; missing data is not zero usage                                             |

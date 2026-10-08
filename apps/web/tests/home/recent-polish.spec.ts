@@ -382,12 +382,7 @@ test('Home uses the alien brand and functional headings, and QUARK has no transc
   await expect(
     page.getByText(/One home for your agents|Your ideas, in good hands|Your agents, together/i),
   ).toHaveCount(0);
-  await expect(page.locator('.overview-destinations a')).toHaveText([
-    /Chats/,
-    /Groups/,
-    /Apps/,
-    /QUARK/,
-  ]);
+  await expect(page.locator('.overview-destinations a')).toHaveText([/Chats/, /Apps/, /QUARK/]);
   await noOverflow(page);
   await page.screenshot({ path: info.outputPath('home.png') });
   await page.goto('/#/work');
@@ -525,7 +520,7 @@ test('internal development managers stay out of owner lists, while a newly creat
     await route.fulfill({ json: state });
   });
   await page.goto('/#/managers');
-  await expect(page.getByRole('button', { name: 'Managers', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('button', { name: 'Projects', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );

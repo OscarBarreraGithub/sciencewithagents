@@ -73,7 +73,7 @@ test('spawn an independently configured manager, retain notepad versions and sen
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page
     .getByRole('group', { name: 'Start new' })
-    .getByRole('link', { name: /Project manager/ })
+    .getByRole('link', { name: /New project/ })
     .click();
   await page.getByLabel('Project name', { exact: true }).fill(name);
   const manager = page.getByRole('group', { name: 'Manager', exact: true });
@@ -194,7 +194,7 @@ test('spawn an independently configured manager, retain notepad versions and sen
   await expect(page.locator('.message.user').filter({ hasText: original })).toHaveCount(1);
   await completedRead;
   await expect(page.locator('.message.assistant')).toContainText('demo mode');
-  const composer = page.getByRole('textbox', { name: `Message ${name} manager`, exact: true });
+  const composer = page.getByRole('textbox', { name: `Message ${name}`, exact: true });
   await expect(composer).toHaveValue('');
   expect(
     await page.evaluate(() => ({
@@ -499,11 +499,11 @@ test('projects and conversations have panel scrolling and reachable controls at 
     path: `../../data/screenshots/workspace/${info.project.name}-projects.png`,
   });
   await page.goto('/#/chats');
-  await page.getByRole('button', { name: 'Managers', exact: true }).click();
+  await page.getByRole('button', { name: 'Projects', exact: true }).click();
   await page.getByRole('textbox', { name: 'Find a conversation' }).fill('Fieldnotes');
   await expect(page.locator('.flow-person')).toHaveCount(1);
   await page.locator('.flow-person').click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Fieldnotes manager');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Fieldnotes');
   const violations = await page.evaluate(() =>
     [...document.querySelectorAll('.flow-page button, .flow-page input, .flow-page a')]
       .filter((node) => {

@@ -12,3 +12,8 @@ Build first with `sh scripts/pnpm build`.
 Tests use a disposable demo server and make no real model calls. Browser profiles,
 screenshots, traces and runtime databases live only under ignored `data/`. They are not
 part of the shared source or normal installation. Do not point tests at an owner's data.
+
+Journey network fixtures block service workers so requests reach Playwright route stubs on
+Chromium and WebKit. The real notification-worker registration check explicitly enables them;
+the separate client-cache config also keeps real worker behavior enabled. This fixture choice
+does not disable caching or push in the installed app.

@@ -292,9 +292,7 @@ test('an interrupted first open offers the same saved retry beside a short recon
     release();
     const notice = page.locator('.flow-chat-notice.workspace-reconnect-notice');
     const retry = notice.getByRole('button', { name: 'Retry connection', exact: true });
-    await expect(notice).toContainText(
-      'This browser’s conversation list needs to reconnect. Your messages and draft are kept.',
-    );
+    await expect(notice).toContainText('Connection interrupted.');
     await expect(notice).not.toContainText('Retry the previous workspace change');
     await expect(retry).toBeEnabled();
     await expect(retry).toBeInViewport();

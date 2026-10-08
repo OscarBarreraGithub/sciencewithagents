@@ -836,7 +836,7 @@ test('crowded readings keep long names, large groups and whole-computer CPU insi
   for (const panel of [apps, projects]) {
     const height = await panel.locator('.health-scroll').evaluate((e) => e.clientHeight);
     expect(height).toBeLessThanOrEqual(320);
-    await expect(panel.locator('.health-panel-hint')).not.toBeEmpty();
+    await expect(panel.locator('.health-panel-hint')).toHaveCount(0);
   }
   await apps.getByRole('button', { name: 'Memory', exact: true }).click();
   await expect(apps.locator('.health-row').first()).toContainText('1200 GB');

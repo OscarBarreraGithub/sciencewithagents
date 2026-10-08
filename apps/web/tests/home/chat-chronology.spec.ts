@@ -30,10 +30,11 @@ test('Chats sorts managers, shared and saved offline chats by message activity t
   const connected = shared('Chronology connected editor', '2026-10-03T14:00:00Z');
   const undated = shared('Chronology undated editor');
   const saved = shared('Chronology retained offline', '2026-10-07T14:00:00Z');
-  await page.addInitScript(
-    (cached) => sessionStorage.setItem('dock:mirror-chats:local:all', JSON.stringify([cached])),
-    cached,
-  );
+  await page.addInitScript((cached) => {
+    const key = 'dock:mirror-chats:local:all';
+    // Seed the first visit without overwriting activity saved by later polling on reload.
+    if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, JSON.stringify([cached]));
+  }, cached);
   await page.route('**/api/snapshot', (route) =>
     route.fulfill({ json: { ...snapshot, agents: [busy, idle], approvals: [] } }),
   );
@@ -71,9 +72,9 @@ test('Chats sorts managers, shared and saved offline chats by message activity t
   const expected = [
     saved.title,
     cached.title,
-    idle.name,
+    'Chronology recent',
     connected.title,
-    busy.name,
+    'Chronology old working',
     undated.title,
   ];
   await expect(rows.locator('strong')).toHaveText(expected);
@@ -102,8 +103,8 @@ test('Chats sorts managers, shared and saved offline chats by message activity t
     connected.title,
     saved.title,
     cached.title,
-    idle.name,
-    busy.name,
+    'Chronology recent',
+    'Chronology old working',
     undated.title,
   ]);
   const newerRead = polls;
@@ -116,8 +117,8 @@ test('Chats sorts managers, shared and saved offline chats by message activity t
     connected.title,
     saved.title,
     cached.title,
-    idle.name,
-    busy.name,
+    'Chronology recent',
+    'Chronology old working',
     undated.title,
   ]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

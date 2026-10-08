@@ -395,7 +395,7 @@ test('history opens retained evidence without executing work and workspace recon
   ).toBe('Retain, never replay');
   await page.getByRole('link', { name: 'Find a conversation', exact: true }).click();
   await page.locator(`a[href="#/chat/${project.managerId}"]`).first().click();
-  await expect(page.getByRole('textbox', { name: 'Message Fieldnotes manager' })).toHaveValue(text);
+  await expect(page.getByRole('textbox', { name: 'Message Fieldnotes' })).toHaveValue(text);
   await page.getByRole('button', { name: 'Configure', exact: true }).click();
   await page.getByRole('link', { name: 'Saved history', exact: true }).click();
   await expect(page.getByLabel('Find in saved history')).toBeVisible();

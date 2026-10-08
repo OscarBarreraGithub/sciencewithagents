@@ -576,8 +576,15 @@
   }
 }
 @media (max-height: 500px) and (pointer: coarse) {
+  .mirror-conversation:has(.mirror-composer[data-keyboard]) .mirror-header {
+    padding-block: 4px;
+  }
+  .mirror-conversation:has(.mirror-composer[data-keyboard]) .mirror-header > div > p {
+    display: none;
+  }
   .mirror-input-row textarea {
     font-size: var(--text-reading);
+    max-height: max(44px, min(calc(var(--home-visible-height, 100dvh) * 0.15), 88px));
   }
 }
 /* One tools row under the draft: timing, attachments, Notepad and Stop. Nothing above the

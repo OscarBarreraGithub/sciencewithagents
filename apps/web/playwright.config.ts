@@ -7,6 +7,9 @@ export default defineConfig({
   timeout: 30_000,
   use: {
     baseURL: 'http://127.0.0.1:4339',
+    // App service workers can bypass Playwright network fixtures, especially on WebKit.
+    // Real worker checks opt in separately; ordinary journey stubs must stay authoritative.
+    serviceWorkers: 'block',
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },

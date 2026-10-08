@@ -71,6 +71,27 @@
   background: linear-gradient(to right, transparent, var(--surface, #fff) 45%);
   pointer-events: none;
 }
+/* Upload progress and previews need normal rows even when the short-screen fit
+   mode folds ordinary tools. Bound the panel, leaving the conversation visible. */
+:is(.main-chat.has-selection .chat-pane, .assistant-fullscreen)
+  .flow-chat-main
+  .composer:has(.chat-image-previews, .chat-image-error) {
+  max-height: 65%;
+  min-height: 0;
+  overflow-y: auto;
+  flex-shrink: 1;
+}
+.flow-chat-main .composer:has(.chat-image-previews, .chat-image-error) .composer-toolbar,
+.flow-chat-main
+  .composer:has(.chat-image-previews, .chat-image-error)
+  .composer-toolbar
+  > div:first-child {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+.flow-chat-main .composer .composer-toolbar > div > .chat-image-previews {
+  flex-basis: 100%;
+}
 .session-command-list {
   display: grid;
   gap: 8px;

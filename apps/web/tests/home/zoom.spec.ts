@@ -309,6 +309,12 @@ for (const size of [
           const measured = await page.evaluate(() => {
             const panel = document.querySelector('.home-content')!;
             const panelOverflowPx = panel.scrollHeight - panel.clientHeight;
+            const previousTop = panel.scrollTop;
+            panel.scrollTop = previousTop === 0 ? 1 : 0;
+            const panelScrolls =
+              /^(auto|scroll)$/.test(getComputedStyle(panel).overflowY) &&
+              panel.scrollTop !== previousTop;
+            panel.scrollTop = previousTop;
             return {
               width: innerWidth,
               height: innerHeight,
@@ -316,16 +322,17 @@ for (const size of [
               documentHeight: document.documentElement.scrollHeight,
               panelOverflowPx,
               panelScroll: panelOverflowPx > 8,
-              hint: document.querySelector('.home-scroll-hint')?.textContent,
+              panelScrolls,
             };
           });
           expect(measured.documentWidth).toBeLessThanOrEqual(measured.width);
           expect(measured.documentHeight).toBeLessThanOrEqual(measured.height);
           if (measured.panelScroll)
-            await expect(
-              page.locator('.home-scroll-hint'),
+            expect(
+              measured.panelScrolls,
               JSON.stringify({ size, factor, route, ...measured }),
-            ).not.toBeEmpty();
+            ).toBe(true);
+          await expect(page.locator('.home-scroll-hint')).toHaveCount(0);
           measurements.push({ size, factor, route, ...measured });
         }
         await page.screenshot({ path: join(root, `${size.width}-${factor}-form.png`) });

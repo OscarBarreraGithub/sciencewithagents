@@ -64,7 +64,7 @@ test('queued chat shows its first saved hold, recovers failed reads and removes 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('queued-hold.png') });
   failed = true;
-  await expect(status).toHaveText('Queue status is unavailable. Your message is saved.');
+  await expect(status).toHaveText('Queued · reconnecting…');
   await expect(status).not.toContainText(reason);
   reason =
     'A native terminal controls this agent or task. Return it to chat to release queued work.';
@@ -73,7 +73,9 @@ test('queued chat shows its first saved hold, recovers failed reads and removes 
   await page.reload();
   await expect(status).toHaveText(reason);
   f.setStatus('running');
-  await expect(status).toHaveText(`${f.agent.name} is working`, { timeout: 10_000 });
+  await expect(status).toHaveText(`${f.agent.name.replace(/ manager$/i, '')} is working`, {
+    timeout: 10_000,
+  });
   const afterStart = reads;
   // A later conversation refresh is enough to observe the completed state.
   f.setStatus('idle');
@@ -114,9 +116,7 @@ test('an old in-flight queue read cannot replace the next conversation reason', 
   });
   await page.goto(`/#/chat/${f.agent.id}`);
   await firstRead;
-  await expect(page.locator('.conversation .thinking')).toHaveText(
-    'Checking why this message is waiting…',
-  );
+  await expect(page.locator('.conversation .thinking')).toHaveText('Queued');
   await page.evaluate((id) => (location.hash = `#/chat/${id}`), other.id);
   const status = page.locator('.conversation .thinking');
   await expect(status).toHaveText('Current conversation hold.');

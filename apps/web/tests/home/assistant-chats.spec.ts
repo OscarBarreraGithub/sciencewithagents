@@ -148,8 +148,10 @@ test('QUARK opens the normal full-screen chat, retains its model controls and re
   await expect.poll(async () => (await composer.boundingBox())!.height).toBeGreaterThan(70);
   expect((await composer.boundingBox())!.height).toBeLessThanOrEqual(221);
   const conversation = chat.locator('.conversation');
+  const headerHeight = (await chat.locator('.assistant-fullscreen-bar').boundingBox())!.height;
+  const historyHeight = (await chat.locator('.prompt-history-actions').boundingBox())!.height;
   expect((await conversation.boundingBox())!.height).toBeGreaterThan(
-    (await chat.boundingBox())!.height * 0.45,
+    ((await chat.boundingBox())!.height - headerHeight - historyHeight) * 0.5,
   );
   expect(sends).toEqual([]);
 });

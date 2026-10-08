@@ -48,10 +48,10 @@ test('explicit helpers stay excluded while same-title personal, imported and sha
   await page.goto('/#/chats');
   await page.getByRole('textbox', { name: 'Find a conversation' }).fill(name);
   await expect(page.locator('.flow-person')).toHaveCount(4);
-  await page.getByRole('button', { name: 'Managers', exact: true }).click();
+  await page.getByRole('button', { name: 'Projects', exact: true }).click();
   await expect(page.locator('.flow-person')).toHaveCount(1);
   await expect(page.locator('.flow-person')).toHaveAttribute('href', `#/chat/${owner.id}`);
-  await page.getByRole('button', { name: 'Managers', exact: true }).click();
+  await page.getByRole('button', { name: 'Projects', exact: true }).click();
   await expect(page.locator('.flow-person')).toHaveCount(4);
   await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
     'aria-pressed',
@@ -151,7 +151,7 @@ test('conversation filters keep whole labels and reachable touch targets at narr
       });
     });
     expect(layout).toEqual(
-      ['All', 'Managers', 'VS Code', 'Misc', 'Groups'].map((name) => ({
+      ['All', 'Projects', 'VS Code', 'Misc', 'Groups'].map((name) => ({
         name,
         lines: 1,
         fits: true,
@@ -162,7 +162,7 @@ test('conversation filters keep whole labels and reachable touch targets at narr
       expect(
         await filters.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       ).toBe(true);
-    for (const name of ['Managers', 'VS Code', 'Misc']) {
+    for (const name of ['Projects', 'VS Code', 'Misc']) {
       const button = filters.getByRole('button', { name, exact: true });
       await button.click();
       await expect(button).toHaveAttribute('aria-pressed', 'true');

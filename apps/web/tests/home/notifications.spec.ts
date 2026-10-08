@@ -190,37 +190,38 @@ test('iPhone Safari outside the Home Screen app is told how to enable it', async
   await expectFits(page);
 });
 
-test('the real demo entry reports notifications as unavailable and serves a push and static-assets worker', async ({
-  page,
-  request,
-}, info) => {
-  await page.goto('/#/notifications');
-  await expect(page.getByRole('region', { name: 'Notifications' })).toContainText(
-    'Notifications are not available on this computer entry.',
-  );
-  const worker = await request.get('/notifications-sw.js');
-  expect(worker.ok()).toBe(true);
-  expect(worker.headers()['content-type']).toMatch(/javascript/);
-  expect(worker.headers()['cache-control']).toBe('no-store');
-  const source = await worker.text();
-  expect(source).toContain("addEventListener('push'");
-  expect(source).toContain("addEventListener('fetch'");
-  expect(source).toContain('if (kind) event.respondWith(serveAsset(event, kind))');
-  test.skip(info.project.name !== 'desktop', 'Real registration is checked once in Chromium.');
-  const state = await page.evaluate(async () => {
-    const registration = await navigator.serviceWorker.register('/notifications-sw.js', {
-      scope: '/',
+const workerTest = test.extend({ serviceWorkers: 'allow' });
+workerTest(
+  'the real demo entry reports notifications as unavailable and serves a push and static-assets worker',
+  async ({ page, request }, info) => {
+    await page.goto('/#/notifications');
+    await expect(page.getByRole('region', { name: 'Notifications' })).toContainText(
+      'Notifications are not available on this computer entry.',
+    );
+    const worker = await request.get('/notifications-sw.js');
+    expect(worker.ok()).toBe(true);
+    expect(worker.headers()['content-type']).toMatch(/javascript/);
+    expect(worker.headers()['cache-control']).toBe('no-store');
+    const source = await worker.text();
+    expect(source).toContain("addEventListener('push'");
+    expect(source).toContain("addEventListener('fetch'");
+    expect(source).toContain('if (kind) event.respondWith(serveAsset(event, kind))');
+    test.skip(info.project.name !== 'desktop', 'Real registration is checked once in Chromium.');
+    const state = await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.register('/notifications-sw.js', {
+        scope: '/',
+      });
+      await navigator.serviceWorker.ready;
+      const worker = registration.active!;
+      if (worker.state !== 'activated')
+        await new Promise((resolve) => worker.addEventListener('statechange', resolve));
+      const active = worker.state;
+      await registration.unregister();
+      return active;
     });
-    await navigator.serviceWorker.ready;
-    const worker = registration.active!;
-    if (worker.state !== 'activated')
-      await new Promise((resolve) => worker.addEventListener('statechange', resolve));
-    const active = worker.state;
-    await registration.unregister();
-    return active;
-  });
-  expect(state).toBe('activated');
-});
+    expect(state).toBe('activated');
+  },
+);
 
 test('a notification tap stays on its entry computer until this tab explicitly switches', async ({
   page,

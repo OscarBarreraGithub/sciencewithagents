@@ -88,7 +88,7 @@ test('slash shortcuts open the matching confirmation and a lost context-command 
   const owner = await project(page);
   await page.goto(`/#/chat/${owner.managerId}`);
   const composer = page.getByRole('textbox', {
-    name: `Message ${owner.name} manager`,
+    name: `Message ${owner.name}`,
     exact: true,
   });
   await composer.fill('Retain this visible history.');
@@ -150,7 +150,7 @@ test('module manager and task drafts recover the same actual creations after los
   await page.reload();
   await page.getByRole('button', { name: 'Add manager', exact: true }).click();
   await page.getByRole('button', { name: 'Check manager request', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Design manager');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Design');
   expect(managers[0]).toEqual(managers[1]);
   const snapshot = await (await page.request.get('/api/snapshot')).json();
   const added = snapshot.agents.filter(
@@ -206,7 +206,7 @@ test('literal absolute paths can be sent while native commands keep an explicit 
   const owner = await project(page);
   await page.goto(`/#/chat/${owner.managerId}`);
   const composer = page.getByRole('textbox', {
-    name: `Message ${owner.name} manager`,
+    name: `Message ${owner.name}`,
     exact: true,
   });
   const text = '/Users/example/project Please explain this folder.';

@@ -2063,6 +2063,16 @@
 /* A landscape phone keyboard leaves under 300px: the header, the 48px message floor and the
    toolbar take most of it, so a 30% textarea would push Send below the visible viewport. */
 @media (max-height: 500px) and (pointer: coarse) {
+  /* Landscape has room beside the title; a second tools row consumes the chat. */
+  .main-chat.has-selection .chat-pane-title h1 {
+    grid-column: 2;
+  }
+  .main-chat.has-selection .chat-pane-tools {
+    grid-row: 1;
+  }
+  .main-chat.has-selection .chat-pane-meta {
+    display: none;
+  }
   .main-chat.has-selection .chat-pane .flow-chat-main .composer textarea {
     max-height: min(calc(var(--home-visible-height, 100dvh) * 0.24), 80px);
   }
