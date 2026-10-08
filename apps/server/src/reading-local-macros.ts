@@ -16,10 +16,10 @@ function undefinedNative(name: string) {
 }
 const programming =
   /\\(?:if[A-Za-z]*|else|fi|begingroup|endgroup|bgroup|egroup|begin|end|csname|catcode|makeatletter)\b/;
-// Scoped font atoms or one Latin atom with a locally scoped roman subscript.
+// Scoped font atoms, one Latin atom with a local roman subscript, or native epsilon.
 // No definitions, file commands, argument syntax or unscoped stateful switches.
 const literalBody =
-  /^(?:\\(mathrm|mathbf|mathbb|mathcal|mathfrak|mathsf|mathtt)\{[A-Za-z0-9 ]{1,64}\}|[A-Za-z]_\{\\(rm) [A-Za-z0-9 ]{1,64}\})$/;
+  /^(?:\\(mathrm|mathbf|mathbb|mathcal|mathfrak|mathsf|mathtt)\{[A-Za-z0-9 ]{1,64}\}|[A-Za-z]_\{\\(rm) [A-Za-z0-9 ]{1,64}\}|\\(epsilon))$/;
 export type LocalStyle = { file: string; text: string };
 
 /** This is a small data vocabulary, not a TeX interpreter. Collisions anywhere in the
@@ -71,7 +71,7 @@ export function localReadingMacros(source: string, styles: LocalStyle[], health:
             ? 'scoped-or-conditional'
             : !literal
               ? 'unsupported-definition'
-              : counts.has(literal[1] ?? literal[2]!) || !undefinedNative(name)
+              : counts.has(literal[1] ?? literal[2] ?? literal[3]!) || !undefinedNative(name)
                 ? 'conflicting-definition'
                 : null;
       bindings.push({

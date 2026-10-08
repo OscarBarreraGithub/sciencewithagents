@@ -10,6 +10,11 @@ turn-failure pair may share one display row; both record IDs, timestamps and raw
 remain available. Distinct failures and owner messages remain separate, and recovery uses
 the existing server-provided **Retry message** or **Continue** control.
 
+Known internal agent-tool input corrections appear in the existing activity disclosure,
+with their exact original validation text and record identity. Their raw arrays do not
+become chat previews. Permission failures, owner requests and unclassified errors remain
+in the main conversation; this display grouping does not retry or change a tool call.
+
 ## The normal journey
 
 1. In **Phone access**, copy the Cloudflare setup prompt into an external agent on the

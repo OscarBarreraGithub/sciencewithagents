@@ -51,6 +51,7 @@ import { ChatCommands } from './ChatCommands';
 import { PromptHistory, scrollToPrompt } from './PromptHistory';
 import { promptLengthError } from './promptLength';
 import { providerErrorRows } from './providerErrors';
+import { internalToolValidation } from './toolValidation';
 
 function SendTiming({
   steer,
@@ -141,6 +142,7 @@ export function Markdown({ children }: { children: string }) {
 
 // Consecutive tool calls become one activity row, so messages stay the timeline.
 type TimelineRow = Entry | Entry[];
+type FoldedReply = 'commentary' | 'earlier' | 'validation';
 const ownerInput = (entry: Entry) =>
   entry.kind === 'user' || (entry.kind === 'system' && entry.title === 'Owner steering');
 /**
@@ -160,13 +162,17 @@ function foldedReplies(entries: Entry[], runs: AgentDetail['runs']) {
     if (entry.runId && entry.kind === 'system' && entry.title === 'Owner steering')
       steered.add(entry.runId);
   }
-  const folded = new Map<string, 'commentary' | 'earlier'>();
+  const folded = new Map<string, FoldedReply>();
   // Per run, walking backwards: has a later reply been seen, and a tool since then?
   const later = new Map<string, { reply: boolean; toolBeforeReply: boolean }>();
   for (let index = entries.length - 1; index >= 0; index--) {
     const entry = entries[index]!;
     if (ownerInput(entry)) {
       later.clear();
+      continue;
+    }
+    if (internalToolValidation(entry)) {
+      folded.set(entry.id, 'validation');
       continue;
     }
     if (entry.kind === 'assistant' && !entry.image && entry.phase === 'commentary') {
@@ -208,27 +214,40 @@ function ToolGroup({
 }: {
   entries: Entry[];
   working: boolean;
-  folded: Map<string, 'commentary' | 'earlier'>;
+  folded: Map<string, FoldedReply>;
 }) {
   const [open, setOpen] = useState(false);
   const [limit, setLimit] = useState(groupLimit);
   const tools = entries.filter((entry) => entry.kind === 'tool');
   const notes = entries.length - tools.length;
   const earlier = entries.filter((entry) => folded.get(entry.id) === 'earlier').length;
-  const updates = notes - earlier;
+  const validations = entries.filter((entry) => folded.get(entry.id) === 'validation').length;
+  const updates = notes - earlier - validations;
   const problems = tools.filter((entry) => failedTool(entry.status)).length;
   // The agent's own latest progress note describes the work; raw commands stay inside.
-  const latestNote = [...entries].reverse().find((entry) => entry.kind !== 'tool');
+  const latestNote = [...entries]
+    .reverse()
+    .find((entry) => entry.kind !== 'tool' && folded.get(entry.id) !== 'validation');
   const shown = entries.slice(-limit);
   return (
-    <details className="tool-group" onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details
+      className={`tool-group${validations ? ' has-input-corrections' : ''}`}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       <summary>
         <ChevronRight size={14} aria-hidden="true" />
         <span className="tool-group-count">
           {working ? 'Working · ' : ''}
-          {tools.length.toLocaleString()} {tools.length === 1 ? 'action' : 'actions'}
+          {tools.length
+            ? `${tools.length.toLocaleString()} ${tools.length === 1 ? 'action' : 'actions'}`
+            : validations
+              ? 'Agent tool activity'
+              : '0 actions'}
           {updates ? ` · ${updates} ${updates === 1 ? 'update' : 'updates'}` : ''}
           {earlier ? ` · ${earlier} earlier ${earlier === 1 ? 'reply' : 'replies'}` : ''}
+          {validations
+            ? ` · ${validations} input ${validations === 1 ? 'correction' : 'corrections'}`
+            : ''}
           {problems ? ` · ${problems} failed` : ''}
         </span>
         {latestNote && <span className="tool-group-current">{firstLine(latestNote.text)}</span>}
@@ -245,8 +264,12 @@ function ToolGroup({
             </button>
           )}
           {shown.map((entry) =>
-            entry.kind === 'tool' ? (
-              <ToolEntry key={entry.id} entry={entry} />
+            entry.kind === 'tool' || folded.get(entry.id) === 'validation' ? (
+              <ToolEntry
+                key={entry.id}
+                entry={entry}
+                validation={folded.get(entry.id) === 'validation'}
+              />
             ) : (
               <div className="tool-note" key={entry.id}>
                 <small>{folded.get(entry.id) === 'earlier' ? 'Earlier reply' : 'Update'}</small>
@@ -261,18 +284,23 @@ function ToolGroup({
     </details>
   );
 }
-function ToolEntry({ entry }: { entry: Entry }) {
+function ToolEntry({ entry, validation = false }: { entry: Entry; validation?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <details className="tool-entry" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>
         <Terminal size={14} />
-        <span>{entry.title}</span>
-        <span className={`tool-state${failedTool(entry.status) ? ' failed' : ''}`}>
-          {entry.status}
+        <span>{validation ? 'Tool input correction' : entry.title}</span>
+        <span className={`tool-state${validation || failedTool(entry.status) ? ' failed' : ''}`}>
+          {validation ? 'input rejected' : entry.status}
         </span>
         <ChevronDown size={13} />
       </summary>
+      {open && validation && (
+        <p className="tool-validation-provenance">
+          This tool request was rejected. {entry.title} · Record: {entry.id} · Run: {entry.runId}
+        </p>
+      )}
       {open && <pre>{entry.text || 'Waiting for the result…'}</pre>}
     </details>
   );

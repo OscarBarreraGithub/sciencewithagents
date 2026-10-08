@@ -2322,3 +2322,16 @@
   flex: none;
   min-height: 44px;
 }
+
+.tool-group.has-input-corrections > summary,
+.tool-group.has-input-corrections .tool-entry > summary {
+  min-height: 44px;
+}
+.tool-group.has-input-corrections .tool-group-count {
+  flex-shrink: 1;
+  white-space: normal;
+}
+.tool-validation-provenance {
+  margin: 8px 10px;
+  overflow-wrap: anywhere;
+}

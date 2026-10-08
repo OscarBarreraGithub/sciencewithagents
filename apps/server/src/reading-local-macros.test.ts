@@ -25,6 +25,47 @@ describe('bounded local author macro data', () => {
       }),
     ).not.toThrow();
   });
+  it('restores exact author epsilon without changing the following math or font scope', () => {
+    const body = String.raw`\epsilon`;
+    const health = readingHealth();
+    const macros = localReadingMacros(
+      source,
+      [{ file: 'author.sty', text: String.raw`\newcommand{\eps}{\epsilon}` }],
+      health,
+    );
+    expect(macros).toEqual({ '\\eps': body });
+    expect(health.localMacros?.[0]).toMatchObject({
+      name: '\\eps',
+      status: 'restored',
+      reason: null,
+    });
+    const options = { throwOnError: true, trust: false, maxExpand: 1000, maxSize: 20, macros };
+    const withoutAnnotation = (value: string) =>
+      value.replace(/<annotation[^>]*>.*?<\/annotation>/g, '');
+    const rendered = katex.renderToString(String.raw`\eps+x`, options);
+    expect(withoutAnnotation(rendered)).toBe(
+      withoutAnnotation(katex.renderToString(body + '+x', options)),
+    );
+    expect(rendered).toContain('<mi>x</mi>');
+    expect(rendered).toContain(String.raw`\eps+x`);
+  });
+  it.each([
+    [String.raw`\newcommand{\eps}{\eps}`, '', 'unsupported-definition'],
+    [String.raw`\newcommand{\epsilon}{\epsilon}`, '', 'conflicting-definition'],
+    [
+      String.raw`\newcommand{\eps}{\epsilon}`,
+      String.raw`\renewcommand{\epsilon}{x}`,
+      'conflicting-definition',
+    ],
+    [String.raw`\newcommand{\eps}{\epsilon}`, String.raw`\def\eps{x}`, 'conflicting-definition'],
+    [String.raw`\iftrue\newcommand{\eps}{\epsilon}\fi`, '', 'scoped-or-conditional'],
+    [String.raw`\newcommand{\eps}[1]{\epsilon}`, '', 'unsupported-definition'],
+    [String.raw`\newcommand{\Otilde}{\Tilde{O}}`, '', 'unsupported-definition'],
+  ])('declines ambiguous epsilon or unsupported Tilde binding %s', (text, later, reason) => {
+    const health = readingHealth();
+    expect(localReadingMacros(source + later, [{ file: 'author.sty', text }], health)).toEqual({});
+    expect(health.localMacros?.[0]?.reason).toBe(reason);
+  });
   it.each([
     ['infd', String.raw`d_{\rm IF}`],
     ['trd', String.raw`d_{\rm tr}`],
