@@ -1,10 +1,4 @@
-import {
-  promptTextLimit,
-  queuedMessageReceiptSchema,
-  type Agent,
-  type AgentDetail,
-  type Run,
-} from '@dock/shared';
+import { promptTextLimit, queuedMessageReceiptSchema, type Agent, type Run } from '@dock/shared';
 import { api } from './api';
 import { EditableMessageQueue, type QueuedMessageOperations } from './EditableMessageQueue';
 import {
@@ -26,11 +20,15 @@ export function AppMessageQueue({ agent, runs }: { agent: Agent; runs: readonly 
       return { status: receipt.status, message: receipt.run };
     },
     read: async (id) => {
-      const detail = await api<AgentDetail>(`/agents/${agent.id}`);
-      return detail.runs.find((run) => run.id === id);
+      // Even an absent action receipt includes the exact current run. A paged
+      // conversation omitting an old input cannot establish its delivery state.
+      const receipt = queuedMessageReceiptSchema.parse(
+        await api(`/agents/${agent.id}/queued/${id}/receipts/${id}`),
+      );
+      return receipt.run;
     },
   };
-  return messages.length || operations.recoveries().length ? (
+  return (
     <EditableMessageQueue
       key={agent.id}
       target={{
@@ -44,6 +42,7 @@ export function AppMessageQueue({ agent, runs }: { agent: Agent; runs: readonly 
         queueEditable: !agent.nativeRootId && run.queueEditable,
       }))}
       operations={operations}
+      observation={runs}
     />
-  ) : null;
+  );
 }

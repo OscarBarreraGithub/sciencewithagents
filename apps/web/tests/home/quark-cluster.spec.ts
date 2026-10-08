@@ -265,9 +265,8 @@ test('old readings stay readable through sign-in loss and refresh recovers', asy
   await page.goto('/#/work');
   const panel = page.getByRole('region', { name: 'Lab cluster · Slurm cluster' });
   await expect(panel.getByText('Sign-in needed', { exact: true })).toBeVisible();
-  await expect(panel.getByRole('status')).toContainText(
-    'Batch jobs already submitted keep running',
-  );
+  const connectionMessage = panel.locator('.quark-cluster-message[role="status"]');
+  await expect(connectionMessage).toContainText('Batch jobs already submitted keep running');
   await expect(panel.getByText('Waiting: Priority')).toBeVisible();
   await expect(panel.getByRole('link', { name: /Simulation manager/ })).toBeVisible();
   await expect(panel.getByText('0.163')).toBeVisible();
@@ -302,7 +301,7 @@ test('old readings stay readable through sign-in loss and refresh recovers', asy
   await page.screenshot({ path: `../../data/screenshots/quark-cluster/${info.project.name}.png` });
   await panel.getByRole('button', { name: 'Refresh' }).click();
   await expect(panel.getByText('Connected', { exact: true })).toBeVisible();
-  await expect(panel.getByRole('status')).toHaveCount(0);
+  await expect(connectionMessage).toHaveCount(0);
   await expect(panel.getByText(/Not read in the latest reading/)).toHaveCount(0);
   expect(refreshes).toBe(1);
 });

@@ -29,6 +29,10 @@ conversation accessible. Desktop and phone-size checks are separate from physica
 | Updates and recovery | GitHub update check, automatic pre-update database copy, maintenance-agent assignment and source backups              | Agent handles customizations; quit/reopen is explicit. Source backup excludes private conversations |
 | Provider maintenance | Welcome has copyable terminal install/update commands; refresh usage and check native sign-in/models                  | Setup agent verifies the actual CLI version; desktop apps alone do not supply a verified CLI        |
 
+An open queued-message editor stops saving when another browser takes ownership or the
+message leaves the queue. Its local text and Versions remain available to copy or close.
+An omitted list item is checked against its exact saved record before deciding its state.
+
 **Computers → Open terminal** runs your own shell on the selected computer even at zero AI
 allowance; the app must remain running. See [local access](LOCAL_ACCESS.md#run-your-own-commands).
 

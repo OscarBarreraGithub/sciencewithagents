@@ -137,6 +137,7 @@ export function MirrorMessageQueue({
           })),
         ]}
         operations={operations}
+        observation={items}
         hasMore={nativeQueue?.queueHasMore}
         queueError={nativeQueue?.queueReadError}
       />

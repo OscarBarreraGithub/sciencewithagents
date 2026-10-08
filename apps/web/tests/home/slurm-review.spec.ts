@@ -185,7 +185,7 @@ async function serve(page: Page, emptyCatalogs = false) {
     catalogs.status = value;
     await route.fulfill({ json: value });
   });
-  return { state, mutations, catalogs };
+  return { state, mutations, catalogs, cluster };
 }
 const area = (page: Page) => page.getByRole('region', { name: 'Slurm submission review' });
 test.afterEach(async ({ page }) => {
@@ -446,10 +446,15 @@ test('review switches on only after an explicit owner choice and unsupported ser
   await area(page).getByRole('button', { name: 'Save review settings' }).click();
   await expect.poll(() => saves.length).toBe(1);
   expect(saves[0]).toMatchObject({ policy: { enabled: true } });
+  // Settle the save-triggered status read before replacing its route and navigating.
+  await expect(area(page).locator('header [role="status"]')).toHaveText('On');
   let reads = 0;
+  let available = false;
   await page.route('**/api/slurm-review', (route) => {
     reads++;
-    return route.fulfill({ status: 404, json: { error: 'Unknown route.' } });
+    return available
+      ? route.fulfill({ json: f.state })
+      : route.fulfill({ status: 404, json: { error: 'Unknown route.' } });
   });
   await page.reload();
   await expect.poll(() => reads).toBe(1);
@@ -457,6 +462,45 @@ test('review switches on only after an explicit owner choice and unsupported ser
   await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
   await page.waitForTimeout(100);
   expect(reads).toBe(1);
+  // A supported reconnect/reload must rediscover capability instead of retaining the 404.
+  available = true;
+  await page.reload();
+  await expect(area(page).getByRole('status')).toHaveText('On');
+  expect(reads).toBe(2);
+});
+
+test('an unsupported controller does not suppress review discovery on another computer', async ({
+  page,
+}) => {
+  const f = await serve(page);
+  let unsupportedReads = 0;
+  await page.route('**/api/slurm-review', (route) => {
+    unsupportedReads++;
+    return route.fulfill({ status: 404, json: { error: 'Unknown route.' } });
+  });
+  await page.goto('/#/work');
+  await expect.poll(() => unsupportedReads).toBe(1);
+  await expect(area(page)).toHaveCount(0);
+  const computer = randomUUID();
+  const prefix = `/api/hosts/${computer}/proxy`;
+  let selectedReads = 0;
+  await page.route(`**${prefix}/**`, async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname.slice(prefix.length);
+    if (path === '/slurm-review') {
+      selectedReads++;
+      return route.fulfill({ json: f.state });
+    }
+    if (path === '/cluster') return route.fulfill({ json: f.cluster });
+    url.pathname = '/api' + path;
+    return route.fulfill({ response: await route.fetch({ url: url.toString() }) });
+  });
+  // Computer selection is document-pinned; its supported UI action saves and reloads.
+  await page.evaluate((id) => localStorage.setItem('dock:host', id), computer);
+  await page.reload();
+  await expect(area(page).getByRole('status')).toHaveText('Off');
+  expect(selectedReads).toBe(1);
+  expect(unsupportedReads).toBe(1);
 });
 
 test('a failed browser receipt save stays visible and prevents policy writes', async ({

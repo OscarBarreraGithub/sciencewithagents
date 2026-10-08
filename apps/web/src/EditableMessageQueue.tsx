@@ -48,12 +48,15 @@ export function EditableMessageQueue({
   target,
   messages,
   operations,
+  observation,
   hasMore,
   queueError,
 }: {
   target: QueueEditorTarget;
   messages: readonly EditableQueuedMessage[];
   operations: QueuedMessageOperations;
+  /** Identity of the last authoritative list response, before filtering/mapping. */
+  observation: object;
   hasMore?: boolean;
   queueError?: 'unsupported' | 'unavailable';
 }) {
@@ -61,6 +64,13 @@ export function EditableMessageQueue({
   const scope = useRef(apiScope()).current;
   const [updates, setUpdates] = useState<Record<string, EditableQueuedMessage>>({});
   const [selected, setSelected] = useState<EditableQueuedMessage | null>(null);
+  const [inspection, setInspection] = useState<{
+    id: string;
+    record?: EditableQueuedMessage;
+    failed?: boolean;
+  } | null>(null);
+  const operationsRef = useRef(operations);
+  operationsRef.current = operations;
   const [steerOptions, setSteerOptions] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -77,8 +87,52 @@ export function EditableMessageQueue({
   const clientId = workspace.state?.client.id;
   const changed = (run: EditableQueuedMessage) => {
     setUpdates((saved) => ({ ...saved, [run.id]: run }));
+    setInspection((saved) => (saved?.id === run.id ? { id: run.id, record: run } : saved));
     setRecoveries(operations.recoveries());
   };
+  const selectedId = selected?.id;
+  const selectedMissing = !!selectedId && !messages.some((run) => run.id === selectedId);
+  useEffect(() => {
+    if (!selectedId || !selectedMissing) {
+      setInspection(null);
+      return;
+    }
+    // List absence is not a receipt. Inspect once per fresh parent list response,
+    // not on our own state updates or a freshly mapped presentation array.
+    let active = true;
+    setInspection({ id: selectedId });
+    void operationsRef.current.read(selectedId).then(
+      (record) => {
+        if (active) setInspection({ id: selectedId, record, failed: !record });
+      },
+      () => {
+        if (active) setInspection({ id: selectedId, failed: true });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [selectedId, selectedMissing, observation]);
+  const selectedLatest = selected
+    ? [
+        selected,
+        updates[selected.id],
+        inspection?.id === selected.id ? inspection.record : undefined,
+        messages.find((run) => run.id === selected.id),
+      ].reduce<EditableQueuedMessage | undefined>(
+        (latest, run) =>
+          run && (!latest || (run.queueRevision ?? 0) >= (latest.queueRevision ?? 0))
+            ? run
+            : latest,
+        undefined,
+      )
+    : undefined;
+  const verification =
+    selectedMissing && !(inspection?.id === selectedId && inspection.record)
+      ? inspection?.failed
+        ? 'Delivery state needs inspection. Your local draft is retained.'
+        : 'Checking delivery. Your local draft is retained.'
+      : '';
   const open = async (run: EditableQueuedMessage, action: 'edit' | 'takeover', steer = false) => {
     if (!clientId || busy) return;
     setBusy(true);
@@ -258,6 +312,8 @@ export function EditableMessageQueue({
           target={target}
           operations={operations}
           run={selected}
+          latest={selectedLatest!}
+          verification={verification}
           clientId={clientId}
           scope={scope}
           steerOptions={steerOptions}
@@ -358,6 +414,8 @@ function QueueEditor({
   target,
   operations,
   run,
+  latest,
+  verification,
   clientId,
   scope,
   steerOptions,
@@ -367,6 +425,8 @@ function QueueEditor({
   target: QueueEditorTarget;
   operations: QueuedMessageOperations;
   run: EditableQueuedMessage;
+  latest: EditableQueuedMessage;
+  verification: string;
   clientId: string;
   scope: string;
   steerOptions: boolean;
@@ -388,9 +448,29 @@ function QueueEditor({
   const [error, setError] = useState(
     pending.current ? 'An earlier queued action needs inspection. It has not been repeated.' : '',
   );
-  const [uncertain, setUncertain] = useState(run.queueEdit?.state === 'steering');
+  const [savedUncertain, setUncertain] = useState(run.queueEdit?.state === 'steering');
+  const uncertain =
+    savedUncertain || latest.status === 'uncertain' || latest.queueEdit?.state === 'steering';
   const local = useBrowserNotepad(`dock:${scope}:queue:${run.id}`, text, setText);
+  const authorityLost = !['queued', 'uncertain'].includes(latest.status)
+    ? 'This message has left the queue. Your local draft was not sent again.'
+    : latest.queueEdit?.clientId !== clientId
+      ? latest.queueEdit
+        ? 'Another browser took over this message. Your local draft is retained.'
+        : 'This message is no longer held for editing. Your local draft is retained.'
+      : '';
+  const [closedReason, setClosedReason] = useState('');
+  const blocked = closedReason || authorityLost || verification;
+  const blockedRef = useRef(blocked);
+  blockedRef.current = blocked;
+  useEffect(() => {
+    if (authorityLost) {
+      local.checkpoint();
+      setClosedReason(authorityLost);
+    }
+  }, [authorityLost]);
   const send = (action: QueuedMessageAction['action'], retry = false): Promise<boolean> => {
+    if (blockedRef.current) return Promise.resolve(false);
     if (working.current) return working.current;
     if (
       ['save', 'queue', 'steer'].includes(action) &&
@@ -402,6 +482,7 @@ function QueueEditor({
       setBusy(true);
       setError('');
       try {
+        if (blockedRef.current) return false;
         if (apiScope() !== scope)
           throw new Error(
             'The selected computer changed. Reopen the original computer to continue this edit.',
@@ -438,12 +519,20 @@ function QueueEditor({
     return task;
   };
   useEffect(() => {
-    if (finishing || busy || uncertain || error || text === saved.current.queueEdit?.text) return;
+    if (
+      blocked ||
+      finishing ||
+      busy ||
+      uncertain ||
+      error ||
+      text === saved.current.queueEdit?.text
+    )
+      return;
     const timer = window.setTimeout(() => {
       void send('save');
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [text, finishing, busy, uncertain, error]);
+  }, [text, blocked, finishing, busy, uncertain, error]);
   const reopen = async () => {
     if (busy) return;
     local.checkpoint();
@@ -465,14 +554,19 @@ function QueueEditor({
         pending.current = null;
       }
       const latest = await operations.read(run.id);
-      if (!latest || !['queued', 'uncertain'].includes(latest.status) || !latest.queueEdit) {
-        close();
+      if (!latest) {
+        setError('Delivery state could not be verified. Your local draft is retained.');
+        return;
+      }
+      changed(latest);
+      if (!['queued', 'uncertain'].includes(latest.status) || !latest.queueEdit) {
         return;
       }
       if (latest.queueEdit?.clientId !== clientId)
         throw new Error(
           'Another browser holds this message. Minimize, then explicitly Take over edit. Your local version is retained.',
         );
+      if (blockedRef.current) return;
       saved.current = latest;
       pending.current = null;
       local.draft.setText(latest.queueEdit.text);
@@ -488,7 +582,7 @@ function QueueEditor({
   const finish = async (action: 'queue' | 'discard' | 'steer' | 'remove') => {
     // Accept the explicit action during autosave, without losing a pointer click
     // or starting another action while we wait for its acknowledgement.
-    if (finalizing.current) return;
+    if (blockedRef.current || finalizing.current) return;
     finalizing.current = true;
     setFinishing(true);
     try {
@@ -515,15 +609,28 @@ function QueueEditor({
       mode="message"
       selection={selection}
       title="Edit queued message"
-      sendLabel="Save and queue"
+      sendLabel={blocked ? 'Editing closed' : 'Save and queue'}
       initialOptionsOpen={steerOptions}
       statusLabel={
-        uncertain ? 'Held · inspect steering outcome' : busy ? 'Held · saving…' : 'Held for editing'
+        blocked
+          ? 'Editing closed · local copy'
+          : uncertain
+            ? 'Held · inspect steering outcome'
+            : busy
+              ? 'Held · saving…'
+              : 'Held for editing'
       }
-      canSend={!uncertain && !error && !!text.trim() && !promptLengthError(text, target.maxLength)}
+      canSend={
+        !blocked &&
+        !uncertain &&
+        !error &&
+        !!text.trim() &&
+        !promptLengthError(text, target.maxLength)
+      }
       sending={finishing || (busy && pending.current?.action !== 'save')}
-      readOnly={finishing || uncertain || (busy && pending.current?.action !== 'save')}
+      readOnly={!!blocked || finishing || uncertain || (busy && pending.current?.action !== 'save')}
       notice={
+        blocked ||
         error ||
         (uncertain
           ? 'Steering was not acknowledged. Inspect the reply before removing this held item. It will not be resent.'
@@ -532,16 +639,38 @@ function QueueEditor({
       onSend={() => void finish('queue')}
       onMinimize={() => {
         local.checkpoint();
-        if (!busy && !error && !uncertain && text !== saved.current.queueEdit?.text)
+        if (
+          !blockedRef.current &&
+          !busy &&
+          !error &&
+          !uncertain &&
+          text !== saved.current.queueEdit?.text
+        )
           void send('save');
         close();
       }}
       localOnly
       localHistory={local.history}
-      recoveryDescription="Minimize keeps this message held. Save and queue returns it to the queue. Edits save to this computer; Versions keeps browser recovery copies."
+      recoveryDescription={
+        blocked
+          ? 'Your local text and Versions are retained. Copy or download this local version before closing if needed.'
+          : 'Minimize keeps this message held. Save and queue returns it to the queue. Edits save to this computer; Versions keeps browser recovery copies.'
+      }
       controls={
         <div className="message-queue-actions">
-          {error && pending.current && (
+          {blocked && (
+            <button
+              type="button"
+              className="subtle"
+              onClick={() => {
+                local.checkpoint();
+                close();
+              }}
+            >
+              Close edit
+            </button>
+          )}
+          {!blocked && error && pending.current && (
             <button
               type="button"
               className="subtle"
@@ -551,12 +680,12 @@ function QueueEditor({
               Retry saved action
             </button>
           )}
-          {error && (
+          {(error || blocked) && (
             <button type="button" className="subtle" disabled={busy} onClick={() => void reopen()}>
               Inspect saved edit
             </button>
           )}
-          {!uncertain && (
+          {!blocked && !uncertain && (
             <button
               type="button"
               className="subtle"
@@ -566,7 +695,7 @@ function QueueEditor({
               Discard edits and queue original
             </button>
           )}
-          {!uncertain && target.canSteer && (
+          {!blocked && !uncertain && target.canSteer && (
             <button
               type="button"
               className="subtle"
@@ -576,7 +705,7 @@ function QueueEditor({
               <Zap size={14} /> Steer now
             </button>
           )}
-          {uncertain && (
+          {!blocked && uncertain && (
             <button
               type="button"
               className="subtle"
