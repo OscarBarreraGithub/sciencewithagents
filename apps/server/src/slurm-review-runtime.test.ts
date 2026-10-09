@@ -36,10 +36,12 @@ const models: ClaudeModel[] = [
 ];
 class FixtureSession extends ClaudeSession {
   override inspectCommands = vi.fn(async () => []);
-  override submit = vi.fn(async (input: { deliveryId: string; text: string }) => {
-    if (this.submit.mock.calls.length === 1) this.options.beforeStart?.();
-    this.options.beforeWrite?.(input.deliveryId);
-  });
+  override submit = vi.fn(
+    async (input: { deliveryId: string; text: string; appContext?: string }) => {
+      if (this.submit.mock.calls.length === 1) this.options.beforeStart?.();
+      this.options.beforeWrite?.(input.deliveryId);
+    },
+  );
   override close = vi.fn(async () => {});
   override interrupt = vi.fn(async (): Promise<'cancelled_start' | 'requested'> => 'requested');
   send(event: ClaudeEvent) {
@@ -199,9 +201,12 @@ it('holds a managed manager submission, runs one tool-less reviewer under QUARK 
   expect(arguments_).toContain('--strict-mcp-config');
   expect(arguments_).toContain('--disable-slash-commands');
   expect(reviewerSession.options.charter).toContain(slurmReviewerCharter.slice(0, 80));
-  const submitted = reviewerSession.submit.mock.calls[0]![0].text;
-  expect(submitted).toContain('Slurm submission proposal and evidence');
-  expect(submitted).toContain('echo hi');
+  const submitted = reviewerSession.submit.mock.calls[0]![0];
+  expect(submitted.text).toBe(
+    'Review the supplied Slurm submission proposal and reply with the JSON assessment only.',
+  );
+  expect(submitted.appContext).toContain('Slurm submission proposal and evidence');
+  expect(submitted.appContext).toContain('echo hi');
   // The reviewer itself can never run a submission.
   expect(bash(reviewerSession, reviewer.runId!, command)).toMatchObject({
     hookSpecificOutput: { permissionDecision: 'deny' },
