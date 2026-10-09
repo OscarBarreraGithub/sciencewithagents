@@ -130,6 +130,52 @@ afterEach(async () => {
 });
 
 describe('manual app launcher ownership', () => {
+  it.each(['claude-vscode', 'claude-desktop', 'claude-desktop-3p', 'sdk-explicit'])(
+    'starts an independent server from %s while preserving explicit native configuration',
+    async (entrypoint) => {
+      const value = await fixture();
+      const markers = {
+        CLAUDECODE: '1',
+        CLAUDE_CODE_CHILD_SESSION: '1',
+        CLAUDE_CODE_SESSION_ID: 'parent-fixture-session',
+        CLAUDE_CODE_SESSION_ATTENDED: '1',
+        CLAUDE_PID: '12345',
+        CLAUDE_CODE_SSE_PORT: '12346',
+      };
+      const retained = {
+        CLAUDE_CONFIG_DIR: '/fixture/explicit-profile',
+        ANTHROPIC_MODEL: 'explicit-native-model',
+        CLAUDE_CODE_EFFORT_LEVEL: 'high',
+        CLAUDE_CODE_SHELL_PREFIX: 'fixture-hook-wrapper',
+        CLAUDE_CODE_IDE_HOST_OVERRIDE: 'explicit-editor-host.invalid',
+        ANTHROPIC_API_KEY: 'synthetic-fixture-key',
+        ANTHROPIC_BASE_URL: 'https://fixture-routing.invalid',
+        CLAUDE_CODE_USE_BEDROCK: '1',
+        HTTPS_PROXY: 'https://fixture-proxy.invalid',
+        DOCK_FIXTURE_CUSTOM: 'retained',
+      };
+      expect(
+        await command(value, 'launch', {
+          ...process.env,
+          ...markers,
+          ...retained,
+          CLAUDE_CODE_ENTRYPOINT: entrypoint,
+          DOCK_LAUNCHER_FIXTURE_ENV: '1',
+        }),
+      ).toBe('owned');
+      const saved = JSON.parse(
+        readFileSync(join(value.root, 'data/provider-environment.json'), 'utf8'),
+      );
+      expect(saved.independent).toEqual({
+        ...Object.fromEntries(Object.keys(markers).map((name) => [name, null])),
+        ...retained,
+        CLAUDE_CODE_ENTRYPOINT: entrypoint === 'sdk-explicit' ? entrypoint : null,
+      });
+      expect(await command(value, 'stop')).toBe('stopped');
+      await eventually(() => absent(value.port));
+      expect(readFileSync(join(value.root, 'data/graceful-stop'), 'utf8')).toBe('yes');
+    },
+  );
   it('rebuilds a stopped moved launcher, retains its previous configuration and starts from the new folder', async () => {
     const value = await fixture();
     const oldRoot = value.root;

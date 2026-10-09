@@ -11,6 +11,11 @@ private one-use browser handoff and owns this installation's server/connector. C
 browser does not stop agents. Use **Stop and Quit** to shut down deliberately. The computer
 must stay awake and online for background work or phone access.
 
+The Mac launcher removes a calling Claude Code tool or editor's parent session markers
+and temporary IDE port from its app server environment. Independent managed Claude launches also
+remove them, while native account/configuration, models, tools, hooks, proxies and explicit
+editor-host overrides remain intact. Conflicting subscription/API routing still fails visibly.
+
 For source use, start with `sh scripts/pnpm start` and open with `sh scripts/pnpm dock open`.
 A bare loopback URL is not an authenticated entry. The ordinary listener binds to 127.0.0.1;
 never tunnel it. Phone access uses its separate authenticated entry. [Local access](LOCAL_ACCESS.md).

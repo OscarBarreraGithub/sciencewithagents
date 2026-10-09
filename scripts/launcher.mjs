@@ -11,6 +11,23 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const exec = promisify(execFile);
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 const ownScript = fileURLToPath(import.meta.url);
+// Parent identity, not account/configuration: keep in sync with claude-session.ts.
+// Verified against Claude Code 2.1.293 and https://code.claude.com/docs/en/env-vars.
+function independentClaudeEnvironment(source) {
+  const env = { ...source };
+  for (const name of [
+    'CLAUDECODE',
+    'CLAUDE_CODE_CHILD_SESSION',
+    'CLAUDE_CODE_SESSION_ID',
+    'CLAUDE_CODE_SESSION_ATTENDED',
+    'CLAUDE_PID',
+    'CLAUDE_CODE_SSE_PORT',
+  ])
+    delete env[name];
+  if (['claude-vscode', 'claude-desktop', 'claude-desktop-3p'].includes(env.CLAUDE_CODE_ENTRYPOINT))
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+  return env;
+}
 const explanations = {
   occupied:
     'Another app or a different sciencewithagents installation is using this address. Nothing was stopped. Ask your setup agent to resolve the conflict, then try again.',
@@ -246,7 +263,7 @@ async function supervise(config, parentPid) {
     const log = await open(join(config.stateDir, 'server.log'), 'a', 0o600);
     await chmod(join(config.stateDir, 'server.log'), 0o600);
     const env = {
-      ...process.env,
+      ...independentClaudeEnvironment(process.env),
       DOCK_DATA_DIR: config.dataDir,
       DOCK_PORT: String(config.port),
       DOCK_LAUNCHER_LIFETIME: '1',

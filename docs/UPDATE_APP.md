@@ -17,6 +17,23 @@ or a guarantee that arbitrary customizations will merge without a decision.
 or its provider is unavailable. No manually supplied recovery reference is required. The older
 Recovery copies handoff remains usable. Opening or copying instructions starts no model work.
 
+## Existing hosted Groups
+
+The desktop update does not deploy to a Cloudflare account. For a release that changes
+the Groups service, the group's creator updates their existing Worker as well as their app;
+joining members update their app and continue using that creator's service. They do not
+deploy another Worker. Complete the matching service update before testing the new Groups
+features together.
+
+Use the saved private deployment configuration for the same account, Worker and Durable
+Object namespace, preserving migration tags, capabilities, memberships and receipts. Do not
+repeat new-service preparation or replace identities. Follow the
+[hosted update and archive procedure](GROUP_HOSTED_RECOVERY.md#supported-updates-and-capacity-transitions):
+take a verified archive before the update when supported. An older Worker without export
+requires the reviewed additive first-update procedure, followed immediately by an export
+and verification; that does not establish a pre-update remote backup. Record the exact
+deployed revision and verification separately from desktop startup checks.
+
 ## Keep local customizations
 
 People may customize their app, including providers and the interface. To carry them forward:

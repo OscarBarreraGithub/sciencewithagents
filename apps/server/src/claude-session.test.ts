@@ -17,6 +17,7 @@ import {
   parseNativeCommands,
   parseClaudeIdentity,
   spawnClaudeChannel,
+  independentClaudeEnvironment,
   type ClaudeChannel,
   type ClaudeEvent,
   type ClaudeSessionOptions,
@@ -49,6 +50,7 @@ afterEach(async () => {
   for (const directory of directories.splice(0))
     rmSync(directory, { recursive: true, force: true });
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 function fixture(
   config: ClaudeSessionOptions = options(),
@@ -1507,6 +1509,70 @@ describe('Claude visible archive normalization', () => {
       normalizeClaudeEvent({ ...frame, message: { ...frame.message, id: undefined } }, deliveryId),
     ).toEqual([]);
   });
+});
+
+it('independent Claude spawn excludes parent session markers and retains native options without a model call', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'dock-claude-env-'));
+  directories.push(directory);
+  const markers = {
+    CLAUDECODE: '1',
+    CLAUDE_CODE_CHILD_SESSION: '1',
+    CLAUDE_CODE_SESSION_ID: 'parent-fixture-session',
+    CLAUDE_CODE_SESSION_ATTENDED: '1',
+    CLAUDE_PID: '12345',
+    CLAUDE_CODE_SSE_PORT: '12346',
+    CLAUDE_CODE_ENTRYPOINT: 'claude-vscode',
+  };
+  const retained = {
+    CLAUDE_CONFIG_DIR: '/fixture/explicit-profile',
+    ANTHROPIC_MODEL: 'explicit-native-model',
+    CLAUDE_CODE_EFFORT_LEVEL: 'high',
+    CLAUDE_CODE_SHELL_PREFIX: 'fixture-hook-wrapper',
+    CLAUDE_CODE_IDE_HOST_OVERRIDE: 'explicit-editor-host.invalid',
+    HTTPS_PROXY: 'https://fixture-proxy.invalid',
+    DOCK_FIXTURE_CUSTOM: 'retained',
+  };
+  for (const [name, value] of Object.entries({ ...markers, ...retained })) vi.stubEnv(name, value);
+  const names = Object.keys({ ...markers, ...retained });
+  const source = `process.stdout.write(JSON.stringify(Object.fromEntries(${JSON.stringify(names)}.map(name=>[name,process.env[name]??null])))+'\\n');process.stdin.resume();`;
+  const channel = spawnClaudeChannel(process.execPath, ['-e', source], directory);
+  try {
+    let output = '';
+    channel.output.on('data', (chunk) => {
+      output += chunk.toString();
+    });
+    await vi.waitFor(() => expect(output).toContain('DOCK_FIXTURE_CUSTOM'));
+    expect(JSON.parse(output)).toEqual({
+      ...Object.fromEntries(Object.keys(markers).map((name) => [name, null])),
+      ...retained,
+    });
+    for (const [name, value] of Object.entries(markers)) expect(process.env[name]).toBe(value);
+  } finally {
+    await channel.close();
+  }
+  expect(channel.ownedProcessId).toBeNull();
+  await expect(channel.exited).resolves.toBe(0);
+});
+
+it('parent marker filtering never removes conflicting billing/routing or explicit editor entrypoints', () => {
+  for (const credential of ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_BEDROCK']) {
+    const original = {
+      CLAUDECODE: '1',
+      CLAUDE_CODE_CHILD_SESSION: '1',
+      CLAUDE_CODE_ENTRYPOINT: 'sdk-explicit',
+      [credential]: 'synthetic-fixture-value',
+    };
+    const filtered = independentClaudeEnvironment(original);
+    expect(filtered[credential]).toBe(original[credential]);
+    expect(filtered.CLAUDE_CODE_ENTRYPOINT).toBe('sdk-explicit');
+    expect(filtered.CLAUDECODE).toBeUndefined();
+    expect(() => assertClaudeSubscriptionEnvironment(filtered)).toThrow('Conflicting Claude');
+    vi.stubEnv(credential, original[credential]);
+    expect(() => spawnClaudeChannel('/nonexistent/provider', [], '/tmp')).toThrow(
+      'Conflicting Claude',
+    );
+    vi.unstubAllEnvs();
+  }
 });
 
 it('real owned stdio supervisor runs a no-model fake CLI and closes all its pipes', async () => {

@@ -11,6 +11,31 @@ writeFileSync(
     claudePath: process.env.DOCK_CLAUDE_BIN ?? null,
     cloudflaredPath: process.env.DOCK_CLOUDFLARED_BIN ?? null,
     path: process.env.PATH ?? '',
+    ...(process.env.DOCK_LAUNCHER_FIXTURE_ENV === '1'
+      ? {
+          independent: Object.fromEntries(
+            [
+              'CLAUDECODE',
+              'CLAUDE_CODE_CHILD_SESSION',
+              'CLAUDE_CODE_SESSION_ID',
+              'CLAUDE_CODE_SESSION_ATTENDED',
+              'CLAUDE_PID',
+              'CLAUDE_CODE_SSE_PORT',
+              'CLAUDE_CODE_ENTRYPOINT',
+              'CLAUDE_CONFIG_DIR',
+              'ANTHROPIC_MODEL',
+              'CLAUDE_CODE_EFFORT_LEVEL',
+              'CLAUDE_CODE_SHELL_PREFIX',
+              'CLAUDE_CODE_IDE_HOST_OVERRIDE',
+              'ANTHROPIC_API_KEY',
+              'ANTHROPIC_BASE_URL',
+              'CLAUDE_CODE_USE_BEDROCK',
+              'HTTPS_PROXY',
+              'DOCK_FIXTURE_CUSTOM',
+            ].map((name) => [name, process.env[name] ?? null]),
+          ),
+        }
+      : {}),
   }),
   { mode: 0o600 },
 );

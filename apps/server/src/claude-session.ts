@@ -674,6 +674,30 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
   ];
 }
 
+/** Independent local invocation: remove only verified parent/nesting/editor-session identity.
+ * Keep in sync with scripts/launcher.mjs. Account, model, tools, hooks and routes remain native.
+ * Claude Code 2.1.293; https://code.claude.com/docs/en/env-vars
+ */
+export function independentClaudeEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env = { ...source };
+  for (const name of [
+    'CLAUDECODE',
+    'CLAUDE_CODE_CHILD_SESSION',
+    'CLAUDE_CODE_SESSION_ID',
+    'CLAUDE_CODE_SESSION_ATTENDED',
+    'CLAUDE_PID',
+    'CLAUDE_CODE_SSE_PORT',
+  ])
+    delete env[name];
+  if (
+    ['claude-vscode', 'claude-desktop', 'claude-desktop-3p'].includes(
+      env.CLAUDE_CODE_ENTRYPOINT ?? '',
+    )
+  )
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+  return env;
+}
+
 export function spawnClaudeChannel(
   binary: string,
   args: string[],
@@ -697,7 +721,7 @@ export function spawnClaudeChannel(
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       env: {
-        ...(boundary ? boundary.environment : process.env),
+        ...(boundary ? boundary.environment : independentClaudeEnvironment(process.env)),
         CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '60',
       },
     },
