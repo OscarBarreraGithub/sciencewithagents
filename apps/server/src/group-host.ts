@@ -62,6 +62,7 @@ import {
   privateGroupFile,
   protectGroupSidecars,
   readGroupServiceConfiguration,
+  groupServiceConfigurationSchema,
   betaGroupServiceConfiguration,
   groupHostedInvitationServiceSchema,
   type ActiveGroupServiceConfiguration,
@@ -111,6 +112,11 @@ import type { GroupScope } from '@dock/shared';
 import type { GroupPromotionDecision } from '@dock/shared/dist/group-promotion.js';
 import { memberFeedInputSchema, type MemberFeedInput } from './group-member-feed.js';
 import { GroupHostUpdates } from './group-host-updates.js';
+import {
+  groupServiceHash as serviceHash,
+  readRegistryService,
+  readCreatorService,
+} from '../../../scripts/group-service-registry.mjs';
 
 const slotSchema = z.strictObject({
   handle: z.uuid(),
@@ -146,23 +152,6 @@ const recordSchema = z.strictObject({
 });
 type Record = z.infer<typeof recordSchema>;
 type Slot = z.infer<typeof slotSchema>;
-const serviceHash = (value: ActiveGroupServiceConfiguration) =>
-  createHash('sha256')
-    .update(
-      publicationCanonical({
-        mode: value.mode,
-        endpoint: value.endpoint,
-        endpointId: value.endpointId,
-        ...(value.mode === 'hosted'
-          ? {
-              hostingOrigin: value.hostingAuthorization.origin,
-              freeApprovalId: value.hostingAuthorization.freeApprovalId,
-            }
-          : {}),
-        ...(value.mode === 'beta' ? { serviceId: value.profile.serviceId } : {}),
-      }),
-    )
-    .digest('hex');
 const capability = () => randomBytes(32).toString('hex');
 export class GroupHostError extends Error {
   constructor(
@@ -336,7 +325,7 @@ export class GroupHost {
     );
     if (!retained) throw new Missing('Saved group context unavailable. Reopen the group.');
     const key = createHash('sha256')
-      .update(publicationCanonical([kind, input, retained, this.configured()]))
+      .update(publicationCanonical([kind, input, retained, this.serviceFor(retained)]))
       .digest('hex');
     const prior = this.reads.get(key);
     if (prior) return prior as Promise<T>;
@@ -353,6 +342,9 @@ export class GroupHost {
   }
   configuration(): GroupServiceConfiguration | null {
     const saved = readGroupServiceConfiguration(this.directory);
+    if (saved?.mode === 'disabled') return saved;
+    const creator = readCreatorService(this.directory);
+    if (creator) return groupServiceConfigurationSchema.parse(creator);
     if (saved) return saved;
     // Retain already enrolled/pending beta work, without enrolling fresh installs
     // in the maintainer's account merely by opening Groups.
@@ -373,6 +365,40 @@ export class GroupHost {
         'Copy the Cloudflare setup prompt in Groups into your setup agent. The group creator hosts delivery in their own Cloudflare account; joining members use the creator’s invitation and service.',
       );
     return value;
+  }
+  /** Every retained enrollment owns its protected route; the default only chooses fresh creation. */
+  private serviceFor(
+    value: Pick<Record, 'serviceHash' | 'creator' | 'beta'>,
+  ): ActiveGroupServiceConfiguration {
+    try {
+      const legacy = readGroupServiceConfiguration(this.directory);
+      if (legacy?.mode === 'disabled') return this.configured();
+      const registered = readRegistryService(this.directory, value.serviceHash, value.creator);
+      const candidate = registered
+        ? groupServiceConfigurationSchema.parse(registered)
+        : legacy && serviceHash(legacy) === value.serviceHash
+          ? legacy
+          : value.beta &&
+              this.betaConfiguration &&
+              serviceHash(this.betaConfiguration) === value.serviceHash
+            ? this.betaConfiguration
+            : null;
+      if (
+        !candidate ||
+        candidate.mode === 'disabled' ||
+        serviceHash(candidate) !== value.serviceHash ||
+        (candidate.mode === 'beta') !== !!value.beta
+      )
+        throw new Error('Exact original service unavailable');
+      return candidate;
+    } catch (error) {
+      if (error instanceof GroupHostError) throw error;
+      throw new GroupHostError(
+        503,
+        'GROUP_SERVICE_CHANGED',
+        'The original protected Groups route is unavailable or changed. Restore its exact saved service file; other groups and retained identities remain unchanged.',
+      );
+    }
   }
   private records() {
     return this.db
@@ -526,7 +552,7 @@ export class GroupHost {
   private serviceHeaders(
     value: Record,
     create = false,
-    config = this.configured(),
+    config = this.serviceFor(value),
   ): { [name: string]: string } {
     if (serviceHash(config) !== value.serviceHash || (config.mode === 'beta') !== !!value.beta)
       throw new GroupHostError(
@@ -560,7 +586,7 @@ export class GroupHost {
     };
   }
   private async membership(value: Record, command: MembershipCommand, groupId?: string) {
-    const config = this.configured();
+    const config = this.serviceFor(value);
     const create = command.kind === 'initialize';
     try {
       const response = await this.http(
@@ -644,7 +670,7 @@ export class GroupHost {
     });
   }
   private provision(value: Record, identity: MembershipIdentity) {
-    const config = this.configured();
+    const config = this.serviceFor(value);
     this.serviceHeaders(value, false, config);
     if (
       identity.groupId !== value.identity.groupId ||
@@ -711,7 +737,7 @@ export class GroupHost {
   }
   private async active(handle: string) {
     let value = this.record(handle);
-    if (serviceHash(this.configured()) !== value.serviceHash)
+    if (serviceHash(this.serviceFor(value)) !== value.serviceHash)
       throw new GroupHostError(
         503,
         'GROUP_SERVICE_CHANGED',
@@ -746,7 +772,7 @@ export class GroupHost {
     this.updates.watch(value.identity, () => {
       if (!this.localVisible(value.handle)) throw new Conflict('Group removed from this app.');
       const current = this.record(value.handle),
-        config = this.configured(),
+        config = this.serviceFor(current),
         headers = this.serviceHeaders(current, false, config);
       const url = new URL(
         `${config.endpoint.replace(/\/$/, '')}/v1/groups/${current.identity.groupId}/updates`,
@@ -852,7 +878,18 @@ export class GroupHost {
   }
   async create(raw: unknown) {
     const input = host.groupHostCreateSchema.parse(raw);
-    const config = this.configured();
+    const retained =
+      this.db.prepare('SELECT body FROM gh_operations WHERE key=?').get(`create:${input.key}`) ??
+      (input.setupCode
+        ? this.db
+            .prepare(
+              "SELECT body FROM gh_operations WHERE key LIKE 'beta-create:%' AND json_extract(input,'$.setupCodeHash')=? ORDER BY rowid LIMIT 1",
+            )
+            .get(createHash('sha256').update(input.setupCode).digest('hex'))
+        : undefined);
+    const config = retained
+      ? this.serviceFor(recordSchema.parse(JSON.parse(String(retained.body))))
+      : this.configured();
     if (config.mode === 'hosted' && !config.setupCapability)
       throw new GroupHostError(
         403,
@@ -899,6 +936,14 @@ export class GroupHost {
     return this.lock(
       beta ? `beta-create:${beta.creation!.operationId}` : `create:${input.key}`,
       async () => {
+        // Fresh creation uses the current explicit choice; saved exact requests
+        // keep their original service after another service is imported.
+        if (!retained && publicationCanonical(this.configured()) !== publicationCanonical(config))
+          throw new GroupHostError(
+            503,
+            'GROUP_SERVICE_CHANGED',
+            'The creator service changed during setup. Reopen Groups and reconcile the original selection before creating.',
+          );
         const make = () => {
           if (this.records().length >= 32) throw new Conflict('Groups limit reached.');
           return {
@@ -938,7 +983,7 @@ export class GroupHost {
         const value = recordSchema.parse(
           this.intent(`create:${input.key}`, safeInput, () => fixed ?? make()),
         );
-        if (serviceHash(this.configured()) !== value.serviceHash)
+        if (serviceHash(this.serviceFor(value)) !== value.serviceHash)
           throw new GroupHostError(
             503,
             'GROUP_SERVICE_CHANGED',
@@ -959,7 +1004,7 @@ export class GroupHost {
   }
   async join(raw: unknown) {
     const input = host.groupHostJoinSchema.parse(raw);
-    const config = this.configured();
+    let config: ActiveGroupServiceConfiguration;
     let invitation: {
       groupId: string;
       secret: string;
@@ -984,6 +1029,9 @@ export class GroupHost {
           service: groupHostedInvitationServiceSchema.optional(),
         })
         .parse(JSON.parse(encoded.get('invite') ?? ''));
+      config = invitation.service
+        ? this.serviceFor({ serviceHash: serviceHash(invitation.service), creator: false })
+        : this.configured();
       if (config.mode === 'beta') {
         if (invitation.serviceId !== config.profile.serviceId || !invitation.admission)
           throw new Error('service mismatch');
@@ -993,7 +1041,15 @@ export class GroupHost {
       } else if (invitation.serviceId || invitation.admission) {
         throw new Error('protected service mismatch');
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof GroupHostError) {
+        if (error.code !== 'GROUP_SERVICE_CHANGED') throw error;
+        throw new GroupHostError(
+          400,
+          'INVALID_INVITATION',
+          'This invitation belongs to another Groups service. Your existing groups are unchanged. Ask your setup agent to check the invitation’s service and your saved Groups configuration before continuing.',
+        );
+      }
       throw new GroupHostError(
         400,
         'INVALID_INVITATION',
@@ -1012,7 +1068,21 @@ export class GroupHost {
         'INVALID_INVITATION',
         'This invitation belongs to another Groups service. Your existing groups are unchanged. Ask your setup agent to check the invitation’s service and your saved Groups configuration before continuing.',
       );
-    return this.lock(`join-group:${serviceHash(config)}:${invitation.groupId}`, async () => {
+    return this.lock(`join-group:${invitation.groupId}`, async () => {
+      if (
+        this.db
+          .prepare(
+            `SELECT 1 FROM (
+      SELECT body FROM gh_groups UNION ALL SELECT body FROM gh_operations
+    ) WHERE json_extract(body,'$.identity.groupId')=? AND json_extract(body,'$.serviceHash')<>? LIMIT 1`,
+          )
+          .get(invitation.groupId, serviceHash(config))
+      )
+        throw new GroupHostError(
+          409,
+          'GROUP_IDENTITY_CONFLICT',
+          'This group identity already belongs to another saved service. Existing contexts and routes were preserved.',
+        );
       const safeInput = {
         ...input,
         invitation: createHash('sha256').update(input.invitation).digest('hex'),
@@ -1064,7 +1134,7 @@ export class GroupHost {
     });
   }
   private async completeJoin(value: Record) {
-    if (serviceHash(this.configured()) !== value.serviceHash)
+    if (serviceHash(this.serviceFor(value)) !== value.serviceHash)
       throw new GroupHostError(
         503,
         'GROUP_SERVICE_CHANGED',
@@ -1108,7 +1178,7 @@ export class GroupHost {
           'No retained setup with this request identity. Paste your invitation again or start setup.',
         );
       const value = recordSchema.parse(JSON.parse(String(row.body)));
-      if (serviceHash(this.configured()) !== value.serviceHash)
+      if (serviceHash(this.serviceFor(value)) !== value.serviceHash)
         throw new GroupHostError(
           503,
           'GROUP_SERVICE_CHANGED',
@@ -1269,7 +1339,7 @@ export class GroupHost {
           );
         await feature.revalidate();
         const { value } = await this.resolve(handle);
-        const config = this.configured();
+        const config = this.serviceFor(value);
         const response = await this.http(
           `${config.endpoint.replace(/\/$/, '')}/v1/groups/${value.identity.groupId}/actions`,
           {
@@ -1315,7 +1385,7 @@ export class GroupHost {
     )!;
     const command = groupActionCommandSchema.parse(input);
     if (command.kind !== 'evidence') throw new Conflict('Read-only evidence required.');
-    const config = this.configured(),
+    const config = this.serviceFor(value),
       binding = publicationCanonical(value),
       headers = this.serviceHeaders(value, false, config);
     const response = await this.http(
@@ -1338,7 +1408,7 @@ export class GroupHost {
     const result = groupActionResultSchema.parse(await this.bounded(response, 1_000_000));
     this.retainedActionContext(context);
     const current = this.record(value.handle),
-      currentConfig = this.configured();
+      currentConfig = this.serviceFor(current);
     this.serviceHeaders(current, false, currentConfig);
     if (
       publicationCanonical(current) !== binding ||
@@ -1419,7 +1489,7 @@ export class GroupHost {
     lane: 'confirm' | 'reconcile',
     body: unknown,
   ): Promise<GroupActionResult> {
-    const config = this.configured();
+    const config = this.serviceFor(value);
     const response = await this.http(
       `${config.endpoint.replace(/\/$/, '')}/v1/groups/${value.identity.groupId}/actions/${lane}`,
       {
@@ -1477,7 +1547,7 @@ export class GroupHost {
           this.directory,
           value.identity.groupId,
           async (request) => {
-            const config = this.configured();
+            const config = this.serviceFor(value);
             const response = await this.http(
               `${config.endpoint.replace(/\/$/, '')}/v1/groups/${value.identity.groupId}/export`,
               {
@@ -1574,7 +1644,7 @@ export class GroupHost {
             ids.operationId,
           );
         }
-        const config = this.configured();
+        const config = this.serviceFor(value);
         const response = await this.http(
           `${config.endpoint.replace(/\/$/, '')}/v1/groups/${value.identity.groupId}/documents`,
           {
@@ -1612,7 +1682,7 @@ export class GroupHost {
       command: async (raw: GroupPromotionHostCommand, signal?: AbortSignal) => {
         const command = groupPromotionHostCommandSchema.parse(raw);
         await feature.revalidate();
-        const config = this.configured();
+        const config = this.serviceFor(value);
         const response = await this.http(
           `${config.endpoint.replace(/\/$/, '')}/v1/groups/${value.identity.groupId}/promotion`,
           {
@@ -2067,11 +2137,9 @@ export class GroupHost {
     const transport = new HostedPublicationTransport(
       (b) => {
         const current = this.record(value.handle),
-          config = this.configuration();
+          config = this.serviceFor(current);
         if (current.identity.state !== 'active') return { kind: 'unavailable', reason: 'revoked' };
         if (
-          !config ||
-          config.mode === 'disabled' ||
           config.endpointId !== b.endpointId ||
           (config.mode === 'beta' && !current.beta) ||
           serviceHash(config) !== current.serviceHash ||
@@ -2093,7 +2161,7 @@ export class GroupHost {
             : {}),
         };
       },
-      this.configured().mode,
+      this.serviceFor(value).mode,
       this.http,
     );
     const path = join(this.directory, `publication-${value.handle}.sqlite`);
@@ -2682,7 +2750,7 @@ export class GroupHost {
       value.identity.groupId,
     );
     if (reply.kind !== 'invitation') throw unavailable();
-    const config = this.configured();
+    const config = this.serviceFor(value);
     return {
       fragment: `/groups?invite=${encodeURIComponent(
         JSON.stringify({
@@ -2775,7 +2843,7 @@ export class GroupHost {
     // Only a previously persisted exact revoke may bypass the service's blocked read
     // probe. The service still authenticates and commits/replays that same revoke.
     const value = prior ? this.record(input.handle) : await this.active(input.handle);
-    if (!value.creator || serviceHash(this.configured()) !== value.serviceHash)
+    if (!value.creator || serviceHash(this.serviceFor(value)) !== value.serviceHash)
       throw new GroupHostError(
         403,
         'CREATOR_REQUIRED',

@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { strict as assert } from 'node:assert';
 import { randomUUID } from 'node:crypto';
 import { groupReportNotification } from '@dock/shared/dist/group-report-notification.js';

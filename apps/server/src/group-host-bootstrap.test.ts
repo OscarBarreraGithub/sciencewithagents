@@ -1,8 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { GroupContext } from '@dock/shared';
 import { localRequestProof } from '@dock/shared/dist/local-authorization.js';
 import { groupHostNativeStatusSchema } from '@dock/shared/dist/group-host.js';
 import { createProductionGroupHost } from './group-host-bootstrap.js';
@@ -12,6 +11,8 @@ import { LocalAccess, prepareLocalAccess } from './local-access.js';
 import { createServer } from './server.js';
 import { Runtime } from './runtime.js';
 import { Store } from './store.js';
+import { membershipIdentitySchema } from '@dock/shared/dist/group-membership.js';
+import { publicationCanonical } from './group-publication-protocol.js';
 import { repoRoot } from './paths.js';
 
 vi.mock('./group-native-connector.js', async (original) => {
@@ -84,25 +85,51 @@ async function installation(directory?: string) {
   };
   return { host, runtime, store, directory, close, request };
 }
-function authorizedPrivateScope(
-  host: ReturnType<typeof createProductionGroupHost>,
-  context?: GroupContext,
-) {
-  if (!context) {
-    const member = host.events.createGroup('Controlled owner');
-    context = host.events.createContext({
-      groupId: member.groupId,
-      memberId: member.memberId,
-      installationId: member.installationId,
-      visibility: 'private',
-      provider: 'owner',
-      nativeSessionId: randomUUID(),
-    });
-  }
-  const slot = { handle: randomUUID(), context, createdAt: new Date().toISOString() };
-  const value = { handle: randomUUID(), name: 'Controlled enrollment', private: slot };
-  // Hosting enrollment is pre-authorized in this bounded seam check. Native
-  // context registration, owner HTTP auth and the host request journal stay real.
+function authorizedPrivateScope(host: ReturnType<typeof createProductionGroupHost>) {
+  const service = {
+    version: 1 as const,
+    mode: 'local-test' as const,
+    endpoint: 'http://127.0.0.1:19999/',
+    endpointId: randomUUID(),
+    setupCapability: randomBytes(32).toString('hex'),
+  };
+  writeFileSync(join(host.directory, 'service.json'), JSON.stringify(service), { mode: 0o600 });
+  const identity = membershipIdentitySchema.parse({
+    groupId: randomUUID(),
+    memberId: randomUUID(),
+    installationId: randomUUID(),
+    displayName: 'Controlled owner',
+    state: 'active' as const,
+  });
+  const value = host['provision'](
+    {
+      handle: randomUUID(),
+      name: 'Controlled enrollment',
+      creator: false,
+      credential: randomBytes(32).toString('hex'),
+      confirmation: randomBytes(32).toString('hex'),
+      identity,
+      binding: null,
+      shared: null,
+      private: null,
+      invitationSecret: null,
+      serviceHash: createHash('sha256')
+        .update(
+          publicationCanonical({
+            mode: service.mode,
+            endpoint: service.endpoint,
+            endpointId: service.endpointId,
+          }),
+        )
+        .digest('hex'),
+    },
+    identity,
+  );
+  const slot = value.private!,
+    context = slot.context;
+  // The real provisioner retains enrollment/config/binding and native contexts.
+  // Only upstream membership resolution is controlled; local admission, owner
+  // HTTP auth, production factory and durable request journal remain real.
   Object.defineProperty(host, 'resolve', { value: async () => ({ value, slot }) });
   return { context, slot, value };
 }
@@ -159,6 +186,14 @@ it('normal owner route reaches the production factory seam and recovers a retain
     close,
     beforeTurn: () => {},
     documents: () => ({
+      imageSourceDigest: '0'.repeat(64),
+      captureCompletedRequest: async () => {
+        throw new Error('Not used');
+      },
+      captureCompletedResult: async () => {
+        throw new Error('Not used');
+      },
+      close: async () => {},
       describe: async () => {
         throw new Error('Not used');
       },

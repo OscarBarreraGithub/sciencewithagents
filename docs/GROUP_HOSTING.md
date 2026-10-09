@@ -44,13 +44,20 @@ first. Locate its actual data directory (`DOCK_DATA_DIR`, otherwise the installa
 `groups/service.json` and saved membership before changing anything. If a mapping exists,
 retain it and reconcile an explicitly requested change instead of overwriting it.
 
-Each installation currently has one Groups service mapping. It can join multiple groups
-on that service. Concurrent membership across different creators' service endpoints is
-not supported; changing the mapping leaves older receipts intact but refuses their use
-until their original mapping is restored. The helper preserves an existing mapping
-rather than silently disconnecting those groups.
-The helper refuses fresh preparation if a mapping or a prepared deployment already exists.
-An exact matching activation or invitation reuses the saved file without rewriting it.
+One installation can join Groups on different creators' services. The native setup helper
+imports each verified descriptor into a private registry of at most 32 service identities.
+Every saved enrollment, pending request and late delivery retains its original service
+identity and credential. Existing `groups/service.json` bytes remain intact; matching
+legacy enrollments continue using that original route. Explicit `mode: "disabled"` still
+disables all Groups network access.
+
+Creator authority is separate from member routing. Joining first does not grant creation
+permission. To host your own service later, follow `prepare` and `activate` below; activation
+saves an explicit private creator choice for future Groups without disconnecting joined
+Groups. An existing creator uses `upgrade`, and a pending deployment keeps its original
+bundle. Exact matching imports and activation do not rewrite saved files. Concurrent imports
+are serialized; an interrupted import lock needs owner reconciliation after confirming no
+helper is running. Preserve the pending bundle and registry while resolving it.
 
 From the installation checkout, use the pinned project tools:
 
@@ -101,8 +108,9 @@ node scripts/group-cloudflare-setup.mjs activate /absolute/app-data \
 Configuration is read per request. An open Groups setup page checks every five seconds
 while visible and refreshes when you return to the tab or reconnect. Once configured,
 the setup prompt collapses automatically; existing form entries are kept. Choose **New project**, supply display
-and project names, and continue. No operator setup code is needed. If configuration exists,
-activation refuses to overwrite it. A reinstall/update must retain the same endpoint ID,
+and project names, and continue. No operator setup code is needed. An existing creator choice cannot be replaced by another
+activation. Joining members may activate their first independently prepared creator service
+without replacing the earlier member route. A reinstall/update must retain the same endpoint ID,
 capabilities and service origin. Keep the prepared files for future updates.
 
 ### Update an existing creator service
@@ -179,7 +187,11 @@ network request. The person verifies the service belongs to the intended creator
 browser invitations cannot choose a host, trigger a fetch or override an existing mapping.
 If every service-descriptor field matches an existing mapping, the helper reuses it, including
 on the creator's own installation. Existing creator authority stays private and unchanged.
-Any mismatch refuses before writing; multiple different service mappings remain unsupported.
+A different verified service gets its own registry entry. A changed routing approval for an
+existing service identity refuses before writing; an invitation cannot replace its creator
+capability. Missing or changed entries refuse access to the affected original Group instead
+of falling back to another creator. A Group UUID already retained under another service is
+rejected before membership handoff.
 The setup agent is the explicit trusted configuration boundary. Remove the temporary
 invitation file after handoff. If setup took longer than 7 days, obtain a fresh invitation
 from the same creator; the saved service mapping stays valid.
@@ -187,8 +199,8 @@ from the same creator; the saved service mapping stays valid.
 Reload Groups, choose **Join by invitation**, paste a current invitation and choose **Join group**.
 The link grants membership directly; there is no confirmation code or approval step. The joining
 host holds its own generated credential and no creation capability. Attempting to create a
-group on a join-only host refuses before network handoff. To host an independent service,
-reconcile the current mapping and retained groups explicitly rather than replacing it.
+group on a join-only host refuses before network handoff. To host your own service after joining, use the creator runbook above. Its explicit
+activation selects future creation while preserving every joined Group's route.
 
 ### Verify completion and recovery
 

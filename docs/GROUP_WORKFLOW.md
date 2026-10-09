@@ -33,7 +33,9 @@ uses fake providers and is not a substitute for this setup.
    pasted into **Join group** in the recipient's configured app.
 4. The member gives the **join setup prompt** and invitation to their setup agent. It
    configures the creator's service in private host files; members do not deploy another
-   Worker or need Cloudflare for Groups. If setup outlasts the invitation, obtain a fresh
+   Worker or need Cloudflare for Groups. One installation can retain Groups from several
+   creators; each imported service keeps its own route. Joining first does not grant creator
+   permission or prevent later setup of your own service. If setup outlasts the invitation, obtain a fresh
    link from the same creator. Choose **Join group**. The group opens
    immediately, and the creator's member list updates automatically. Previously accepted
    pending requests become members when read by the updated service, provided their

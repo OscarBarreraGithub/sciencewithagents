@@ -364,11 +364,10 @@ export function GroupNativeGitPanel({
         After your setup agent prepares this folder’s private repository, verify access using your
         own native GitHub account. Connecting makes no model call.
       </p>
-      {view?.connected === true ? (
+      {view?.connected === true && (
         <p role="status">Repository verified. Automatic sync: {view.autoSync ? 'On' : 'Paused'}.</p>
-      ) : (
-        <p role="status">{view?.message ?? 'Reading repository status…'}</p>
       )}
+      <p role="status">{view?.message ?? 'Reading repository status…'}</p>
       {view?.connected === undefined && view && (
         <p>
           This host has not reported a verified connection. Update it before relying on the new
@@ -386,16 +385,14 @@ export function GroupNativeGitPanel({
             Connect shared repository
           </button>
         )}
-        {(error || !view || pending || !view.available || view.connected !== true) && (
-          <button
-            className="secondary"
-            type="button"
-            disabled={busy}
-            onClick={() => void control({ action: 'status', handle })}
-          >
-            Check repository
-          </button>
-        )}
+        <button
+          className="secondary"
+          type="button"
+          disabled={busy}
+          onClick={() => void control({ action: 'status', handle })}
+        >
+          Check repository
+        </button>
         {pending?.action === 'connect' && (
           <button
             className="secondary"

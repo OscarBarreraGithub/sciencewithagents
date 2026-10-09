@@ -218,7 +218,7 @@ export async function captureHostedArchive(
         closeSync(existing);
       }
     }
-    if (count >= 8 || total >= 1024 ** 3)
+    if (count >= 8 || total >= 4 * 1024 ** 3)
       throw new Error(
         'Private archive retention limit reached. Move a verified private archive directory before exporting again.',
       );
@@ -240,7 +240,7 @@ export async function captureHostedArchive(
         throw new Error('Archive export timed out; start a fresh export.');
       const line = JSON.stringify(raw) + '\n',
         current = verify.page(raw, line);
-      if (current.groupId !== groupId || total + verify.bytes + 4096 > 1024 ** 3)
+      if (current.groupId !== groupId || total + verify.bytes + 4096 > 4 * 1024 ** 3)
         throw new Error('Archive scope or retention limit.');
       writeSync(fd, line);
       if (!current.next) break;

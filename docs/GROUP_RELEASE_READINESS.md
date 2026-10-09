@@ -10,10 +10,12 @@ production acceptance remains pending the joint test below.
 
 ## Agreed journey
 
-Use **Group chat** and **Group manager**, native local agents and each person's own provider
+Use **Group chat** and **My group agent**, native local agents and each person's own provider
 account. The creator hosts Groups in their own Cloudflare Workers Free account; members
 join that service directly by invitation. GitHub and phone access are optional.
-Ask reads shared evidence; explicit Work authorizes local native work. Incoming messages
+Read-only keeps authorized history and file downloads available without starting a model.
+Ask uses the member's model allowance to read shared evidence; explicit Work authorizes
+local native work. Incoming messages
 never authorize another person's computer. Saved private histories remain private.
 Docker/Linux isolation and the earlier private catch-up controls are superseded in this journey.
 

@@ -3,7 +3,7 @@ export const GROUP_EXPORT_LIMITS = {
   pageBytes: 512 * 1024,
   pageRows: 128,
   pages: 4096,
-  totalBytes: 512 * 1024 ** 2,
+  totalBytes: 1024 ** 3,
   rows: 1_000_000,
   timeoutMs: 180_000,
   pageMs: 5000,

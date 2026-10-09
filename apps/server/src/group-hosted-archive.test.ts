@@ -8,6 +8,9 @@ import {
   symlinkSync,
   mkdirSync,
   renameSync,
+  openSync,
+  closeSync,
+  ftruncateSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -123,6 +126,37 @@ it('creates a fresh private verified self-contained archive and re-verifies exac
   const another = await captureHostedArchive(f.root, f.groupId, f.reader());
   expect(another.archiveId).not.toBe(saved.archiveId);
   expect(verifyHostedArchive(f.root, saved.archiveId)).toEqual(saved);
+});
+it('retains a sparse held archive above the former aggregate bound and refuses at four GiB before reading a new snapshot', async () => {
+  const f = fixture(),
+    base = join(f.root, 'hosted-archives'),
+    held = join(base, randomUUID());
+  mkdirSync(base, { mode: 0o700 });
+  mkdirSync(held, { mode: 0o700 });
+  const path = join(held, 'archive.jsonl'),
+    fd = openSync(path, 'wx', 0o600);
+  try {
+    // Sparse length exercises actual filesystem retention without allocating or
+    // parsing GiB of fixture bytes. Held bytes are never altered by capture.
+    ftruncateSync(fd, 3 * 1024 ** 3);
+    const saved = await captureHostedArchive(f.root, f.groupId, f.reader());
+    expect(statSync(path).size).toBe(3 * 1024 ** 3);
+    expect(verifyHostedArchive(f.root, saved.archiveId)).toEqual(saved);
+    ftruncateSync(fd, 4 * 1024 ** 3);
+    let reads = 0;
+    await expect(
+      captureHostedArchive(f.root, f.groupId, async () => {
+        reads++;
+        return f.pages[0];
+      }),
+    ).rejects.toThrow(/retention limit/);
+    expect(reads).toBe(0);
+    expect(readdirSync(base)).toHaveLength(2);
+    expect(statSync(path).size).toBe(4 * 1024 ** 3);
+    expect(verifyHostedArchive(f.root, saved.archiveId)).toEqual(saved);
+  } finally {
+    closeSync(fd);
+  }
 });
 it('rejects corrupted or truncated archived bytes without executing exported SQL', async () => {
   const f = fixture(),

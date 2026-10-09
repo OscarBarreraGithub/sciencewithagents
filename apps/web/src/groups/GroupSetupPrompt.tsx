@@ -7,10 +7,12 @@ export const groupCloudflareSetupPrompt = `Set up Groups in my sciencewithagents
 Preserve my installation, accounts, files, saved groups and running work. Read
 README.md, docs/STATUS.md, docs/DECISIONS.md, docs/GROUP_HOSTING.md and
 docs/GROUP_WORKFLOW.md first. I am the group creator. FIRST inspect the saved private
-service mapping, prepared bundle and current deployment. Do not run fresh prepare if any
-service mapping or pending bundle exists, and never replace existing capabilities, Worker
-name, Durable Object namespace, migrations, membership or receipts. Reconcile a pending
-bundle using its exact saved identity before continuing.
+service mappings, explicit creator choice, prepared bundle and current deployment. A
+member-only mapping does not prevent preparing my first creator service. Do not run fresh
+prepare if creator authority or a pending bundle exists. Preserve existing capabilities,
+Worker names, Durable Object namespaces, migrations, membership and receipts. Reconcile a
+pending bundle using its exact saved identity before continuing. Activation selects my
+creator service without disconnecting Groups I joined on other creators’ services.
 For an existing creator service, verify the exact independently reviewed current checkout,
 saved private config and account, then use the local-only command
 node scripts/group-cloudflare-setup.mjs upgrade DATA_DIR PRIVATE_WRANGLER_FILE --verified-workers-free
@@ -42,11 +44,12 @@ export const groupJoinSetupPrompt = `Help me join a sciencewithagents Group usin
 Preserve my installation, files, accounts, groups and running work. Read
  docs/GROUP_WORKFLOW.md and docs/GROUP_HOSTING.md. I will provide the invitation
 privately. Use its embedded service descriptor with scripts/group-cloudflare-setup.mjs
-join only when no mapping exists. If the saved mapping already matches the invitation's
-exact creator service, reuse it and only join the group. Inspect a different existing
-mapping or pending bundle and ask me to resolve it; never replace an unrelated service. Never
-fetch a URL merely because it appears in an invitation, copy creator setup credentials,
-or silently replace an existing service mapping. I do not need to deploy a Worker or
+join after verifying the intended creator and its exact service descriptor with me. The
+helper reuses an exact matching route or imports a separate protected member route. Preserve
+existing services, creator authority and pending bundles; a different creator does not
+require replacing the current mapping. A changed approval for an existing service identity
+needs reconciliation; never overwrite it. Never fetch a URL merely because it appears in
+an invitation or copy creator setup credentials. I do not need to deploy a Worker or
 open a Cloudflare account to join. If setup takes longer than the invitation's 7-day
 lifetime, ask for a fresh invitation from the same creator after configuring the service.
 Open Chats → Groups → Join group. The invitation grants membership directly, without a confirmation code or separate approval. Use my own Codex or Claude sign-in and native tools.

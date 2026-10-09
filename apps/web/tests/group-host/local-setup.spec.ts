@@ -92,6 +92,7 @@ test('selected folder and verified repository retain exact retries through reloa
   const picks: ReturnType<typeof projectFolderSchema.parse>[] = [];
   const bindings: unknown[] = [],
     connections: unknown[] = [];
+  const gitOperations: ReturnType<typeof groupNativeGitRequestSchema.parse>[] = [];
   let lostPick = true,
     lostBinding = true,
     lostConnection = true;
@@ -178,6 +179,7 @@ test('selected folder and verified repository retain exact retries through reloa
   let heldRead = false;
   await page.route('**/api/groups/native-git', async (route) => {
     const value = groupNativeGitRequestSchema.parse(route.request().postDataJSON());
+    gitOperations.push(value);
     if (value.action === 'connect') {
       connections.push(value);
       git.connected = true;
@@ -291,6 +293,25 @@ test('selected folder and verified repository retain exact retries through reloa
   await expect(advanced.getByLabel('Automatic sync', { exact: true })).not.toBeChecked();
   await expect(repository).toHaveCount(1);
   await screenshot(page, 'verified-repository-controls');
+  await controls.getByText('Advanced', { exact: true }).click();
+  git.autoSync = true;
+  git.dirty = true;
+  git.message = 'Sync is waiting for a reviewed branch correction. All files were preserved.';
+  const beforeCheck = gitOperations.length;
+  await repository.getByRole('button', { name: 'Check repository', exact: true }).click();
+  await expect(repository).toContainText('Repository verified. Automatic sync: On.');
+  await expect(repository).toContainText(git.message);
+  await screenshot(page, 'connected-repository-sync-notice');
+  git.dirty = false;
+  git.message = 'Reviewed shared files are up to date.';
+  await repository.getByRole('button', { name: 'Check repository', exact: true }).click();
+  await expect(repository).toContainText(git.message);
+  await expect(repository).not.toContainText('Sync is waiting for a reviewed branch correction.');
+  expect(gitOperations.slice(beforeCheck).map((operation) => operation.action)).toEqual([
+    'status',
+    'status',
+  ]);
+  expect(connections).toHaveLength(2);
 });
 
 test('local removal and restore keep original history and draft with lost-ack recovery after reload', async ({

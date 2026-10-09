@@ -1,10 +1,28 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  chmodSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import {
+  groupServiceHash,
+  installService,
+  readRegistryService,
+  readCreatorService,
+  registerService,
+} from './group-service-registry.mjs';
 
 test('own-account preparation/activation and invitation handoff isolate creator authority and preserve mappings', () => {
   const root = mkdtempSync(join(tmpdir(), 'groups-cloudflare-setup-'));
@@ -162,7 +180,7 @@ test('upgrade rebinds only reviewed-checkout source while preserving saved servi
   }
 });
 
-test('joining another descriptor refuses instead of changing retained groups or creator authority', () => {
+test('joining another descriptor retains the original mapping and creator authority', () => {
   const root = mkdtempSync(join(tmpdir(), 'groups-setup-mismatch-'));
   const run = (...args) =>
     spawnSync(process.execPath, ['scripts/group-cloudflare-setup.mjs', ...args], {
@@ -192,9 +210,175 @@ test('joining another descriptor refuses instead of changing retained groups or 
       `https://test-group.person.workers.dev/join#/groups?invite=${encodeURIComponent(JSON.stringify({ groupId: crypto.randomUUID(), secret: 'b'.repeat(64), service: { ...service, endpointId: crypto.randomUUID() } }))}`,
       { mode: 0o600 },
     );
-    assert.equal(run('join', root, input).status, 1);
+    const original = statSync(join(directory, 'service.json'));
+    assert.equal(run('join', root, input).status, 0);
     assert.equal(readFileSync(join(directory, 'service.json'), 'utf8'), mapping);
+    assert.equal(statSync(join(directory, 'service.json')).ino, original.ino);
+    assert.deepEqual(readCreatorService(directory), owner);
+    assert.deepEqual(readRegistryService(directory, groupServiceHash(owner), true), owner);
     assert.ok(!run('join', root, input).stderr.includes(setupCapability));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+const configuration = () => {
+  const origin = 'https://' + crypto.randomUUID() + '.workers.dev';
+  return {
+    version: 1,
+    mode: 'hosted',
+    endpoint: origin + '/',
+    endpointId: crypto.randomUUID(),
+    setupCapability: 'a'.repeat(64),
+    hostingAuthorization: {
+      origin,
+      approvalCapability: 'b'.repeat(64),
+      freeApprovalId: crypto.randomUUID(),
+    },
+  };
+};
+test('join-first creator preparation and activation preserves member default and the exact pending bundle', () => {
+  const root = mkdtempSync(join(tmpdir(), 'groups-join-first-'));
+  const directory = join(root, 'groups');
+  const run = (...args) =>
+    spawnSync(process.execPath, ['scripts/group-cloudflare-setup.mjs', ...args], {
+      encoding: 'utf8',
+    });
+  try {
+    const { setupCapability: _, ...member } = configuration();
+    installService(directory, member);
+    const path = join(directory, 'service.json'),
+      bytes = readFileSync(path, 'utf8'),
+      inode = statSync(path).ino;
+    assert.equal(readCreatorService(directory), null);
+    const args = [
+      'prepare',
+      root,
+      'https://own-service.person.workers.dev',
+      'own-service',
+      'a'.repeat(32),
+      '--verified-workers-free',
+    ];
+    assert.equal(run(...args).status, 0);
+    const bundle = readdirSync(directory).find((n) => n.startsWith('cloudflare-deploy-'));
+    const ownerPath = join(directory, bundle, 'owner-service.json'),
+      owner = JSON.parse(readFileSync(ownerPath, 'utf8'));
+    const pending = readFileSync(ownerPath, 'utf8'),
+      pendingInode = statSync(ownerPath).ino;
+    assert.equal(run(...args).status, 1);
+    assert.equal(readFileSync(ownerPath, 'utf8'), pending);
+    assert.equal(statSync(ownerPath).ino, pendingInode);
+    assert.equal(run('activate', root, ownerPath).status, 0);
+    assert.equal(run('activate', root, ownerPath).status, 0);
+    assert.equal(readFileSync(path, 'utf8'), bytes);
+    assert.equal(statSync(path).ino, inode);
+    assert.deepEqual(readCreatorService(directory), owner);
+    assert.deepEqual(readRegistryService(directory, groupServiceHash(member)), member);
+    assert.deepEqual(readRegistryService(directory, groupServiceHash(owner), true), owner);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+test('matching member import preserves owner capability; altered approval or creator capability refuses without writes', () => {
+  const root = mkdtempSync(join(tmpdir(), 'groups-role-preserve-'));
+  try {
+    const owner = configuration(),
+      { setupCapability: _, ...member } = owner;
+    installService(root, member);
+    const memberPath = join(root, 'services', groupServiceHash(owner) + '.member.json');
+    const original = readFileSync(memberPath, 'utf8'),
+      inode = statSync(memberPath).ino;
+    installService(root, owner, true);
+    const before = readdirSync(join(root, 'services'));
+    installService(root, member);
+    assert.equal(readFileSync(memberPath, 'utf8'), original);
+    assert.equal(statSync(memberPath).ino, inode);
+    assert.deepEqual(readRegistryService(root, groupServiceHash(owner), true), owner);
+    assert.throws(
+      () =>
+        installService(root, {
+          ...member,
+          hostingAuthorization: {
+            ...member.hostingAuthorization,
+            approvalCapability: 'c'.repeat(64),
+          },
+        }),
+      /differs/,
+    );
+    assert.throws(
+      () => installService(root, { ...owner, setupCapability: 'd'.repeat(64) }, true),
+      /preserved/,
+    );
+    assert.deepEqual(readdirSync(join(root, 'services')), before);
+    assert.deepEqual(readCreatorService(root), owner);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+test('finite private registry refuses changed entries, concurrent imports and overflow while retaining every saved route', () => {
+  const root = mkdtempSync(join(tmpdir(), 'groups-registry-fences-'));
+  try {
+    const configs = Array.from({ length: 32 }, () => configuration());
+    for (const value of configs) registerService(root, value);
+    const before = readdirSync(join(root, 'services'));
+    assert.throws(() => registerService(root, configuration()), /full/);
+    assert.deepEqual(readdirSync(join(root, 'services')), before);
+    const file = join(root, 'services', groupServiceHash(configs[0]) + '.owner.json'),
+      saved = readFileSync(file, 'utf8');
+    chmodSync(file, 0o644);
+    assert.throws(() => readRegistryService(root, groupServiceHash(configs[0]), true), /Private/);
+    chmodSync(file, 0o600);
+    const outside = join(root, 'original.fixture');
+    renameSync(file, outside);
+    symlinkSync(outside, file);
+    assert.throws(() => readRegistryService(root, groupServiceHash(configs[0]), true));
+    rmSync(file);
+    renameSync(outside, file);
+    const changed = JSON.parse(saved);
+    changed.service.hostingAuthorization.approvalCapability = 'e'.repeat(64);
+    writeFileSync(file, JSON.stringify(changed));
+    assert.throws(() => readRegistryService(root, groupServiceHash(configs[0]), true), /changed/);
+    writeFileSync(file, saved);
+    for (const value of configs)
+      assert.deepEqual(readRegistryService(root, groupServiceHash(value), true), value);
+    mkdirSync(join(root, 'service-import.lock'), { mode: 0o700 });
+    assert.throws(() => registerService(root, configs[0]), /active or interrupted/);
+    assert.deepEqual(readdirSync(join(root, 'services')), before);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('concurrent fresh creator preparation retains one pending bundle and no active choice', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'groups-prepare-serialized-'));
+  const run = () =>
+    new Promise((resolve, reject) => {
+      const child = spawn(
+        process.execPath,
+        [
+          'scripts/group-cloudflare-setup.mjs',
+          'prepare',
+          root,
+          'https://owned.person.workers.dev',
+          'owned',
+          'a'.repeat(32),
+          '--verified-workers-free',
+        ],
+        { stdio: 'ignore' },
+      );
+      child.once('error', reject);
+      child.once('exit', (code) => resolve(code));
+    });
+  try {
+    const codes = await Promise.all([run(), run()]);
+    assert.deepEqual(codes.sort(), [0, 1]);
+    const directory = join(root, 'groups');
+    assert.equal(
+      readdirSync(directory).filter((name) => name.startsWith('cloudflare-deploy-')).length,
+      1,
+    );
+    assert.equal(readCreatorService(directory), null);
+    assert.ok(!readdirSync(directory).includes('service-import.lock'));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

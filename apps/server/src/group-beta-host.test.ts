@@ -15,6 +15,7 @@ import {
   type MembershipIdentity,
 } from '@dock/shared/dist/group-membership.js';
 import { deliveryCommandSchema, type DeliveryCommand } from '@dock/shared/dist/group-delivery.js';
+import { installService } from '../../../scripts/group-service-registry.mjs';
 import { GroupHost } from './group-host.js';
 import { Conflict } from './store.js';
 import { repoRoot } from './paths.js';
@@ -207,7 +208,7 @@ it('fresh beta hosts create and join directly with separate local bearers and no
   ).toBe(2);
 });
 
-it('lost creation acknowledgements recover after restart, tab loss, expiry and key retirement by retrying the original create', async () => {
+it('lost creation acknowledgements retain beta routing after restart, creator activation, tab loss, expiry and key retirement', async () => {
   const f = fixture(),
     first = f.installation('creator');
   const input = {
@@ -221,12 +222,26 @@ it('lost creation acknowledgements recover after restart, tab loss, expiry and k
   expect(f.calls.map((c) => c.body.kind)).toEqual(['initialize']);
   await first.close();
   cleanup.pop();
+  const origin = 'https://new-owner.example.invalid';
+  installService(
+    first.directory,
+    {
+      version: 1,
+      mode: 'hosted',
+      endpoint: origin + '/',
+      endpointId: randomUUID(),
+      setupCapability: secret(),
+      hostingAuthorization: { origin, approvalCapability: secret(), freeApprovalId: randomUUID() },
+    },
+    true,
+  );
   vi.spyOn(Date, 'now').mockReturnValue(f.payload.createExpiresAt + 1);
   const profile: GroupBetaProfile = {
     ...f.profile,
     keys: f.profile.keys.map((k) => ({ ...k, state: 'route-only' })),
   };
   const reopened = f.installation('creator', profile);
+  expect(reopened.configuration()?.mode).toBe('hosted');
   const recovered = await reopened.resume({ key: input.key, kind: 'create' });
   expect(recovered.group.id).toBe(f.payload.groupId);
   expect(f.calls.slice(0, 2).map((c) => c.body.kind)).toEqual(['initialize', 'initialize']);

@@ -1,8 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { groupContextSchema } from '@dock/shared';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
+import { membershipIdentitySchema } from '@dock/shared/dist/group-membership.js';
+import { publicationCanonical } from './group-publication-protocol.js';
 import { GroupHost } from './group-host.js';
 import type { GroupNativeConnector } from './group-host-native.js';
 import { repoRoot } from './paths.js';
@@ -55,26 +56,50 @@ function fixture(availability: GroupNativeConnector['availability']) {
     await host.close();
     rmSync(directory, { recursive: true, force: true });
   });
-  const context = groupContextSchema.parse({
+  const service = {
+    version: 1 as const,
+    mode: 'local-test' as const,
+    endpoint: 'http://127.0.0.1:19999/',
+    endpointId: randomUUID(),
+    setupCapability: randomBytes(32).toString('hex'),
+  };
+  writeFileSync(join(host.directory, 'service.json'), JSON.stringify(service), { mode: 0o600 });
+  const identity = membershipIdentitySchema.parse({
     groupId: randomUUID(),
     memberId: randomUUID(),
     installationId: randomUUID(),
-    sessionId: randomUUID(),
-    visibility: 'private',
-    provider: 'owner',
-    nativeSessionId: randomUUID(),
+    displayName: 'Owner',
+    state: 'active' as const,
   });
-  const slot = { handle: randomUUID(), context, createdAt: new Date().toISOString() };
-  const value = {
-    handle: randomUUID(),
-    name: 'Availability seam',
-    creator: false,
-    shared: slot,
-    private: slot,
-    identity: { ...context, displayName: 'Owner', state: 'active' },
-  };
-  // Scope/membership lookup is already authorized for this unit fixture. Keep the
-  // real public methods and durable native request journal; start no service/provider.
+  // Seed through the real protected enrollment provisioner. Contribution and
+  // concurrent-read admission see durable gh_groups, exact config and contexts.
+  const value = host['provision'](
+    {
+      handle: randomUUID(),
+      name: 'Availability seam',
+      creator: false,
+      credential: randomBytes(32).toString('hex'),
+      confirmation: randomBytes(32).toString('hex'),
+      identity,
+      binding: null,
+      shared: null,
+      private: null,
+      invitationSecret: null,
+      serviceHash: createHash('sha256')
+        .update(
+          publicationCanonical({
+            mode: service.mode,
+            endpoint: service.endpoint,
+            endpointId: service.endpointId,
+          }),
+        )
+        .digest('hex'),
+    },
+    identity,
+  );
+  const slot = value.private!;
+  // Only remote membership is controlled in this unit seam. Public methods,
+  // saved local authority and durable native journal remain real; no service/provider starts.
   Object.defineProperties(host, {
     active: { value: async () => value },
     resolve: { value: async () => ({ value, slot }) },

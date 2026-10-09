@@ -4,6 +4,7 @@ import {
   groupExportRequestSchema,
   groupExportPageSchema,
   type GroupExportCell,
+  type GroupExportPage,
   type GroupExportResult,
 } from '@dock/shared/dist/group-hosted-export.js';
 import { publicationCanonical } from '@dock/shared/dist/group-delivery.js';
@@ -20,14 +21,42 @@ const quoted = (name: string) => {
 const owned = (name: string) =>
   /^(metadata|enrollments|invitations|receipts|audit|sqlite_sequence)$/.test(name) ||
   /^(delivery_|document_|group_promotion_|ga_)[a-z0-9_]+$/.test(name);
+type Catalogue = {
+  schema: NonNullable<GroupExportPage['schema']>;
+  tables: NonNullable<GroupExportPage['tables']>;
+};
+type ExportStorage = Pick<
+  DurableObjectStorage,
+  'getAlarm' | 'kv' | 'sql' | 'transactionSync' | 'getCurrentBookmark'
+>;
+/** One bounded, disposable metadata entry per DO. This never caches authority or
+ * rows; a cold instance rebuilds it from SQL. Reads do not extend its lifetime. */
+export class GroupExportCatalogue {
+  private entry: { bookmark: string; expiresAt: number; state: Catalogue } | null = null;
+  read(bookmark: string): Catalogue | null {
+    if (this.entry && this.entry.bookmark === bookmark && this.entry.expiresAt >= Date.now())
+      return this.entry.state;
+    this.entry = null;
+    return null;
+  }
+  retain(bookmark: string, expiresAt: number, state: Catalogue) {
+    if (Buffer.byteLength(JSON.stringify(state)) > L.pageBytes) return;
+    this.entry = {
+      bookmark,
+      expiresAt: Math.min(expiresAt, Date.now() + L.timeoutMs),
+      state,
+    };
+  }
+}
 /** Logical SQL archive only. No restore, SQL selector, schema writes, bookmark
  * restore, KV mutation or feature initialization occurs on this path. */
 export async function exportHostedGroup(
-  storage: DurableObjectStorage,
+  storage: ExportStorage,
   groupId: string,
   request: unknown,
   authorize: () => void,
   local: boolean,
+  catalogue?: GroupExportCatalogue,
 ): Promise<GroupExportResult> {
   const parsed = groupExportRequestSchema.safeParse(request);
   if (!parsed.success) return { ok: false, error: 'invalid' };
@@ -36,7 +65,7 @@ export async function exportHostedGroup(
     if ((await storage.getAlarm()) !== null) throw new Refused('unsupported');
     for (const _key of storage.kv.list({ limit: 1 })) throw new Refused('unsupported');
     const deadline = Date.now() + L.pageMs;
-    const catalog = () => {
+    const catalog = (): Catalogue => {
       const schema = storage.sql
         .exec<{
           type: string;
@@ -78,7 +107,7 @@ export async function exportHostedGroup(
         throw new Refused('limit');
       return {
         schema: schema.map((row) => ({
-          type: row.type,
+          type: row.type as Catalogue['schema'][number]['type'],
           name: row.name,
           table: row.tbl_name,
           sql: row.sql,
@@ -127,10 +156,11 @@ export async function exportHostedGroup(
         prior.expiresAt < Date.now())
     )
       throw new Refused('changed');
+    let rebuilt: Catalogue | null = null;
     const page = storage.transactionSync(() => {
       authorize();
       for (const _key of storage.kv.list({ limit: 1 })) throw new Refused('unsupported');
-      const state = catalog(),
+      const state = (!local && catalogue?.read(before)) || (rebuilt = catalog()),
         cursor = parsed.data.cursor ?? { table: 0, after: null };
       const table = state.tables[cursor.table];
       if (!table) throw new Refused('unsupported');
@@ -184,6 +214,8 @@ export async function exportHostedGroup(
     authorize();
     if (Date.now() > deadline || Buffer.byteLength(JSON.stringify(page)) > L.pageBytes)
       throw new Refused('limit');
+    // Publish metadata only after both bookmark and fresh creator checks pass.
+    if (!local && rebuilt) catalogue?.retain(before, page.snapshot.expiresAt, rebuilt);
     return { ok: true, value: page };
   } catch (error) {
     return {

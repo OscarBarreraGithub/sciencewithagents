@@ -31,6 +31,9 @@ agent uses native Git/GitHub tools for account sign-in, repository creation and 
 The browser cannot supply a filesystem path, executable or shell command to the Git API.
 Repository verification uses the signed-in native account's
 [GitHub repository metadata](https://cli.github.com/manual/gh_repo_view); it makes no model call.
+The normal connection panel retains the host's current sync notice even after verification.
+**Check repository** reads fresh status without starting sync or changing a saved operation;
+Automatic sync **On** does not mean dirty or divergent files were overwritten.
 
 Shared Work runs in the attached folder. Changing the folder appends a new binding and
 creates a fresh native conversation when work next starts; it preserves saved model choices.

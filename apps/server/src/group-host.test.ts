@@ -17,6 +17,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer as netServer } from 'node:net';
 import { join } from 'node:path';
 import { repoRoot } from './paths.js';
+import { installService, groupServiceHash } from '../../../scripts/group-service-registry.mjs';
 import { GroupHost, GroupHostError } from './group-host.js';
 import { groupDocumentVersion } from './group-documents.js';
 import { GroupFeatureDocuments } from './group-feature-documents.js';
@@ -80,6 +81,40 @@ import {
   type GroupContext,
 } from '@dock/shared';
 
+// Fixed fixture relay only: real protected routing stays HTTPS/WSS while both
+// owned services run on loopback. No production transport injection is added.
+const serviceRelays = vi.hoisted(() => new Map<string, { endpoint: string; approval: string }>());
+const notificationRoutes = vi.hoisted(() => [] as string[]);
+vi.mock('ws', async (original) => {
+  const native = await original<typeof import('ws')>();
+  class MappedWebSocket extends native.default {
+    constructor(address: string | URL, options?: import('ws').ClientOptions) {
+      const url = new URL(String(address));
+      const relay = serviceRelays.get(url.origin.replace(/^wss:/, 'https:'));
+      if (relay) {
+        expect(
+          new Headers(options?.headers as ConstructorParameters<typeof Headers>[0]).get(
+            'X-Hosting-Approval',
+          ),
+        ).toBe(relay.approval);
+        expect(
+          new Headers(options?.headers as ConstructorParameters<typeof Headers>[0]).get(
+            'Authorization',
+          ),
+        ).toMatch(/^Bearer [a-f0-9]{64}$/);
+        notificationRoutes.push(url.origin);
+      }
+      const headers = new Headers(options?.headers as ConstructorParameters<typeof Headers>[0]);
+      if (relay) headers.delete('X-Hosting-Approval');
+      super(
+        relay ? relay.endpoint.replace(/^http:/, 'ws:').replace(/\/$/, '') + url.pathname : address,
+        relay ? { ...options, headers: Object.fromEntries(headers) } : options,
+      );
+    }
+  }
+  return { ...native, default: MappedWebSocket, WebSocket: MappedWebSocket };
+});
+
 const secret = () => randomBytes(32).toString('hex');
 let root: string, endpoint: string, worker: ChildProcess | undefined, port: number;
 const setup = secret(),
@@ -92,8 +127,10 @@ async function freePort() {
   await new Promise<void>((r, j) => server.close((e) => (e ? j(e) : r())));
   return p;
 }
-async function startWorker() {
-  worker = spawn(
+async function startWorker(owned?: { port: number; endpoint: string; persist: string }) {
+  const workerPort = owned?.port ?? port,
+    workerEndpoint = owned?.endpoint ?? endpoint;
+  const child = spawn(
     process.execPath,
     [
       join(repoRoot, 'apps/group-service/node_modules/wrangler/bin/wrangler.js'),
@@ -102,11 +139,11 @@ async function startWorker() {
       '--ip',
       '127.0.0.1',
       '--port',
-      String(port),
+      String(workerPort),
       '--inspector-port',
       '0',
       '--persist-to',
-      join(root, 'workerd'),
+      owned?.persist ?? join(root, 'workerd'),
       '--var',
       'HOSTING_MODE:local-test',
       '--var',
@@ -120,13 +157,21 @@ async function startWorker() {
       stdio: 'pipe',
     },
   );
-  worker.stdout?.resume();
-  worker.stderr?.resume();
+  if (!owned) worker = child;
+  else
+    closers.push(async () => {
+      if (child.exitCode !== null) return;
+      const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+      child.kill('SIGTERM');
+      await exited;
+    });
+  child.stdout?.resume();
+  child.stderr?.resume();
   const end = Date.now() + 20000;
   while (Date.now() < end) {
-    if (worker.exitCode !== null) throw new Error('Owned workerd exited');
+    if (child.exitCode !== null) throw new Error('Owned workerd exited');
     try {
-      const response = await fetch(`${endpoint}/v1/create`, {
+      const response = await fetch(`${workerEndpoint}/v1/create`, {
         method: 'POST',
         signal: AbortSignal.timeout(300),
       });
@@ -1523,7 +1568,9 @@ it('fails closed on unsafe config and changed endpoint mapping, preserving retai
   const path = join(f.host.directory, 'service.json');
   const original = readFileSync(path, 'utf8');
   chmodSync(path, 0o644);
-  expect((await f.post('open', { handle: open.group.handle })).statusCode).toBe(500);
+  expect((await f.post('open', { handle: open.group.handle })).json().code).toBe(
+    'GROUP_SERVICE_CHANGED',
+  );
   chmodSync(path, 0o600);
   const changed = JSON.parse(original);
   changed.endpointId = randomUUID();
@@ -3873,3 +3920,344 @@ it('native evidence continuation drains bounded pages before idle cadence and le
   expect(f.store.runs()).toHaveLength(0);
   read.mockRestore();
 });
+
+it('protected per-enrollment routes retain two creators across restart, lost replies, originals, notifications and revocation', async () => {
+  const secondPort = await freePort(),
+    secondEndpoint = `http://127.0.0.1:${secondPort}/`;
+  await startWorker({
+    port: secondPort,
+    endpoint: secondEndpoint,
+    persist: join(root, 'second-service'),
+  });
+  const ownerConfig = (name: string) => {
+    const origin = `https://${name}.example.invalid`;
+    return {
+      version: 1 as const,
+      mode: 'hosted' as const,
+      endpoint: origin + '/',
+      endpointId: randomUUID(),
+      setupCapability: setup,
+      hostingAuthorization: { origin, approvalCapability: secret(), freeApprovalId: randomUUID() },
+    };
+  };
+  const firstService = ownerConfig('first-owner'),
+    secondService = ownerConfig('second-owner');
+  serviceRelays.set(firstService.hostingAuthorization.origin, {
+    endpoint,
+    approval: firstService.hostingAuthorization.approvalCapability,
+  });
+  serviceRelays.set(secondService.hostingAuthorization.origin, {
+    endpoint: secondEndpoint,
+    approval: secondService.hostingAuthorization.approvalCapability,
+  });
+  closers.push(async () => {
+    serviceRelays.clear();
+    notificationRoutes.length = 0;
+  });
+  const calls: { origin: string; kind: string; operation?: string }[] = [];
+  let acceptedJoinInstallation: string | undefined;
+  let loseJoin = false,
+    loseCommit = false,
+    loseRevoke = false;
+  const http: typeof fetch = async (address, options) => {
+    const url = new URL(String(address)),
+      relay = serviceRelays.get(url.origin);
+    expect(relay, 'only explicitly owned fixture services may receive requests').toBeTruthy();
+    expect(url.search).toBe('');
+    expect(options?.redirect).toBe('error');
+    expect(options?.credentials).toBe('omit');
+    const headers = new Headers(options?.headers);
+    expect(headers.get('X-Hosting-Approval')).toBe(relay!.approval);
+    const command = JSON.parse(String(options?.body));
+    calls.push({ origin: url.origin, kind: command.kind, operation: command.operationId });
+    headers.delete('X-Hosting-Approval');
+    const response = await fetch(relay!.endpoint.replace(/\/$/, '') + url.pathname, {
+      ...options,
+      headers,
+    });
+    if (
+      url.origin === secondService.hostingAuthorization.origin &&
+      loseJoin &&
+      command.kind === 'join'
+    ) {
+      loseJoin = false;
+      const reply = (await response.clone().json()) as {
+        value: { identity: { installationId: string } };
+      };
+      acceptedJoinInstallation = reply.value.identity.installationId;
+      throw new Error('Lost exact join acknowledgement');
+    }
+    if (
+      url.origin === secondService.hostingAuthorization.origin &&
+      loseCommit &&
+      command.kind === 'effect' &&
+      command.packet.kind === 'commit'
+    ) {
+      loseCommit = false;
+      throw new Error('Lost exact publication acknowledgement');
+    }
+    if (
+      url.origin === firstService.hostingAuthorization.origin &&
+      loseRevoke &&
+      command.kind === 'revoke'
+    ) {
+      loseRevoke = false;
+      throw new Error('Lost exact revoke acknowledgement');
+    }
+    return response;
+  };
+  const first = await installation(undefined, { service: firstService, http }),
+    second = await installation(undefined, { service: secondService, http });
+  let member = await installation(undefined, { configured: false, http });
+  const a = (await create(first, 'Creator one')).open,
+    b = (await create(second, 'Creator two')).open;
+  const invitation = async (owner: typeof first, handle: string) => {
+    const reply = await owner.post('invite', { handle, key: randomUUID() });
+    expect(reply.statusCode, reply.body).toBe(200);
+    return `https://app.example.invalid/#${reply.json().fragment}`;
+  };
+  const firstInvitation = await invitation(first, a.group.handle),
+    secondInvitation = await invitation(second, b.group.handle);
+  const descriptor = (link: string) =>
+    JSON.parse(new URLSearchParams(new URL(link).hash.slice('#/groups?'.length)).get('invite')!);
+  const install = (link: string) => installService(member.host.directory, descriptor(link).service);
+  const beforeImport = calls.length;
+  expect(
+    (
+      await member.post('join', {
+        key: randomUUID(),
+        displayName: 'Reader',
+        invitation: secondInvitation,
+      })
+    ).statusCode,
+  ).toBe(400);
+  expect(calls).toHaveLength(beforeImport);
+  install(firstInvitation);
+  const originalPath = join(member.host.directory, 'service.json'),
+    originalBytes = readFileSync(originalPath, 'utf8'),
+    originalInode = statSync(originalPath).ino;
+  const joinedA = await member.post('join', {
+    key: randomUUID(),
+    displayName: 'Reader',
+    invitation: firstInvitation,
+  });
+  expect(joinedA.statusCode, joinedA.body).toBe(200);
+  const openedA = groupHostOpenSchema.parse(
+    (await member.post('open', { handle: joinedA.json().group.handle })).json(),
+  );
+  expect(
+    (
+      await member.post('create', {
+        key: randomUUID(),
+        projectName: 'No creator grant',
+        displayName: 'Reader',
+      })
+    ).json().code,
+  ).toBe('GROUP_CREATOR_SETUP_REQUIRED');
+  install(secondInvitation);
+  expect(readFileSync(originalPath, 'utf8')).toBe(originalBytes);
+  expect(statSync(originalPath).ino).toBe(originalInode);
+  const alteredInvitation = descriptor(secondInvitation);
+  alteredInvitation.service.hostingAuthorization.approvalCapability = secret();
+  const alteredLink = `https://app.example.invalid/#/groups?invite=${encodeURIComponent(JSON.stringify(alteredInvitation))}`;
+  const beforeAltered = calls.length,
+    intentsBeforeAltered = member.host.db.prepare('SELECT count(*) n FROM gh_operations').get()!.n;
+  expect(
+    (
+      await member.post('join', {
+        key: randomUUID(),
+        displayName: 'Reader',
+        invitation: alteredLink,
+      })
+    ).statusCode,
+  ).toBe(400);
+  expect(calls).toHaveLength(beforeAltered);
+  expect(member.host.db.prepare('SELECT count(*) n FROM gh_operations').get()!.n).toBe(
+    intentsBeforeAltered,
+  );
+  const joinInput = { key: randomUUID(), displayName: 'Reader', invitation: secondInvitation };
+  loseJoin = true;
+  expect((await member.post('join', joinInput)).statusCode).toBe(503);
+  const pendingBody = String(
+    member.host.db
+      .prepare('SELECT body FROM gh_operations WHERE key=?')
+      .get('join:' + joinInput.key)!.body,
+  );
+  const directory = member.directory;
+  await member.close();
+  member = await installation(directory, { http });
+  const resumedJoin = await member.post('resume', { key: joinInput.key, kind: 'join' });
+  expect(resumedJoin.statusCode, resumedJoin.body).toBe(200);
+  const openedB = groupHostOpenSchema.parse(
+    (await member.post('open', { handle: resumedJoin.json().group.handle })).json(),
+  );
+  expect(openedB.member.installationId).toBe(acceptedJoinInstallation);
+  expect(
+    String(
+      member.host.db
+        .prepare('SELECT body FROM gh_operations WHERE key=?')
+        .get('join:' + joinInput.key)!.body,
+    ),
+  ).toBe(pendingBody);
+  expect(
+    calls
+      .filter((x) => x.origin === secondService.hostingAuthorization.origin && x.kind === 'join')
+      .map((x) => x.operation),
+  ).toEqual([joinInput.key, joinInput.key]);
+  expect(
+    (await member.post('open', { handle: openedA.group.handle })).json().shared.context,
+  ).toEqual(openedA.shared.context);
+  await expect
+    .poll(
+      () =>
+        member.host.updates.connected(openedA.member) &&
+        member.host.updates.connected(openedB.member),
+      { timeout: 5000 },
+    )
+    .toBe(true);
+  expect(notificationRoutes).toContain('wss://first-owner.example.invalid');
+  expect(notificationRoutes).toContain('wss://second-owner.example.invalid');
+  const updates: string[] = [];
+  const unsubscribe = member.host.updates.subscribe((update) => {
+    if (update.changed) updates.push(update.groupId);
+  });
+  closers.push(async () => unsubscribe());
+  const noteA = {
+      handle: a.shared.handle,
+      key: randomUUID(),
+      text: 'Exact original from creator one',
+    },
+    noteB = { handle: b.shared.handle, key: randomUUID(), text: 'Exact original from creator two' };
+  await selectFeedWriter(first, a.shared.handle);
+  await selectFeedWriter(second, b.shared.handle);
+  expect((await first.post('send', noteA)).json().delivery).toBe('complete');
+  await progressFeed(first);
+  expect((await second.post('send', noteB)).json().delivery).toBe('complete');
+  await progressFeed(second);
+  await expect
+    .poll(() => new Set(updates), { timeout: 5000 })
+    .toEqual(new Set([a.member.groupId, b.member.groupId]));
+  const original = async (opened: GroupHostOpen, text: string, retainedEvent?: string) => {
+    const feed = await member.post('feed', {
+      handle: opened.shared.handle,
+      query: { visibility: 'shared', after: 0, limit: 8, cursor: null },
+    });
+    expect(feed.statusCode, feed.body).toBe(200);
+    if (!retainedEvent) expect(feed.json().entries).toHaveLength(1);
+    const eventId = retainedEvent ?? feed.json().entries[0].eventId;
+    expect(
+      feed.json().entries.some((entry: { eventId: string }) => entry.eventId === eventId),
+    ).toBe(true);
+    expect(
+      (await member.post('original', { handle: opened.shared.handle, eventId })).json().text,
+    ).toBe(text);
+    return eventId;
+  };
+  const eventA = await original(openedA, noteA.text),
+    eventB = await original(openedB, noteB.text);
+  expect(eventA).not.toBe(eventB);
+  const foreignOriginal = await member.post('original', {
+    handle: openedA.shared.handle,
+    eventId: eventB,
+  });
+  expect(foreignOriginal.statusCode).not.toBe(200);
+  expect(foreignOriginal.body).not.toContain(noteB.text);
+  const ownNote = {
+    handle: openedB.shared.handle,
+    key: randomUUID(),
+    text: 'Member sends to the second retained service',
+  };
+  loseCommit = true;
+  const uncertain = await member.post('send', ownNote);
+  expect(uncertain.json().delivery).toBe('uncertain');
+  const savedSend = String(
+    member.host.db
+      .prepare('SELECT body FROM gh_sends WHERE handle=? AND key=?')
+      .get(ownNote.handle, ownNote.key)!.body,
+  );
+  await member.close();
+  member = await installation(directory, { http });
+  await new Promise((resolve) => setTimeout(resolve, 1100)); // retained publication backoff, receipt-only retry
+  expect(
+    (await member.post('status', { handle: ownNote.handle, key: ownNote.key, retry: true })).json()
+      .delivery,
+  ).toBe('complete');
+  expect((await member.post('send', ownNote)).json().runId).toBe(uncertain.json().runId);
+  const nextSend = JSON.parse(
+    String(
+      member.host.db
+        .prepare('SELECT body FROM gh_sends WHERE handle=? AND key=?')
+        .get(ownNote.handle, ownNote.key)!.body,
+    ),
+  );
+  expect(nextSend.deliveryOperation).toBe(JSON.parse(savedSend).deliveryOperation);
+  const registry = join(member.host.directory, 'services'),
+    routeB = join(registry, groupServiceHash(secondService) + '.member.json');
+  const stored = readFileSync(routeB, 'utf8'),
+    beforeUnavailable = calls.length;
+  // Move outside the registry so unrelated valid services remain readable.
+  const savedOutside = join(member.host.directory, 'route-saved.fixture');
+  renameSync(routeB, savedOutside);
+  expect((await member.post('open', { handle: openedB.group.handle })).json().code).toBe(
+    'GROUP_SERVICE_CHANGED',
+  );
+  expect(calls).toHaveLength(beforeUnavailable);
+  expect((await member.post('open', { handle: openedA.group.handle })).statusCode).toBe(200);
+  renameSync(savedOutside, routeB);
+  const changed = JSON.parse(stored);
+  changed.service.hostingAuthorization.approvalCapability = secret();
+  writeFileSync(routeB, JSON.stringify(changed));
+  const beforeChanged = calls.length;
+  expect((await member.post('open', { handle: openedB.group.handle })).json().code).toBe(
+    'GROUP_SERVICE_CHANGED',
+  );
+  expect(calls).toHaveLength(beforeChanged);
+  writeFileSync(routeB, stored);
+  const malicious = {
+    ...descriptor(firstInvitation),
+    service: descriptor(secondInvitation).service,
+  };
+  const conflictLink = `https://app.example.invalid/#/groups?invite=${encodeURIComponent(JSON.stringify(malicious))}`,
+    beforeConflict = calls.length;
+  expect(
+    (
+      await member.post('join', {
+        key: randomUUID(),
+        displayName: 'Reader',
+        invitation: conflictLink,
+      })
+    ).json().code,
+  ).toBe('GROUP_IDENTITY_CONFLICT');
+  expect(calls).toHaveLength(beforeConflict);
+  writeFileSync(originalPath, JSON.stringify({ version: 1, mode: 'disabled' }));
+  const beforeDisabled = calls.length;
+  expect((await member.post('open', { handle: openedB.group.handle })).json().code).toBe(
+    'GROUP_SETUP_REQUIRED',
+  );
+  expect(calls).toHaveLength(beforeDisabled);
+  writeFileSync(originalPath, originalBytes);
+  // Explicit creator activation after joining selects fresh creation only.
+  installService(member.host.directory, secondService, true);
+  const own = (await create(member, 'Joined first, own creator choice')).open;
+  expect(own.member.groupId).not.toBe(b.member.groupId);
+  expect(readFileSync(originalPath, 'utf8')).toBe(originalBytes);
+  expect(statSync(originalPath).ino).toBe(originalInode);
+  expect(
+    (await member.post('open', { handle: openedA.group.handle })).json().shared.context,
+  ).toEqual(openedA.shared.context);
+  const revoke = {
+    handle: a.group.handle,
+    key: randomUUID(),
+    requestId: openedA.member.installationId,
+  };
+  loseRevoke = true;
+  expect((await first.post('revoke', revoke)).statusCode).toBe(503);
+  await first.close();
+  const firstRestarted = await installation(first.directory, { http });
+  expect((await firstRestarted.post('revoke', revoke)).statusCode).toBe(200);
+  expect((await member.post('open', { handle: openedA.group.handle })).statusCode).toBe(403);
+  expect(
+    (await member.post('open', { handle: openedB.group.handle })).json().shared.context,
+  ).toEqual(openedB.shared.context);
+  await original(openedB, noteB.text, eventB);
+}, 30000);

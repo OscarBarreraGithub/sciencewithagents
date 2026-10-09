@@ -260,6 +260,12 @@ explicitly authorizes native writing. This is not an operating-system sandbox. D
 a separate Linux sign-in are not required. Existing isolated history is retained without
 replaying its uncertain requests through the new runtime.
 
+The multiple-service source slice gives each retained enrollment its own protected creator
+route, with at most 32 imported service identities. Joining first preserves member routes
+when the owner later activates their own creator service. Local subprocess and two-owned-
+workerd checks cover exact lost replies, restart, originals, separate notification sockets
+and revocation; they do not certify real creator accounts, deployed TLS or installed acceptance.
+
 **New installation setup:** the group creator's external setup agent deploys the service
 to the creator's own Cloudflare Workers Free account, following the copyable Groups prompt
 and [hosting runbook](GROUP_HOSTING.md). Fresh installs no longer default to the maintainer's
@@ -303,6 +309,16 @@ records and exact originals, retaining gaps or unavailable final output explicit
 The [local archive](GROUP_RECOVERY.md) and [creator-hosted export](GROUP_HOSTED_RECOVERY.md)
 provide separate private, verified recovery material; neither automatically restores or
 replays native work. Retained isolated adapters and histories remain separate.
+
+**Hosted export compatibility checks, 2026-10-09:** production bookmark pages reuse only
+per-group ephemeral catalogue metadata, with fresh creator checks and a fixed expiry.
+Controlled bookmark tests over actual local Worker SQLite cover unchanged/cold pages,
+mutation, expiry and authorization failure; actual cursor counters verify catalogue scans
+occur once across pages without SQL writes. Local fixtures retain the full-state digest path.
+The encoded archive bound is 1 GiB and retained local archive aggregate is 4 GiB; a sparse-file
+fixture verifies admission above the old aggregate bound and refusal at the new bound.
+Deployed larger/full-capacity and interrupted exports remain acceptance gates; these local
+checks do not establish Cloudflare quota sufficiency or new-person recovery acceptance.
 
 **Maintainer activation, 2026-10-08:** the reviewed candidate is installed and the existing
 creator Worker is updated. Baseline project/conversation/task identities, queued requests,

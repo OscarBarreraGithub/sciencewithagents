@@ -5,8 +5,8 @@ private local archive and conservative recovery policy. No automatic restore is 
 
 ## Save and verify an archive
 
-On the original creator computer, open **Groups → Manage → Private hosted backup →
-Export hosted data**. Choose a quiet window and let verification finish. The app saves
+On the original creator computer, open **Groups → Manage → Advanced → Creator backup of shared group data →
+Save private shared-data backup**. Choose a quiet window and let verification finish. The app saves
 a fresh archive and reports its ID and row/byte counts; its receipt retains the SHA-256.
 It never asks for a path,
 SQL query, Cloudflare token or service URL in the browser.
@@ -53,14 +53,20 @@ page. Any intervening change aborts the export; retry starts a fresh snapshot. L
 fixtures use a bounded full-state digest because PITR/bookmarks are unavailable locally.
 Production bookmark errors never fall back to a weaker snapshot.
 
+The service reuses one bounded schema/column/count catalogue within that group's Durable
+Object only while the exact production bookmark remains unchanged. The entry expires
+within 180 seconds; reads do not extend it. Every page still checks current creator authority
+and the bookmark before/after reading rows. A cold instance or expired entry rebuilds from
+SQL; no cache is persisted, and local digest fixtures still hash the whole SQL state.
+
 Even ordinary group reads can update retained write probes or read counters. Background
 clients, publication/reconciliation passes, and active native work can therefore interrupt
 an export. There is no implicit service freeze or stopping of anyone's work. Arrange an
 explicit quiet maintenance window for a larger archive; repeated changes fail visibly.
 
-Limits are 512 KiB/page, 128 rows/page, 4,096 pages, 1,000,000 rows, 512 MiB encoded
+Limits are 512 KiB/page, 128 rows/page, 4,096 pages, 1,000,000 rows, 1 GiB encoded
 payload and 180 seconds/export, with a five-second page deadline. The local archive store
-allows one export at a time, eight retained directories and 1 GiB total. Empty held directories
+allows one export at a time, eight retained directories and 4 GiB total. Empty held directories
 count toward that limit with zero bytes. To free retention capacity, the setup agent must
 deliberately move the complete private UUID directory after preserving and verifying its
 backup. For a held partial/empty directory, preserve its ID and any bytes for inspection,
@@ -68,6 +74,9 @@ move the entire directory privately, and continue with the explicit fresh-snapsh
 do not reuse the held key or call that partial a verified backup. Moving only a file leaves
 a counted held directory. Nothing is automatically pruned.
 These are application bounds, not a purchase of provider quota or infinite group capacity.
+The encoded allowance includes JSON and base64 expansion; it does not guarantee that
+every physically full service fits the row, page or time bounds. Nothing deletes history
+to make an export fit.
 
 All currently present application SQL tables, exact `sqlite_master` definitions (including
 indexes/triggers), row IDs, original text, integer values, BLOB report chunks, membership,

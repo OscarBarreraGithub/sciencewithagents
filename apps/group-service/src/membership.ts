@@ -47,7 +47,7 @@ import { GroupPromotionHost, GroupPromotionHostCapacity } from './group-promotio
 import type { GroupPromotionHostResult } from '@dock/shared/dist/group-promotion-host.js';
 import { verifyWorkerBetaAdmission } from './group-beta-admission.js';
 import { GroupActionsStorage } from './group-actions-storage.js';
-import { exportHostedGroup } from './group-hosted-export.js';
+import { exportHostedGroup, GroupExportCatalogue } from './group-hosted-export.js';
 import {
   groupExportEnvelopeSchema,
   type GroupExportResult,
@@ -86,6 +86,7 @@ export class GroupMembership extends DurableObject<Env> {
   private actionsService?: GroupActionsService;
   private promotionService?: GroupPromotionHost;
   private documentsService?: GroupDocumentTransport;
+  private readonly exportCatalogue = new GroupExportCatalogue();
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.storage.transactionSync(() => {
@@ -291,6 +292,7 @@ export class GroupMembership extends DurableObject<Env> {
           if (creator() !== operationId) throw new Error('export-denied');
         },
         String(this.env.HOSTING_MODE) === 'local-test',
+        this.exportCatalogue,
       );
     } catch (error) {
       return {

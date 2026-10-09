@@ -94,16 +94,23 @@ it('admits thousands of small identities beyond old count caps, then refuses new
         'pending',
       );
     }
-    let count = 0;
-    while (
-      groupLocalReceiptCapacity(db).bytes + 2 + 8192 + 4096 <=
-      GROUP_LOCAL_RECEIPT_BYTES - GROUP_LOCAL_RECEIPT_CONTROL_BYTES
-    ) {
+    const insertSend = db.prepare('INSERT INTO gh_sends VALUES(?,?,?,?)');
+    for (let i = 0; i < 2049; i++) {
       admitGroupLocalReceipt(db, 'gh_sends', '{}', '{}');
-      db.prepare('INSERT INTO gh_sends VALUES(?,?,?,?)').run('owner', String(count++), '{}', '{}');
+      insertSend.run('owner', String(i), '{}', '{}');
     }
     db.exec('COMMIT');
-    expect(count).toBeGreaterThan(2048);
+    expect(db.prepare('SELECT count(*) n FROM gh_sends').get()!.n).toBe(2049);
+    // Seed the retained accounting counter as a near-full historical installation.
+    // Thousands of real rows above verify count-cap removal; reaching the 2 GiB
+    // admission fence should not require 170,000 more inserts on shared CI hosts.
+    const remaining =
+      GROUP_LOCAL_RECEIPT_BYTES -
+      GROUP_LOCAL_RECEIPT_CONTROL_BYTES -
+      groupLocalReceiptCapacity(db).bytes;
+    db.prepare("UPDATE gh_receipt_storage SET bytes=bytes+? WHERE bucket='gh_operations'").run(
+      remaining,
+    );
     const before = groupLocalReceiptCapacity(db);
     expect(() => admitGroupLocalReceipt(db, 'gh_sends', '{}', '{}')).toThrow('no new request');
     admitGroupLocalReceipt(db, 'gh_operations', '{}', '{}', true);
