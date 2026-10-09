@@ -252,6 +252,9 @@ export class GroupHost {
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS gh_groups(handle TEXT PRIMARY KEY, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS gh_operations(key TEXT PRIMARY KEY,input TEXT NOT NULL,body TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS gh_local_visibility(handle TEXT NOT NULL,revision INTEGER NOT NULL,hidden INTEGER NOT NULL,key TEXT UNIQUE NOT NULL,PRIMARY KEY(handle,revision));
+      CREATE TRIGGER IF NOT EXISTS gh_local_visibility_immutable BEFORE UPDATE ON gh_local_visibility BEGIN SELECT RAISE(ABORT,'retained local visibility'); END;
+      CREATE TRIGGER IF NOT EXISTS gh_local_visibility_retain BEFORE DELETE ON gh_local_visibility BEGIN SELECT RAISE(ABORT,'retained local visibility'); END;
       CREATE TABLE IF NOT EXISTS gh_sends(handle TEXT NOT NULL,key TEXT NOT NULL,input TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(handle,key));
       CREATE TABLE IF NOT EXISTS gh_drafts(handle TEXT PRIMARY KEY,text TEXT NOT NULL,revision INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS gh_draft_receipts(handle TEXT NOT NULL,key TEXT NOT NULL,input TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(handle,key));
@@ -344,6 +347,52 @@ export class GroupHost {
         'INSERT INTO gh_groups VALUES (?,?) ON CONFLICT(handle) DO UPDATE SET body=excluded.body',
       )
       .run(value.handle, JSON.stringify(recordSchema.parse(value)));
+  }
+  private localRecord(handle: string) {
+    z.uuid().parse(handle);
+    const value = this.records().find(
+      (record) =>
+        record.handle === handle ||
+        record.shared?.handle === handle ||
+        record.private?.handle === handle,
+    );
+    if (!value) throw new Missing('Saved local group unavailable.');
+    return value;
+  }
+  private localState(handle: string) {
+    const row = this.db
+      .prepare(
+        'SELECT revision,hidden FROM gh_local_visibility WHERE handle=? ORDER BY revision DESC LIMIT 1',
+      )
+      .get(handle);
+    return host.groupHostLocalStateSchema.parse({
+      revision: row ? Number(row.revision) : 0,
+      hidden: row?.hidden === 1,
+    });
+  }
+  /** Local visibility is separate from membership and saved native authority. */
+  localVisible(handle: string) {
+    try {
+      return !this.localState(this.localRecord(handle).handle).hidden;
+    } catch (error) {
+      if (error instanceof Missing) return false;
+      throw error;
+    }
+  }
+  localVisibility(raw: unknown): host.GroupHostSummary {
+    const input = host.groupHostLocalVisibilitySchema.parse(raw);
+    const value = this.localRecord(input.handle);
+    return host.groupHostSummarySchema.parse(
+      this.intent(input.key, { kind: 'local-visibility', ...input }, () => {
+        const previous = this.localState(value.handle);
+        if (input.revision !== previous.revision)
+          throw new Conflict('Local group visibility changed. Refresh Groups before trying again.');
+        this.db
+          .prepare('INSERT INTO gh_local_visibility VALUES (?,?,?,?)')
+          .run(value.handle, previous.revision + 1, input.hidden ? 1 : 0, input.key);
+        return this.summary(value);
+      }),
+    );
   }
   private async bounded(response: Response, limit: number) {
     if (
@@ -602,6 +651,7 @@ export class GroupHost {
             ? 'Waiting for group service activation'
             : 'Access revoked',
       state: value.identity.state,
+      local: this.localState(value.handle),
     });
   }
   async list() {
@@ -624,7 +674,12 @@ export class GroupHost {
       message = (error as Error).message;
     }
     return host.groupHostListSchema.parse({
-      groups: this.records().map((v) => this.summary(v)),
+      groups: this.records()
+        .filter((v) => !this.localState(v.handle).hidden)
+        .map((v) => this.summary(v)),
+      removed: this.records()
+        .filter((v) => this.localState(v.handle).hidden)
+        .map((v) => this.summary(v)),
       service: { configured, message, setupCodeRequired },
       native: await this.nativeAvailability(),
     });

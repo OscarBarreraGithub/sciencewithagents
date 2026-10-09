@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -52,6 +52,7 @@ beforeEach(async () => {
   };
   host = {
     db,
+    localVisible: () => true,
     authenticatedContext: async ({ handle: selected }: { handle: string }) => {
       if (selected !== handle) throw new Error('Unknown saved member');
       return { context, enrollmentHandle: binding.enrollmentHandle, revalidate: async () => {} };
@@ -74,6 +75,21 @@ afterEach(async () => {
 });
 const sync = () => adapter.request({ action: 'sync', handle, key: randomUUID() });
 const status = () => adapter.request({ action: 'status', handle });
+it('local removal pauses the automatic Git pass before polling the group or remote', async () => {
+  await seed();
+  await adapter.request({
+    action: 'configure',
+    handle,
+    key: randomUUID(),
+    githubUsername: '',
+    autoSync: true,
+  });
+  vi.spyOn(host, 'localVisible').mockReturnValue(false);
+  const resolve = vi.spyOn(host, 'authenticatedContext');
+  await (adapter as unknown as { pass(): Promise<void> }).pass();
+  expect(resolve).not.toHaveBeenCalled();
+  expect((await status()).autoSync).toBe(true); // Saved choice stays intact for restore.
+});
 it('owner status shows unfinished group/task edits without returning contents or sharing private names', async () => {
   await seed();
   writeFileSync(join(cwd, 'unfinished.txt'), 'local draft');

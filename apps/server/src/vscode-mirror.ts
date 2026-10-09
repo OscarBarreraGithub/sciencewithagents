@@ -25,6 +25,10 @@ import {
   nativeGoalActionSchema,
   nativeGoalViewSchema,
   nativeGoalActionProblem,
+  mirrorQuestionAnswerSchema,
+  mirrorNativeRequestsViewSchema,
+  type MirrorQuestionAnswer,
+  type MirrorNativeRequestsView,
   type NativeGoalAction,
   type NativeGoalView,
 } from '@dock/shared';
@@ -52,6 +56,7 @@ type Peer = {
     string,
     {
       read: boolean;
+      nativeRead: boolean;
       text: string;
       bytes: number;
       timer: NodeJS.Timeout;
@@ -381,17 +386,40 @@ export class VscodeMirrors {
       if (value.type === 'send') return this.daemon.send(windowId, value.input);
       if (value.type === 'control') return this.daemon.control(windowId, value.input);
       if (value.type === 'goal_read') return this.daemon.goal(windowId);
+      if (value.type === 'native_requests_read')
+        return {
+          windowId,
+          threadId: this.window(windowId)?.threadId ?? null,
+          provider: 'codex',
+          status: this.window(windowId)?.status ?? 'offline',
+          nativeRequests: [],
+          nativeRequestCount: 0,
+          nativeRequestsUnavailable: true,
+          message:
+            'This native source does not expose pending requests here. Use its original native controls.',
+        };
+      if (value.type === 'question_answer')
+        return {
+          state: 'not_sent',
+          message: 'Answer this native source in its original controls. Nothing was sent.',
+        };
       return this.daemon.goalAction(windowId, value.input);
     }
     if (!peer)
       throw new Missing(
         'This VS Code window is offline. Open it on the computer and share the conversation again.',
       );
+    if (peer.socket.readyState !== peer.socket.OPEN)
+      throw new Missing('This VS Code connection closed before handoff. Nothing was sent.');
     // Reads are bounded separately so polling never blocks an owner's send or stop.
     const read = value.type === 'read';
+    const nativeRead = value.type === 'native_requests_read';
     if (
       (read && [...peer.pending.values()].filter((request) => request.read).length >= 4) ||
-      peer.pending.size >= 8
+      (nativeRead
+        ? [...peer.pending.values()].filter((request) => request.nativeRead).length >= 2 ||
+          peer.pending.size >= 10
+        : peer.pending.size >= 8)
     )
       throw new MirrorBusy('The mirror is catching up. Please wait.');
     return new Promise((resolve, reject) => {
@@ -403,7 +431,7 @@ export class VscodeMirrors {
           ),
         );
       }, timeoutMs);
-      peer.pending.set(value.id, { read, text: '', bytes: 0, timer, resolve, reject });
+      peer.pending.set(value.id, { read, nativeRead, text: '', bytes: 0, timer, resolve, reject });
       peer.socket.send(JSON.stringify(value), (error) => {
         if (error) {
           clearTimeout(timer);
@@ -439,6 +467,7 @@ export class VscodeMirrors {
       queuedMessages: _queue,
       queueHasMore: _more,
       queueReadError: _queueError,
+      nativeRequests: _nativeRequests,
       ...summary
     } = value;
     const peer = this.peers.get(windowId);
@@ -568,8 +597,15 @@ export class VscodeMirrors {
         result = mirrorResultSchema.parse(
           await this.request(windowId, { id: randomUUID(), type: 'send', input: delivery }),
         );
-      } catch {
-        result = uncertain;
+      } catch (error) {
+        result =
+          error instanceof MirrorBusy || error instanceof Missing
+            ? {
+                state: 'not_sent',
+                message:
+                  'The editor connection is unavailable or busy before message handoff. Nothing was sent; keep your draft and retry explicitly when ready.',
+              }
+            : uncertain;
       }
     }
     this.store.transaction(() => {
@@ -638,19 +674,151 @@ export class VscodeMirrors {
     });
     return result;
   }
-  receipt(key: string): MirrorResult {
+  receipt(key: string, includePresence = false): MirrorResult {
     const saved = this.store.db
       .prepare('SELECT result FROM mirror_deliveries WHERE key=?')
       .get(key) as { result: string } | undefined;
-    // Absence may mean the original HTTP request is still in flight. Never turn
-    // a delivery check into a first send or claim it is safe to send a duplicate.
+    // Absence may mean the original HTTP request is still in flight. A read never sends.
+    // Explicit normal-message retry reuses the exact original key and input; it cannot
+    // create a second native dispatch when the first HTTP request eventually arrives.
     return saved
-      ? mirrorResultSchema.parse(JSON.parse(saved.result))
+      ? {
+          ...mirrorResultSchema.parse(JSON.parse(saved.result)),
+          ...(includePresence ? { receiptState: 'recorded' as const } : {}),
+        }
       : {
           state: 'uncertain',
           message:
-            'No delivery receipt is available yet. Inspect the conversation on the computer before clearing this message. Nothing was resent.',
+            'No request is recorded on this computer for this ID. The first request may still arrive. Retry a retained original message with its same ID; this check sent nothing.',
+          ...(includePresence ? { receiptState: 'missing' as const } : {}),
         };
+  }
+  async questions(windowId: string): Promise<MirrorNativeRequestsView> {
+    const window = this.window(windowId),
+      peer = this.peers.get(windowId);
+    const unavailable = (message: string): MirrorNativeRequestsView => {
+      if (peer && this.peers.get(windowId) === peer)
+        peer.window = {
+          ...peer.window,
+          nativeRequestCount: 0,
+          nativeRequestsUnavailable: true,
+        };
+      const current = this.window(windowId);
+      return {
+        windowId,
+        provider: current?.provider,
+        threadId: current?.threadId ?? null,
+        status: current?.status ?? 'offline',
+        message,
+        nativeRequests: [],
+        nativeRequestCount: 0,
+        nativeRequestsUnavailable: true,
+      };
+    };
+    if (!window || !peer || !window.canReadNativeRequests)
+      return unavailable(
+        'This companion or native source does not expose pending request details. Use the original editor.',
+      );
+    try {
+      const view = mirrorNativeRequestsViewSchema.parse(
+        await this.request(
+          windowId,
+          {
+            id: randomUUID(),
+            type: 'native_requests_read',
+          },
+          2000,
+        ),
+      );
+      if (
+        this.peers.get(windowId) !== peer ||
+        view.windowId !== windowId ||
+        view.threadId !== peer.window.threadId ||
+        (view.provider ?? 'codex') !== (peer.window.provider ?? 'codex')
+      )
+        return unavailable(
+          'The shared conversation changed. Refresh its native requests; nothing was answered.',
+        );
+      const { nativeRequests: _requests, ...summary } = view;
+      peer.window = { ...peer.window, ...summary };
+      peer.summaryAt = Date.now();
+      return view;
+    } catch {
+      return unavailable(
+        'Native request details are unavailable. Retry this read or use VS Code; no response was sent.',
+      );
+    }
+  }
+  async questionAnswer(windowId: string, raw: MirrorQuestionAnswer): Promise<MirrorResult> {
+    const input = mirrorQuestionAnswerSchema.parse(raw);
+    const digest = createHash('sha256')
+      .update(JSON.stringify({ windowId, questionAnswer: input }))
+      .digest('hex');
+    const saved = this.store.db
+      .prepare('SELECT input_hash,result FROM mirror_deliveries WHERE key=?')
+      .get(input.key) as { input_hash: string; result: string } | undefined;
+    if (saved) {
+      if (saved.input_hash !== digest)
+        throw new Conflict(
+          'This receipt belongs to a different native question response. Nothing was repeated.',
+        );
+      return mirrorResultSchema.parse(JSON.parse(saved.result));
+    }
+    const pending: MirrorResult = {
+      state: 'uncertain',
+      message:
+        'Native response acceptance was not confirmed. Inspect VS Code; this exact response will not be repeated.',
+    };
+    // Only a digest is durable: question/answer bodies and secrets are never journaled or echoed.
+    this.store.db
+      .prepare('INSERT INTO mirror_deliveries(key,input_hash,result) VALUES (?,?,?)')
+      .run(input.key, digest, JSON.stringify(pending));
+    let result: MirrorResult;
+    try {
+      const current = await this.questions(windowId);
+      const request = current.nativeRequests?.find((request) => request.token === input.token);
+      if (
+        current.status === 'offline' ||
+        current.nativeRequestsUnavailable ||
+        (current.provider ?? 'codex') !== input.provider ||
+        current.threadId !== input.threadId ||
+        !request ||
+        request.threadId !== input.threadId ||
+        request.turnId !== input.turnId ||
+        request.observation !== 'pending' ||
+        request.response !== 'answer' ||
+        request.questions.some((question) => question.isSecret)
+      )
+        result = {
+          state: 'not_sent',
+          message:
+            'This exact native question is not currently answerable here. Refresh or use VS Code; nothing was sent.',
+        };
+      else {
+        const native = mirrorResultSchema.parse(
+          await this.request(windowId, {
+            id: randomUUID(),
+            type: 'question_answer',
+            input,
+          }),
+        );
+        // The installed native write boundary has no positive response-acceptance receipt.
+        result = native.state === 'not_sent' ? native : pending;
+      }
+    } catch (error) {
+      result =
+        error instanceof Missing || error instanceof MirrorBusy
+          ? {
+              state: 'not_sent',
+              message:
+                'The native connection is unavailable or busy before response handoff. Refresh or use VS Code; nothing was sent.',
+            }
+          : pending;
+    }
+    this.store.db
+      .prepare('UPDATE mirror_deliveries SET result=? WHERE key=?')
+      .run(JSON.stringify(result), input.key);
+    return result;
   }
   private goalRevisionKey(threadId: string) {
     return `mirror:goal-revision:codex:${threadId}`;
@@ -838,7 +1006,7 @@ export function registerMirrorRoutes(
     return (await mirrors.list(query.includeArchived === 'true')).map(publicQueueCapability);
   });
   app.get('/api/vscode/deliveries/:id', async (request) =>
-    mirrors.receipt(windowId(request.params)),
+    mirrors.receipt(windowId(request.params), true),
   );
   app.get('/api/vscode/windows/:id', discover, async (request) =>
     publicQueueCapability(
@@ -852,6 +1020,18 @@ export function registerMirrorRoutes(
   );
   app.post('/api/vscode/windows/:id/control', discover, async (request) =>
     mirrors.control(windowId(request.params), mirrorControlSchema.parse(request.body)),
+  );
+  app.get('/api/vscode/windows/:id/questions', async (request) =>
+    mirrors.questions(windowId(request.params)),
+  );
+  app.post(
+    '/api/vscode/windows/:id/questions/answer',
+    { bodyLimit: promptBodyLimit },
+    async (request) =>
+      mirrors.questionAnswer(
+        windowId(request.params),
+        mirrorQuestionAnswerSchema.parse(request.body),
+      ),
   );
   // Goal reads are lazy metadata only, never full transcript discovery or a model turn.
   app.get('/api/vscode/windows/:id/goal', discover, async (request) =>

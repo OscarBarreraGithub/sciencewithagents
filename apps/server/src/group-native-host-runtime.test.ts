@@ -130,6 +130,65 @@ function fixture(readEvidence?: (context: GroupContext) => Promise<string>) {
     },
   };
 }
+it('local removal holds exact queued background helpers across restart without changing owner Work', async () => {
+  const f = fixture(),
+    input = f.input(f.shared, 'work');
+  await f.control(f.scope(f.shared), 'prepare');
+  await f.connector.submit(input);
+  const binding = f.connector.resolveLocalContext(f.shared, input.enrollmentHandle);
+  const helper = f.store.addAgent({
+    projectId: binding.projectId,
+    parentId: null,
+    taskId: null,
+    name: 'Saved feed helper',
+    role: 'researcher',
+    provider: binding.provider,
+    cwd: binding.cwd,
+    scope: 'Shared summary only',
+  });
+  f.store.updateAgent(helper.id, { permission: 'read-only' });
+  const summaryId = randomUUID(),
+    run = f.store.enqueue(helper.id, summaryId, 'Saved original batch', 'delegation');
+  f.connector.registerHelper(helper.id, binding.context, input.enrollmentHandle, run.id, summaryId);
+  f.store.db.exec(
+    'CREATE TABLE group_member_feed_batches(id TEXT PRIMARY KEY,body TEXT NOT NULL,state TEXT NOT NULL)',
+  );
+  const body = JSON.stringify({ id: summaryId, agentId: helper.id, runId: run.id });
+  f.store.db
+    .prepare('INSERT INTO group_member_feed_batches VALUES (?,?,?)')
+    .run(summaryId, body, 'pending');
+  const queued = f.store.run(run.id);
+  let visible = true;
+  f.connector.backgroundVisible(() => visible);
+  await f.runtime.groupHostNativeAdmission!(helper.id, run.id);
+  // The final live check fences removal during membership verification too.
+  const awaiting = f.runtime.groupHostNativeAdmission!(helper.id, run.id);
+  visible = false;
+  await expect(awaiting).rejects.toThrow('removed from this app');
+  expect(f.runtime.groupHostBackgroundReason!(helper.id, run.id)).toContain('paused');
+  expect(f.runtime.pulsar.decision(queued, new Set())).toMatchObject({ eligible: false });
+  const start = f.runtime as unknown as { startRun(item: typeof queued): Promise<void> };
+  await expect(start.startRun(queued)).rejects.toThrow('removed from this app');
+  expect(f.store.run(run.id)).toEqual(queued);
+  const work = f.store.runs().find((item) => item.key === input.requestId)!;
+  expect(f.runtime.groupHostBackgroundReason!(binding.agentId, work.id)).toBeNull();
+  await f.runtime.groupHostNativeAdmission!(binding.agentId, work.id);
+  await f.restart();
+  f.connector.backgroundVisible(() => visible);
+  await expect(f.runtime.groupHostNativeAdmission!(helper.id, run.id)).rejects.toThrow(
+    'removed from this app',
+  );
+  expect(
+    String(
+      f.store.db.prepare('SELECT body FROM group_member_feed_batches WHERE id=?').get(summaryId)!
+        .body,
+    ),
+  ).toBe(body);
+  expect(f.store.run(run.id)).toEqual(queued);
+  visible = true;
+  await f.runtime.groupHostNativeAdmission!(helper.id, run.id);
+  expect(f.runtime.groupHostBackgroundReason!(helper.id, run.id)).toBeNull();
+});
 it('retains an unstarted request across enable/restart and enqueues exact UUID once', async () => {
   const f = fixture(),
     input = f.input(),

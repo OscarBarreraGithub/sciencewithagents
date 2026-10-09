@@ -21,7 +21,12 @@ export const mirrorStatus = (chat: MirrorChat) =>
   ({
     idle: 'Connected',
     busy: 'Working',
-    attention: mirrorDaemon(chat) ? 'Check your computer' : 'Check VS Code',
+    attention:
+      (chat.nativeRequestCount ?? 0) > 0 && !chat.nativeRequestsUnavailable
+        ? 'Waiting for your input'
+        : mirrorDaemon(chat)
+          ? 'Check your computer'
+          : 'Check VS Code',
     offline: 'Offline',
   })[chat.status];
 

@@ -67,6 +67,7 @@ export function createGroupLocalSynthesis(
   let closed = false;
   store.db.exec(`CREATE TABLE IF NOT EXISTS group_local_synthesis(
     synthesis_id TEXT PRIMARY KEY, source_key TEXT UNIQUE NOT NULL, body TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS group_local_synthesis_visibility_run ON group_local_synthesis(json_extract(body,'$.agentId'),json_extract(body,'$.runId'));
     CREATE TRIGGER IF NOT EXISTS group_local_synthesis_no_update BEFORE UPDATE ON group_local_synthesis
       BEGIN SELECT RAISE(ABORT,'immutable group synthesis'); END;
     CREATE TRIGGER IF NOT EXISTS group_local_synthesis_no_delete BEFORE DELETE ON group_local_synthesis

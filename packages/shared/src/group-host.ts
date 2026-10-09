@@ -13,6 +13,15 @@ import {
 } from './groups.js';
 
 export const groupHostSelectSchema = z.strictObject({ handle: z.uuid() });
+export const groupHostLocalStateSchema = z.strictObject({
+  hidden: z.boolean(),
+  revision: z.number().int().nonnegative().safe(),
+});
+export const groupHostLocalVisibilitySchema = groupHostSelectSchema.extend({
+  key: z.uuid(),
+  revision: z.number().int().nonnegative().safe(),
+  hidden: z.boolean(),
+});
 const text = z
   .string()
   .max(16384)
@@ -39,6 +48,7 @@ export const groupHostSummarySchema = z.strictObject({
   members: z.number().int().nonnegative().max(64),
   sync: z.string().max(200),
   state: z.enum(['pending', 'active', 'revoked', 'setup']),
+  local: groupHostLocalStateSchema.optional(),
 });
 export const groupHostSlotSchema = z.strictObject({
   handle: z.uuid(),
@@ -67,6 +77,7 @@ export const groupHostOpenSchema = z.strictObject({
 });
 export const groupHostListSchema = z.strictObject({
   groups: z.array(groupHostSummarySchema).max(32),
+  removed: z.array(groupHostSummarySchema).max(32).optional(),
   service: z.strictObject({
     configured: z.boolean(),
     message: z.string().max(1000),

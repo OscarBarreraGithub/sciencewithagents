@@ -35,6 +35,7 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 - [Durable hosted receipts, exact source registration and Node transport](GROUP_DELIVERY.md)
 - [Durable group publication and journal limits](GROUP_PUBLICATION.md)
 - [Normal authenticated Groups workflow and current gates](GROUP_WORKFLOW.md)
+- [Local Groups removal, restoration and background admission](GROUP_LOCAL_SETTINGS.md)
 - [Groups production release readiness](GROUP_RELEASE_READINESS.md)
 - [Groups agents with existing native sign-in](GROUP_NATIVE_OWNER_SETUP.md)
 - [Native Groups shared files, branches and reviewed sync](GROUP_NATIVE_GIT.md)

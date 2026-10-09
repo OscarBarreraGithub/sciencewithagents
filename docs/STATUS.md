@@ -56,6 +56,16 @@ activation is checked separately.
 Shared VS Code follow-ups queued from this app remain editable until native handoff;
 messages already in the editor's queue retain its native controls. Shared queue delivery
 uses native turn boundaries without silently steering an active reply.
+The source adds native Codex question visibility with independent request reads, fresh
+Home attention links and explicit answers to verified standard nonsecret requests. Uncertain
+answer receipts survive reload without replay; native acceptance is not confirmed by this
+connection. Permissions, secrets and unsupported formats remain in the editor. Source
+fixtures and emulated layouts do not establish activation or real editor/phone acceptance;
+safe companion update and joint testing remain separate.
+Shared-chat source delivery recovery now distinguishes missing from recorded uncertain
+receipts. Explicit same-message retry is available only after a missing-receipt read;
+recorded uncertainty stays held, and definite refusals keep edited drafts without a pending
+loop. Provider-free fixtures do not establish live editor or physical-phone acceptance.
 Compatible shared Codex connections also expose native goal creation, status, accounting,
 pause, resume and clearing in the app. Existing budgets and native conversation identities
 are preserved. An older companion needs a safe update/reload; the app does not interrupt

@@ -427,6 +427,8 @@ export class Runtime {
     this.pulsar.allowanceDecision = (run, protectedChat = false) => {
       const remoteReason = this.nativeAdmissionReason(run);
       if (remoteReason) return { reason: remoteReason };
+      const groupReason = this.groupHostBackgroundReason?.(run.agentId, run.id);
+      if (groupReason && run.status === 'queued') return { reason: groupReason };
       const goalReason = this.managedGoals.admissionReason(run);
       if (goalReason) return goalReason;
       const agent = this.store.agent(run.agentId);
@@ -672,6 +674,7 @@ export class Runtime {
   }
   /** Installed by the exact local Groups owner; absent authority cannot start a saved group turn. */
   groupHostNativeAdmission?: (agentId: string, runId: string) => Promise<void>;
+  groupHostBackgroundReason?: (agentId: string, runId: string) => string | null;
   private charter(agent: PrivateAgent) {
     return `${this.roleCharter(agent)}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}`;
   }
@@ -1552,6 +1555,7 @@ export class Runtime {
             continue;
         }
         if (!this.preparedRuns.has(run.id)) {
+          if (this.groupHostBackgroundReason?.(agent.id, run.id)) continue;
           // Discovery can wait on a disconnected CLI. Do it once in the
           // background so other providers and queue controls keep progressing.
           this.prepareQueuedRun(run);

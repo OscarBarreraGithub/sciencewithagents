@@ -598,7 +598,7 @@ describe('VS Code mirror gateway', () => {
     ).rejects.toThrow('different message');
     expect(
       (await app.inject({ url: `/api/vscode/deliveries/${input.key}`, headers })).json(),
-    ).toEqual(result);
+    ).toEqual({ ...result, receiptState: 'recorded' });
   });
   it('keeps an uncertain stop receipt after disconnect without stopping a later turn', async () => {
     let controls = 0;
@@ -732,7 +732,7 @@ describe('VS Code mirror gateway', () => {
     );
     expect(
       (await app.inject({ url: `/api/vscode/deliveries/${input.key}`, headers })).json(),
-    ).toEqual(result);
+    ).toEqual({ ...result, receiptState: 'recorded' });
     expect(
       (await app.inject({ url: `/api/vscode/deliveries/${randomUUID()}`, headers })).json().state,
     ).toBe('uncertain');
@@ -793,4 +793,614 @@ it('delivers a long Unicode owner message through HTTP and the editor with one r
   expect(first.json().state).toBe('sent');
   expect((await app.inject(request)).json()).toEqual(first.json());
   expect(sent).toEqual([input]);
+});
+
+const nativeRequest = () => ({
+  token: randomUUID(),
+  requestId: 42,
+  threadId: 'thread',
+  turnId: 'turn',
+  itemId: 'item',
+  kind: 'question' as const,
+  title: 'Codex has a question',
+  message: '',
+  questions: [
+    {
+      id: 'choice',
+      header: 'Plan',
+      question: 'Which path?',
+      isOther: false,
+      isSecret: false,
+      options: [{ label: 'First', description: 'Native choice' }],
+    },
+  ],
+  observation: 'pending' as const,
+  response: 'answer' as const,
+});
+it('native question read bypasses held transcript reads and never puts bodies in window metadata', async () => {
+  const question = nativeRequest();
+  const commands: string[] = [];
+  await connect(
+    (command) => {
+      commands.push(command.type);
+      if (command.type === 'native_requests_read')
+        return {
+          windowId,
+          provider: 'codex',
+          threadId: 'thread',
+          status: 'attention',
+          message: 'Waiting for native input',
+          nativeRequests: [question],
+          nativeRequestCount: 1,
+          nativeRequestsUnavailable: false,
+        };
+      return undefined;
+    },
+    undefined,
+    false,
+    true,
+    { canReadNativeRequests: true },
+  );
+  const history = Array.from({ length: 4 }, (_, index) =>
+    mirrors.read(windowId, { before: `held-${index}` }).catch(() => undefined),
+  );
+  await expect.poll(() => commands.filter((type) => type === 'read').length).toBe(4);
+  const response = await app.inject({ url: `/api/vscode/windows/${windowId}/questions`, headers });
+  expect(response.statusCode).toBe(200);
+  expect(response.json()).toMatchObject({
+    status: 'attention',
+    nativeRequestCount: 1,
+    nativeRequests: [question],
+  });
+  expect(mirrors.windows()[0]).toMatchObject({ status: 'attention', nativeRequestCount: 1 });
+  expect(mirrors.windows()[0]).not.toHaveProperty('nativeRequests');
+  expect(commands).toEqual(['read', 'read', 'read', 'read', 'native_requests_read']);
+  socket!.terminate();
+  await Promise.all(history);
+});
+it('native question old companions fail closed without unknown commands or answers', async () => {
+  const commands: string[] = [];
+  await connect((command) => {
+    commands.push(command.type);
+    return undefined;
+  });
+  expect(await mirrors.questions(windowId)).toMatchObject({
+    nativeRequestsUnavailable: true,
+    nativeRequests: [],
+  });
+  expect(commands).toEqual([]);
+});
+it('native question responses retain exact no-replay receipts across restart without question or answer bytes', async () => {
+  const question = nativeRequest();
+  let writes = 0;
+  await connect(
+    (command) =>
+      command.type === 'native_requests_read'
+        ? {
+            windowId,
+            provider: 'codex' as const,
+            threadId: 'thread',
+            status: 'attention',
+            message: '',
+            nativeRequests: [question],
+            nativeRequestCount: 1,
+            nativeRequestsUnavailable: false,
+          }
+        : command.type === 'question_answer'
+          ? (writes++, { state: 'uncertain', message: 'Native write has no acceptance receipt.' })
+          : state,
+    undefined,
+    false,
+    true,
+    { canReadNativeRequests: true },
+  );
+  const input = {
+    key: randomUUID(),
+    provider: 'codex' as const,
+    token: question.token,
+    threadId: 'thread',
+    turnId: 'turn',
+    answers: { choice: ['First'] },
+  };
+  const url = `/api/vscode/windows/${windowId}/questions/answer`;
+  const first = await app.inject({ method: 'POST', url, headers, payload: input });
+  expect(first.statusCode).toBe(200);
+  expect(first.json().state).toBe('uncertain');
+  expect((await app.inject({ method: 'POST', url, headers, payload: input })).json()).toEqual(
+    first.json(),
+  );
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url,
+        headers,
+        payload: { ...input, answers: { choice: ['different'] } },
+      })
+    ).statusCode,
+  ).toBe(409);
+  const recovered = new VscodeMirrors(store);
+  try {
+    expect(await recovered.questionAnswer(windowId, input)).toEqual(first.json());
+  } finally {
+    recovered.close();
+  }
+  expect(writes).toBe(1);
+  const journal = store.db.prepare('SELECT * FROM mirror_deliveries WHERE key=?').get(input.key);
+  expect(JSON.stringify(journal)).not.toContain('Which path?');
+  expect(JSON.stringify(journal)).not.toContain('First');
+  expect(
+    (await app.inject({ url: `/api/vscode/deliveries/${input.key}`, headers })).json(),
+  ).toEqual({ ...first.json(), receiptState: 'recorded' });
+});
+it('native question stale, foreign, and secret answers never cross the native command boundary', async () => {
+  const question = nativeRequest();
+  let writes = 0;
+  let secret = false;
+  await connect(
+    (command) =>
+      command.type === 'native_requests_read'
+        ? {
+            windowId,
+            provider: 'codex',
+            threadId: 'thread',
+            status: 'attention',
+            message: '',
+            nativeRequests: [
+              {
+                ...question,
+                questions: question.questions.map((q) => ({ ...q, isSecret: secret })),
+              },
+            ],
+            nativeRequestCount: 1,
+            nativeRequestsUnavailable: false,
+          }
+        : (writes++, { state: 'uncertain', message: '' }),
+    undefined,
+    false,
+    true,
+    { canReadNativeRequests: true },
+  );
+  const input = {
+    key: randomUUID(),
+    provider: 'codex' as const,
+    token: question.token,
+    threadId: 'thread',
+    turnId: 'turn',
+    answers: { choice: ['First'] },
+  };
+  expect((await mirrors.questionAnswer(windowId, { ...input, token: randomUUID() })).state).toBe(
+    'not_sent',
+  );
+  expect(
+    (await mirrors.questionAnswer(windowId, { ...input, key: randomUUID(), threadId: 'foreign' }))
+      .state,
+  ).toBe('not_sent');
+  secret = true;
+  expect((await mirrors.questionAnswer(windowId, { ...input, key: randomUUID() })).state).toBe(
+    'not_sent',
+  );
+  expect(writes).toBe(0);
+});
+it('native question paired-host routes allow only typed reads, exact answers and receipts', () => {
+  expect(proxyPath('GET', `/vscode/windows/${windowId}/questions`)).toBe(
+    `/api/vscode/windows/${windowId}/questions`,
+  );
+  expect(proxyPath('POST', `/vscode/windows/${windowId}/questions/answer`)).toBe(
+    `/api/vscode/windows/${windowId}/questions/answer`,
+  );
+  expect(proxyPath('GET', `/vscode/deliveries/${windowId}`)).toBe(
+    `/api/vscode/deliveries/${windowId}`,
+  );
+  for (const path of [
+    'questions/resolve',
+    'questions/rpc',
+    'questions/answer/native',
+    'questions?method=sendResponse',
+  ]) {
+    expect(proxyPath('POST', `/vscode/windows/${windowId}/${path}`)).toBeNull();
+  }
+  expect(proxyPath('POST', `/vscode/windows/${windowId}/questions`)).toBeNull();
+  expect(proxyPath('GET', `/vscode/windows/${windowId}/questions/answer`)).toBeNull();
+});
+
+it('native question chunked views above one frame preserve exact text and leave the transport connected', async () => {
+  const question = nativeRequest();
+  question.questions[0].question = 'exact-question'.repeat(570);
+  question.questions[0].options = Array.from({ length: 16 }, (_, index) => ({
+    label: `Choice ${index}`,
+    description: 'Exact option '.repeat(150),
+  }));
+  const requests = [question, { ...question, token: randomUUID(), requestId: 43 }];
+  expect(Buffer.byteLength(JSON.stringify(requests))).toBeGreaterThan(32 * 1024);
+  await connect(
+    () => ({
+      windowId,
+      provider: 'codex',
+      threadId: 'thread',
+      status: 'attention',
+      message: '',
+      nativeRequests: requests,
+      nativeRequestCount: 2,
+      nativeRequestsUnavailable: false,
+    }),
+    undefined,
+    false,
+    true,
+    { canReadNativeRequests: true },
+  );
+  const view = await mirrors.questions(windowId);
+  expect(view.nativeRequests).toEqual(requests);
+  expect(socket!.readyState).toBe(WebSocket.OPEN);
+  expect(mirrors.windows()).toHaveLength(1);
+});
+it('native question failed control reads clear stale metadata freshness without making a healthy transport offline', async () => {
+  const question = nativeRequest();
+  let valid = true;
+  await connect(
+    () =>
+      valid
+        ? {
+            windowId,
+            provider: 'codex',
+            threadId: 'thread',
+            status: 'attention',
+            message: '',
+            nativeRequests: [question],
+            nativeRequestCount: 1,
+            nativeRequestsUnavailable: false,
+          }
+        : { invalid: true },
+    undefined,
+    false,
+    true,
+    { canReadNativeRequests: true },
+  );
+  expect((await mirrors.questions(windowId)).nativeRequestCount).toBe(1);
+  valid = false;
+  expect(await mirrors.questions(windowId)).toMatchObject({
+    status: 'attention',
+    nativeRequestCount: 0,
+    nativeRequestsUnavailable: true,
+  });
+  expect(mirrors.windows()[0]).toMatchObject({
+    status: 'attention',
+    nativeRequestCount: 0,
+    nativeRequestsUnavailable: true,
+  });
+  expect(socket!.readyState).toBe(WebSocket.OPEN);
+});
+
+it('native question projection refuses a foreign read identity and does not retarget responses', async () => {
+  const question = nativeRequest();
+  const commands: string[] = [];
+  await connect(
+    (command) => {
+      commands.push(command.type);
+      return {
+        windowId,
+        provider: 'codex',
+        threadId: 'different-thread',
+        status: 'attention',
+        message: '',
+        nativeRequests: [{ ...question, threadId: 'different-thread' }],
+        nativeRequestCount: 1,
+        nativeRequestsUnavailable: false,
+      };
+    },
+    undefined,
+    false,
+    true,
+    { canReadNativeRequests: true },
+  );
+  expect(await mirrors.questions(windowId)).toMatchObject({
+    threadId: 'thread',
+    nativeRequests: [],
+    nativeRequestsUnavailable: true,
+  });
+  expect(
+    (
+      await mirrors.questionAnswer(windowId, {
+        key: randomUUID(),
+        provider: 'codex',
+        token: question.token,
+        threadId: 'thread',
+        turnId: 'turn',
+        answers: { choice: ['First'] },
+      })
+    ).state,
+  ).toBe('not_sent');
+  expect(commands).toEqual(['native_requests_read', 'native_requests_read']);
+});
+
+it('native question lost native acknowledgement stays uncertain across restart and exact retry without another command', async () => {
+  const question = nativeRequest();
+  let writes = 0;
+  await connect(
+    (command) => {
+      if (command.type === 'native_requests_read')
+        return {
+          windowId,
+          provider: 'codex',
+          threadId: 'thread',
+          status: 'attention',
+          message: '',
+          nativeRequests: [question],
+          nativeRequestCount: 1,
+          nativeRequestsUnavailable: false,
+        };
+      writes++;
+      socket!.terminate();
+      return undefined;
+    },
+    undefined,
+    false,
+    true,
+    { canReadNativeRequests: true },
+  );
+  const input = {
+    key: randomUUID(),
+    provider: 'codex' as const,
+    token: question.token,
+    threadId: 'thread',
+    turnId: 'turn',
+    answers: { choice: ['First'] },
+  };
+  expect((await mirrors.questionAnswer(windowId, input)).state).toBe('uncertain');
+  const recovered = new VscodeMirrors(store);
+  try {
+    expect((await recovered.questionAnswer(windowId, input)).state).toBe('uncertain');
+  } finally {
+    recovered.close();
+  }
+  expect(writes).toBe(1);
+});
+it('native question reserved read remains usable at ordinary command capacity and rejects answer before handoff', async () => {
+  const question = nativeRequest();
+  const commands: string[] = [];
+  await connect(
+    (command) => {
+      commands.push(command.type);
+      if (command.type === 'native_requests_read')
+        return {
+          windowId,
+          provider: 'codex',
+          threadId: 'thread',
+          status: 'attention',
+          message: '',
+          nativeRequests: [question],
+          nativeRequestCount: 1,
+          nativeRequestsUnavailable: false,
+        };
+      return undefined;
+    },
+    undefined,
+    false,
+    true,
+    { canReadNativeRequests: true, stopToken: 'turn', status: 'busy' },
+  );
+  const controls = Array.from({ length: 8 }, () =>
+    mirrors.control(windowId, {
+      key: randomUUID(),
+      threadId: 'thread',
+      provider: 'codex',
+      action: 'interrupt',
+      token: 'turn',
+    }),
+  );
+  await expect.poll(() => commands.filter((type) => type === 'control').length).toBe(8);
+  expect(
+    (
+      await mirrors.questionAnswer(windowId, {
+        key: randomUUID(),
+        provider: 'codex',
+        token: question.token,
+        threadId: 'thread',
+        turnId: 'turn',
+        answers: { choice: ['First'] },
+      })
+    ).state,
+  ).toBe('not_sent');
+  expect(commands).not.toContain('question_answer');
+  expect(commands).toContain('native_requests_read');
+  socket!.terminate();
+  await Promise.all(controls);
+});
+
+it('delivery recovery retries the exact original ID while a delayed first HTTP request can still arrive', async () => {
+  let sends = 0;
+  await connect((command) =>
+    command.type === 'send' ? (sends++, { state: 'sent', message: 'Native accepted.' }) : state,
+  );
+  let release!: () => void;
+  let discoveries = 0;
+  const original = mirrors.discover.bind(mirrors);
+  mirrors.discover = async () => {
+    if (++discoveries === 1)
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    await original();
+  };
+  const input = { key: randomUUID(), threadId: 'thread', text: 'Retained original input' };
+  const request = {
+    method: 'POST' as const,
+    url: `/api/vscode/windows/${windowId}/send`,
+    headers,
+    payload: input,
+  };
+  const delayed = app.inject(request);
+  await expect.poll(() => discoveries).toBe(1);
+  const missing = await app.inject({ url: `/api/vscode/deliveries/${input.key}`, headers });
+  expect(missing.json()).toMatchObject({ state: 'uncertain', receiptState: 'missing' });
+  expect(sends).toBe(0);
+  const retry = await app.inject(request);
+  expect(retry.json()).toEqual({ state: 'sent', message: 'Native accepted.' });
+  expect(retry.json()).not.toHaveProperty('receiptState');
+  release();
+  expect((await delayed).json()).toEqual(retry.json());
+  expect(sends).toBe(1);
+  expect(
+    (await app.inject({ url: `/api/vscode/deliveries/${input.key}`, headers })).json(),
+  ).toMatchObject({ state: 'sent', receiptState: 'recorded' });
+});
+it('delivery recovery preserves a recorded uncertain handoff and rejects changed payload before a second dispatch', async () => {
+  let sends = 0;
+  let finish!: () => void;
+  await connect((command) => {
+    if (command.type !== 'send') return state;
+    sends++;
+    return new Promise((resolve) => {
+      finish = () => resolve({ state: 'sent', message: 'Native accepted.' });
+    });
+  });
+  const input = { key: randomUUID(), threadId: 'thread', text: 'One original input' };
+  const request = {
+    method: 'POST' as const,
+    url: `/api/vscode/windows/${windowId}/send`,
+    headers,
+    payload: input,
+  };
+  const first = app.inject(request);
+  await expect.poll(() => sends).toBe(1);
+  expect(
+    (await app.inject({ url: `/api/vscode/deliveries/${input.key}`, headers })).json(),
+  ).toMatchObject({ state: 'uncertain', receiptState: 'recorded' });
+  expect((await app.inject(request)).json().state).toBe('uncertain');
+  expect(
+    (await app.inject({ ...request, payload: { ...input, text: 'Changed input' } })).statusCode,
+  ).toBe(409);
+  const restoredStore = new Store(join(root, 'dock.sqlite'));
+  const restored = new VscodeMirrors(restoredStore);
+  try {
+    expect(restored.receipt(input.key, true)).toMatchObject({
+      state: 'uncertain',
+      receiptState: 'recorded',
+    });
+    expect((await restored.send(windowId, input)).state).toBe('uncertain');
+  } finally {
+    restored.close();
+    restoredStore.close();
+  }
+  finish();
+  expect((await first).json().state).toBe('sent');
+  expect(sends).toBe(1);
+});
+it('delivery recovery finds a saved receipt after lost app acknowledgement without re-handing the message', async () => {
+  let sends = 0;
+  await connect((command) =>
+    command.type === 'send' ? (sends++, { state: 'sent', message: 'Native accepted.' }) : state,
+  );
+  const input = {
+    key: randomUUID(),
+    threadId: 'thread',
+    text: 'Original input with lost app response',
+  };
+  const request = {
+    method: 'POST' as const,
+    url: `/api/vscode/windows/${windowId}/send`,
+    headers,
+    payload: input,
+  };
+  await app.inject(request); // The caller does not receive/use this completed HTTP acknowledgement.
+  const restoredStore = new Store(join(root, 'dock.sqlite'));
+  const restored = new VscodeMirrors(restoredStore);
+  try {
+    expect(restored.receipt(input.key, true)).toMatchObject({
+      state: 'sent',
+      receiptState: 'recorded',
+    });
+    expect((await restored.send(randomUUID(), input)).state).toBe('sent');
+  } finally {
+    restored.close();
+    restoredStore.close();
+  }
+  expect((await app.inject(request)).json().state).toBe('sent');
+  expect(sends).toBe(1);
+});
+it('delivery recovery reports definite validation, origin and queue-capacity refusals without recording or dispatching', async () => {
+  let sends = 0;
+  await connect((command) => {
+    if (command.type === 'send') sends++;
+    return state;
+  });
+  const input = { key: randomUUID(), threadId: 'thread', text: 'Owner input' };
+  const url = `/api/vscode/windows/${windowId}/send`;
+  expect(
+    (await app.inject({ method: 'POST', url, headers, payload: { ...input, method: 'arbitrary' } }))
+      .statusCode,
+  ).toBe(400);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url,
+        headers: { ...headers, origin: 'https://foreign.test' },
+        payload: input,
+      })
+    ).statusCode,
+  ).toBe(403);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url,
+        headers,
+        payload: { ...input, text: 'x'.repeat(200001) },
+      })
+    ).statusCode,
+  ).toBe(400);
+  for (let index = 0; index < 100; index++)
+    mirrors.queue.enqueue(
+      { ...state, status: 'idle' },
+      {
+        key: randomUUID(),
+        threadId: 'thread',
+        text: 'Held queue input',
+        mode: 'queue',
+      },
+    );
+  expect(
+    (await app.inject({ method: 'POST', url, headers, payload: { ...input, mode: 'queue' } }))
+      .statusCode,
+  ).toBe(409);
+  expect(mirrors.receipt(input.key, true)).toMatchObject({
+    state: 'uncertain',
+    receiptState: 'missing',
+  });
+  expect(sends).toBe(0);
+});
+it('delivery recovery records not_sent when capacity rejects a normal send before the native boundary', async () => {
+  const commands: string[] = [];
+  await connect(
+    (command) => {
+      commands.push(command.type);
+      return undefined;
+    },
+    undefined,
+    false,
+    true,
+    { stopToken: 'turn', status: 'busy' },
+  );
+  const controls = Array.from({ length: 8 }, () =>
+    mirrors.control(windowId, {
+      key: randomUUID(),
+      provider: 'codex',
+      threadId: 'thread',
+      action: 'interrupt',
+      token: 'turn',
+    }),
+  );
+  await expect.poll(() => commands).toHaveLength(8);
+  const input = { key: randomUUID(), threadId: 'thread', text: 'Held original input' };
+  const result = await mirrors.send(windowId, input);
+  expect(result.state).toBe('not_sent');
+  expect(commands).not.toContain('send');
+  expect(mirrors.receipt(input.key, true)).toMatchObject({
+    state: 'not_sent',
+    receiptState: 'recorded',
+  });
+  expect(await mirrors.send(windowId, input)).toEqual(result);
+  socket!.terminate();
+  await Promise.all(controls);
 });

@@ -742,3 +742,35 @@
   margin: 4px 0;
   overflow-wrap: anywhere;
 }
+.mirror-delivery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.mirror-delivery-actions button,
+dialog .mirror-delivery-confirm {
+  min-height: 44px;
+}
+dialog .mirror-delivery-confirm {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+dialog .mirror-delivery-confirm input {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  padding: 0;
+}
+.mirror-original-message pre {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

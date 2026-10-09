@@ -7,6 +7,7 @@ export * from './group-membership.js';
 export * from './mirror-outbox.js';
 export * from './queued-message.js';
 export * from './work-items.js';
+export * from './mirror-native-requests.js';
 export * from './archive.js';
 export * from './project-workflow.js';
 export * from './conversations.js';

@@ -53,6 +53,7 @@ export function registerGroupHostRoutes(
   };
   app.get('/api/groups', { onRequest: guard }, async () => host.list());
   const actions = {
+    'local-visibility': (v: unknown) => host.localVisibility(v),
     resume: (v: unknown) => host.resume(v),
     create: (v: unknown) => host.create(v),
     join: (v: unknown) => host.join(v),

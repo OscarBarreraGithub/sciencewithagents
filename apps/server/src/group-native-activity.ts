@@ -32,7 +32,8 @@ export class GroupHostNativeActivity {
   private cursor = 0;
   constructor(
     private store: Store,
-    private host: Pick<GroupHost, 'sharedGoalForRequest' | 'publishNativeActivity'>,
+    private host: Pick<GroupHost, 'sharedGoalForRequest' | 'publishNativeActivity'> &
+      Partial<Pick<GroupHost, 'localVisible'>>,
   ) {
     initializeGroupActivity(store);
   }
@@ -60,6 +61,7 @@ export class GroupHostNativeActivity {
       if (this.closed) return;
       this.cursor = Number(row.rowid);
       try {
+        if (this.host.localVisible?.(String(row.enrollment)) === false) continue;
         const source = groupNativeActivitySchema.parse(JSON.parse(String(row.body))),
           autonomous = source.origin?.kind === 'autonomous';
         const prior = this.store.db

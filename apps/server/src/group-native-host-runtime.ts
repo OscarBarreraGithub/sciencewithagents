@@ -53,6 +53,7 @@ export interface GroupHostNativeRuntime extends GroupNativeConnector {
   beforeTurn(callback: (context: GroupContext, requestId: string) => Promise<void>): void;
   revalidate(callback: (context: GroupContext) => Promise<void>): void;
   evidence(callback: (context: GroupContext) => Promise<string>): void;
+  backgroundVisible(callback: (enrollmentHandle: string) => boolean): void;
   resolveLocalContext(context: GroupContext, enrollmentHandle: string): Binding;
   registerHelper(
     agentId: string,
@@ -91,6 +92,41 @@ export function createGroupHostNativeConnector(
   let completed: ((completion: GroupHostNativeCompletion) => Promise<void>) | undefined;
   const completions = new Map<string, Promise<unknown>>();
   let readEvidence: ((context: GroupContext) => Promise<string>) | undefined;
+  let backgroundVisible: ((enrollmentHandle: string) => boolean) | undefined;
+  for (const table of ['group_member_feed_batches', 'group_local_synthesis']) {
+    if (
+      runtime.store.db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
+        .get(table)
+    )
+      runtime.store.db.exec(
+        `CREATE INDEX IF NOT EXISTS ${table}_visibility_run ON ${table}(json_extract(body,'$.agentId'),json_extract(body,'$.runId'))`,
+      );
+  }
+  const backgroundReason = (agentId: string, runId: string): string | null => {
+    if (!backgroundVisible) return null;
+    // Saved batch/synthesis identity also covers helpers queued before this update.
+    const background = ['group_member_feed_batches', 'group_local_synthesis'].some((table) => {
+      if (
+        !runtime.store.db
+          .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
+          .get(table)
+      )
+        return false;
+      return !!runtime.store.db
+        .prepare(
+          `SELECT 1 FROM ${table} WHERE json_extract(body,'$.agentId')=? AND json_extract(body,'$.runId')=? LIMIT 1`,
+        )
+        .get(agentId, runId);
+    });
+    if (!background) return null;
+    const marker = z
+      .object({ enrollmentHandle: z.uuid() })
+      .safeParse(runtime.store.getSetting(`group:host-native-agent:${agentId}`));
+    if (!marker.success || !backgroundVisible(marker.data.enrollmentHandle))
+      return 'Group removed from this app; optional background summaries are paused.';
+    return null;
+  };
   const pending = new Map<string, Promise<GroupNativeSnapshot>>();
   let closing = false;
   const enabled = (enrollment: string) =>
@@ -591,6 +627,10 @@ export function createGroupHostNativeConnector(
       if (readEvidence) throw new Conflict('Group evidence owner already registered.');
       readEvidence = callback;
     },
+    backgroundVisible(callback) {
+      if (backgroundVisible) throw new Conflict('Local group visibility owner already registered.');
+      backgroundVisible = callback;
+    },
     resolveLocalContext(context, enrollment) {
       if (!enabled(enrollment)) throw new Conflict('Enable group agents on this computer first.');
       return provision(context, enrollment);
@@ -737,9 +777,11 @@ export function createGroupHostNativeConnector(
     });
   };
   runtime.store.on('event', onCompleted);
-  if (runtime.groupHostNativeAdmission)
+  if (runtime.groupHostNativeAdmission || runtime.groupHostBackgroundReason)
     throw new Conflict('Host-native admission owner already registered.');
   const admission = async (agentId: string, runId: string) => {
+    const paused = backgroundReason(agentId, runId);
+    if (paused) throw new Conflict(paused);
     const marker = z
       .object({
         context: groupContextSchema,
@@ -766,13 +808,18 @@ export function createGroupHostNativeConnector(
     if (closing || runtime.store.getSetting(groupHostStopKey(turn.requestId)))
       throw new Conflict('Saved group request was stopped.');
     trust(marker.context);
+    const currentPause = backgroundReason(agentId, runId);
+    if (currentPause) throw new Conflict(currentPause);
   };
   runtime.groupHostNativeAdmission = admission;
+  runtime.groupHostBackgroundReason = backgroundReason;
   const close = connector.close!;
   connector.close = async () => {
     await close();
     if (runtime.groupHostNativeAdmission === admission)
       runtime.groupHostNativeAdmission = undefined;
+    if (runtime.groupHostBackgroundReason === backgroundReason)
+      runtime.groupHostBackgroundReason = undefined;
   };
   return connector;
 }

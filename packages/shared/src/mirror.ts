@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { draftTextSchema, promptTextSchema, promptTextLimit } from './prompt-text.js';
 import { nativeGoalActionSchema } from './native-goal.js';
+import { mirrorNativeRequestSchema, mirrorQuestionAnswerSchema } from './mirror-native-requests.js';
 
 export const mirrorSendSchema = z
   .object({
@@ -71,6 +72,11 @@ export const mirrorStateSchema = z.object({
   message: z.string().max(1000),
   // Native history may not be readable before the first turn; never imply an empty archive.
   historyUnavailable: z.boolean().optional(),
+  // Exact live native requests. Never include their bodies/options in window metadata.
+  nativeRequests: z.array(mirrorNativeRequestSchema).max(8).optional(),
+  nativeRequestCount: z.number().int().nonnegative().max(129).optional(),
+  nativeRequestsUnavailable: z.boolean().optional(),
+  canReadNativeRequests: z.boolean().optional(),
   entries: z.array(mirrorEntrySchema).max(100_000),
   stopToken: z.string().min(1).max(128).optional(),
   // Capability omission means an older companion, or a provider without steering.
@@ -105,10 +111,26 @@ export const mirrorWindowSchema = mirrorStateSchema.omit({
   queuedMessages: true,
   queueHasMore: true,
   queueReadError: true,
+  nativeRequests: true,
 });
+export const mirrorNativeRequestsViewSchema = mirrorStateSchema
+  .pick({
+    windowId: true,
+    provider: true,
+    threadId: true,
+    status: true,
+    message: true,
+    nativeRequests: true,
+    nativeRequestCount: true,
+    nativeRequestsUnavailable: true,
+  })
+  .strict();
+export type MirrorNativeRequestsView = z.infer<typeof mirrorNativeRequestsViewSchema>;
 export const mirrorResultSchema = z.object({
   state: z.enum(['sent', 'not_sent', 'uncertain']),
   message: z.string().max(1000),
+  // Only the read-only app receipt route annotates journal presence, never native acceptance.
+  receiptState: z.enum(['missing', 'recorded']).optional(),
 });
 export const mirrorCommandSchema = z.discriminatedUnion('type', [
   z
@@ -117,6 +139,10 @@ export const mirrorCommandSchema = z.discriminatedUnion('type', [
   z.object({ id: z.uuid(), type: z.literal('send'), input: mirrorSendSchema }).strict(),
   z.object({ id: z.uuid(), type: z.literal('control'), input: mirrorControlSchema }).strict(),
   z.object({ id: z.uuid(), type: z.literal('goal_read') }).strict(),
+  z.object({ id: z.uuid(), type: z.literal('native_requests_read') }).strict(),
+  z
+    .object({ id: z.uuid(), type: z.literal('question_answer'), input: mirrorQuestionAnswerSchema })
+    .strict(),
   z
     .object({ id: z.uuid(), type: z.literal('goal_action'), input: nativeGoalActionSchema })
     .strict(),

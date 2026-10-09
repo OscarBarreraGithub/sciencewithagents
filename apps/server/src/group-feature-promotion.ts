@@ -64,6 +64,8 @@ export class GroupFeaturePromotion {
       .get(request.identity.key.sourceId, request.identity.key.version);
     if (!row || String(row.source_json) !== publicationCanonical(request.source))
       throw new Error('Exact retained writer projection required.');
+    if (!this.host.localVisible(String(row.enrollment_handle)))
+      throw new Error('Removed locally; optional summaries are paused.');
     const port = await this.host.promotionContext(String(row.enrollment_handle));
     if (
       port.context.visibility !== 'shared' ||
@@ -277,20 +279,21 @@ export class GroupFeaturePromotion {
     // Bounded round-robin over finite local producer and writer journals.
     let pending = this.host.db
       .prepare(
-        "SELECT rowid,receipt_id FROM gh_promotion_inputs WHERE rowid>? AND state NOT IN ('complete','suppressed') ORDER BY rowid LIMIT 2",
+        "SELECT rowid,receipt_id,enrollment_handle FROM gh_promotion_inputs WHERE rowid>? AND state NOT IN ('complete','suppressed') ORDER BY rowid LIMIT 2",
       )
       .all(this.inputCursor);
     if (!pending.length) {
       this.inputCursor = 0;
       pending = this.host.db
         .prepare(
-          "SELECT rowid,receipt_id FROM gh_promotion_inputs WHERE state NOT IN ('complete','suppressed') ORDER BY rowid LIMIT 2",
+          "SELECT rowid,receipt_id,enrollment_handle FROM gh_promotion_inputs WHERE state NOT IN ('complete','suppressed') ORDER BY rowid LIMIT 2",
         )
         .all();
     }
     for (const row of pending) {
       if (this.closed) return;
       this.inputCursor = Number(row.rowid);
+      if (!this.host.localVisible(String(row.enrollment_handle))) continue;
       await this.status(String(row.receipt_id));
     }
     const writers = this.host.db
@@ -302,6 +305,7 @@ export class GroupFeaturePromotion {
       const writer = writers[this.writerCursor++ % writers.length]!;
       if (this.closed) return;
       const handle = String(writer.enrollment_handle);
+      if (!this.host.localVisible(handle)) continue;
       let stage = 'writer enrollment';
       try {
         const port = await this.host.promotionContext(handle);

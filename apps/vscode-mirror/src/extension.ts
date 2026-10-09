@@ -9,6 +9,8 @@ import {
   type MirrorControl,
   type NativeGoalView,
   type NativeGoalAction,
+  type MirrorNativeRequestsView,
+  type MirrorQuestionAnswer,
 } from '@dock/shared';
 import { bridgeSymbol, patch, restore } from './patch.js';
 import { MirrorConnection, isCodexConnection } from './connection.js';
@@ -26,6 +28,8 @@ interface Adapter {
   control(input: MirrorControl): Promise<MirrorResult>;
   goal?(): Promise<NativeGoalView>;
   goalAction?(input: NativeGoalAction): Promise<MirrorResult>;
+  questions?(): MirrorNativeRequestsView;
+  questionAnswer?(input: MirrorQuestionAnswer): MirrorResult;
   dispose(): void;
 }
 const providers = {
@@ -120,27 +124,45 @@ export async function activate(context: vscode.ExtensionContext) {
         peer.on('message', async (data) => {
           try {
             const command = mirrorCommandSchema.parse(JSON.parse(data.toString()));
-            let result =
+            let result: MirrorState | MirrorNativeRequestsView | NativeGoalView | MirrorResult =
               command.type === 'read'
                 ? await bridge.adapter.read()
-                : command.type === 'send'
-                  ? await bridge.adapter.send(command.input)
-                  : command.type === 'control'
-                    ? await bridge.adapter.control(command.input)
-                    : command.type === 'goal_read'
-                      ? ((await bridge.adapter.goal?.()) ?? {
-                          threadId: bridge.adapter.summary.threadId,
-                          supported: false,
-                          goal: null,
-                          token: null,
-                          message:
-                            'This provider does not expose native goals. Messages remain available here.',
-                        })
-                      : ((await bridge.adapter.goalAction?.(command.input)) ?? {
-                          state: 'not_sent',
-                          message:
-                            'This provider does not expose native goals. Nothing was changed.',
-                        });
+                : command.type === 'native_requests_read'
+                  ? (bridge.adapter.questions?.() ?? {
+                      windowId: bridge.adapter.summary.windowId,
+                      provider: bridge.adapter.summary.provider,
+                      threadId: bridge.adapter.summary.threadId,
+                      status: bridge.adapter.summary.status,
+                      nativeRequests: [],
+                      nativeRequestCount: 0,
+                      nativeRequestsUnavailable: true,
+                      message:
+                        'This provider or companion does not expose native request details. Use the original editor.',
+                    })
+                  : command.type === 'question_answer'
+                    ? (bridge.adapter.questionAnswer?.(command.input) ?? {
+                        state: 'not_sent',
+                        message:
+                          'Native questions must be answered in this provider’s editor. Nothing was sent.',
+                      })
+                    : command.type === 'send'
+                      ? await bridge.adapter.send(command.input)
+                      : command.type === 'control'
+                        ? await bridge.adapter.control(command.input)
+                        : command.type === 'goal_read'
+                          ? ((await bridge.adapter.goal?.()) ?? {
+                              threadId: bridge.adapter.summary.threadId,
+                              supported: false,
+                              goal: null,
+                              token: null,
+                              message:
+                                'This provider does not expose native goals. Messages remain available here.',
+                            })
+                          : ((await bridge.adapter.goalAction?.(command.input)) ?? {
+                              state: 'not_sent',
+                              message:
+                                'This provider does not expose native goals. Nothing was changed.',
+                            });
             if (command.type === 'read' && command.page)
               result = {
                 ...mirrorPage(result as MirrorState, command.page),

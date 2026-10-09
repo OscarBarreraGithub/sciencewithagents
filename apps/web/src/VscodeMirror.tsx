@@ -31,7 +31,8 @@ import {
   type MirrorState,
   type MirrorSend,
 } from '@dock/shared';
-import { api, apiScope } from './api';
+import { api, apiScope, ApiError, connectionLost } from './api';
+import { Modal } from './Modal';
 import {
   mirrorDaemon,
   mirrorKey,
@@ -42,6 +43,8 @@ import {
 } from './useMirrorChats';
 import './VscodeMirror.css';
 import { MirrorStopReply } from './MirrorStopReply';
+import { MirrorNativeRequests } from './MirrorNativeRequests';
+import { useMirrorNativeRequests } from './useMirrorNativeRequests';
 import { NativeGoalCard } from './NativeGoalCard';
 import { ChatCommands } from './ChatCommands';
 import { Notepad, type DraftSelection } from './Notepad';
@@ -422,6 +425,7 @@ export function VscodeMirror({
   const identity = mirrorKey(chat);
   const provider = mirrorProvider(chat);
   const daemon = mirrorDaemon(chat);
+  const nativeRequests = useMirrorNativeRequests(chat);
   // Retain the original Codex draft key for upgrades from the modal preview.
   const draftKey = `dock:mirror:${apiScope()}:${chat.provider === 'claude' ? 'claude:' : ''}${chat.threadId}`;
   const [state, setState] = useState<MirrorState | null>(null);
@@ -469,6 +473,11 @@ export function VscodeMirror({
   const [receipt, setReceipt] = useState('');
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<MirrorSend | null>(null);
+  const [pendingReceiptState, setPendingReceiptState] = useState<'missing' | 'recorded' | null>(
+    null,
+  );
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [inspectedDelivery, setInspectedDelivery] = useState(false);
   const [uploading, setUploading] = useState(false);
   const pendingRef = useRef<MirrorSend | null>(null);
   const busyRef = useRef(false);
@@ -598,6 +607,7 @@ export function VscodeMirror({
             ? value.data
             : null;
         setPending(pendingRef.current);
+        setPendingReceiptState(null);
       } catch {
         setText('');
         setPending(null);
@@ -664,8 +674,16 @@ export function VscodeMirror({
   // restores the chat; that failure clears send, steer and stop from an older reading.
   const listFailed =
     chat.online && chat.status === 'offline' && (chat.listedAt ?? Infinity) >= readAt.current;
-  const status = !chat.online || listFailed ? 'offline' : (state?.status ?? 'offline');
-  const connecting = !!chat.online && !state && !error;
+  const waitingForNativeInput =
+    nativeRequests.available &&
+    !nativeRequests.view?.nativeRequestsUnavailable &&
+    (nativeRequests.view?.nativeRequestCount ?? 0) > 0;
+  const status = waitingForNativeInput
+    ? 'attention'
+    : !chat.online || listFailed
+      ? 'offline'
+      : (state?.status ?? 'offline');
+  const connecting = !!chat.online && !state && !error && !waitingForNativeInput;
   const [sendTiming, setSendTiming] = useState<'steer' | 'queue'>('steer');
   const canSteer = status === 'busy' && !!state?.canSteer && !!state.steerToken;
   const canQueue = status === 'busy' && !!state?.canQueue;
@@ -683,7 +701,46 @@ export function VscodeMirror({
     input.current?.focus({ preventScroll: true });
     setGoalOpen(`${apiScope()}:${identity}`);
   };
-  async function send() {
+  function resolvePending(input: MirrorSend, sentRevision: number, delivered: boolean) {
+    // Resolve only this exact browser intent, preserving any edited or later draft.
+    let savedUpdated = false;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? '{}');
+      if (saved.pending?.key === input.key) {
+        const currentText =
+          typeof saved.text === 'string' ? saved.text : browserNotepad.draft.currentText();
+        save(
+          delivered && draftRevision.current === sentRevision && currentText.trim() === input.text
+            ? ''
+            : currentText,
+          null,
+        );
+        savedUpdated = true;
+      }
+    } catch {
+      /* The live view below still retains the result. */
+    }
+    if (mounted.current && pendingRef.current?.key === input.key) {
+      pendingRef.current = null;
+      setPending(null);
+      setPendingReceiptState(null);
+      setDeliveryOpen(false);
+      if (
+        delivered &&
+        draftRevision.current === sentRevision &&
+        browserNotepad.draft.currentText().trim() === input.text
+      )
+        setText('');
+    }
+    if (savedUpdated)
+      window.dispatchEvent(new CustomEvent('dock:mirror-draft', { detail: draftKey }));
+  }
+  async function send(retryMissing = false) {
+    if (
+      retryMissing &&
+      (!pending || pendingReceiptState !== 'missing' || !chat.online || status === 'offline')
+    )
+      return;
     const commandText = withoutChatAttachments(browserNotepad.draft.currentText()).trim();
     if (!pending && !busyRef.current && !uploading && /^\/goal(?:\s|$)/.test(commandText)) {
       if (commandText !== '/goal') {
@@ -705,6 +762,7 @@ export function VscodeMirror({
       ...(queueSelected ? { mode: 'queue' as const } : {}),
       text: text.trim(),
     };
+    const checking = !!pending && !retryMissing;
     if (!input.text) return;
     const sentRevision = draftRevision.current;
     busyRef.current = true;
@@ -719,44 +777,20 @@ export function VscodeMirror({
     }
     pendingRef.current = input;
     setPending(input);
+    setPendingReceiptState(null);
     setBusy(true);
     try {
       const result = mirrorResultSchema.parse(
-        pending
+        checking
           ? await api(`/vscode/deliveries/${input.key}`)
           : await api(`/vscode/windows/${chat.windowId}/send`, input),
       );
       // Navigation may unmount this view while the request finishes. Only resolve
       // its own receipt, never overwrite a later draft or another provider/thread.
       if (result.state !== 'uncertain') {
-        try {
-          const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? '{}');
-          if (saved.pending?.key === input.key) {
-            const currentText =
-              typeof saved.text === 'string' ? saved.text : browserNotepad.draft.currentText();
-            save(
-              result.state === 'sent' &&
-                draftRevision.current === sentRevision &&
-                currentText.trim() === input.text
-                ? ''
-                : currentText,
-              null,
-            );
-            window.dispatchEvent(new CustomEvent('dock:mirror-draft', { detail: draftKey }));
-          }
-        } catch {
-          /* The live view below still retains the result. */
-        }
-        if (mounted.current) {
-          pendingRef.current = null;
-          setPending(null);
-          if (
-            result.state === 'sent' &&
-            draftRevision.current === sentRevision &&
-            browserNotepad.draft.currentText().trim() === input.text
-          )
-            setText('');
-        }
+        resolvePending(input, sentRevision, result.state === 'sent');
+      } else if (mounted.current && pendingRef.current?.key === input.key && checking) {
+        setPendingReceiptState(result.receiptState ?? null);
       }
       if (mounted.current)
         // This acknowledgement outlives delivery. Only the live queue above
@@ -768,9 +802,21 @@ export function VscodeMirror({
         );
       if (result.state === 'sent' && input.mode === 'queue')
         window.dispatchEvent(new CustomEvent('dock:mirror-queue', { detail: identity }));
-    } catch {
-      if (mounted.current)
-        setReceipt('Delivery not confirmed. Use Check delivery; do not retype and resend.');
+    } catch (failure) {
+      if (
+        !checking &&
+        failure instanceof ApiError &&
+        failure.status >= 400 &&
+        failure.status < 500 &&
+        !connectionLost(failure)
+      ) {
+        resolvePending(input, sentRevision, false);
+        if (mounted.current) setReceipt(`${failure.message} Your draft is retained.`);
+      } else if (mounted.current) {
+        setReceipt(
+          'Delivery not confirmed. Check delivery reads the original receipt without sending again.',
+        );
+      }
     } finally {
       busyRef.current = false;
       if (mounted.current) setBusy(false);
@@ -798,8 +844,18 @@ export function VscodeMirror({
           <h1>{state?.title || chat.title || 'Untitled conversation'}</h1>
           <p>
             <span className={`mirror-presence ${status}`} />
-            {connecting ? 'Connecting…' : mirrorStatus({ ...chat, status })} ·{' '}
-            {daemon ? chat.label : `${provider} in ${chat.label}`}
+            {connecting
+              ? 'Connecting…'
+              : mirrorStatus({
+                  ...chat,
+                  status,
+                  nativeRequestCount:
+                    nativeRequests.view?.nativeRequestCount ?? chat.nativeRequestCount,
+                  nativeRequestsUnavailable:
+                    nativeRequests.view?.nativeRequestsUnavailable ??
+                    chat.nativeRequestsUnavailable,
+                })}{' '}
+            · {daemon ? chat.label : `${provider} in ${chat.label}`}
           </p>
         </div>
         {headerAction}
@@ -836,9 +892,14 @@ export function VscodeMirror({
         </details>
       </header>
       {!connecting &&
-        (error || status === 'offline' || status === 'attention' || state?.historyUnavailable) && (
+        (error ||
+          status === 'offline' ||
+          (status === 'attention' && !waitingForNativeInput) ||
+          state?.historyUnavailable) && (
           <div className="mirror-notice" role="status">
-            {error ||
+            {(waitingForNativeInput && error
+              ? 'Conversation history could not refresh. Native requests are still connected; your draft and last reading are retained.'
+              : error) ||
               (state?.status === status && state.message) ||
               (listFailed && chat.message) ||
               (daemon
@@ -850,6 +911,21 @@ export function VscodeMirror({
                   : 'Offline. Open VS Code and share this conversation to continue. Your draft stays here.')}
           </div>
         )}
+      {chat.threadId && (
+        <MirrorNativeRequests
+          key={`${apiScope()}:${identity}`}
+          windowId={chat.windowId}
+          threadId={chat.threadId}
+          provider={chat.provider ?? 'codex'}
+          requests={nativeRequests.view?.nativeRequests}
+          unavailable={nativeRequests.view?.nativeRequestsUnavailable || !!nativeRequests.error}
+          online={nativeRequests.available}
+          readReady={!!nativeRequests.view || !!nativeRequests.error}
+          error={nativeRequests.error}
+          retry={nativeRequests.retry}
+          daemon={daemon}
+        />
+      )}
       <nav className="mirror-history" aria-label="Conversation history">
         <button type="button" onClick={() => setPromptsOpen(true)}>
           Your prompts
@@ -1185,29 +1261,102 @@ export function VscodeMirror({
             }
           />
         )}
-        {pending && !busy && (
-          <button
-            type="button"
-            className="mirror-clear"
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Have you inspected the conversation ${daemon ? 'on your computer' : 'in VS Code'}? Clearing this receipt does not undo a message that was already sent.`,
-                )
-              ) {
+        {pending && (
+          <div className="mirror-delivery-actions">
+            {pendingReceiptState === 'missing' && (
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || !chat.online || status === 'offline'}
+                onClick={() => void send(true)}
+              >
+                Retry message
+              </button>
+            )}
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={() => {
+                setInspectedDelivery(false);
+                setDeliveryOpen(true);
+              }}
+            >
+              Review delivery
+            </button>
+          </div>
+        )}
+        {deliveryOpen && pending && (
+          <Modal title="Message delivery" close={() => setDeliveryOpen(false)}>
+            <p role="status">
+              {receipt || 'The original message has an unresolved delivery receipt.'}
+            </p>
+            <p>
+              {pendingReceiptState === 'missing'
+                ? 'This computer has no recorded receipt for this message. Retry message sends the same original message once, or returns its retained result if a delayed request already arrived.'
+                : pendingReceiptState === 'recorded'
+                  ? 'This computer recorded the original request, but native acceptance is uncertain. Inspect the conversation before sending anything again.'
+                  : 'Check status reads the original receipt without sending. An older or unavailable connection may not distinguish a missing receipt from a recorded uncertain delivery.'}
+            </p>
+            <details className="mirror-original-message">
+              <summary>Original message</summary>
+              <pre>{pending.text}</pre>
+            </details>
+            <p>Your edited draft is separate. A retry never sends the edited draft.</p>
+            <div className="mirror-delivery-actions">
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={() => void send()}
+              >
+                Check status
+              </button>
+              {pendingReceiptState === 'missing' && (
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy || !chat.online || status === 'offline'}
+                  onClick={() => void send(true)}
+                >
+                  Retry message
+                </button>
+              )}
+            </div>
+            <p>
+              Inspect the original conversation {daemon ? 'on your computer' : 'in VS Code'}. If you
+              have checked it, you may clear this browser reminder. Clearing does not withdraw, undo
+              or repeat a message.
+            </p>
+            <label className="mirror-delivery-confirm">
+              <input
+                type="checkbox"
+                checked={inspectedDelivery}
+                onChange={(event) => setInspectedDelivery(event.target.checked)}
+              />
+              <span>I inspected the original conversation.</span>
+            </label>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || !inspectedDelivery}
+              onClick={() => {
                 try {
                   save(browserNotepad.draft.currentText(), null);
                 } catch {
-                  /* Keep in-memory receipt explicit. */
+                  setReceipt('The browser reminder could not be cleared. It is retained.');
+                  return;
                 }
                 pendingRef.current = null;
                 setPending(null);
-                setReceipt('Previous receipt cleared after your check.');
-              }
-            }}
-          >
-            I checked the conversation
-          </button>
+                setPendingReceiptState(null);
+                setDeliveryOpen(false);
+                setReceipt('Browser reminder cleared after your check. No message was repeated.');
+              }}
+            >
+              Clear browser reminder
+            </button>
+          </Modal>
         )}
       </form>
     </section>

@@ -5,7 +5,11 @@ import {
   codexQueueUnsupported,
   isBackgroundCodexThread,
   latestConversationActivity,
+  mirrorNativeRequestsViewSchema,
+  type MirrorNativeRequestsView,
+  type MirrorQuestionAnswer,
 } from '@dock/shared';
+import { NativeRequests } from './native-requests.js';
 export { codexTranscript as transcript } from '@dock/shared';
 import type { MirrorState, MirrorSend, MirrorResult, MirrorControl } from '@dock/shared';
 import {
@@ -39,6 +43,7 @@ const tailTurns = 3;
 const turnPage = 20;
 const maxTurnPages = 5000;
 export interface Provider {
+  onRequest?: (request: unknown) => void;
   onInitialized?: () => void;
   onResult?: (response: ObjectValue) => void;
   onNotification?: (notification: { method: string; params: unknown }) => void;
@@ -46,6 +51,7 @@ export interface Provider {
   onRequestDelivery?: (event: unknown) => void;
 }
 export interface Connection {
+  sendResponse?(id: string | number, result: unknown): void;
   providers: Map<string, Provider>;
   initialized: boolean;
   registerProvider(name: string, provider: Provider): { dispose(): void };
@@ -75,7 +81,7 @@ export function isCodexConnection(value: unknown): value is Connection {
     )
   );
 }
-/** One owner-selected existing thread. No resume, fork, config override or approvals. */
+/** One owner-selected existing thread. No resume, fork or config override; native approvals remain in the editor. */
 export class MirrorConnection {
   readonly windowId = randomUUID();
   private readonly providerName = `AgentDockMirror-${randomUUID()}`;
@@ -104,10 +110,12 @@ export class MirrorConnection {
   private state: MirrorState;
   private readonly live = new Map<string, MirrorState['entries'][number]>();
   private goalChanging = false;
+  private readonly native: NativeRequests;
   constructor(
     private readonly connection: Connection,
     label: string,
   ) {
+    this.native = new NativeRequests(connection);
     this.state = {
       windowId: this.windowId,
       label: label.slice(0, 200),
@@ -118,9 +126,11 @@ export class MirrorConnection {
       entries: [],
       canSteer: true,
       canManageGoal: true,
+      canReadNativeRequests: true,
     };
     this.subscription = connection.registerProvider(this.providerName, {
       onInitialized: () => {
+        this.native.initialized();
         this.disconnected = false;
         this.dirty = true;
       },
@@ -142,9 +152,11 @@ export class MirrorConnection {
         else request.resolve(response.result);
       },
       onNotification: (event) => {
+        this.native.notification(event.method, event.params);
         const p = object(event.params);
         const id = str(p.threadId) || str(object(p.thread).id);
         if (id !== this.threadId) return;
+        if (event.method === 'serverRequest/resolved') this.activityEpoch++;
         this.dirty = true;
         const turnId = str(p.turnId);
         const itemId = str(p.itemId);
@@ -184,6 +196,7 @@ export class MirrorConnection {
         }
       },
       onFatalError: () => {
+        this.native.fatal();
         this.disconnected = true;
         this.dirty = true;
         for (const request of this.pending.values()) {
@@ -194,6 +207,11 @@ export class MirrorConnection {
       },
       onRequestDelivery: () => {
         /* A timeout is uncertain, never an automatic retry. */
+      },
+      onRequest: (event) => {
+        this.native.observe(event);
+        if (object(object(event).params).threadId === this.threadId) this.activityEpoch++;
+        this.dirty = true;
       },
     });
     this.originalSend = connection.sendProviderRequest;
@@ -228,14 +246,30 @@ export class MirrorConnection {
       queuedMessages: _queue,
       queueHasMore: _more,
       queueReadError: _queueError,
+      nativeRequests: _native,
       ...summary
-    } = this.state;
+    } = this.snapshot();
     return summary;
   }
   private snapshot(): MirrorState {
     const state = {
       ...this.state,
+      ...this.native.snapshot(),
+      ...(!this.native.connected
+        ? {
+            status: 'offline' as const,
+            message: 'Codex is disconnected. Last observed native requests are unconfirmed.',
+          }
+        : {}),
+      ...(this.native.attention && this.native.connected
+        ? {
+            status: 'attention' as const,
+            message:
+              'Codex has a pending native request. Read it here or use the original editor; transcript updates may wait.',
+          }
+        : {}),
       stopToken:
+        this.native.connected &&
         this.state.status !== 'offline' &&
         this.busy &&
         this.activeTurn &&
@@ -243,6 +277,8 @@ export class MirrorConnection {
           ? this.activeTurn
           : undefined,
       steerToken:
+        this.native.connected &&
+        !this.native.attention &&
         this.state.status === 'busy' &&
         this.busy &&
         !this.uncertain &&
@@ -301,6 +337,7 @@ export class MirrorConnection {
     return choices;
   }
   async select(threadId: string | null): Promise<void> {
+    this.native.select(threadId);
     this.threadId = threadId;
     this.activeTurn = null;
     this.stoppedTurn = null;
@@ -328,6 +365,8 @@ export class MirrorConnection {
   }
   async read(force = false): Promise<MirrorState> {
     if (!this.threadId) return this.state;
+    // Prompt observation stays available while a separate transcript read is in flight.
+    if (this.native.pending) return { ...this.snapshot(), historyUnavailable: true };
     if (this.reading) return this.reading;
     if (!force && Date.now() - this.lastRead < 800) return this.snapshot();
     if (!force && !this.dirty && Date.now() - this.lastRead < 5000) return this.snapshot();
@@ -352,6 +391,8 @@ export class MirrorConnection {
         }
         if (this.threadId !== threadId) return this.state;
         const status = object(thread.status);
+        if (epoch === this.activityEpoch)
+          this.native.notification('thread/status/changed', { threadId, status });
         // A read response may describe the instant before a desktop send. Never
         // overwrite newer native activity with that stale idle snapshot.
         if (epoch === this.activityEpoch) {
@@ -360,9 +401,12 @@ export class MirrorConnection {
           const active = thread.turns.filter((t) => t.status === 'inProgress');
           this.activeTurn = active.length === 1 ? str(object(active[0]).id) || null : null;
         }
-        const attention = array(status.activeFlags).some(
-          (x) => x === 'waitingOnApproval' || x === 'waitingOnUserInput',
-        );
+        const attention =
+          epoch === this.activityEpoch
+            ? array(status.activeFlags).some(
+                (x) => x === 'waitingOnApproval' || x === 'waitingOnUserInput',
+              )
+            : this.native.attention;
         if (!this.busy && epoch === this.activityEpoch) this.live.clear();
         this.state = {
           ...this.state,
@@ -410,6 +454,24 @@ export class MirrorConnection {
     } finally {
       if (this.reading === reading) this.reading = undefined;
     }
+  }
+  questions(): MirrorNativeRequestsView {
+    const state = this.snapshot();
+    return mirrorNativeRequestsViewSchema.parse({
+      windowId: this.windowId,
+      provider: 'codex',
+      threadId: this.threadId,
+      status: this.native.connected ? state.status : 'offline',
+      message: this.native.connected
+        ? state.message
+        : 'Codex is disconnected; last observed native requests are unconfirmed.',
+      ...this.native.snapshot(),
+    });
+  }
+  questionAnswer(input: MirrorQuestionAnswer): MirrorResult {
+    if (this.activeTurn && input.turnId !== this.activeTurn)
+      return { state: 'not_sent', message: 'The native turn changed. Nothing was answered.' };
+    return this.native.answer(input);
   }
   /**
    * Metadata plus complete turns. Supported Codex builds page turns natively and only
@@ -751,6 +813,7 @@ export class MirrorConnection {
     }
   }
   dispose() {
+    this.native.dispose();
     this.disconnected = true;
     this.threadId = null;
     this.activeTurn = null;

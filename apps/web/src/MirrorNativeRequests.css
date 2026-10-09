@@ -1,0 +1,114 @@
+.mirror-native-requests {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 14px;
+  background: #fff8eb;
+  color: #65512e;
+  font-size: var(--text-small);
+}
+.mirror-native-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mirror-native-summary > div {
+  flex: 1;
+  min-width: 0;
+}
+.mirror-native-summary p {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.mirror-native-requests button.secondary,
+.mirror-native-requests a.secondary,
+.mirror-native-dialog a.secondary {
+  min-height: 44px;
+  border: 1px solid var(--border, #dfe7d2);
+  border-radius: 8px;
+  background: white;
+  color: inherit;
+  padding: 8px 10px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mirror-native-summary > button {
+  flex-shrink: 0;
+}
+.mirror-native-support summary,
+.mirror-native-receipts summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.mirror-native-support p,
+.mirror-native-receipts p {
+  margin-block: 4px 8px;
+  overflow-wrap: anywhere;
+}
+.mirror-native-receipts > div {
+  padding-block: 6px;
+}
+.mirror-native-receipts button + button {
+  margin: 4px;
+}
+.mirror-native-dialog fieldset {
+  margin-block: 14px;
+  padding: 12px;
+  border: 1px solid var(--border, #dfe7d2);
+  border-radius: 8px;
+  min-width: 0;
+}
+.mirror-native-dialog legend,
+.mirror-native-dialog h3,
+.mirror-native-dialog p {
+  overflow-wrap: anywhere;
+}
+.mirror-native-dialog .mirror-native-choice {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  margin-block: 6px;
+  padding: 8px;
+  border: 1px solid var(--border, #dfe7d2);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.mirror-native-dialog .mirror-native-choice input {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  padding: 0;
+  margin: 2px 0;
+}
+.mirror-native-choice span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mirror-native-choice small {
+  display: block;
+  margin-top: 3px;
+}
+.mirror-native-dialog textarea,
+.mirror-native-dialog select {
+  display: block;
+  width: 100%;
+  margin-block: 6px;
+}
+@media (max-height: 500px) and (pointer: coarse) {
+  .mirror-native-summary p {
+    -webkit-line-clamp: 1;
+  }
+  .mirror-native-requests {
+    padding-block: 4px;
+  }
+}

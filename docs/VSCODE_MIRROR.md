@@ -107,8 +107,37 @@ unsupported or unreadable native queue is labelled separately; messages queued i
 still work and wait for idle when native queue handoff is unavailable. A definite
 failed handoff requires explicit edit/requeue; uncertain handoffs remain inspectable and are
 never automatically replayed. Late saved delivery receipts can resolve uncertainty without a
-send. Native questions and permissions stay in the original editor.
+send. Native permissions, secret questions and unsupported request formats stay in the original editor.
 Automatic VS Code crash restoration is not promised: reopen the editor/chat and re-share.
+
+For an unresolved ordinary message, **Check delivery** only reads its original receipt.
+An explicitly missing receipt enables **Retry message**, which resubmits the original key
+and exact payload through the normal idempotent send route. A delayed original request and
+its retry share one durable intent. A recorded uncertain receipt never enables resend;
+inspect it in **Review delivery** and the original native conversation. Clearing the browser
+reminder requires an explicit inspection acknowledgement and neither withdraws nor repeats
+the message. Definitive send refusals show their reason and release the browser pending
+state while preserving edited drafts. Read failures and uncertain service failures retain it.
+
+Companion 0.2.16 adds observed standard nonsecret Codex user-input requests above shared conversation history with
+**Review request** and, when supported and still confirmed pending, **Send native answer**.
+Home links to current native requests. Question reads are separate from transcript/queue
+reads: a slow history read does not hide the question. **Waiting for your input** describes
+an observed pending request; **Offline** describes unavailable connection evidence. A failed
+request read labels the last observed question unconfirmed and disables answering until a
+fresh reading. Older connections show their support limit; update/reload only when running
+editor work is safe. Unknown async/code-mode request formats remain editor-only.
+
+An answer binds its exact thread, turn and observed request token. It is separate from the
+ordinary composer draft and app-owned outbox. Browser receipts retain only action identity,
+never question or answer text. Native `sendResponse` does not confirm acceptance; the
+[App Server resolution notification](https://learn.chatgpt.com/docs/app-server) can also
+mean a request was cleared. Disappearance is therefore not a successful-answer receipt.
+Lost or uncertain replies offer **Check answer status**, a read-only inspection that never
+repeats the answer. Inspect the original editor afterward. **I checked in VS Code** clears
+only that browser receipt; the server retains its original intent and refuses replay.
+Up to eight browser answer receipts are retained per thread until explicitly checked.
+No permission, secret answer or native automatic answer timer is implemented here.
 
 ## Native goals
 
@@ -170,6 +199,46 @@ non-interactive helpers are excluded. Older isolated or `--no-daemon` terminals 
 A session before its first turn may not expose history. Simultaneous native/phone sends can
 join a reply; this is not an exclusive input lease. Closing the observer leaves native work
 running. These sessions are not converted into QUARK-managed workers.
+
+## Observed native questions
+
+Companion **0.2.16** observes incoming requests on the existing Codex dispatcher for the
+owner-selected thread. The independent authenticated question read uses only this bounded
+in-memory registry, so stalled transcript or queue reads do not hide an observed request.
+A healthy connection waiting for input shows attention; native fatal/disconnect evidence
+still shows Offline. Window summaries retain only count/availability, never question bodies
+or options. An unreadable question read clears the fresh count and reports unavailable.
+
+The installed Codex 0.159.2 generated protocol defines standard
+`item/tool/requestUserInput` questions and the original connection's `sendResponse` boundary.
+Fresh nonsecret standard requests can receive typed answers for their exact request, thread,
+turn and observation token. Native questions/options are preserved within explicit bounds:
+eight retained requests, eight questions each and sixteen options per question. Larger or
+unknown shapes, secrets, approvals and ambiguous/recycled IDs require the original editor.
+Requests predating observer attachment cannot be reconstructed from transcript prose; native
+waiting flags show unavailable details. This does not establish parity for async/code-mode
+question interfaces with an unverified native request shape.
+
+The server journals an exact response digest and uncertain receipt before native dispatch;
+answer bodies are not retained or echoed in this journal. The observer claims the token before
+calling the original native response method once. That method has no positive acceptance
+receipt, so a dispatched response remains **uncertain**; read-only receipt checks, disappearance
+and `serverRequest/resolved` do not prove the answer was accepted. Disconnect/reinitialize,
+thread changes and delayed resolution cannot replay a response or retarget a recycled ID.
+Other-host proxies admit only the fixed question read, answer and existing receipt routes.
+Updating this companion or reloading an editor remains a separate owner-coordinated action;
+these provider-free fixtures do not establish acceptance in the running editor.
+
+## Normal-message delivery receipts
+
+The read-only delivery receipt route adds `receiptState: missing | recorded`; native and
+POST results keep their existing delivery state. Missing means no journal entry exists on
+this computer, and the first HTTP request may still arrive. An explicit retry of a retained
+normal message keeps its original ID and exact payload. The server journals before provider
+handoff, so a delayed first POST and that retry produce one native dispatch. A recorded
+uncertain handoff remains inspectable and is never replayed. Proven gateway capacity or
+closed-connection refusal before handoff returns `not_sent`; transport failures after the
+write boundary remain uncertain. Browser error recovery is documented in the companion guide.
 
 ## Compatibility checks
 

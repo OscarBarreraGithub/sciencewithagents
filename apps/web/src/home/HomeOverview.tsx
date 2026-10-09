@@ -17,7 +17,7 @@ import {
   type WorkItem,
 } from '@dock/shared';
 import claudeMark from '../assets/claude.svg';
-import { mirrorDaemon, useMirrorChats } from '../useMirrorChats';
+import { mirrorDaemon, mirrorKey, mirrorProvider, useMirrorChats } from '../useMirrorChats';
 import { chatAgentKind } from './conversation-list';
 import { useConversationVisibility } from './useConversationVisibility';
 import { useReading, type HomeData } from './useHomeData';
@@ -94,10 +94,15 @@ function parseProjectRates(value: unknown): ProjectRate[] {
   }));
 }
 
-function Destinations({ data }: { data: HomeData }) {
+function Destinations({
+  data,
+  mirrors,
+}: {
+  data: HomeData;
+  mirrors: ReturnType<typeof useMirrorChats>;
+}) {
   const state = data.snapshot.data;
   const visibility = useConversationVisibility();
-  const mirrors = useMirrorChats(true);
   const records = new Map(
     (visibility.data ?? []).map((record) => [
       conversationVisibilityIdentity(record.target),
@@ -440,7 +445,7 @@ function ProjectAttention({
       <div className="overview-panel-head">
         <h2 id="attention-heading">For your attention</h2>
         <span className={`overview-count ${needs.length ? 'is-active' : ''}`}>
-          {known ? needs.length : '—'}
+          {known ? requestCount(needs) : '—'}
         </span>
       </div>
       {!state ? (
@@ -463,6 +468,7 @@ function ProjectAttention({
           <ul className="attention-projects" aria-label="Projects and requests">
             {rows.map((row) => {
               const expanded = open.has(row.key) && row.needs.length > 0;
+              const count = requestCount(row.needs);
               return (
                 <li key={row.key} className={`attention-project${expanded ? ' is-open' : ''}`}>
                   <div className="attention-project-row">
@@ -489,10 +495,10 @@ function ProjectAttention({
                         type="button"
                         className="attention-project-count"
                         aria-expanded={expanded}
-                        aria-label={`${row.needs.length} ${row.needs.length === 1 ? 'request' : 'requests'} for ${row.name}`}
+                        aria-label={`${count} ${count === 1 ? 'request' : 'requests'} for ${row.name}`}
                         onClick={() => toggle(row.key)}
                       >
-                        {row.needs.length}
+                        {count}
                         <ChevronRight size={15} aria-hidden="true" />
                       </button>
                     ) : (
@@ -555,7 +561,9 @@ type Need = {
   label: string;
   title: string;
   detail: string;
+  count?: number;
 };
+const requestCount = (needs: Need[]) => needs.reduce((total, need) => total + (need.count ?? 1), 0);
 function needsFor(state: Snapshot | null, items: WorkItem[], data: HomeData): Need[] {
   if (!state) return [];
   const projects = new Map(state.projects.map((p) => [p.id, p.name]));
@@ -712,11 +720,37 @@ export function HomeOverview({
 }) {
   const state = data.snapshot.data;
   const workItems = useWorkItems();
-  const needs = needsFor(state, workItems.data?.items ?? [], data);
+  const mirrors = useMirrorChats(true);
+  const nativeNeeds: Need[] = mirrors.chats
+    .filter(
+      (conversation) =>
+        conversation.online &&
+        conversation.status !== 'offline' &&
+        conversation.threadId &&
+        !conversation.nativeRequestsUnavailable &&
+        (conversation.nativeRequestCount ?? 0) > 0,
+    )
+    .map((conversation) => ({
+      key: `native:${mirrorKey(conversation)}`,
+      projectId: null,
+      href: `#/chats/vscode/${encodeURIComponent(mirrorKey(conversation))}`,
+      project: `${mirrorProvider(conversation)} · ${conversation.title || conversation.label}`,
+      label: 'Native input',
+      title: `${conversation.nativeRequestCount} native ${conversation.nativeRequestCount === 1 ? 'request needs' : 'requests need'} your input`,
+      detail:
+        'Open this shared conversation to review the current question or native-editor request.',
+      count: conversation.nativeRequestCount,
+    }));
+  const needs = [...nativeNeeds, ...needsFor(state, workItems.data?.items ?? [], data)];
   const attentionError =
-    data.snapshot.error || workItems.error || data.local.error || data.work.error;
+    data.snapshot.error || workItems.error || data.local.error || data.work.error || mirrors.error;
   const known =
-    !!state && !attentionError && workItems.loaded && data.local.loaded && data.work.loaded;
+    !!state &&
+    !attentionError &&
+    mirrors.loaded &&
+    workItems.loaded &&
+    data.local.loaded &&
+    data.work.loaded;
   return (
     <div className="overview">
       <h1 className="home-sr-only" tabIndex={-1}>
@@ -737,7 +771,7 @@ export function HomeOverview({
       )}
       <div className="overview-grid">
         <div className="overview-main">
-          <Destinations data={data} />
+          <Destinations data={data} mirrors={mirrors} />
           <div className="overview-panel overview-todo-slot">
             <OwnerWorkBoard
               projects={ownerProjects(data)}

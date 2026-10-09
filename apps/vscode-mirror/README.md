@@ -106,6 +106,11 @@ refusal, reconnect and stop; these checks do not certify other provider builds o
 - History loads in bounded pages; tool activity expands on demand. Older/newer controls
   preserve the original text without loading the whole transcript onto a phone.
 - Send goes to the selected native conversation. Phone sends do not edit the desktop draft.
+- **Check delivery** reads the original message receipt without sending. When this computer
+  confirms no receipt is recorded, **Retry message** explicitly submits the same original
+  message; it never sends a later edited draft. Recorded uncertain deliveries stay held for
+  inspection in **Review delivery**. Clear only the browser reminder after checking the
+  original conversation. Definite refusals show their reason and keep your draft.
 - **Send guidance** targets the exact active Codex turn. **Queue next** saves an app-owned
   message until delivery. **Expand queue → Edit** holds it in the notepad; minimizing or
   reloading keeps it held. **Save and queue** releases it explicitly. Codex also offers an
@@ -118,8 +123,13 @@ refusal, reconnect and stop; these checks do not certify other provider builds o
   goal, pause it, or resume after a pause, blocker or replenished usage. Existing goal budgets
   stay unchanged. Clear a non-active goal before starting another; chats and files remain.
   Older companions need a safe update/reload. Claude does not expose these native controls.
-- Models, permissions, native questions, slash menus, attachments and unsupported rich tools
-  stay in VS Code. This is a text mirror, not complete provider UI parity.
+- Companion 0.2.16 shows observed standard nonsecret Codex questions in the shared chat with **Review
+  request** and explicit **Send native answer**. Question reads stay independent of a slow
+  transcript. Uncertain answers retain **Check answer status** and are never replayed;
+  inspect the original question in VS Code. Older connections explain their support limit.
+  Coordinate any update/reload with the owner when the editor's running work is safe.
+- Models, permissions, secret questions, unsupported request formats, slash menus,
+  attachments and unsupported rich tools stay in VS Code. This is not complete provider UI parity.
 
 App-created helpers are filtered by provenance rather than their names. Their saved evidence
 remains available under the parent work. Separately launched active helpers can still appear

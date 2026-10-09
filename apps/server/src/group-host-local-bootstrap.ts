@@ -25,6 +25,7 @@ export function createLocalProductionGroupHost(dataDir: string, runtime: Runtime
     const scope = await host.nativeFeatureContext(context);
     await scope.revalidate();
   });
+  native!.backgroundVisible((enrollment) => host.localVisible(enrollment));
   native!.evidence(async (context) => {
     const scope = await host.nativeFeatureContext(context);
     let shared = await scope.readShared({ visibility: 'shared', after: 0, limit: 8, cursor: null });

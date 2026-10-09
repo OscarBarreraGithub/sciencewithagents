@@ -279,6 +279,15 @@ not that every independent ask has been completed.
 Independent native/editor histories, unsent drafts and private reasoning have different
 retention boundaries. Original VS Code chats retain their native identity and model choices.
 The optional companion needs no separate editor login. [Companion](../apps/vscode-mirror/README.md).
+Observed standard nonsecret Codex questions appear in the shared chat with companion 0.2.16, a Home attention link and
+an explicit answer control only while the exact request is confirmed pending. Independent
+question reads keep a stalled transcript from hiding that request. Failed reads disable
+answers and label retained questions unconfirmed; reconnect reads remove resolved requests.
+Answer receipts survive reload with read-only status checks and no automatic replay.
+Native permissions, secrets and unsupported formats stay in the original editor.
+Shared-chat delivery checks remain read-only. A confirmed missing receipt offers an explicit
+retry of the original message; recorded uncertain deliveries remain held for inspection.
+Definite refusals release pending state and preserve edited drafts.
 
 ## Documents on a phone
 

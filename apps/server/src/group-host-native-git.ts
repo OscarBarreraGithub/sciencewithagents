@@ -681,6 +681,7 @@ export class GroupHostNativeGit {
     for (const row of handles) {
       if (this.closing) return;
       const handle = String(row.handle);
+      if (!this.host.localVisible(handle)) continue;
       if (!this.settings(handle).autoSync || Date.now() - (this.last.get(handle) ?? 0) < 60_000)
         continue;
       this.last.set(handle, Date.now());

@@ -15,6 +15,7 @@ import { claudeArguments, type ClaudeSessionOptions } from './claude-session.js'
 
 let directory: string, store: Store, host: GroupHost, feed: GroupMemberFeed, context: GroupContext;
 let enabled: boolean,
+  visible: boolean,
   allowed: boolean,
   committed: boolean,
   publicationCommitted: boolean,
@@ -49,6 +50,7 @@ const make = () => {
     directory,
     connector,
     {
+      allowed: () => visible,
       source: (input) => host.memberFeedSource(input),
       publish: async (input, decision, operationId) => {
         publish(input, decision, operationId);
@@ -142,7 +144,7 @@ beforeEach(() => {
   });
   enrollment = randomUUID();
   now = 100_000;
-  enabled = allowed = committed = publicationCommitted = true;
+  enabled = visible = allowed = committed = publicationCommitted = true;
   inputs = new Map();
   operations = new Map();
   originalTexts = new Map();
@@ -185,6 +187,44 @@ afterEach(async () => {
   store.close();
   vi.restoreAllMocks();
   rmSync(directory, { recursive: true, force: true });
+});
+it('local removal pauses new summaries before discovery and preserves pending sources for restore', async () => {
+  const input = source();
+  feed.retain(input);
+  now += 20_000;
+  visible = false;
+  await feed.pass();
+  expect(discover).not.toHaveBeenCalled();
+  expect(store.runs()).toHaveLength(0);
+  expect(
+    store.db
+      .prepare('SELECT state,batch_id FROM group_member_feed_sources WHERE event_id=?')
+      .get(input.event.eventId),
+  ).toMatchObject({ state: 'pending', batch_id: null });
+  visible = true;
+  await feed.pass();
+  const run = store.runs()[0];
+  expect(run).toBeDefined();
+  visible = false;
+  const receipts = store.db.prepare('SELECT body FROM group_member_feed_batches').all();
+  await feed.pass();
+  expect(store.runs()).toEqual([run]);
+  expect(store.db.prepare('SELECT body FROM group_member_feed_batches').all()).toEqual(receipts);
+  visible = true;
+  await feed.pass();
+  expect(store.runs()).toEqual([run]);
+});
+it('removal while model discovery awaits cannot enqueue a background summary', async () => {
+  feed.retain(source());
+  now += 20_000;
+  discover.mockImplementation(async () => {
+    visible = false;
+    return [{ id: 'luna', label: 'Luna', isDefault: true, efforts: ['low'] }];
+  });
+  await feed.pass();
+  expect(discover).toHaveBeenCalledOnce();
+  expect(store.runs()).toHaveLength(0);
+  expect(registerHelper).not.toHaveBeenCalled();
 });
 
 it('batches own committed originals on the central bulk model, then publishes idempotent attributed corrections', async () => {
@@ -562,6 +602,7 @@ it('denies native tools/children for feed helpers without changing ordinary nati
       binary: 'never-native',
       cwd: directory,
       sessionId: randomUUID(),
+      resume: false,
       accountAffinity: 'a'.repeat(64),
       role: 'read-only',
       model: 'sonnet',
