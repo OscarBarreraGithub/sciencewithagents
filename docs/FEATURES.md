@@ -122,6 +122,7 @@ QUARK queues a worker without an initial manager turn; existing project review/a
 policy still applies. Background ordering considers priority, relative compute and queue age;
 foreground work comes first. Source items remain linked. Completed items have an Undo action.
 An idea can seed a new project's first notepad without deleting or completing the idea.
+Refreshing Home waits for a fresh to-do reading after changes made in another tab.
 
 Job details read the saved request, waiting reason, responsible worker, task and attributed
 outcomes even after the job leaves the recent queue. Links lead to its conversation, task,

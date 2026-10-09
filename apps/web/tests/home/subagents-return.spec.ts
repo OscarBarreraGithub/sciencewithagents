@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { snapshotSchema, type Agent } from '@dock/shared';
+import { snapshotSchema, workspaceDraftsSchema, type Agent } from '@dock/shared';
 
 async function fixture(page: Page) {
   const state = snapshotSchema.parse(await (await page.request.get('/api/snapshot')).json());
@@ -179,7 +179,16 @@ test('worker navigation returns to manager Subagents through browser Back, reloa
   await page.goto(`/#/chat/${data.manager.id}`);
   const draft = 'Unsent fixture draft 🧪 café 漢字';
   const editor = page.locator('.composer textarea');
+  // Establish a ready draft and actual typing before testing navigation retention.
+  await expect(page.locator('.composer [data-draft]')).toHaveAttribute('data-draft', 'saved');
   await editor.fill(draft);
+  await expect(editor).toHaveValue(draft);
+  expect(
+    await page.evaluate(
+      (id) => JSON.parse(localStorage.getItem(`dock:local:workspace:draft:${id}`)!).text,
+      data.manager.id,
+    ),
+  ).toBe(draft);
   await page.getByRole('button', { name: 'Subagents', exact: true }).click();
   await row(page, data.completed)
     .getByRole('link', { name: 'Open activity', exact: false })
@@ -221,6 +230,61 @@ test('worker navigation returns to manager Subagents through browser Back, reloa
   await returnLink.click();
   await expect(panel(page)).toBeVisible();
   await panel(page).getByRole('button', { name: 'Close panel', exact: true }).click();
+  await expect(editor).toHaveValue(draft);
+  expect(data.modelWrites).toEqual([]);
+});
+
+test('an initial draft read preserves owner typing entered before its response', async ({
+  page,
+}) => {
+  const data = await fixture(page);
+  let release!: () => void;
+  let observed!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const started = new Promise<void>((resolve) => (observed = resolve));
+  const path = `/api/workspace/`;
+  const suffix = `/drafts/${data.manager.id}`;
+  const initialRead = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname.startsWith(path) &&
+      new URL(response.url()).pathname.endsWith(suffix),
+  );
+  let first = true;
+  await page.route(`**${path}*${suffix}`, async (route) => {
+    if (first && route.request().method() === 'GET') {
+      first = false;
+      const response = await route.fetch();
+      observed();
+      await held;
+      await route.fulfill({ response });
+    } else await route.continue();
+  });
+  const draft = 'Typed before the initial draft read 🧪 café 漢字';
+  const editor = page.locator('.composer textarea');
+  try {
+    await page.goto(`/#/chat/${data.manager.id}`);
+    await started;
+    await expect(page.locator('.composer [data-draft]')).toHaveAttribute(
+      'data-draft',
+      'connecting',
+    );
+    await editor.fill(draft);
+    await expect(editor).toHaveValue(draft);
+    expect(
+      await page.evaluate(
+        (id) => JSON.parse(localStorage.getItem(`dock:local:workspace:draft:${id}`)!).text,
+        data.manager.id,
+      ),
+    ).toBe(draft);
+  } finally {
+    release();
+  }
+  expect(workspaceDraftsSchema.parse(await (await initialRead).json()).own.text).toBe('');
+  await expect(page.locator('.composer [data-draft]')).not.toHaveAttribute(
+    'data-draft',
+    'connecting',
+  );
   await expect(editor).toHaveValue(draft);
   expect(data.modelWrites).toEqual([]);
 });

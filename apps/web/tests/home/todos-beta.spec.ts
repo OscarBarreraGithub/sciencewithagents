@@ -94,6 +94,142 @@ test('an older add response keeps the retry receipt for a newer uncertain add', 
   }
 });
 
+test('explicit to-do refresh waits for fresh coalesced reads and cancels follow-up on leaving Home', async ({
+  page,
+  baseURL,
+}) => {
+  // Hold passive polling so it cannot hide a lost explicit refresh.
+  const time = new Date('2026-10-09T12:00:00Z');
+  await page.clock.install({ time });
+  await page.clock.pauseAt(new Date(time.getTime() + 60_000));
+  const title = `Refresh race ${randomUUID()}`;
+  const created = await page.request.post('/api/work-items', {
+    headers: { origin: baseURL! },
+    data: { key: randomUUID(), title, detail: 'Before the edit.' },
+  });
+  expect(created.ok()).toBe(true);
+  const item = workItemSchema.parse(await created.json());
+  await page.goto('/#/home');
+  const row = page
+    .locator('.todo-list > li')
+    .filter({ has: page.getByText(title, { exact: true }) });
+  await expect(row.locator('.todo-detail')).toHaveText('Before the edit.');
+
+  let reads = 0;
+  let active = 0;
+  let maximumActive = 0;
+  let leaving = false;
+  const retained: ReturnType<typeof workItemSchema.parse>[] = [];
+  const release: (() => void)[] = [];
+  const gates = Array.from(
+    { length: 4 },
+    (_, index) => new Promise<void>((done) => (release[index] = done)),
+  );
+  await page.route('**/api/work-items', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const index = reads++;
+    active++;
+    maximumActive = Math.max(maximumActive, active);
+    try {
+      const response = await route.fetch();
+      retained[index] = workItemsSchema
+        .parse(await response.json())
+        .items.find((i) => i.id === item.id)!;
+      await gates[index];
+      try {
+        await route.fulfill({ response });
+      } catch (error) {
+        if (!leaving) throw error; // The final owned read is deliberately canceled on unmount.
+      }
+    } finally {
+      active--;
+    }
+  });
+  const requestRefresh = (mark: string, count = 1) =>
+    page.evaluate(
+      async ({ mark, count }) => {
+        const readings: Promise<boolean>[] = [];
+        for (let i = 0; i < count; i++)
+          window.dispatchEvent(
+            new CustomEvent('swa:refresh-home', {
+              detail: { waitUntil: (reading: Promise<boolean>) => readings.push(reading) },
+            }),
+          );
+        document.documentElement.dataset.todoRefreshDispatched = mark;
+        return Promise.all(readings);
+      },
+      { mark, count },
+    );
+  const dispatched = (mark: string) =>
+    expect
+      .poll(() => page.evaluate(() => document.documentElement.dataset.todoRefreshDispatched))
+      .toBe(mark);
+  try {
+    await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
+    await expect.poll(() => retained[0]?.detail).toBe('Before the edit.');
+    const edited = await page.request.post('/api/work-items', {
+      headers: { origin: baseURL! },
+      data: {
+        key: randomUUID(),
+        id: item.id,
+        expectedRevision: item.revision,
+        detail: 'After the edit.',
+      },
+    });
+    expect(edited.ok()).toBe(true);
+    const edit = workItemSchema.parse(await edited.json());
+    let settled = false;
+    const requested = requestRefresh('first', 2);
+    void requested.then(() => (settled = true));
+    await dispatched('first');
+    release[0]!();
+    await expect.poll(() => retained[1]?.detail).toBe('After the edit.');
+    expect(settled).toBe(false);
+    expect(reads).toBe(2);
+    expect(maximumActive).toBe(1);
+
+    // A later mutation while that follow-up is pending needs its own fresh read.
+    const laterEdit = await page.request.post('/api/work-items', {
+      headers: { origin: baseURL! },
+      data: {
+        key: randomUUID(),
+        id: item.id,
+        expectedRevision: edit.revision,
+        detail: 'After another edit.',
+      },
+    });
+    expect(laterEdit.ok()).toBe(true);
+    let laterSettled = false;
+    const laterRequested = requestRefresh('later');
+    void laterRequested.then(() => (laterSettled = true));
+    await dispatched('later');
+    release[1]!();
+    expect((await requested).every(Boolean)).toBe(true);
+    await expect.poll(() => retained[2]?.detail).toBe('After another edit.');
+    expect(laterSettled).toBe(false);
+    expect(reads).toBe(3);
+    expect(maximumActive).toBe(1);
+    release[2]!();
+    expect((await laterRequested).every(Boolean)).toBe(true);
+    await expect(row.locator('.todo-detail')).toHaveText('After another edit.');
+
+    await page.evaluate(() => window.dispatchEvent(new Event('swa:refresh-home')));
+    await expect.poll(() => retained[3]?.detail).toBe('After another edit.');
+    const canceled = requestRefresh('leaving');
+    await dispatched('leaving');
+    leaving = true;
+    await page.evaluate(() => (location.hash = '#/chats'));
+    await expect(row).toHaveCount(0);
+    expect((await canceled).some((ok) => !ok)).toBe(true);
+    expect(reads).toBe(4);
+    expect(maximumActive).toBe(1);
+    release[3]!();
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  } finally {
+    release.forEach((done) => done());
+  }
+});
+
 test('long multiline to-dos wrap, keep kinds separate, and support API edits done undo and stale conflicts', async ({
   page,
   baseURL,

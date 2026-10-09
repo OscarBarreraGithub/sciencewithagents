@@ -36,6 +36,7 @@ export function useReading<T>(
     }
     let alive = true;
     let pending: Promise<boolean> | null = null;
+    let followUp: Promise<boolean> | null = null;
     let controller: AbortController | undefined;
     const read = () => {
       if (pending) return pending;
@@ -57,11 +58,21 @@ export function useReading<T>(
       })();
       return pending;
     };
+    const requestedRead = () => {
+      if (!pending) return read();
+      // An explicit refresh may follow a mutation newer than the in-flight response.
+      // Coalesce those requests into one fresh read, and make their callers wait for it.
+      followUp ??= pending.then(() => {
+        followUp = null;
+        return alive ? read() : false;
+      });
+      return followUp;
+    };
     const refresh = () => {
       if (!document.hidden) void read();
     };
-    const requested = (event: Event) => trackRefresh(event, read());
-    retry.current = () => void read();
+    const requested = (event: Event) => trackRefresh(event, requestedRead());
+    retry.current = () => void requestedRead();
     void read();
     const timer = window.setInterval(refresh, 10_000);
     document.addEventListener('visibilitychange', refresh);
