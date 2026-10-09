@@ -205,6 +205,37 @@ test('normal Groups opens scoped report notifications and keeps Advanced and sha
   await expect(
     controls.getByText('Creator backup of shared group data', { exact: true }),
   ).toBeVisible();
+  await page.mouse.move(0, 0);
+  const secondary = await controls
+    .getByRole('button', { name: 'Done', exact: true })
+    .evaluate((button) => {
+      const style = getComputedStyle(button);
+      return { background: style.backgroundColor, color: style.color, border: style.borderColor };
+    });
+  const summaries = controls.locator('summary:visible');
+  for (const summary of await summaries.all()) {
+    const style = await summary.evaluate((row) => {
+      const css = getComputedStyle(row);
+      return {
+        fontSize: parseFloat(css.fontSize),
+        height: row.getBoundingClientRect().height,
+        borderWidth: parseFloat(css.borderTopWidth),
+        background: css.backgroundColor,
+        color: css.color,
+        border: css.borderColor,
+      };
+    });
+    expect(style.fontSize).toBeGreaterThanOrEqual(16);
+    expect(style.height).toBeGreaterThanOrEqual(44);
+    expect(style.borderWidth).toBeGreaterThanOrEqual(1);
+    expect(style).toMatchObject(secondary);
+  }
+  await page.keyboard.press('Tab');
+  const focusedSummary = controls.locator('summary:focus-visible');
+  await expect(focusedSummary).toHaveCount(1);
+  expect(
+    await focusedSummary.evaluate((summary) => parseFloat(getComputedStyle(summary).outlineWidth)),
+  ).toBeGreaterThanOrEqual(2);
   await expect(controls.locator('[aria-label="Shared GitHub workspace"]')).toHaveCount(1);
   await controls.getByText('Advanced', { exact: true }).click();
   await expect(controls.locator('[aria-label="Shared GitHub workspace"]')).toHaveCount(1);

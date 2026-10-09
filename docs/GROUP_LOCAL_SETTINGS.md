@@ -1,8 +1,9 @@
 # Local Groups settings
 
-**Manage → Remove from this app** is local visibility, including for the creator. It does not
-close the group, revoke membership, delete Cloudflare data, remove credentials or
-change native conversations, work, files or saved originals. Restore uses the saved
+**Manage → Remove from my app** appears directly below the dialog heading. It hides the
+group locally, including for the creator. It does not close the group, revoke membership,
+delete Cloudflare data, remove credentials or change native conversations, work, files or
+saved originals. Restore uses the saved
 local enrollment and works without contacting the service. Open **Removed groups** in the
 Groups list and choose **Restore group**. A lost acknowledgement keeps **Review saved list
 change** after reload; **Check current setting** only reads, while **Retry saved change**

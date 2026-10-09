@@ -239,6 +239,19 @@ test('selected folder and verified repository retain exact retries through reloa
   );
   expect(copied).toContain('Inspect tracked and untracked files');
   expect(copied).toMatch(/Do not stage\s+everything/);
+  for (const summary of await setup.locator('summary:visible').all()) {
+    const style = await summary.evaluate((row) => {
+      const css = getComputedStyle(row);
+      return {
+        fontSize: parseFloat(css.fontSize),
+        height: row.getBoundingClientRect().height,
+        borderWidth: parseFloat(css.borderTopWidth),
+      };
+    });
+    expect(style.fontSize).toBeGreaterThanOrEqual(16);
+    expect(style.height).toBeGreaterThanOrEqual(44);
+    expect(style.borderWidth).toBeGreaterThanOrEqual(1);
+  }
   await screenshot(page, 'selected-folder-setup');
   await setup.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await create(page, 'Scoped Forest');
@@ -342,9 +355,19 @@ test('local removal and restore keep original history and draft with lost-ack re
   await draft.fill('Unsent retained draft · β 📚');
   await savedDraft;
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
-  await page.getByRole('button', { name: 'Remove from this app', exact: true }).click();
-  let dialog = page.getByRole('dialog', { name: 'Remove group from this app', exact: true });
-  await expect(dialog).toContainText('It does not leave the group or delete cloud data.');
+  const controls = page.getByRole('dialog', { name: 'Manage group', exact: true });
+  const remove = controls.getByRole('button', { name: 'Remove from my app', exact: true });
+  await expect(remove).toBeInViewport();
+  const removalBox = (await remove.boundingBox())!;
+  const invitationBox = (await controls.getByText('Invite people', { exact: true }).boundingBox())!;
+  expect(removalBox.y + removalBox.height).toBeLessThanOrEqual(invitationBox.y);
+  expect(removalBox.height).toBeGreaterThanOrEqual(44);
+  await screenshot(page, 'manage-local-removal');
+  await remove.click();
+  let dialog = page.getByRole('dialog', { name: 'Remove group from my app', exact: true });
+  await expect(dialog).toContainText(
+    'It does not leave the group, stop creator hosting or delete shared cloud data.',
+  );
   await dialog.getByRole('button', { name: 'Remove group', exact: true }).click();
   await expect(
     dialog.getByRole('button', { name: 'Retry saved change', exact: true }),
@@ -354,7 +377,7 @@ test('local removal and restore keep original history and draft with lost-ack re
   await page.getByRole('button', { name: 'Back to groups', exact: true }).click();
   await page.getByText('Removed groups (1)', { exact: true }).click();
   await page.getByRole('button', { name: 'Review saved list change', exact: true }).click();
-  dialog = page.getByRole('dialog', { name: 'Remove group from this app', exact: true });
+  dialog = page.getByRole('dialog', { name: 'Remove group from my app', exact: true });
   await dialog.getByRole('button', { name: 'Check current setting', exact: true }).click();
   await expect(dialog).toContainText('Currently hidden from this app.');
   expect(requests).toHaveLength(1);

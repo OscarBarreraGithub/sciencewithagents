@@ -3,9 +3,10 @@
 The normal app has **Group chat** and **My group agent** tabs. The latter uses the current
 member’s own provider account and allowance. **Setup** offers readable creator, member and
 shared-file choices; phone pairing remains optional. **Manage** keeps invitations and local
-agent access visible; **Advanced** holds repository review, shared proposals, older report
-lookup and creator backups. Advanced content loads once on first opening and stays mounted
-when collapsed. Exact pending/error request controls describe the specific request.
+agent access visible, with **Remove from my app** directly below the dialog heading.
+Setup and management disclosure rows use readable bordered controls. **Advanced** holds
+repository review, shared proposals, older report lookup and creator backups. Advanced content
+loads once on first opening and stays mounted when collapsed. Exact pending/error request controls describe the specific request.
 
 Validated shared report notifications show **Open report** and a collapsed exact original.
 Completed own replies expose their report offer only through the exact retained result/source
@@ -18,7 +19,7 @@ limited presentation; current checks and remaining acceptance are in [Status](ST
 After creating or joining, **Manage → Work folder** attaches that saved selection explicitly
 and verifies the intended private repository. New verified connections start automatic sync;
 an existing saved pause is preserved. One repository controller retains exact pending changes
-across the ordinary connection controls and Advanced review. **Remove from this app** hides
+across the ordinary connection controls and Advanced review. **Remove from my app** hides
 the local list entry while preserving membership, work, history and drafts; **Removed groups**
 offers restore and exact interrupted-change recovery. The visible contribution selector reflects
 the host’s saved Read-only/Contribute mode; drafts stay editable and new sends follow that

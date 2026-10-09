@@ -131,12 +131,58 @@
   flex: 1;
   min-width: min(100%, 220px);
 }
+/* Setup and management disclosures use the adjacent secondary-button treatment. */
+.group-setup-dialog summary,
+.group-host-controls summary {
+  min-height: 44px;
+  padding: 10px 12px;
+  margin-block: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--home-ink, var(--ink));
+  font-size: max(16px, 1rem);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.group-setup-dialog button,
+.group-host-controls button {
+  min-height: 44px;
+  font-size: max(16px, 1rem);
+}
+.group-setup-dialog .secondary,
+.group-host-controls .secondary {
+  min-height: 44px;
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--home-ink, var(--ink));
+}
+.group-setup-dialog summary:hover,
+.group-host-controls summary:hover,
+.group-setup-dialog .secondary:hover,
+.group-host-controls .secondary:hover {
+  background: var(--soft);
+}
+.group-local-visibility {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.group-local-visibility p {
+  flex: 1 1 220px;
+}
 /* Management stays available without displacing the conversation by default. */
 .group-host-controls {
   width: min(640px, calc(100vw - 24px));
   max-height: calc(100dvh - 32px);
   padding: 16px;
   overflow: auto;
+  font-size: max(16px, 1rem);
+  line-height: 1.5;
 }
 .group-host-controls .modal-heading {
   margin-bottom: 12px;
@@ -148,7 +194,7 @@
 .group-host-controls .group-host-members,
 .group-host-controls .group-host-members[open],
 .group-host-controls .group-native-owner {
-  font-size: 1rem;
+  font-size: max(16px, 1rem);
   line-height: 1.5;
 }
 .group-host-controls .group-host-members > summary,

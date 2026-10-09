@@ -210,7 +210,9 @@ test('batch limits include legacy images and reject overflow or invalid selectio
   }
   await choose.setInputFiles([textFile('one.txt'), textFile('two.txt')]);
   await expect(composer.locator('.chat-file-card')).toHaveCount(3);
-  await expect(composer.getByText('4 of 4 files', { exact: false })).toBeVisible();
+  await expect(
+    composer.getByText('4 files attached · up to 4, 8 MB each', { exact: true }),
+  ).toBeVisible();
   await expect(composer.getByRole('button', { name: 'Attach files', exact: true })).toBeDisabled();
   await expect(composer.getByRole('textbox')).toHaveValue('Draft');
   const saved = await page.evaluate(

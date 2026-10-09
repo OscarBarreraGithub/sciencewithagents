@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import {
-  codexTranscript as transcript,
+  codexTranscript,
   codexQueue,
   codexQueueUnsupported,
   isBackgroundCodexThread,
@@ -10,7 +10,6 @@ import {
   type MirrorQuestionAnswer,
 } from '@dock/shared';
 import { NativeRequests } from './native-requests.js';
-export { codexTranscript as transcript } from '@dock/shared';
 import type { MirrorState, MirrorSend, MirrorResult, MirrorControl } from '@dock/shared';
 import {
   nativeGoalSchema,
@@ -22,6 +21,10 @@ import {
 } from '@dock/shared';
 
 type ObjectValue = Record<string, unknown>;
+// Native callbacks share VS Code's extension event loop. Bound tool display work
+// before serialization; retained provider history and message text stay native.
+export const transcript = (thread: ObjectValue): MirrorState['entries'] =>
+  codexTranscript(thread, 'VS Code', { characters: 256 * 1024, values: 4096, depth: 64 });
 export const object = (value: unknown): ObjectValue =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as ObjectValue) : {};
 const array = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);

@@ -74,6 +74,12 @@ latest actual message. Tool bodies load on demand. Legacy full responses have an
 Codex builds with native turn paging load complete turns once per share and then re-read
 only the newest turns as the conversation changes; builds without it keep the full-history
 read. Summary or unloaded turns are never shown as a complete transcript.
+Companion 0.2.17 checks Codex tool details before formatting their JSON: previews inspect
+at most 256 Ki source characters, 4,096 values and 64 nested levels per tool item. Larger
+details show an explicit **View the original in VS Code** notice. Native items and saved
+history are unchanged; ordinary tool details and user/assistant text remain exact. This
+bounds the companion's tool-formatting work, not native extension or transport work. A
+synthetic regression does not establish the cause of a particular editor freeze.
 Short, wide screens keep send timing beside the composer tools so history remains readable.
 On touch screens, the draft height follows the visible keyboard viewport, including when
 Safari keeps a taller page layout. Longer drafts scroll within the input without losing text.

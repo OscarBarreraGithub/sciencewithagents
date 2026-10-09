@@ -1,6 +1,5 @@
 import { agentName } from '../agentName';
 import { OwnerTerminal } from '../OwnerTerminal';
-import { BugReport } from './BugReport';
 import { IssueReport } from './IssueReport';
 import { LatexApp } from '../Documents';
 import { ProviderActions } from './ProviderActions';
@@ -336,7 +335,7 @@ export function Home() {
   }, []);
   const page = currentRoute.split('/')[0]!;
   const [now, setNow] = useState(Date.now);
-  const [dialog, setDialog] = useState<'help' | 'phone' | 'bug' | 'issue' | null>(null);
+  const [dialog, setDialog] = useState<'help' | 'phone' | 'issue' | null>(null);
   const main = useRef<HTMLElement>(null);
   const back = useNavigation(currentRoute, main);
   const previousRoute = useRef(currentRoute);
@@ -570,15 +569,6 @@ export function Home() {
                 <p>Open a public GitHub draft that you review and submit to the maintainers.</p>
               </section>
               <section>
-                <button type="button" className="setup-link" onClick={() => setDialog('bug')}>
-                  Ask an agent to fix a problem
-                </button>
-                <p>
-                  Save a private repair request on the selected computer. The agent may use your
-                  model allowance.
-                </p>
-              </section>
-              <section>
                 <h3>App updates</h3>
                 <p>Check GitHub and update with an agent, preserving your workspace.</p>
                 <a className="setup-link" href={href('updates')}>
@@ -612,9 +602,6 @@ export function Home() {
               </section>
             </div>
           </Modal>
-        )}
-        {dialog === 'bug' && (
-          <BugReport key={apiScope()} page={currentRoute} close={() => setDialog(null)} />
         )}
         {dialog === 'issue' && (
           <IssueReport key={apiScope()} page={currentRoute} close={() => setDialog(null)} />

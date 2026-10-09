@@ -412,7 +412,8 @@ export function ChatAttachmentPicker({
       {!!attached && (
         <div className="chat-image-previews" aria-label="Attached files" tabIndex={0}>
           <small className="chat-upload-limit">
-            {attached} of {chatAttachmentLimit} files · 8 MB each
+            {attached} {attached === 1 ? 'file' : 'files'} attached · up to {chatAttachmentLimit}, 8
+            MB each
           </small>
           {files.map((id) => (
             <ChatFileCard

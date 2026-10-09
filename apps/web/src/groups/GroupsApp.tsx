@@ -550,6 +550,22 @@ export function GroupsApp({
                   </button>
                 </div>
                 {controlsOpen && error && <p role="alert">{error}</p>}
+                <div className="group-local-visibility">
+                  <GroupLocalVisibility
+                    key={`local-visibility:${selected.group.handle}`}
+                    group={localGroup ?? selected.group}
+                    refresh={refreshLocalList}
+                    onSettled={(current) => {
+                      if (
+                        current.removed?.some((group) => group.handle === selected.group.handle)
+                      ) {
+                        setControlsOpen(false);
+                        location.hash = '#/chats/groups';
+                      }
+                    }}
+                  />
+                  <p>Hide this group here. Restore it later from Removed groups.</p>
+                </div>
                 <details className="group-host-members" ref={membersPanel} hidden={!creatorHandle}>
                   <summary>Invite people</summary>
                   <p>
@@ -677,17 +693,6 @@ export function GroupsApp({
                   />
                 )}
                 <div ref={setNativeControlsTarget} />
-                <GroupLocalVisibility
-                  key={`local-visibility:${selected.group.handle}`}
-                  group={localGroup ?? selected.group}
-                  refresh={refreshLocalList}
-                  onSettled={(current) => {
-                    if (current.removed?.some((group) => group.handle === selected.group.handle)) {
-                      setControlsOpen(false);
-                      location.hash = '#/chats/groups';
-                    }
-                  }}
-                />
                 <details
                   className="group-host-members group-host-advanced"
                   onToggle={(event) => {

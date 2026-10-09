@@ -79,9 +79,9 @@ deploy the group service to MY Cloudflare account on Workers Free. Do not use th
 maintainer's service, require a beta code, buy a domain, or enable paid services.
 Handle deployment and private local configuration; leave account sign-in and account
 selection to me. Open Chats → Groups, help me create a group and invite another person, and
-explain Group chat (everyone’s messages) and Group manager (my agent’s shared work). Use native local agents, without Docker.
+explain Group chat (everyone’s messages) and My group agent (my agent’s shared work). Use native local agents, without Docker.
 Give me a short checklist of the remaining human steps. Verify Group chat messages in both
-directions and an Ask in Group manager once the other person joins. Report what remains untested.
+directions and an Ask in My group agent once the other person joins. Report what remains untested.
 ```
 
 **Join a group — send this prompt and the invitation privately to the new member:**
@@ -95,7 +95,7 @@ existing installation, then verify its version and model discovery.
 Configure the invitation's group service using the documented
 setup-agent process, without deploying a separate service or using the maintainer's
 account. Open Chats → Groups → Join group. The invitation grants membership;
-no confirmation code or separate approval is needed. Verify Group chat messaging and my Group manager.
+no confirmation code or separate approval is needed. Verify Group chat messaging and My group agent.
 Keep phone access and GitHub optional; list only the human steps I still need to do.
 ```
 
@@ -155,7 +155,9 @@ will change; these images will be replaced for the final presentation. See
 
 Your starting point on the phone: see the selected computer and remaining Codex and Claude
 allowance, open your chats or QUARK's work queue, and find items needing your attention
-alongside your own to-do list. Help includes a LaTeX/PDF reader for reports on your phone.
+alongside your own to-do list. Help offers public GitHub reporting and setup guidance.
+Open reports through their saved document links or the LaTeX reader in Apps when recent
+documents are available.
 
 <img src="docs/beta-test-demo/00-home.png" alt="Phone Home screen with remaining AI allowance, Chats, Apps, QUARK, attention items and a to-do list" width="360">
 

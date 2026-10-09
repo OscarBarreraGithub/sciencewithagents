@@ -140,11 +140,11 @@ export function GroupLocalVisibility({
   return (
     <>
       <button className="secondary" type="button" onClick={() => setOpen(true)}>
-        {pending ? 'Review saved list change' : restore ? 'Restore group' : 'Remove from this app'}
+        {pending ? 'Review saved list change' : restore ? 'Restore group' : 'Remove from my app'}
       </button>
       {open && (
         <Modal
-          title={desiredHidden ? 'Remove group from this app' : 'Restore group to this app'}
+          title={desiredHidden ? 'Remove group from my app' : 'Restore group to this app'}
           close={() => !busy && setOpen(false)}
         >
           <p>
@@ -154,8 +154,8 @@ export function GroupLocalVisibility({
           </p>
           <p>
             Removing hides this group on this computer. Membership, messages, files and work are
-            retained; you can restore it from Removed groups. It does not leave the group or delete
-            cloud data.
+            retained; you can restore it from Removed groups. It does not leave the group, stop
+            creator hosting or delete shared cloud data.
           </p>
           {pending && (
             <p>

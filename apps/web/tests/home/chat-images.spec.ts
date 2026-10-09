@@ -182,6 +182,9 @@ test('a manager accepts a screenshot-only message and restores attached drafts a
   await expect(page.getByRole('button', { name: 'Attach files' })).toBeEnabled();
   await pick(page);
   await visiblePreview(page);
+  await expect(
+    composer.getByText('1 file attached · up to 4, 8 MB each', { exact: true }),
+  ).toBeVisible();
   await expect(input).toHaveValue('');
   await input.fill('Look here \n');
   const typed = await input.inputValue();

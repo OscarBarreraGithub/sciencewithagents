@@ -75,19 +75,9 @@ dialog or reloading keeps the draft in that browser, and **Clear draft** removes
 Long reports offer **Copy report** and a plain new-issue link so the text can be pasted
 on GitHub. If clipboard access is blocked, the original fields remain selectable.
 
-### Private maintenance reports
-
-Open **? → Ask an agent to fix a problem**, describe the problem, then **Save and assign**. The selected
-computer saves a private report under `data/bug-reports/<id>/report.md`, with the page and
-a bounded queue snapshot. One maintenance manager receives an internal to-do and a message;
-it delegates a bounded fix and independent review using the normal model/project policy
-and may use your model allowance.
-Reports never become public GitHub issues automatically. Existing running work is preserved;
-publishing, external permission grants and app restarts are not automatic.
-
-A report survives connection loss without duplicate assignments. A failed folder write can be
-retried while the database and manager retain the report. **Open maintenance chat** shows
-progress or the actual queue/connection blocker; saving a report does not guarantee a fix.
+For private repair help, ask an existing agent in its conversation. This uses your model
+settings and allowance. Saved maintenance reports and their manager conversations remain
+retained; Help no longer creates a separate private report.
 
 ## QUARK and shared accounting
 

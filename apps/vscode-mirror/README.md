@@ -105,6 +105,9 @@ refusal, reconnect and stop; these checks do not certify other provider builds o
 
 - History loads in bounded pages; tool activity expands on demand. Older/newer controls
   preserve the original text without loading the whole transcript onto a phone.
+  Companion 0.2.17 labels oversized Codex tool details **View the original in VS Code**
+  before expensive JSON formatting. Saved native items are unchanged; ordinary tool
+  details and user/assistant text remain exact.
 - Send goes to the selected native conversation. Phone sends do not edit the desktop draft.
 - **Check delivery** reads the original message receipt without sending. When this computer
   confirms no receipt is recorded, **Retry message** explicitly submits the same original

@@ -131,10 +131,11 @@ Physical iPhone acceptance, Claude authentication through a full renewal cycle a
 completed real-account five-hour utilization/precision remain open checks.
 
 Routine work is not stopped by raw-token estimates. Actual provider allowance caps,
-reserves, resource checks and saved pauses remain enforced. **Help → Ask an agent to fix a problem** saves a
-private report and dispatches it to one maintenance manager through normal delegation/review.
-A real disposable bug-report journey completed independent review, exact-preview application,
-passing fix tests and closure of the original report, including an authorized continuation
+reserves, resource checks and saved pauses remain enforced. Private repair requests now go
+to existing agent conversations; the separate Help entry is removed. Saved maintenance
+reports, manager identities and their histories remain retained.
+Historical verification: a real disposable bug-report journey completed independent review,
+exact-preview application, passing fix tests and closure of the original report, including an authorized continuation
 after an observation timeout. The owner's installation and unrelated work were preserved.
 Optional project/task hourly limits now share rolling reservations across managers, workers
 and pending starts, separately for reported Codex and Claude windows. Focused scheduler
@@ -383,7 +384,8 @@ credential copying is used. See [Groups workflow](GROUP_WORKFLOW.md),
 
 **Help → Report a problem on GitHub** opens a public GitHub issue draft for user review and submission.
 It sends only the entered report and the screen name; private chats/logs are not attached.
-The separate **Ask an agent to fix a problem** flow remains a private local report.
+For private repair help, ask an existing agent in its conversation. Help no longer creates
+a separate local maintenance report; existing records and chats remain retained.
 
 ## Local Groups folder preparation evidence
 

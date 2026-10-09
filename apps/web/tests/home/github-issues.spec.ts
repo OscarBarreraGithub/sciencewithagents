@@ -23,10 +23,8 @@ test('Help opens a reviewable GitHub issue draft and retains typed text across c
     ).toBeVisible();
     await expect(
       help.getByRole('button', { name: 'Ask an agent to fix a problem', exact: true }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(help).toContainText('public GitHub draft that you review and submit');
-    await expect(help).toContainText('private repair request');
-    await expect(help).toContainText('model allowance');
     await expect(help.getByRole('heading', { name: 'Read documents', exact: true })).toHaveCount(0);
     await expect(help.getByRole('link', { name: 'LaTeX / PDF reader', exact: true })).toHaveCount(
       0,
