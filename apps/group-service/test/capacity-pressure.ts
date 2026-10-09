@@ -13,7 +13,7 @@ const secret = () =>
     .map((v) => v.toString(16).padStart(2, '0'))
     .join('');
 
-/** Four owned fixtures write roughly 528 MiB of real SQLite pages. CI observed
+/** Owned fixtures write roughly 528 MiB of real SQLite pages. CI observed
  * setup exceeding the ordinary 5s test limit. Only construction gets 30s;
  * revocation, completion, reads and recovery retain the default 5s test limit. */
 export function physicalPressureCase<T>(

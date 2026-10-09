@@ -1200,81 +1200,89 @@ it.each(['full migration', 'unknown version', 'temporary migration fault'])(
   },
 );
 
-it('preallocates the exact hosted completion before admission and retains lost ACK across a real hosted SQLite allocation fence and eviction', async () => {
-  const f = await fixture(),
-    e = await f.event('exact boundary original'),
-    key = keyOf(e.header);
-  expect((await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } })).ok).toBe(
-    true,
-  );
-  for (const chunk of e.chunks)
-    expect((await f.call({ kind: 'effect', packet: { kind: 'chunk', key, chunk } })).ok).toBe(true);
-  const before = await runInDurableObject(f.stub, async (_, state) => {
-    const sql = state.storage.sql;
-    expect(
-      sql
-        .exec<{
-          n: number;
-        }>(
-          'SELECT length(receipt) n FROM delivery_operations WHERE operation_id=?',
-          key.operationId,
-        )
-        .one().n,
-    ).toBe(8192);
-    sql.exec('CREATE TABLE delivery_test_pressure(body BLOB)').toArray();
-    const future = sql
-      .exec<{ future_physical: number }>('SELECT future_physical FROM delivery_control')
-      .one().future_physical;
-    const { MEMBERSHIP_CAPACITY: C } = await import('../src/capacity.js');
-    const target = C.normalDatabaseBytes + L.databaseBytes - future;
-    for (const size of [2 * 1024 ** 2, 4096]) {
-      for (;;) {
-        try {
-          state.storage.transactionSync(() => {
-            sql.exec('INSERT INTO delivery_test_pressure VALUES(zeroblob(?))', size).toArray();
-            if (sql.databaseSize > target) throw new Error('physical fence');
-          });
-        } catch {
-          break;
+physicalPressureCase(
+  'preallocates the exact hosted completion before admission and retains lost ACK across a real hosted SQLite allocation fence and eviction',
+  async () => {
+    const f = await fixture(),
+      e = await f.event('exact boundary original'),
+      key = keyOf(e.header);
+    expect((await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } })).ok).toBe(
+      true,
+    );
+    for (const chunk of e.chunks)
+      expect((await f.call({ kind: 'effect', packet: { kind: 'chunk', key, chunk } })).ok).toBe(
+        true,
+      );
+    const before = await runInDurableObject(f.stub, async (_, state) => {
+      const sql = state.storage.sql;
+      expect(
+        sql
+          .exec<{
+            n: number;
+          }>(
+            'SELECT length(receipt) n FROM delivery_operations WHERE operation_id=?',
+            key.operationId,
+          )
+          .one().n,
+      ).toBe(8192);
+      sql.exec('CREATE TABLE delivery_test_pressure(body BLOB)').toArray();
+      const future = sql
+        .exec<{ future_physical: number }>('SELECT future_physical FROM delivery_control')
+        .one().future_physical;
+      const { MEMBERSHIP_CAPACITY: C } = await import('../src/capacity.js');
+      const target = C.normalDatabaseBytes + L.databaseBytes - future;
+      for (const size of [2 * 1024 ** 2, 4096]) {
+        for (;;) {
+          try {
+            state.storage.transactionSync(() => {
+              sql.exec('INSERT INTO delivery_test_pressure VALUES(zeroblob(?))', size).toArray();
+              if (sql.databaseSize > target) throw new Error('physical fence');
+            });
+          } catch {
+            break;
+          }
         }
       }
-    }
-    expect(target - sql.databaseSize).toBeLessThan(8192);
-    sql.exec('UPDATE delivery_control SET allocated=?', L.databaseBytes - 4096).toArray();
-    return sql.databaseSize;
-  });
-  // The reply is deliberately discarded: recovery must read the same retained receipt.
-  expect(await f.call({ kind: 'effect', packet: { kind: 'commit', key } })).toMatchObject({
-    ok: true,
-    value: { receipt: { state: 'committed', eventId: e.header.event.eventId } },
-  });
-  await runInDurableObject(f.stub, (_, state) => {
-    expect(state.storage.sql.databaseSize).toBeLessThanOrEqual(before);
-    const body = String(
-      state.storage.sql
-        .exec('SELECT receipt FROM delivery_operations WHERE operation_id=?', key.operationId)
-        .one().receipt,
-    );
-    expect(new TextEncoder().encode(body).length).toBeLessThan(4096);
-    expect(
-      state.storage.sql
-        .exec(
-          'SELECT id FROM delivery_feature_reservations WHERE id=?',
-          'delivery:' + key.operationId,
-        )
-        .toArray(),
-    ).toEqual([]);
-  });
-  await evictDurableObject(f.stub);
-  expect(await f.call({ kind: 'receipt', key })).toMatchObject({
-    ok: true,
-    value: { receipt: { state: 'committed', eventId: e.header.event.eventId } },
-  });
-  expect(await f.call({ kind: 'effect', packet: { kind: 'commit', key } })).toMatchObject({
-    ok: true,
-    value: { receipt: { state: 'committed' } },
-  });
-});
+      expect(target - sql.databaseSize).toBeLessThan(8192);
+      sql.exec('UPDATE delivery_control SET allocated=?', L.databaseBytes - 4096).toArray();
+      return sql.databaseSize;
+    });
+    return { f, e, key, before };
+  },
+  async ({ f, e, key, before }) => {
+    // The reply is deliberately discarded: recovery must read the same retained receipt.
+    expect(await f.call({ kind: 'effect', packet: { kind: 'commit', key } })).toMatchObject({
+      ok: true,
+      value: { receipt: { state: 'committed', eventId: e.header.event.eventId } },
+    });
+    await runInDurableObject(f.stub, (_, state) => {
+      expect(state.storage.sql.databaseSize).toBeLessThanOrEqual(before);
+      const body = String(
+        state.storage.sql
+          .exec('SELECT receipt FROM delivery_operations WHERE operation_id=?', key.operationId)
+          .one().receipt,
+      );
+      expect(new TextEncoder().encode(body).length).toBeLessThan(4096);
+      expect(
+        state.storage.sql
+          .exec(
+            'SELECT id FROM delivery_feature_reservations WHERE id=?',
+            'delivery:' + key.operationId,
+          )
+          .toArray(),
+      ).toEqual([]);
+    });
+    await evictDurableObject(f.stub);
+    expect(await f.call({ kind: 'receipt', key })).toMatchObject({
+      ok: true,
+      value: { receipt: { state: 'committed', eventId: e.header.event.eventId } },
+    });
+    expect(await f.call({ kind: 'effect', packet: { kind: 'commit', key } })).toMatchObject({
+      ok: true,
+      value: { receipt: { state: 'committed' } },
+    });
+  },
+);
 
 it('new admissions cannot spend another original, report or action future allocation', async () => {
   const f = await fixture(),
