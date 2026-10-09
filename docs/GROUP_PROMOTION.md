@@ -195,3 +195,5 @@ not a total provider prompt limit. Native system/account startup instructions,
 including instructions from the writer’s same-member/group/shared HOME, may add
 context. Optional startup instruction/token isolation remains future work.
 Output must parse as a strict decision with exactly the authorized evidence refs.
+
+The hosted selected-writer lane now uses the common shared byte allocation instead of a 512-identity lifetime stop. Direct originals already delivered before source registration need no synthesis reservation. Pending source/adoption/receipt growth remains reserved until exact completion/disposition. Optional writer reads use scoped native hints and 300-second connected/60-second fallback idle reconciliation; lease renewals occur only for an actual pending source. The per-member lane above remains separate. Historical isolated authorities retain their legacy count ceiling unless the host supplies current byte admission.

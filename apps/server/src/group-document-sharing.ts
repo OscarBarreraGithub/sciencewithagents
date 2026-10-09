@@ -85,12 +85,46 @@ export class GroupDocumentSharing {
       );
     return new GroupDocumentPublication(await this.host.documentContext(handle));
   }
+  async preflight(handle: string, id: string, version: string, raw: unknown) {
+    const input = z.strictObject({ sharedHandle: z.uuid() }).parse(raw);
+    const bundle = await this.documents.previewSharedBundle(
+      handle,
+      id,
+      version,
+      input.sharedHandle,
+    );
+    const manifest = sharedDocumentManifestSchema.parse({
+      publicationId: randomUUID(),
+      grantId: randomUUID(),
+      version: bundle.version,
+      owner: bundle.owner,
+      title: bundle.title,
+      entryId: bundle.entryId,
+      files: bundle.files.map(({ id, name, kind, bytes, sha256 }) => ({
+        id,
+        name,
+        kind,
+        bytes,
+        sha256,
+      })),
+    });
+    try {
+      return await (await this.port(input.sharedHandle)).capacity(manifest);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Shared report invalid')
+        throw new GroupDocumentError(
+          409,
+          'GROUP_REPORT_HOSTING_UPDATE',
+          'The group creator needs to update the hosted Groups service before checking report capacity. No report was uploaded.',
+        );
+      throw error;
+    }
+  }
   publish(handle: string, id: string, version: string, raw: unknown) {
     return this.serialize(`${handle}:${id}`, () => this.publishExact(handle, id, version, raw));
   }
   private async publishExact(handle: string, id: string, version: string, raw: unknown) {
     const input = groupDocumentShareSchema.parse(raw);
-    const bundle = await this.documents.exportSharedBundle(handle, id, version, input.sharedHandle);
     const keyInput = publicationCanonical({ handle, id, version, target: input.sharedHandle });
     let row = this.host.db
       .prepare('SELECT input,manifest FROM gh_document_publications WHERE key=?')
@@ -102,6 +136,30 @@ export class GroupDocumentSharing {
         'Retry the same saved report publication.',
       );
     if (!row) {
+      if (!this.host.localContributing(input.sharedHandle))
+        throw new GroupHostError(
+          409,
+          'GROUP_LOCAL_READ_ONLY',
+          'This group is Read-only on this computer. Choose Contribute before sharing a new report. Existing saved publications can still reconcile.',
+        );
+      const capacity = await this.preflight(handle, id, version, {
+        sharedHandle: input.sharedHandle,
+      });
+      if (!capacity.fits)
+        throw new GroupDocumentError(
+          507,
+          'GROUP_REPORT_CAPACITY',
+          'The hosted group has insufficient report space or too many pending uploads. Keep this report in your project files/Git, or ask the creator about hosted capacity; no upload started.',
+        );
+    }
+    const bundle = await this.documents.exportSharedBundle(handle, id, version, input.sharedHandle);
+    if (!row) {
+      if (!this.host.localContributing(input.sharedHandle))
+        throw new GroupHostError(
+          409,
+          'GROUP_LOCAL_READ_ONLY',
+          'This group became Read-only before a new report publication was admitted.',
+        );
       const manifest = sharedDocumentManifestSchema.parse({
         publicationId: randomUUID(),
         grantId: randomUUID(),
@@ -450,6 +508,14 @@ export function registerGroupReportRoutes(
     run(async (request) => {
       const p = params.parse(request.params);
       return sharing.publish(p.handle, p.id, p.version, request.body);
+    }),
+  );
+  app.post(
+    '/api/groups/documents/:handle/:id/:version/preflight',
+    { onRequest: guard, bodyLimit: 4096 },
+    run(async (request) => {
+      const p = params.parse(request.params);
+      return sharing.preflight(p.handle, p.id, p.version, request.body);
     }),
   );
   const base = '/api/groups/reports/:handle/:id/:version';

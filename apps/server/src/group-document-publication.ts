@@ -35,6 +35,17 @@ export class GroupDocumentPublication {
     }
     return reply;
   }
+  async capacity(raw: SharedDocumentManifest) {
+    const manifest = sharedDocumentManifestSchema.parse(raw);
+    if (
+      this.ports.context.visibility !== 'shared' ||
+      publicationCanonical(manifest.owner) !== publicationCanonical(this.ports.context)
+    )
+      throw new Error('Shared owner context mismatch');
+    const reply = await this.call({ kind: 'capacity', binding: this.ports.binding, manifest });
+    if (reply.kind !== 'capacity') throw new Error('Shared report capacity mismatch');
+    return reply;
+  }
   async publish(raw: SharedDocumentManifest, files: ReadonlyMap<string, Uint8Array>) {
     const manifest = sharedDocumentManifestSchema.parse(raw);
     if (

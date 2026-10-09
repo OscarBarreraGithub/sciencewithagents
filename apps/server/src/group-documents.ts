@@ -526,7 +526,19 @@ CREATE TRIGGER IF NOT EXISTS gd_grants_no_update BEFORE UPDATE ON gd_grants BEGI
   }
   /** Protected explicit sharing snapshot. It excludes the private owner/native
    * contexts and every file not selected by the original local grant. */
-  async exportSharedBundle(handle: string, id: string, version: string, sharedHandle: string) {
+  previewSharedBundle(handle: string, id: string, version: string, sharedHandle: string) {
+    return this.#sharedBundle(handle, id, version, sharedHandle, false);
+  }
+  exportSharedBundle(handle: string, id: string, version: string, sharedHandle: string) {
+    return this.#sharedBundle(handle, id, version, sharedHandle, true);
+  }
+  async #sharedBundle(
+    handle: string,
+    id: string,
+    version: string,
+    sharedHandle: string,
+    retainPdf: boolean,
+  ) {
     const { actor, g } = await this.#authorized(handle, id, version);
     const target = await this.#actor(sharedHandle);
     if (
@@ -562,7 +574,7 @@ CREATE TRIGGER IF NOT EXISTS gd_grants_no_update BEFORE UPDATE ON gd_grants BEGI
         )
         .get(g.id);
       const identity = pdfId ? (JSON.parse(String(pdfId.body)).id as string) : randomUUID();
-      if (!pdfId) this.#event('publication-pdf', { grantId: g.id, id: identity });
+      if (!pdfId && retainPdf) this.#event('publication-pdf', { grantId: g.id, id: identity });
       output.push({
         id: identity,
         name: `compiled-${g.entry}.pdf`,

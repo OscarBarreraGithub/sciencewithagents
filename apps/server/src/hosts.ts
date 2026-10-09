@@ -460,7 +460,7 @@ const documentFormatWritePath = new RegExp(
   `^/documents/${uuid}/format(?:/automatic(?:/request)?)?$`,
 );
 const groupDocumentWritePath = new RegExp(
-  `^/groups/(?:reports|documents/${uuid}/grants|documents/${uuid}/${uuid}/[a-f0-9]{64}/(?:open|build|share|revoke|publish)|reports/${uuid}/${uuid}/[a-f0-9]{64}/(?:open|build|revoke))$`,
+  `^/groups/(?:reports|documents/${uuid}/grants|documents/${uuid}/${uuid}/[a-f0-9]{64}/(?:open|build|share|revoke|publish|preflight)|reports/${uuid}/${uuid}/[a-f0-9]{64}/(?:open|build|revoke))$`,
 );
 const terminalPath = new RegExp(`^/(?:agents/${uuid}/terminal|owner-terminal/${uuid}/socket)$`);
 

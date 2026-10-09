@@ -15,6 +15,11 @@ import { groupContextSchema } from '@dock/shared';
 import { GroupDocumentPublication } from '../../server/src/group-document-publication.js';
 import { creationGroupId, setupHash } from '../src/crypto.js';
 import worker from '../src/index.js';
+import {
+  fillNormalFeatureFence,
+  pressureMembers,
+  revokeIntoProtectedEnvelope,
+} from './capacity-pressure.js';
 const uuid = () => crypto.randomUUID();
 const secret = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
 const sha = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
@@ -187,6 +192,62 @@ async function fixture() {
 afterEach(async () => {
   await reset();
   Object.assign(env, { HOSTING_MODE: 'disabled', GROUP_SETUP_HASH: '' });
+});
+
+it('retains accepted report completion and authorized originals when other members revoke into the protected envelope', async () => {
+  const f = await fixture(),
+    members = await pressureMembers(f.membership),
+    originalKey = await f.make(f.credential).publish(f.manifest, f.files),
+    manifest = sharedDocumentManifestSchema.parse({ ...f.manifest, publicationId: uuid() }),
+    key = documentPublicationKey(manifest);
+  expect(await f.call({ kind: 'begin', key, binding: f.binding, manifest })).toMatchObject({
+    ok: true,
+  });
+  await fillNormalFeatureFence(f.stub);
+  const pressure = await revokeIntoProtectedEnvelope(f.stub, f.membership, members);
+  const next = sharedDocumentManifestSchema.parse({ ...manifest, publicationId: uuid() });
+  expect(
+    await f.call({
+      kind: 'begin',
+      key: documentPublicationKey(next),
+      binding: f.binding,
+      manifest: next,
+    }),
+  ).toEqual({ ok: false, error: 'limit' });
+  await evictDurableObject(f.stub);
+  expect(await f.call({ kind: 'receipt', key })).toMatchObject({
+    ok: true,
+    value: { receipt: { state: 'staged' } },
+  });
+  const reader = f.make(f.b.token);
+  expect(await reader.read(originalKey, f.sourceId)).toEqual(f.bytes);
+  expect(await reader.read(originalKey, f.pdfId)).toEqual(f.pdf);
+  for (const [fileId, bytes] of f.files)
+    for (let index = 0; index * L.chunkBytes < bytes.length; index++) {
+      expect(
+        await f.call({
+          kind: 'chunk',
+          key,
+          fileId,
+          index,
+          base64: Buffer.from(
+            bytes.slice(index * L.chunkBytes, (index + 1) * L.chunkBytes),
+          ).toString('base64'),
+        }),
+      ).toMatchObject({ ok: true });
+    }
+  const committed = await f.call({ kind: 'commit', key });
+  expect(committed).toMatchObject({ ok: true, value: { receipt: { state: 'committed' } } });
+  await evictDurableObject(f.stub);
+  expect(await f.call({ kind: 'commit', key })).toEqual(committed);
+  expect(await f.call({ kind: 'manifest', key }, pressure.revoked.credential)).toEqual({
+    ok: false,
+    error: 'denied',
+  });
+  expect(await f.call({ kind: 'manifest', key }, f.pending.token)).toEqual({
+    ok: false,
+    error: 'denied',
+  });
 });
 it('two authenticated hosts retain exact source/PDF through lost ACK and eviction; download only on demand; revoke immediately', async () => {
   const f = await fixture();
@@ -451,5 +512,52 @@ it('resumes the same staged upload after an acknowledged chunk loses its respons
   sent.length = 0;
   const key = await a.publish(f.manifest, f.files);
   expect(sent.filter((v) => v.includes(':'))).toEqual([`${f.pdfId}:1`]);
+  expect(await f.make(f.b.token).read(key, f.pdfId)).toEqual(f.pdf);
+});
+
+it('report preflight is exact read-only capacity with full accepted-upload reserve, not an upload or membership-history mutation', async () => {
+  const f = await fixture(),
+    a = f.make(f.credential);
+  await a.capacity(f.manifest);
+  const before = await runInDurableObject(f.stub, (_, state) => ({
+    publications: state.storage.sql.exec('SELECT * FROM document_publications').toArray(),
+    metadata: state.storage.sql.exec('SELECT operations FROM metadata').one(),
+    logical: state.storage.sql.exec('SELECT logical FROM document_control').one(),
+  }));
+  const capacity = await a.capacity(f.manifest);
+  expect(capacity).toMatchObject({
+    kind: 'capacity',
+    fits: true,
+    reason: 'available',
+    pending: 0,
+    logical: { limitBytes: 256 * 1024 ** 2 },
+  });
+  expect(capacity.physical.requiredBytes).toBeGreaterThan(f.pdf.length);
+  expect(
+    await runInDurableObject(f.stub, (_, state) => ({
+      publications: state.storage.sql.exec('SELECT * FROM document_publications').toArray(),
+      metadata: state.storage.sql.exec('SELECT operations FROM metadata').one(),
+      logical: state.storage.sql.exec('SELECT logical FROM document_control').one(),
+    })),
+  ).toEqual(before);
+  const key = documentPublicationKey(f.manifest);
+  expect(
+    await f.http({ kind: 'begin', key, binding: f.binding, manifest: f.manifest }, f.credential),
+  ).toMatchObject({ ok: true, value: { receipt: { state: 'staged' } } });
+  await runInDurableObject(f.stub, (_, state) => {
+    const c = state.storage.sql
+      .exec<{ future_physical: number }>('SELECT future_physical FROM delivery_control')
+      .one();
+    expect(c.future_physical).toBeGreaterThan(capacity.physical.requiredBytes - 65536);
+    state.storage.sql.exec('UPDATE document_control SET logical=?', L.logicalBytes).toArray();
+  });
+  expect(await a.capacity({ ...f.manifest, publicationId: uuid() })).toMatchObject({
+    fits: false,
+    reason: 'logical-limit',
+  });
+  // Accepted upload has already reserved its full body, so later admission exhaustion cannot substitute or block its completion.
+  expect(await a.publish(f.manifest, f.files)).toEqual(key);
+  await evictDurableObject(f.stub);
+  expect(await a.publish(f.manifest, f.files)).toEqual(key);
   expect(await f.make(f.b.token).read(key, f.pdfId)).toEqual(f.pdf);
 });

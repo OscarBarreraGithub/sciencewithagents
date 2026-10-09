@@ -14,6 +14,11 @@ import {
   DELIVERY_LIMITS,
 } from '@dock/shared/dist/group-delivery.js';
 import { MEMBERSHIP_CAPACITY as C } from './capacity.js';
+import {
+  GroupFeatureStorage,
+  GroupFeatureStorageLimit,
+  documentGrowthReserve,
+} from './group-feature-storage.js';
 import { capabilityHash } from './crypto.js';
 const schema = `
 CREATE TABLE IF NOT EXISTS document_control(singleton INTEGER PRIMARY KEY CHECK(singleton=1),logical INTEGER NOT NULL DEFAULT 0,day INTEGER NOT NULL DEFAULT 0,written INTEGER NOT NULL DEFAULT 0,read INTEGER NOT NULL DEFAULT 0);
@@ -47,6 +52,7 @@ const fail = (code: Refusal['code']): never => {
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 /** Shares membership's SQLite and existing delivery allocation; no increased total ceiling. */
 export class GroupDocumentTransport {
+  private features!: GroupFeatureStorage;
   constructor(
     private readonly storage: DurableObjectStorage,
     private readonly ports: { probe(): void; admitMutation(): void },
@@ -54,25 +60,49 @@ export class GroupDocumentTransport {
     storage.transactionSync(() => {
       const before = storage.sql.databaseSize;
       storage.sql.exec(schema).toArray();
-      this.charge(before);
+      this.features = new GroupFeatureStorage(storage);
+      if (
+        !this.rows<{ name: string }>('PRAGMA table_info(document_control)').some(
+          (r) => r.name === 'pending',
+        )
+      ) {
+        this.rows('ALTER TABLE document_control ADD COLUMN pending INTEGER NOT NULL DEFAULT 0');
+        this.rows(
+          "UPDATE document_control SET pending=(SELECT count(*) FROM document_publications WHERE state='staged') WHERE singleton=1",
+        );
+      }
+      this
+        .rows(`CREATE TRIGGER IF NOT EXISTS document_pending_insert AFTER INSERT ON document_publications WHEN NEW.state='staged' BEGIN UPDATE document_control SET pending=pending+1 WHERE singleton=1; END;
+CREATE TRIGGER IF NOT EXISTS document_pending_done AFTER UPDATE OF state ON document_publications WHEN OLD.state='staged' AND NEW.state<>'staged' BEGIN UPDATE document_control SET pending=pending-1 WHERE singleton=1; END;`);
+      this.charge(before, undefined, storage.sql.databaseSize === before);
     });
   }
   private rows<T extends Record<string, SqlStorageValue>>(sql: string, ...args: SqlStorageValue[]) {
     return this.storage.sql.exec<T>(sql, ...args).toArray();
   }
-  private charge(before: number) {
-    this.rows(
-      'UPDATE delivery_control SET allocated=allocated+? WHERE singleton=1',
-      Math.max(0, this.storage.sql.databaseSize - before),
+  private charge(before: number, reservation?: string, retainedRead = false) {
+    try {
+      this.features.consume(before, 0, reservation, retainedRead);
+    } catch (error) {
+      if (error instanceof GroupFeatureStorageLimit) throw new GroupDocumentTransportCapacity();
+      throw error;
+    }
+  }
+  private manifestCharge(m: SharedDocumentManifest) {
+    return (
+      m.files.reduce((n, f) => n + f.bytes + Math.ceil(f.bytes / L.chunkBytes) * 512, 0) +
+      new TextEncoder().encode(canonical(m)).length +
+      4096
     );
-    const a = this.rows<{ allocated: number }>(
-      'SELECT allocated FROM delivery_control WHERE singleton=1',
-    )[0].allocated;
-    if (
-      a > DELIVERY_LIMITS.databaseBytes ||
-      this.storage.sql.databaseSize > C.normalDatabaseBytes + DELIVERY_LIMITS.databaseBytes
-    )
-      fail('limit');
+  }
+  private physicalCharge(m: SharedDocumentManifest) {
+    return (
+      documentGrowthReserve(
+        m.files.reduce((n, f) => n + f.bytes, 0),
+        m.files.reduce((n, f) => n + Math.ceil(f.bytes / L.chunkBytes), 0),
+      ) +
+      new TextEncoder().encode(canonical(m)).length * 2
+    );
   }
   async execute(raw: unknown): Promise<DocumentTransportResult> {
     let size: number;
@@ -99,6 +129,76 @@ export class GroupDocumentTransport {
           actor?.state !== 'active'
         )
           fail('denied');
+        if (c.kind === 'capacity') {
+          // Advisory member read may precede the first shared source. It stores no
+          // identity and grants no begin/upload authority; known aliases must match.
+          const identity = this.rows<{ binding: string; local_member_id: string }>(
+            'SELECT binding,local_member_id FROM delivery_identities WHERE installation_id=?',
+            actor.installation_id,
+          )[0];
+          const source = this.rows<{
+            installation_id: string;
+            binding: string;
+            member_id: string;
+            provider: string;
+            native_id: string;
+          }>('SELECT * FROM delivery_contexts WHERE session_id=?', c.manifest.owner.sessionId)[0];
+          const owner = c.manifest.owner;
+          if (
+            c.binding.remoteGroupId !== groupId ||
+            c.binding.groupId !== owner.groupId ||
+            c.binding.installationId !== owner.installationId ||
+            (identity &&
+              (identity.binding !== canonical(c.binding) ||
+                identity.local_member_id !== owner.memberId)) ||
+            (source &&
+              (source.installation_id !== actor.installation_id ||
+                source.binding !== canonical(c.binding) ||
+                source.member_id !== owner.memberId ||
+                source.provider !== owner.provider ||
+                source.native_id !== owner.nativeSessionId))
+          )
+            fail('denied');
+          const control = this.rows<{ logical: number; pending: number }>(
+            'SELECT logical,pending FROM document_control WHERE singleton=1',
+          )[0];
+          const physical = this.features.control();
+          const logicalRequired = this.manifestCharge(c.manifest),
+            physicalRequired = this.physicalCharge(c.manifest);
+          const reason =
+            control.pending >= L.pending
+              ? 'pending-limit'
+              : control.logical + logicalRequired > L.logicalBytes
+                ? 'logical-limit'
+                : physical.allocated + physicalRequired > DELIVERY_LIMITS.databaseBytes ||
+                    this.storage.sql.databaseSize + physical.future_physical + physicalRequired >
+                      C.normalDatabaseBytes + DELIVERY_LIMITS.databaseBytes
+                  ? 'physical-limit'
+                  : 'available';
+          return {
+            ok: true,
+            value: documentTransportReplySchema.parse({
+              kind: 'capacity',
+              logical: {
+                usedBytes: control.logical,
+                limitBytes: L.logicalBytes,
+                requiredBytes: logicalRequired,
+              },
+              physical: {
+                usedBytes: this.storage.sql.databaseSize,
+                limitBytes: C.normalDatabaseBytes + DELIVERY_LIMITS.databaseBytes,
+                reservedBytes: physical.future_physical,
+                requiredBytes: physicalRequired,
+              },
+              pending: control.pending,
+              pendingLimit: L.pending,
+              fits: reason === 'available',
+              reason,
+            }),
+          };
+        }
+        let reservation: string | undefined;
+        let retained = ['list', 'receipt', 'manifest', 'read', 'revoke'].includes(c.kind);
         const day = Math.floor(Date.now() / 86400000);
         this.rows(
           'UPDATE document_control SET written=CASE WHEN day=? THEN written ELSE 0 END,read=CASE WHEN day=? THEN read ELSE 0 END,day=? WHERE singleton=1',
@@ -118,7 +218,9 @@ export class GroupDocumentTransport {
             if (control().read + responseBytes > L.dailyBytes * 2) fail('limit');
             this.rows('UPDATE document_control SET read=read+? WHERE singleton=1', responseBytes);
           }
-          this.charge(before);
+          this.charge(before, reservation, retained);
+          if (reservation && ['commit', 'revoke'].includes(c.kind))
+            this.features.release(reservation);
           return { ok: true, value: reply };
         };
         if (c.kind === 'list') {
@@ -142,6 +244,7 @@ export class GroupDocumentTransport {
           'SELECT * FROM document_publications WHERE id=?',
           c.key.publicationId,
         )[0];
+        if (row) retained = true;
         if (row && row.hash !== c.key.manifestHash) fail('conflict');
         if (c.kind === 'begin') {
           if (
@@ -183,20 +286,22 @@ export class GroupDocumentTransport {
               fail('conflict');
           } else {
             const text = canonical(c.manifest);
-            const charge =
-              c.manifest.files.reduce(
-                (n, f) => n + f.bytes + Math.ceil(f.bytes / L.chunkBytes) * 512,
-                0,
-              ) +
-              new TextEncoder().encode(text).length +
-              4096;
+            const charge = this.manifestCharge(c.manifest);
             if (
               control().logical + charge > L.logicalBytes ||
-              this.rows<{ n: number }>(
-                "SELECT COUNT(*) n FROM document_publications WHERE state='staged'",
-              )[0].n >= L.pending
+              this.rows<{ pending: number }>(
+                'SELECT pending FROM document_control WHERE singleton=1',
+              )[0].pending >= L.pending
             )
               fail('limit');
+            reservation = 'document:' + c.key.publicationId;
+            try {
+              this.features.reserve(reservation, 0, this.physicalCharge(c.manifest));
+            } catch (error) {
+              if (error instanceof GroupFeatureStorageLimit)
+                throw new GroupDocumentTransportCapacity();
+              throw error;
+            }
             this.ports.admitMutation();
             this.rows(
               "INSERT INTO document_publications(id,hash,actor,manifest,state,charge) VALUES(?,?,?,?,'staged',?)",
@@ -219,6 +324,19 @@ export class GroupDocumentTransport {
           fail('denied');
         }
         const m = JSON.parse(row.manifest) as SharedDocumentManifest;
+        if (row.state === 'staged' && ['chunk', 'commit', 'revoke'].includes(c.kind)) {
+          reservation = 'document:' + row.id;
+          if (!this.features.reservation(reservation) && c.kind !== 'revoke') {
+            try {
+              this.features.reserve(reservation, 0, this.physicalCharge(m));
+            } catch (error) {
+              if (error instanceof GroupFeatureStorageLimit)
+                throw new GroupDocumentTransportCapacity();
+              throw error;
+            }
+          }
+          if (!this.features.reservation(reservation)) reservation = undefined;
+        }
         if (
           ['chunk', 'commit', 'revoke', 'receipt'].includes(c.kind) &&
           row.actor !== actor.installation_id
@@ -257,7 +375,7 @@ export class GroupDocumentTransport {
             if (!Buffer.from(old.bytes).equals(bytes)) fail('conflict');
           } else {
             const next = this.rows<{ n: number }>(
-              'SELECT COUNT(*) n FROM document_chunks WHERE publication=? AND file=?',
+              'SELECT coalesce(max(idx),-1)+1 n FROM document_chunks WHERE publication=? AND file=?',
               row.id,
               c.fileId,
             )[0].n;
@@ -330,7 +448,7 @@ export class GroupDocumentTransport {
                 ? m.files.map((f) => ({
                     fileId: f.id,
                     index: this.rows<{ n: number }>(
-                      'SELECT COUNT(*) n FROM document_chunks WHERE publication=? AND file=?',
+                      'SELECT coalesce(max(idx),-1)+1 n FROM document_chunks WHERE publication=? AND file=?',
                       row.id,
                       f.id,
                     )[0].n,

@@ -88,7 +88,7 @@ function GroupConversation({
   sharedFeed: Pick<import('./types').GroupsWorkspaceProps, 'loadPage' | 'loadOriginal' | 'members'>;
 }) {
   return (
-    <GroupDocumentScope handle={slot.handle} sharedHandle={sharedHandle}>
+    <GroupDocumentScope handle={slot.handle} sharedHandle={sharedHandle} readOnly={readOnly}>
       <GroupChat
         slot={slot}
         mode={mode}

@@ -12,10 +12,12 @@ import {
 import { ChatMarkdown } from '../src/ChatMarkdown';
 import { GroupReports } from '../src/groups/GroupReports';
 import { DocumentReading } from '../src/DocumentReading';
+import PdfReader from '../src/PdfReader';
 import { api } from '../src/api';
 import { groupDocumentCaptureStateSchema } from '@dock/shared/dist/group-documents.js';
 import '../src/documents.css';
 const handle = 'd5ced7dc-df8d-4e94-82b1-a4f97218cd9c',
+  sharedHandle = '067556ac-2b5a-480a-9f7a-1b730a8dffb0',
   grantId = 'eeeb5ab8-e0c3-413b-b763-21f96af596d4',
   version = 'a'.repeat(64);
 const offer = {
@@ -85,10 +87,16 @@ function App() {
   const capture = groupDocumentCaptureStateSchema.safeParse(
     new URLSearchParams(location.search).get('capture'),
   );
+  const publishing = new URLSearchParams(location.search).has('publish'),
+    readOnly = new URLSearchParams(location.search).has('readOnly');
   return (
     <main style={{ maxWidth: 700, margin: 'auto', padding: 12 }}>
       <h1>Scoped document UI fixture</h1>
-      <GroupDocumentScope handle={handle}>
+      <GroupDocumentScope
+        handle={handle}
+        sharedHandle={publishing ? sharedHandle : undefined}
+        readOnly={readOnly}
+      >
         <section aria-label="Saved report capture">
           {capture.success && <GroupDocumentCaptureNotice state={capture.data} />}
           <GroupDocumentOfferButton
@@ -106,7 +114,7 @@ function App() {
           <GroupDocumentLink href={href}>Open my report</GroupDocumentLink>
         </p>
         <textarea aria-label="Draft" defaultValue="Keep this draft" style={{ width: '100%' }} />
-        <GroupDocumentHost reader={ReadingFixture} />
+        <GroupDocumentHost reader={publishing ? PdfReader : ReadingFixture} />
       </GroupDocumentScope>
     </main>
   );

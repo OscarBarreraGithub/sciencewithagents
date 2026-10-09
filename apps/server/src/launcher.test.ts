@@ -62,6 +62,10 @@ async function fixture(realServer = false) {
   );
   copyFileSync(helper, join(root, 'scripts/launcher.mjs'));
   if (realServer) {
+    copyFileSync(
+      join(repoRoot, 'scripts/group-service-registry.mjs'),
+      join(root, 'scripts/group-service-registry.mjs'),
+    );
     cpSync(join(repoRoot, 'apps/server/dist'), join(root, 'apps/server/dist'), { recursive: true });
     symlinkSync(join(repoRoot, 'node_modules'), join(root, 'node_modules'));
     symlinkSync(join(repoRoot, 'apps/server/node_modules'), join(root, 'apps/server/node_modules'));

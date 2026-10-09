@@ -1,14 +1,15 @@
 # Group reports and scoped document access
 
 Normal native Groups captures exact completed Work artifacts for explicit file selection,
-scoped Reading/PDF access and **Manage → Shared reports**. Existing PDF bytes are readable
+scoped Reading/PDF access and shared report notifications in **Group chat**. **Manage → Advanced →
+Browse earlier shared reports** keeps the catalogue. Existing PDF bytes are readable
 without a compiler. This source integration has focused fixture and emulated-browser checks;
 real provider artifacts, creator-hosted delivery and two installed computers remain acceptance
 work. The retained isolated compiler is described separately below.
 
 ## Native local reports
 
-Ask your **Group manager** with **Work** to create the report in its group workspace and link
+Ask **My group agent** with **Work** to create the report in its group workspace and link
 the final `.tex` and `.pdf` files in the final reply. PDF generation is an explicitly authorized
 ordinary native Work task, using that owner's tools; the document server never compiles remote
 TeX on the host. Source-only replies can open Reading now. To add PDF later, request new Work
@@ -231,8 +232,32 @@ and local compiler/reader checks. [Status](STATUS.md#groups) retains the current
 
 ### Explicit cross-installation publication
 
-Open an authorized local report in the normal Groups reader, expand **Share this report**, and choose **Share selected report files with group**. This copies only the selected immutable source/assets and its current PDF into a separate shared publication; it does not share the private conversation. Another member opens **Shared reports → Load shared reports**, then chooses a report for the existing PDF/Reading reader. Listing does not download files. Share/revoke retries retain their operation identity, and revoking the original local grant revokes every shared copy created from it. Cached downloads still require current remote membership and grant authorization.
+Open an authorized local report in the normal Groups reader and expand **Share this report**.
+It checks the storage required by that selected report/supporting bundle and shows the remaining
+hosted report allowance. **Recheck hosted storage** reads again; there is no idle capacity polling.
+**Share selected report files with group** checks current capacity again before creating a new
+publication request. Read-only mode holds new shares. Logical/physical capacity or pending-upload
+limits refuse new attachments; an older Worker requires the creator to update their service.
+Project files and private Git remain separate, with no automatic rerouting or pruning.
+
+Sharing copies only the selected immutable source/assets and its current PDF into a separate
+publication; it does not share the private conversation. Other members open the report's
+notification in **Group chat**, or use **Manage → Advanced → Browse earlier shared reports →
+Find shared reports**, then choose a report for the existing PDF/Reading reader. Listing does
+not download files. Share/revoke retries retain their operation identity, and revoking the
+original local grant revokes every shared copy created from it. Cached downloads still require
+current remote membership and grant authorization.
+
+An unconfirmed share retains its exact browser publication key across reloads. **Retry saved
+report share** reconciles that same request even when today's capacity check is full,
+unavailable or Read-only. It never substitutes a new key or selected bundle; current capacity
+cannot establish whether the earlier share was accepted. Opening or rechecking storage never
+resends a publication. Existing grant/membership/source checks still apply to retries.
 
 The document transport uses the existing protected group service and membership ledger. An explicit shared report publishes a separate immutable manifest with its **shared target context**, selected authored source/assets and optional PDF; private grant/native-context metadata is excluded. Listing returns metadata only. A chosen source, Reading or PDF view fetches the required files on demand, verifies chunk/file digests and rechecks the current remote grant. Membership is checked on every packet; only the publishing installation can revoke or resume a publication.
 
-The protected host retains the publication UUID, manifest digest and original bytes across offline/lost-ack retries. A changed bundle uses a new publication UUID. Completed receipts and originals remain available without a lifetime message-count cutoff; incomplete stages retain their reservations until explicit cancellation/revocation, which releases only the unwritten reservation and keeps actual chunks/metadata. At most eight uploads may be incomplete. Actual plus reserved document storage is limited to 32 MiB, within the existing shared 64 MiB delivery allocation and unchanged 80 MiB operational SQLite ceiling. Uploads stop with a quota refusal before exceeding the fence; a larger owner-local PDF remains local. Fixed binary chunks avoid storing base64 copies. Daily document upload/read budgets are 64/128 MiB, responses are at most 512 KB and manifest pages contain at most four entries. This transport does not approve hosting entitlement, provider login, native artifact acceptance or publication of any unselected/private files.
+The protected host retains the publication UUID, manifest digest and original bytes across offline/lost-ack retries. A changed bundle uses a new publication UUID. Completed receipts and originals remain available without a lifetime message-count cutoff; incomplete stages retain their reservations until explicit cancellation/revocation, which releases only the unwritten reservation and keeps actual chunks/metadata. At most eight uploads may be incomplete. Actual plus reserved report storage is limited to 256 MiB, within the shared 512 MiB physical feature allocation. Chat/actions have a separate 128 MiB logical fence; all accepted original/report/action future growth participates in that same physical allocation. Uploads stop with a quota refusal before exceeding the fence; a larger owner-local PDF remains local. Fixed binary chunks avoid storing base64 copies. Daily document upload/read budgets are 64/128 MiB, responses are at most 512 KB and manifest pages contain at most four entries. This transport does not approve hosting entitlement, provider login, native artifact acceptance or publication of any unselected/private files.
+
+Before a new upload, the protected host checks the exact saved grant against current hosted capacity. The opt-in `preflight` route reports required/used logical bytes, actual/reserved physical bytes and pending stages; it creates no PDF publication identity, upload intent or model turn. This is advisory: atomic upload admission rechecks current limits. An older hosted Worker returns explicit creator-update guidance. Accepted uploads keep their body/completion reservation, exact IDs and retry receipts when later new-upload admission is full.
+
+Hosted report links retain their selected originals in Cloudflare; they do not point to Git. The 256 MiB report budget fits roughly fifty 5 MiB reports including manifests/chunk overhead, fewer for larger reports. Reaching it refuses new hosted attachments before upload and leaves existing originals/links intact. Project files and optional private Git continue independently, and chat can continue subject to its own logical/shared physical/daily platform limits. No automatic archive, pruning or rerouting is performed.

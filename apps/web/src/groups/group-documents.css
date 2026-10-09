@@ -70,3 +70,11 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.group-report-publish {
+  overflow-wrap: anywhere;
+}
+.group-report-publish > summary {
+  min-height: 44px;
+  box-sizing: border-box;
+  cursor: pointer;
+}

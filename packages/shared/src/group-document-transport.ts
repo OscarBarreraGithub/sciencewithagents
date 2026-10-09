@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { groupContextSchema } from './groups.js';
 import { groupDocumentNameSchema } from './group-documents.js';
+import { groupDocumentCapacitySchema } from './group-document-capacity.js';
+export {
+  groupDocumentCapacitySchema,
+  type GroupDocumentCapacity,
+} from './group-document-capacity.js';
 import {
   publicationBindingSchema,
   publicationCanonical,
@@ -11,8 +16,8 @@ export const DOCUMENT_TRANSPORT_LIMITS = {
   bodyBytes: 100000,
   files: 101,
   bundleBytes: 58 * 1024 ** 2,
-  logicalBytes: 32 * 1024 ** 2,
-  databaseBytes: 64 * 1024 ** 2,
+  logicalBytes: 256 * 1024 ** 2,
+  databaseBytes: 512 * 1024 ** 2,
   pending: 8,
   page: 4,
   dailyBytes: 64 * 1024 ** 2,
@@ -61,6 +66,11 @@ export const documentPublicationKeySchema = z.strictObject({
 const ref = { key: documentPublicationKeySchema };
 export const documentTransportCommandSchema = z.discriminatedUnion('kind', [
   z.strictObject({
+    kind: z.literal('capacity'),
+    binding: publicationBindingSchema,
+    manifest: sharedDocumentManifestSchema,
+  }),
+  z.strictObject({
     kind: z.literal('begin'),
     binding: publicationBindingSchema,
     manifest: sharedDocumentManifestSchema,
@@ -105,6 +115,7 @@ export const documentTransportReceiptSchema = z.strictObject({
     .max(DOCUMENT_TRANSPORT_LIMITS.files),
 });
 export const documentTransportReplySchema = z.discriminatedUnion('kind', [
+  groupDocumentCapacitySchema,
   z.strictObject({ kind: z.literal('receipt'), receipt: documentTransportReceiptSchema }),
   z.strictObject({
     kind: z.literal('manifest'),

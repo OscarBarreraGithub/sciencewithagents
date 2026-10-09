@@ -4,6 +4,7 @@ import {
   deliveryReplySchema,
   publicationCanonical as canonical,
   publicationEnvelopeSchema,
+  publicationHeaderSchema,
   publicationReceiptSchema,
   type DeliveryEnvelope,
   type DeliveryResult,
@@ -17,7 +18,12 @@ import {
 import { MEMBERSHIP_LIMITS } from '@dock/shared/dist/group-membership.js';
 import { capabilityHash, hostingEnvironment } from './crypto.js';
 import { MEMBERSHIP_CAPACITY as C } from './capacity.js';
-import { actionReservedPhysical } from './group-actions-storage.js';
+import {
+  GroupFeatureStorage,
+  GroupFeatureStorageLimit,
+  publicationGrowthReserve,
+  documentGrowthReserve,
+} from './group-feature-storage.js';
 import { chatDeliveryConflict } from './chat-source-delivery.js';
 
 const SCHEMA = `
@@ -149,6 +155,7 @@ const keyOf = (command: DeliveryCommand): PublicationKey | null =>
 /** Same SQLite object as membership. No awaits are allowed in the auth/effect transaction. */
 export class DeliveryStorage {
   private ready = false;
+  private features!: GroupFeatureStorage;
   constructor(private readonly storage: DurableObjectStorage) {
     // Marker trees belong to the bounded membership reserve, never event allocation.
     storage.transactionSync(() => storage.sql.exec(REVOCATION_SCHEMA).toArray());
@@ -173,6 +180,103 @@ export class DeliveryStorage {
           logical = this.migrateLegacy();
           this.rows('INSERT INTO delivery_version VALUES(1,2)');
         }
+        this.features = new GroupFeatureStorage(storage);
+        storage.sql
+          .exec(
+            `CREATE TABLE IF NOT EXISTS delivery_actor_pending(installation_id TEXT PRIMARY KEY,n INTEGER NOT NULL);
+CREATE TRIGGER IF NOT EXISTS delivery_pending_insert AFTER INSERT ON delivery_operations WHEN NEW.state='staged' BEGIN INSERT INTO delivery_actor_pending SELECT installation_id,1 FROM delivery_authors WHERE operation_id=NEW.operation_id ON CONFLICT(installation_id) DO UPDATE SET n=n+1; END;
+CREATE TRIGGER IF NOT EXISTS delivery_pending_complete AFTER UPDATE OF state ON delivery_operations WHEN OLD.state='staged' AND NEW.state='committed' BEGIN UPDATE delivery_actor_pending SET n=n-1 WHERE installation_id=(SELECT installation_id FROM delivery_authors WHERE operation_id=NEW.operation_id); END;`,
+          )
+          .toArray();
+        if (
+          !this.rows(
+            "SELECT name FROM delivery_feature_table_bytes WHERE name='delivery_operations'",
+          ).length
+        ) {
+          this.rows(
+            "INSERT OR REPLACE INTO delivery_actor_pending SELECT a.installation_id,count(*) FROM delivery_operations o JOIN delivery_authors a USING(operation_id) WHERE o.state='staged' GROUP BY a.installation_id",
+          );
+          this.features.track('delivery_operations');
+        }
+        this.rows(
+          'CREATE TABLE IF NOT EXISTS delivery_feature_legacy_reservations(singleton INTEGER PRIMARY KEY CHECK(singleton=1))',
+        );
+        if (!this.rows('SELECT singleton FROM delivery_feature_legacy_reservations').length) {
+          for (const old of this.rows<Operation>(
+            "SELECT * FROM delivery_operations WHERE state='staged'",
+          )) {
+            const header = publicationHeaderSchema.parse(JSON.parse(old.header));
+            const reserve = publicationGrowthReserve(
+              header.event.manifest.bytes,
+              header.event.manifest.chunks.length,
+            );
+            this.features.reserve(
+              'delivery:' + old.operation_id,
+              reserve.logical,
+              reserve.physical,
+            );
+            if (old.receipt === null)
+              this.rows(
+                'UPDATE delivery_operations SET receipt=? WHERE operation_id=?',
+                ' '.repeat(8192),
+                old.operation_id,
+              );
+          }
+          if (this.rows("SELECT name FROM sqlite_master WHERE name='document_publications'").length)
+            for (const old of this.rows<{ id: string; manifest: string }>(
+              "SELECT id,manifest FROM document_publications WHERE state='staged'",
+            )) {
+              const manifest = JSON.parse(old.manifest) as { files: { bytes: number }[] };
+              this.features.reserve(
+                'document:' + old.id,
+                0,
+                documentGrowthReserve(
+                  manifest.files.reduce((n, f) => n + f.bytes, 0),
+                  manifest.files.reduce((n, f) => n + Math.ceil(f.bytes / 49152), 0),
+                ) +
+                  new TextEncoder().encode(old.manifest).length * 2,
+              );
+            }
+          if (
+            this.rows("SELECT name FROM sqlite_master WHERE name='group_promotion_producers'")
+              .length
+          ) {
+            const receipts = this.rows(
+              "SELECT name FROM sqlite_master WHERE name='group_promotion_receipts'",
+            ).length;
+            for (const old of this.rows<{
+              source_id: string;
+              version: string;
+              source_json: string;
+            }>('SELECT * FROM group_promotion_producers')) {
+              const source = JSON.parse(old.source_json) as { kind: string };
+              if (
+                ['human', 'native'].includes(source.kind) &&
+                this.rows(
+                  "SELECT operation_id FROM delivery_operations WHERE source_id=? AND state='committed'",
+                  old.source_id,
+                ).length
+              )
+                continue;
+              if (
+                receipts &&
+                this.rows(
+                  "SELECT source_id FROM group_promotion_receipts WHERE source_id=? AND version=? AND (json_extract(receipt_json,'$.publicationOperationId') IS NOT NULL OR json_extract(receipt_json,'$.disposition') IS NOT NULL)",
+                  old.source_id,
+                  old.version,
+                ).length
+              )
+                continue;
+              const bytes = new TextEncoder().encode(old.source_json).length;
+              this.features.reserve(
+                'promotion:' + old.source_id + ':' + old.version,
+                bytes * 2 + 128 * 1024,
+                bytes * 4 + 1024 * 1024,
+              );
+            }
+          }
+          this.rows('INSERT INTO delivery_feature_legacy_reservations VALUES(1)');
+        }
         const growth = Math.max(0, storage.sql.databaseSize - before);
         const control = this.rows<{ allocated: number; logical: number }>(
           'SELECT allocated,logical FROM delivery_control WHERE singleton=1',
@@ -189,6 +293,7 @@ export class DeliveryStorage {
             growth,
             logical,
           );
+        if (growth > 0) this.features.fence();
       });
       this.ready = true;
     } catch {
@@ -209,7 +314,7 @@ export class DeliveryStorage {
   }
   normalSize(): number {
     return (
-      this.storage.sql.databaseSize - (this.allocated() - actionReservedPhysical(this.storage.sql))
+      this.storage.sql.databaseSize - (this.allocated() - this.features.control().future_physical)
     );
   }
   /** Probe current write admission. A failed, unacknowledged revoke is not a completed revoke. */
@@ -340,7 +445,6 @@ export class DeliveryStorage {
       session_id: string | null;
     }>('SELECT * FROM delivery_sources');
     let logical = 0;
-    if (rows.length > L.sources) deny('unavailable');
     for (const row of rows) {
       if (row.session_id === null) continue;
       const actor = this.rows<Actor>(
@@ -374,7 +478,6 @@ export class DeliveryStorage {
       );
     }
     const operations = this.rows<Operation>('SELECT * FROM delivery_operations');
-    if (operations.length > L.operations) deny('unavailable');
     for (const op of operations) {
       logical += 128;
       const source = this.rows<Source>(
@@ -396,34 +499,15 @@ export class DeliveryStorage {
     }
     return logical;
   }
-  private write(work: () => void, bytes: number): void {
-    const control = this.rows<{ allocated: number; logical: number }>(
-      'SELECT allocated,logical FROM delivery_control WHERE singleton=1',
-    )[0];
-    if (
-      control.logical + bytes > L.logicalBytes ||
-      control.allocated >= L.databaseBytes ||
-      this.storage.sql.databaseSize >= C.normalDatabaseBytes + L.databaseBytes
-    )
-      deny('limit');
+  private write(work: () => void, bytes: number, reservation?: string): void {
     if (this.rows<{ page_size: number }>('PRAGMA page_size')[0].page_size !== C.pageBytes)
       deny('unavailable');
-    const before = this.storage.sql.databaseSize;
-    work();
-    const allocated = control.allocated + Math.max(0, this.storage.sql.databaseSize - before);
-    if (
-      allocated > L.databaseBytes ||
-      this.storage.sql.databaseSize > C.normalDatabaseBytes + L.databaseBytes
-    )
-      deny('limit');
-    this.rows(
-      'UPDATE delivery_control SET allocated=?,logical=logical+? WHERE singleton=1',
-      allocated,
-      bytes,
-    );
-  }
-  private count(query: string, bound: number): void {
-    if (this.rows<{ n: number }>(query)[0].n >= bound) deny('limit');
+    try {
+      this.features.account(work, bytes, reservation);
+    } catch (error) {
+      if (error instanceof GroupFeatureStorageLimit) deny('limit');
+      throw error;
+    }
   }
   private binding(binding: PublicationBinding, groupId: string, actor: Actor): void {
     if (binding.remoteGroupId !== groupId) deny('denied');
@@ -538,15 +622,24 @@ export class DeliveryStorage {
           )[0]
         )
           deny('denied');
-      this.count('SELECT count(*) AS n FROM delivery_operations', L.operations);
       if (
         this.rows<{ n: number }>(
-          "SELECT count(*) AS n FROM delivery_operations o JOIN delivery_authors a USING(operation_id) JOIN enrollments e ON e.installation_id=a.installation_id WHERE o.state='staged' AND e.state='active' AND a.installation_id=?",
+          'SELECT coalesce(n,0) n FROM delivery_actor_pending WHERE installation_id=?',
           actor.installation_id,
-        )[0].n >= L.staged
+        )[0]?.n >= L.staged
       )
         deny('limit');
       const text = canonical(header);
+      const reserve = publicationGrowthReserve(
+        header.event.manifest.bytes,
+        header.event.manifest.chunks.length,
+      );
+      try {
+        this.features.reserve('delivery:' + key.operationId, reserve.logical, reserve.physical);
+      } catch (error) {
+        if (error instanceof GroupFeatureStorageLimit) deny('limit');
+        throw error;
+      }
       this.write(() => {
         this.rows(
           'INSERT INTO delivery_authors VALUES(?,?,?)',
@@ -555,13 +648,14 @@ export class DeliveryStorage {
           actor.member_id,
         );
         this.rows(
-          'INSERT INTO delivery_operations(operation_id,credential_hash,header,event_id,source_id,state) VALUES(?,?,?,?,?,?)',
+          'INSERT INTO delivery_operations(operation_id,credential_hash,header,event_id,source_id,state,receipt) VALUES(?,?,?,?,?,?,?)',
           key.operationId,
           hash,
           text,
           header.event.eventId,
           source.source_id,
           'staged',
+          ' '.repeat(8192),
         );
       }, new TextEncoder().encode(text).length);
     } else if (receipt.state === 'staged') {
@@ -570,6 +664,19 @@ export class DeliveryStorage {
         key.operationId,
       )[0];
       const header = JSON.parse(op.header) as PublicationHeader;
+      const reservation = 'delivery:' + key.operationId;
+      if (!this.features.reservation(reservation)) {
+        const reserve = publicationGrowthReserve(
+          header.event.manifest.bytes,
+          header.event.manifest.chunks.length,
+        );
+        try {
+          this.features.reserve(reservation, reserve.logical, reserve.physical);
+        } catch (error) {
+          if (error instanceof GroupFeatureStorageLimit) deny('limit');
+          throw error;
+        }
+      }
       if (packet.kind === 'chunk') {
         const manifest = header.event.manifest.chunks[packet.chunk.index];
         if (
@@ -596,6 +703,7 @@ export class DeliveryStorage {
                 text,
               ),
             new TextEncoder().encode(text).length,
+            reservation,
           );
       } else if (receipt.missing.length === 0) {
         const chunks = this.rows<{ chunk: string }>(
@@ -619,15 +727,41 @@ export class DeliveryStorage {
         });
         const text = canonical(committed);
         this.write(
-          () =>
+          () => {
+            // Reuse the preallocated receipt column before growing the sequence index.
             this.rows(
-              "UPDATE delivery_operations SET state='committed',sequence=?,receipt=? WHERE operation_id=?",
-              sequence,
+              'UPDATE delivery_operations SET receipt=? WHERE operation_id=?',
               text,
               key.operationId,
-            ),
+            );
+            this.rows(
+              "UPDATE delivery_operations SET state='committed',sequence=? WHERE operation_id=?",
+              sequence,
+              key.operationId,
+            );
+          },
           new TextEncoder().encode(text).length,
+          reservation,
         );
+        this.features.release(reservation);
+        if (
+          this.rows("SELECT name FROM sqlite_master WHERE name='group_promotion_producers'").length
+        )
+          for (const original of this.rows<{ version: string }>(
+            "SELECT version FROM group_promotion_producers WHERE source_id=? AND json_extract(source_json,'$.kind') IN ('human','native')",
+            op.source_id,
+          )) {
+            this.features.release('promotion:' + op.source_id + ':' + original.version);
+            if (
+              this.rows("SELECT name FROM sqlite_master WHERE name='group_promotion_pending'")
+                .length
+            )
+              this.rows(
+                'UPDATE group_promotion_pending SET active=0 WHERE source_id=? AND version=?',
+                op.source_id,
+                original.version,
+              );
+          }
       }
     }
     receipt = this.receipt(key, actor);
@@ -725,12 +859,6 @@ export class DeliveryStorage {
               )[0]
             )
               deny('conflict');
-            if (
-              this.rows<{ n: number }>(
-                'SELECT (SELECT count(*) FROM delivery_messages)+(SELECT count(*) FROM delivery_sources WHERE session_id IS NULL) AS n',
-              )[0].n >= L.sources
-            )
-              deny('limit');
             const sourceId = crypto.randomUUID();
             this.write(() => {
               this.identity(command.binding, command.memberId, actor!);

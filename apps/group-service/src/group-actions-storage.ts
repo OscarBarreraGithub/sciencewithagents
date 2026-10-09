@@ -1,13 +1,14 @@
-import { DELIVERY_LIMITS } from '@dock/shared/dist/group-delivery.js';
 import { GROUP_ACTION_LIMITS } from '@dock/shared/dist/group-actions.js';
 import {
   GroupActionsStorageLimit,
   type GroupActionsAccountingIntent,
 } from '@dock/shared/dist/group-actions-authority.js';
-import { MEMBERSHIP_CAPACITY as C } from './capacity.js';
+import { GroupFeatureStorage, GroupFeatureStorageLimit } from './group-feature-storage.js';
 
 const schema = `
 CREATE TABLE IF NOT EXISTS ga_lifecycle_reservations(action_id TEXT PRIMARY KEY,logical INTEGER NOT NULL,physical INTEGER NOT NULL,remaining_logical INTEGER NOT NULL,remaining_physical INTEGER NOT NULL,released INTEGER NOT NULL DEFAULT 0);
+CREATE TRIGGER IF NOT EXISTS ga_reserve_capacity_insert AFTER INSERT ON ga_lifecycle_reservations BEGIN UPDATE delivery_control SET future_physical=future_physical+NEW.remaining_physical WHERE singleton=1; END;
+CREATE TRIGGER IF NOT EXISTS ga_reserve_capacity_update AFTER UPDATE ON ga_lifecycle_reservations BEGIN UPDATE delivery_control SET future_physical=future_physical+NEW.remaining_physical-OLD.remaining_physical WHERE singleton=1; END;
 CREATE TRIGGER IF NOT EXISTS ga_lifecycle_reservations_retain BEFORE DELETE ON ga_lifecycle_reservations BEGIN SELECT RAISE(ABORT,'retained action reservation'); END;
 CREATE TRIGGER IF NOT EXISTS ga_lifecycle_reservations_identity BEFORE UPDATE ON ga_lifecycle_reservations WHEN NEW.action_id<>OLD.action_id OR NEW.logical<>OLD.logical OR NEW.physical<>OLD.physical OR NEW.remaining_logical>OLD.remaining_logical OR NEW.remaining_physical>OLD.remaining_physical OR OLD.released=1 BEGIN SELECT RAISE(ABORT,'immutable action reservation'); END;`;
 const tables = [
@@ -25,26 +26,8 @@ const tables = [
 ] as const;
 /** Included in delivery_control totals, so ordinary delivery/document writes
  * cannot spend accepted actions' future receipt space. No additional budget. */
-export function actionReservedPhysical(sql: SqlStorage): number {
-  if (
-    !sql
-      .exec(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='ga_lifecycle_reservations'",
-      )
-      .toArray().length
-  )
-    return 0;
-  return Number(
-    sql
-      .exec<{
-        n: number;
-      }>(
-        'SELECT coalesce(sum(remaining_physical),0) n FROM ga_lifecycle_reservations WHERE released=0',
-      )
-      .one().n,
-  );
-}
 export class GroupActionsStorage {
+  private features!: GroupFeatureStorage;
   constructor(private readonly storage: DurableObjectStorage) {}
   private rows<T extends Record<string, SqlStorageValue>>(
     query: string,
@@ -53,37 +36,15 @@ export class GroupActionsStorage {
     return this.storage.sql.exec<T>(query, ...values).toArray();
   }
   private logical(): number {
-    let bytes = 0;
-    for (const table of tables) {
-      if (!this.rows("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).length)
-        continue;
-      // Count every stored column, including receipt requests/responses and IDs.
-      const columns = this.rows<{ name: string }>(`PRAGMA table_info(${table})`).map(
-        (row) => row.name,
-      );
-      const expression = columns
-        .map((column) => `coalesce(length(CAST(${column} AS BLOB)),0)`)
-        .join('+');
-      bytes += Number(
-        this.rows<{ n: number }>(`SELECT coalesce(sum(${expression}+128),0) n FROM ${table}`)[0].n,
-      );
+    return this.features.bytes(tables);
+  }
+  private fence(retained = false) {
+    try {
+      this.features.fence(retained);
+    } catch (error) {
+      if (error instanceof GroupFeatureStorageLimit) throw new GroupActionsStorageLimit();
+      throw error;
     }
-    return bytes;
-  }
-  private control() {
-    return this.rows<{ logical: number; allocated: number }>(
-      'SELECT logical,allocated FROM delivery_control WHERE singleton=1',
-    )[0];
-  }
-  private fence() {
-    const control = this.control();
-    if (
-      control.logical > DELIVERY_LIMITS.logicalBytes ||
-      control.allocated > DELIVERY_LIMITS.databaseBytes ||
-      this.storage.sql.databaseSize + actionReservedPhysical(this.storage.sql) >
-        C.normalDatabaseBytes + DELIVERY_LIMITS.databaseBytes
-    )
-      throw new GroupActionsStorageLimit();
   }
   reserve(actionId: string, logical: number, physical: number) {
     if (
@@ -134,11 +95,19 @@ export class GroupActionsStorage {
   /** Caller already holds the current-membership synchronous transaction. */
   account<T>(operation: () => T, intent: GroupActionsAccountingIntent): T {
     const physicalBefore = this.storage.sql.databaseSize;
-    const logicalBefore = this.logical();
+    this.features = new GroupFeatureStorage(this.storage);
     this.storage.sql.exec(schema).toArray();
+    for (const table of tables) this.features.track(table);
+    const logicalBefore = this.logical();
     // Legacy accepted actions acquire the same reservation atomically; failures
     // retain all legacy rows, receipts and events without resetting identities.
-    if (this.rows("SELECT name FROM sqlite_master WHERE type='table' AND name='ga_actions'").length)
+    this.rows(
+      'CREATE TABLE IF NOT EXISTS ga_capacity_migration(singleton INTEGER PRIMARY KEY CHECK(singleton=1))',
+    );
+    if (
+      !this.rows('SELECT singleton FROM ga_capacity_migration').length &&
+      this.rows("SELECT name FROM sqlite_master WHERE type='table' AND name='ga_actions'").length
+    )
       for (const row of this.rows<{ action_id: string }>(
         "SELECT action_id FROM ga_actions WHERE json_extract(body,'$.state') IN ('pending-owner','dispatching','uncertain') AND NOT EXISTS(SELECT 1 FROM ga_lifecycle_reservations r WHERE r.action_id=ga_actions.action_id)",
       ))
@@ -147,6 +116,7 @@ export class GroupActionsStorage {
           GROUP_ACTION_LIMITS.lifecycleLogicalReserve,
           GROUP_ACTION_LIMITS.lifecyclePhysicalReserve,
         );
+    this.rows('INSERT OR IGNORE INTO ga_capacity_migration VALUES(1)');
     const reserved =
       intent.kind === 'lifecycle'
         ? this.rows<{ remaining_logical: number; remaining_physical: number; released: number }>(
@@ -186,7 +156,7 @@ export class GroupActionsStorage {
         logical,
         physical,
       );
-    this.fence();
+    this.fence(intent.kind === 'read' || Boolean(reserved));
     return result;
   }
 }

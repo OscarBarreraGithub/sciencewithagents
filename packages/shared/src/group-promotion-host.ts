@@ -50,9 +50,9 @@ export const groupPromotionHostResultSchema = z.discriminatedUnion('ok', [
         source: groupPromotionSourceSchema.nullable(),
         displayName: z.string().max(80).nullable(),
         position: z.number().int().nonnegative().safe(),
-        retained: z.number().int().nonnegative().max(512),
-        pending: z.number().int().nonnegative().max(512),
-        capacity: z.literal(512),
+        retained: z.number().int().nonnegative().safe(),
+        pending: z.number().int().nonnegative().safe(),
+        capacity: z.union([z.literal(512), z.literal(0)]),
       }),
       z.strictObject({ kind: z.literal('designated'), writerId: groupInstallationIdSchema }),
       z.strictObject({

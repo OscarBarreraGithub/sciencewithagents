@@ -36,7 +36,7 @@ const pointerMapPages =
   ) + 1;
 
 export const MEMBERSHIP_CAPACITY = {
-  // Membership envelope within the proposed 250 MB/group budget. Pointer maps
+  // Membership envelope, separate from the shared 512 MiB feature allocation. Pointer maps
   // include the separately fenced delivery allocation; revocation touches no event trees.
   // This does not allocate event storage or reserve any provider quota.
   designBudgetBytes: 128 * 1_048_576,

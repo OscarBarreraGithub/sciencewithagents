@@ -16,6 +16,11 @@ import {
 } from '@dock/shared/dist/group-delivery.js';
 import { creationGroupId, setupHash } from '../src/crypto.js';
 import { groupPromotionSourceSchema } from '@dock/shared/dist/group-promotion.js';
+import {
+  fillNormalFeatureFence,
+  pressureMembers,
+  revokeIntoProtectedEnvelope,
+} from './capacity-pressure.js';
 const uuid = () => crypto.randomUUID();
 const keyOf = (header: Parameters<typeof publicationKeySchema.parse>[0]) => {
   const { event: _event, ...key } =
@@ -635,7 +640,7 @@ it('retains failed revocation requests across eviction and resumes remaining mem
   });
 });
 
-it('bounds operation/source lifetime and denies cross-credential receipt/effect adoption', async () => {
+it('admits small histories beyond old operation/source counts and denies cross-credential adoption', async () => {
   const f = await fixture(),
     e = await f.event();
   await f.publish(e);
@@ -708,10 +713,9 @@ it('bounds operation/source lifetime and denies cross-credential receipt/effect 
         )
         .toArray();
   });
-  expect(await f.call({ kind: 'effect', packet: { kind: 'begin', header: next.header } })).toEqual({
-    ok: false,
-    error: 'limit',
-  });
+  expect(
+    await f.call({ kind: 'effect', packet: { kind: 'begin', header: next.header } }),
+  ).toMatchObject({ ok: true, value: { kind: 'receipt', receipt: { state: 'staged' } } });
   await runInDurableObject(f.stub, (_instance, state) => {
     const n = Number(state.storage.sql.exec('SELECT count(*) AS n FROM delivery_messages').one().n);
     for (let i = n; i < L.sources; i++)
@@ -735,10 +739,17 @@ it('bounds operation/source lifetime and denies cross-credential receipt/effect 
       operationId: uuid(),
       source: { ...sourceCommand.source, messageId: uuid() },
     }),
-  ).toEqual({
-    ok: false,
-    error: 'limit',
-  });
+  ).toMatchObject({ ok: true });
+  await runInDurableObject(f.stub, (_, state) =>
+    state.storage.sql.exec('UPDATE delivery_control SET logical=?', L.logicalBytes).toArray(),
+  );
+  expect(
+    await f.call({
+      ...sourceCommand,
+      operationId: uuid(),
+      source: { ...sourceCommand.source, messageId: uuid() },
+    }),
+  ).toEqual({ ok: false, error: 'limit' });
   expect(await f.call(sourceCommand)).toEqual(original);
 });
 
@@ -779,8 +790,8 @@ it('keeps revocation admissible at combined physical event and membership capaci
         500,
       )
       .toArray();
-    expect(C.pointerMapPages).toBe(58);
-    expect(C.reservedDatabaseBytes + L.databaseBytes).toBeLessThan(250000000);
+    expect(C.pointerMapPages).toBe(198);
+    expect(C.reservedDatabaseBytes + L.databaseBytes).toBeLessThan(1_000_000_000);
   });
   expect(await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } })).toEqual({
     ok: false,
@@ -1181,3 +1192,327 @@ it.each(['full migration', 'unknown version', 'temporary migration fault'])(
     });
   },
 );
+
+it('preallocates the exact hosted completion before admission and retains lost ACK across a real hosted SQLite allocation fence and eviction', async () => {
+  const f = await fixture(),
+    e = await f.event('exact boundary original'),
+    key = keyOf(e.header);
+  expect((await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } })).ok).toBe(
+    true,
+  );
+  for (const chunk of e.chunks)
+    expect((await f.call({ kind: 'effect', packet: { kind: 'chunk', key, chunk } })).ok).toBe(true);
+  const before = await runInDurableObject(f.stub, async (_, state) => {
+    const sql = state.storage.sql;
+    expect(
+      sql
+        .exec<{
+          n: number;
+        }>(
+          'SELECT length(receipt) n FROM delivery_operations WHERE operation_id=?',
+          key.operationId,
+        )
+        .one().n,
+    ).toBe(8192);
+    sql.exec('CREATE TABLE delivery_test_pressure(body BLOB)').toArray();
+    const future = sql
+      .exec<{ future_physical: number }>('SELECT future_physical FROM delivery_control')
+      .one().future_physical;
+    const { MEMBERSHIP_CAPACITY: C } = await import('../src/capacity.js');
+    const target = C.normalDatabaseBytes + L.databaseBytes - future;
+    for (const size of [2 * 1024 ** 2, 4096]) {
+      for (;;) {
+        try {
+          state.storage.transactionSync(() => {
+            sql.exec('INSERT INTO delivery_test_pressure VALUES(zeroblob(?))', size).toArray();
+            if (sql.databaseSize > target) throw new Error('physical fence');
+          });
+        } catch {
+          break;
+        }
+      }
+    }
+    expect(target - sql.databaseSize).toBeLessThan(8192);
+    sql.exec('UPDATE delivery_control SET allocated=?', L.databaseBytes - 4096).toArray();
+    return sql.databaseSize;
+  });
+  // The reply is deliberately discarded: recovery must read the same retained receipt.
+  expect(await f.call({ kind: 'effect', packet: { kind: 'commit', key } })).toMatchObject({
+    ok: true,
+    value: { receipt: { state: 'committed', eventId: e.header.event.eventId } },
+  });
+  await runInDurableObject(f.stub, (_, state) => {
+    expect(state.storage.sql.databaseSize).toBeLessThanOrEqual(before);
+    const body = String(
+      state.storage.sql
+        .exec('SELECT receipt FROM delivery_operations WHERE operation_id=?', key.operationId)
+        .one().receipt,
+    );
+    expect(new TextEncoder().encode(body).length).toBeLessThan(4096);
+    expect(
+      state.storage.sql
+        .exec(
+          'SELECT id FROM delivery_feature_reservations WHERE id=?',
+          'delivery:' + key.operationId,
+        )
+        .toArray(),
+    ).toEqual([]);
+  });
+  await evictDurableObject(f.stub);
+  expect(await f.call({ kind: 'receipt', key })).toMatchObject({
+    ok: true,
+    value: { receipt: { state: 'committed', eventId: e.header.event.eventId } },
+  });
+  expect(await f.call({ kind: 'effect', packet: { kind: 'commit', key } })).toMatchObject({
+    ok: true,
+    value: { receipt: { state: 'committed' } },
+  });
+});
+
+it('new admissions cannot spend another original, report or action future allocation', async () => {
+  const f = await fixture(),
+    e = await f.event(),
+    next = await f.event('next'),
+    key = keyOf(e.header);
+  expect((await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } })).ok).toBe(
+    true,
+  );
+  await runInDurableObject(f.stub, (_, state) => {
+    const c = state.storage.sql
+      .exec<{ future_physical: number }>('SELECT future_physical FROM delivery_control')
+      .one();
+    expect(c.future_physical).toBeGreaterThan(512 * 1024);
+    state.storage.sql
+      .exec('UPDATE delivery_control SET allocated=?', L.databaseBytes - 4096)
+      .toArray();
+  });
+  expect(await f.call({ kind: 'effect', packet: { kind: 'begin', header: next.header } })).toEqual({
+    ok: false,
+    error: 'limit',
+  });
+  for (const chunk of e.chunks)
+    expect((await f.call({ kind: 'effect', packet: { kind: 'chunk', key, chunk } })).ok).toBe(true);
+  expect(await f.call({ kind: 'effect', packet: { kind: 'commit', key } })).toMatchObject({
+    ok: true,
+    value: { receipt: { state: 'committed' } },
+  });
+});
+
+it('completes an accepted original after unrelated member revocations grow into the protected membership envelope', async () => {
+  const f = await fixture(),
+    members = await pressureMembers(f.membership),
+    e = await f.event('Accepted exact original after revocation', 2),
+    next = await f.event('New admission'),
+    key = keyOf(e.header);
+  const promote = (command: unknown, credential = f.credential) =>
+    f.stub.promote({ groupId: f.groupId, credential, command });
+  expect(await promote({ kind: 'designate', writerId: f.identity.installationId })).toMatchObject({
+    ok: true,
+  });
+  const sourceId = await runInDurableObject(
+    f.stub,
+    (_, state) =>
+      state.storage.sql
+        .exec<{
+          source_id: string;
+        }>(
+          'SELECT source_id FROM delivery_messages WHERE message_id=?',
+          e.header.event.scope.source.messageId,
+        )
+        .one().source_id,
+  );
+  const source = groupPromotionSourceSchema.parse({
+    key: { groupId: f.groupId, sourceId, version: '1' },
+    writerId: f.identity.installationId,
+    scope: e.header.event.scope,
+    projectionScope: e.header.event.scope,
+    kind: 'human',
+    activity: 'substantive',
+    contentMode: 'shared-content',
+    original: { kind: 'inline', text: e.chunks.map((c) => c.text).join('') },
+    evidenceRefs: [],
+    correction: null,
+    decision: null,
+    synthesisAuthorized: false,
+  });
+  expect(await promote({ kind: 'register', source })).toMatchObject({ ok: true });
+  const adopted = await promote({ kind: 'adopt', source });
+  if (!adopted.ok || adopted.value.kind !== 'registered') throw new Error('Expected adoption');
+  expect(
+    await promote({
+      kind: 'command',
+      command: { kind: 'reserve', identity: adopted.value.identity },
+    }),
+  ).toMatchObject({ ok: true });
+  expect(
+    await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } }),
+  ).toMatchObject({ ok: true });
+  for (const chunk of e.chunks.slice(0, 1))
+    expect(await f.call({ kind: 'effect', packet: { kind: 'chunk', key, chunk } })).toMatchObject({
+      ok: true,
+    });
+  await fillNormalFeatureFence(f.stub);
+  const pressure = await revokeIntoProtectedEnvelope(f.stub, f.membership, members);
+  await evictDurableObject(f.stub);
+  expect(await promote({ kind: 'pending', after: 0 })).toMatchObject({
+    ok: true,
+    value: { pending: 1 },
+  });
+  expect(
+    await promote({
+      kind: 'command',
+      command: {
+        kind: 'decide',
+        identity: adopted.value.identity,
+        decision: { category: 'Finding', sentences: ['Retained original.'], evidenceRefs: [] },
+      },
+    }),
+  ).toMatchObject({ ok: true });
+  expect(await promote({ kind: 'pending', after: 0 }, pressure.revoked.credential)).toEqual({
+    ok: false,
+    error: 'denied',
+  });
+  expect(await f.call({ kind: 'effect', packet: { kind: 'begin', header: next.header } })).toEqual({
+    ok: false,
+    error: 'limit',
+  });
+  for (const chunk of e.chunks.slice(1))
+    expect(await f.call({ kind: 'effect', packet: { kind: 'chunk', key, chunk } })).toMatchObject({
+      ok: true,
+    });
+  expect(await f.call({ kind: 'effect', packet: { kind: 'commit', key } })).toMatchObject({
+    ok: true,
+    value: { receipt: { state: 'committed', eventId: e.header.event.eventId } },
+  });
+  await evictDurableObject(f.stub);
+  expect(await f.call({ kind: 'receipt', key })).toMatchObject({
+    ok: true,
+    value: { receipt: { state: 'committed' } },
+  });
+  expect(await f.call({ kind: 'feed', after: 0, limit: 1, cursor: null })).toMatchObject({
+    ok: true,
+  });
+  expect(await f.call({ kind: 'receipt', key }, pressure.revoked.credential)).toEqual({
+    ok: false,
+    error: 'denied',
+  });
+});
+
+it('retains more than 512 completed summary-source identities under the same byte ledger without membership-history growth', async () => {
+  const f = await fixture();
+  for (let i = 0; i < 513; i++) {
+    const event = await f.event('retained original ' + i);
+    expect((await f.publish(event)).ok).toBe(true);
+    const sourceId = await runInDurableObject(
+      f.stub,
+      (_, state) =>
+        state.storage.sql
+          .exec<{
+            source_id: string;
+          }>(
+            'SELECT source_id FROM delivery_messages WHERE message_id=?',
+            event.header.event.scope.source.messageId,
+          )
+          .one().source_id,
+    );
+    const source = groupPromotionSourceSchema.parse({
+      key: { groupId: f.groupId, sourceId, version: '1' },
+      writerId: f.identity.installationId,
+      scope: event.header.event.scope,
+      projectionScope: event.header.event.scope,
+      kind: 'human',
+      activity: 'substantive',
+      contentMode: 'shared-content',
+      original: { kind: 'inline', text: 'retained original ' + i },
+      evidenceRefs: [],
+      correction: null,
+      decision: null,
+      synthesisAuthorized: true,
+    });
+    expect(
+      await f.stub.promote({
+        groupId: f.groupId,
+        credential: f.credential,
+        command: { kind: 'register', source },
+      }),
+    ).toMatchObject({ ok: true, value: { kind: 'retained' } });
+  }
+  const before = await runInDurableObject(f.stub, (_, state) => ({
+    metadata: state.storage.sql.exec('SELECT operations FROM metadata').one(),
+    pending: state.storage.sql.exec('SELECT pending FROM group_promotion_pending_control').one(),
+    bytes: state.storage.sql
+      .exec('SELECT * FROM delivery_feature_table_bytes ORDER BY name')
+      .toArray(),
+    future: state.storage.sql.exec('SELECT future_physical FROM delivery_control').one(),
+  }));
+  expect(before.metadata.operations).toBe(1);
+  expect(before.pending.pending).toBe(0);
+  expect(before.future.future_physical).toBe(0);
+  await evictDurableObject(f.stub);
+  const after = await runInDurableObject(f.stub, (_, state) => ({
+    metadata: state.storage.sql.exec('SELECT operations FROM metadata').one(),
+    pending: state.storage.sql.exec('SELECT pending FROM group_promotion_pending_control').one(),
+    bytes: state.storage.sql
+      .exec('SELECT * FROM delivery_feature_table_bytes ORDER BY name')
+      .toArray(),
+    future: state.storage.sql.exec('SELECT future_physical FROM delivery_control').one(),
+  }));
+  expect(after).toEqual(before);
+}, 20000);
+
+it('additively reserves a retained legacy staged original before admitting later work, once across eviction', async () => {
+  const f = await fixture(),
+    e = await f.event(),
+    key = keyOf(e.header);
+  expect((await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } })).ok).toBe(
+    true,
+  );
+  await runInDurableObject(f.stub, (_, state) => {
+    const r = state.storage.sql
+      .exec<{
+        logical: number;
+        physical: number;
+      }>(
+        'SELECT logical,physical FROM delivery_feature_reservations WHERE id=?',
+        'delivery:' + key.operationId,
+      )
+      .one();
+    state.storage.sql
+      .exec(
+        'UPDATE delivery_control SET logical=logical-?,allocated=allocated-?',
+        r.logical,
+        r.physical,
+      )
+      .toArray();
+    state.storage.sql
+      .exec('DELETE FROM delivery_feature_reservations WHERE id=?', 'delivery:' + key.operationId)
+      .toArray();
+    state.storage.sql
+      .exec(
+        "DELETE FROM delivery_feature_legacy_reservations; UPDATE delivery_operations SET receipt=NULL WHERE state='staged'",
+      )
+      .toArray();
+  });
+  await evictDurableObject(f.stub);
+  expect(await f.call({ kind: 'receipt', key })).toMatchObject({
+    ok: true,
+    value: { receipt: { state: 'staged' } },
+  });
+  const first = await runInDurableObject(f.stub, (_, state) => ({
+    reserve: state.storage.sql.exec('SELECT * FROM delivery_feature_reservations').toArray(),
+    future: state.storage.sql.exec('SELECT future_physical FROM delivery_control').one(),
+  }));
+  expect(first.reserve).toHaveLength(1);
+  await evictDurableObject(f.stub);
+  expect(await f.call({ kind: 'receipt', key })).toMatchObject({
+    ok: true,
+    value: { receipt: { state: 'staged' } },
+  });
+  expect(
+    await runInDurableObject(f.stub, (_, state) => ({
+      reserve: state.storage.sql.exec('SELECT * FROM delivery_feature_reservations').toArray(),
+      future: state.storage.sql.exec('SELECT future_physical FROM delivery_control').one(),
+    })),
+  ).toEqual(first);
+  expect((await f.publish(e)).ok).toBe(true);
+});

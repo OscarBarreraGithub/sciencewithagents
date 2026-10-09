@@ -212,6 +212,26 @@ async function fixture(
   };
 }
 describe('scoped native documents', () => {
+  it('report capacity preview creates no PDF publication identity, upload intent or native export/build effect', async () => {
+    const f = await fixture(),
+      g = await f.grant();
+    await f.service.build(f.handle, g.grantId, g.version, { key: id() });
+    const db = new DatabaseSync(f.path),
+      before = db.prepare('SELECT * FROM gd_events ORDER BY sequence').all();
+    const exports = f.exports,
+      builds = f.builds;
+    const a = await f.service.previewSharedBundle(f.handle, g.grantId, g.version, f.sharedHandle);
+    const b = await f.service.previewSharedBundle(f.handle, g.grantId, g.version, f.sharedHandle);
+    expect(
+      a.files.map((file) => ({ name: file.name, bytes: file.bytes, sha256: file.sha256 })),
+    ).toEqual(b.files.map((file) => ({ name: file.name, bytes: file.bytes, sha256: file.sha256 })));
+    expect(db.prepare('SELECT * FROM gd_events ORDER BY sequence').all()).toEqual(before);
+    expect(f.exports).toBe(exports);
+    expect(f.builds).toBe(builds);
+    expect(a.files.some((file) => file.name === 'private.tex')).toBe(false);
+    db.close();
+  });
+
   it('exports exact selected receipt/version bytes once under concurrent retry and restart', async () => {
     const f = await fixture();
     const [a, b] = await Promise.all([f.grant(), f.grant()]);

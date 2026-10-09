@@ -53,6 +53,7 @@ import {
   type GroupExportResult,
 } from '@dock/shared/dist/group-hosted-export.js';
 import { z } from 'zod';
+import { GroupFeatureStorage, GroupFeatureStorageLimit } from './group-feature-storage.js';
 import { groupUpdateSchema, GROUP_UPDATE_LIMITS } from '@dock/shared/dist/group-updates.js';
 
 type Enrollment = {
@@ -93,6 +94,28 @@ export class GroupMembership extends DurableObject<Env> {
       ctx.storage.sql.exec(SCHEMA).toArray();
     });
     this.deliveryStorage = new DeliveryStorage(ctx.storage);
+    ctx.storage.transactionSync(() => {
+      const sql = ctx.storage.sql;
+      sql
+        .exec(
+          'CREATE TABLE IF NOT EXISTS delivery_membership_capacity_version(singleton INTEGER PRIMARY KEY CHECK(singleton=1)); CREATE TABLE IF NOT EXISTS delivery_feature_daily(singleton INTEGER PRIMARY KEY CHECK(singleton=1),day INTEGER NOT NULL,mutations INTEGER NOT NULL); INSERT OR IGNORE INTO delivery_feature_daily VALUES(1,0,0)',
+        )
+        .toArray();
+      if (
+        !sql.exec('SELECT singleton FROM delivery_membership_capacity_version').toArray().length
+      ) {
+        const day = Math.floor(Date.now() / 86400000);
+        sql
+          .exec(
+            'UPDATE metadata SET operations=(SELECT count(*) FROM audit),day_mutations=(SELECT count(*) FROM audit WHERE recorded_at>=? AND recorded_at<?),day=? WHERE singleton=1',
+            day * 86400000,
+            (day + 1) * 86400000,
+            day,
+          )
+          .toArray();
+        sql.exec('INSERT INTO delivery_membership_capacity_version VALUES(1)').toArray();
+      }
+    });
   }
   /** The fixed Worker route is the only HTTP upgrade. No browser-facing token
    * or incoming application command is accepted on this hibernating socket. */
@@ -341,14 +364,14 @@ export class GroupMembership extends DurableObject<Env> {
           const now = Date.now(),
             day = Math.floor(now / 86400000);
           try {
-            this.admit(this.rows<Metadata>('SELECT * FROM metadata WHERE singleton=1')[0], now);
+            this.admitFeature(now);
           } catch (error) {
             if (error instanceof Rejection && error.code === 'limit')
               throw new GroupDocumentTransportCapacity();
             throw error;
           }
           this.rows(
-            'UPDATE metadata SET operations=operations+1,day_mutations=CASE WHEN day=? THEN day_mutations+1 ELSE 1 END,day=? WHERE singleton=1',
+            'UPDATE delivery_feature_daily SET mutations=CASE WHEN day=? THEN mutations+1 ELSE 1 END,day=? WHERE singleton=1',
             day,
             day,
           );
@@ -389,22 +412,69 @@ export class GroupMembership extends DurableObject<Env> {
         return { ok: false, error: 'denied' };
       this.promotionService ??= new GroupPromotionHost(this.ctx.storage, {
         probe: () => this.deliveryStorage.probe(),
-        checkCapacity: () => {
-          if (this.deliveryStorage.normalSize() > C.normalDatabaseBytes)
+        checkCapacity: (retained = false) => {
+          if (
+            this.deliveryStorage.normalSize() >
+            (retained ? C.reservedDatabaseBytes : C.normalDatabaseBytes)
+          )
             throw new GroupPromotionHostCapacity();
         },
-        admitMutation: () => {
+        accountStorage: (work, sourceKey, retainedRead) => {
+          const features = new GroupFeatureStorage(this.ctx.storage);
+          const tables = [
+            'group_promotion_producers',
+            'group_promotion_sources',
+            'group_promotion_writers',
+            'group_promotion_receipts',
+            'group_promotion_transitions',
+            'group_promotion_pending',
+            'group_promotion_pending_control',
+            'group_promotion_pending_migration',
+          ];
+          for (const table of tables) features.track(table);
+          const before = this.ctx.storage.sql.databaseSize,
+            logical = features.bytes(tables);
+          const value = work();
+          for (const table of tables) features.track(table);
+          try {
+            features.consume(
+              before,
+              Math.max(0, features.bytes(tables) - logical),
+              sourceKey,
+              retainedRead,
+            );
+          } catch (error) {
+            if (error instanceof GroupFeatureStorageLimit) throw new GroupPromotionHostCapacity();
+            throw error;
+          }
+          return value;
+        },
+        reserveSource: (id, bytes) => {
+          try {
+            new GroupFeatureStorage(this.ctx.storage).reserve(
+              id,
+              bytes * 2 + 128 * 1024,
+              bytes * 4 + 1024 * 1024,
+            );
+          } catch (error) {
+            if (error instanceof GroupFeatureStorageLimit) throw new GroupPromotionHostCapacity();
+            throw error;
+          }
+        },
+        releaseSource: (id) => new GroupFeatureStorage(this.ctx.storage).release(id),
+        retained: (table) => new GroupFeatureStorage(this.ctx.storage).count(table),
+        admitMutation: (retained = false) => {
           const now = Date.now(),
             day = Math.floor(now / 86_400_000);
           try {
-            this.admit(this.rows<Metadata>('SELECT * FROM metadata WHERE singleton=1')[0], now);
+            this.admitFeature(now, retained);
           } catch (error) {
             if (error instanceof Rejection && error.code === 'limit')
               throw new GroupPromotionHostCapacity();
             throw error;
           }
           this.rows(
-            'UPDATE metadata SET operations=operations+1,day_mutations=CASE WHEN day=? THEN day_mutations+1 ELSE 1 END,day=? WHERE singleton=1',
+            'UPDATE delivery_feature_daily SET mutations=CASE WHEN day=? THEN mutations+1 ELSE 1 END,day=? WHERE singleton=1',
             day,
             day,
           );
@@ -458,13 +528,7 @@ export class GroupMembership extends DurableObject<Env> {
         const sql: GroupActionsSql = {
           rows: <T>(query: string, ...bindings: (string | number | null)[]) =>
             this.ctx.storage.sql.exec(query, ...bindings).toArray() as T[],
-          transaction: <T>(fn: () => T) =>
-            this.ctx.storage.transactionSync(() => {
-              const result = fn();
-              if (this.deliveryStorage.normalSize() > C.normalDatabaseBytes)
-                throw new GroupActionsCapacityExceeded();
-              return result;
-            }),
+          transaction: <T>(fn: () => T) => this.ctx.storage.transactionSync(fn),
           initialize: (schema) => {
             this.ctx.storage.sql.exec(schema).toArray();
           },
@@ -475,23 +539,29 @@ export class GroupMembership extends DurableObject<Env> {
           hostingEnabled: () => hostingEnvironment(this.env),
           matchesObject: (id) => this.ctx.id.equals(this.env.GROUPS.idFromName(id)),
           probeDelivery: () => this.deliveryStorage.probe(),
-          accountStorage: (operation, intent) => accounting.account(operation, intent),
+          accountStorage: (operation, intent) => {
+            const value = accounting.account(operation, intent);
+            const membershipLimit =
+              intent.kind === 'admission' ? C.normalDatabaseBytes : C.reservedDatabaseBytes;
+            if (this.deliveryStorage.normalSize() > membershipLimit)
+              throw new GroupActionsCapacityExceeded();
+            return value;
+          },
           reserveLifecycle: (...args) => accounting.reserve(...args),
           releaseLifecycle: (id) => accounting.release(id),
           verifyCommittedSource: (event, author) => verifyGroupCommittedSource(sql, event, author),
           admitMutation: () => {
             const now = Date.now(),
               day = Math.floor(now / 86_400_000);
-            const meta = this.rows<Metadata>('SELECT * FROM metadata WHERE singleton=1')[0];
             try {
-              this.admit(meta, now);
+              this.admitFeature(now);
             } catch (error) {
               if (error instanceof Rejection && error.code === 'limit')
                 throw new GroupActionsCapacityExceeded();
               throw error;
             }
             this.rows(
-              'UPDATE metadata SET operations=operations+1,day_mutations=CASE WHEN day=? THEN day_mutations+1 ELSE 1 END,day=? WHERE singleton=1',
+              'UPDATE delivery_feature_daily SET mutations=CASE WHEN day=? THEN mutations+1 ELSE 1 END,day=? WHERE singleton=1',
               day,
               day,
             );
@@ -996,6 +1066,16 @@ export class GroupMembership extends DurableObject<Env> {
     )
       reject('denied');
     return invite;
+  }
+  private admitFeature(now: number, retained = false): void {
+    const size = this.deliveryStorage.normalSize();
+    if (retained ? size > C.reservedDatabaseBytes : size >= C.normalDatabaseBytes) reject('limit');
+    if (this.rows<{ page_size: number }>('PRAGMA page_size')[0].page_size !== C.pageBytes)
+      reject('unavailable');
+    const value = this.rows<{ day: number; mutations: number }>(
+      'SELECT day,mutations FROM delivery_feature_daily WHERE singleton=1',
+    )[0];
+    if (value.day === Math.floor(now / 86400000) && value.mutations >= 1000) reject('limit');
   }
   private admit(meta: Metadata | undefined, now: number): void {
     if ((meta?.operations ?? 0) >= C.normalOperations) reject('limit');

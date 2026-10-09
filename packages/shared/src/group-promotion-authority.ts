@@ -37,6 +37,8 @@ export interface GroupPromotionPolicy {
   /** Existing DO allocation/physical/logical/free-tier guard; throw to roll back.
    * Includes these tables in the existing budget, never a second storage allowance. */
   checkCapacity(): void;
+  /** Hosted byte admission replaces the legacy isolated receipt-count ceiling. */
+  receiptAdmission?(): boolean;
   /** Verify the existing delivery authority's committed operation/event in this
    * same transaction. A local event or caller's 'complete' flag is insufficient. */
   verifyPublished(
@@ -168,6 +170,7 @@ export class GroupPromotionAuthority {
       if (!prior) {
         if (c.kind !== 'reserve') return { kind: 'unavailable', reason: 'denied' };
         if (
+          !this.policy.receiptAdmission?.() &&
           this.sql.rows<{ n: number }>(
             `SELECT count(*) n FROM group_promotion_receipts WHERE group_id=?`,
             groupId,

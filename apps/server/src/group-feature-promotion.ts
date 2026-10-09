@@ -30,6 +30,9 @@ export class GroupFeaturePromotion {
   private synthesis?: GroupPromotionSynthesis;
   private inputCursor = 0;
   private writerCursor = 0;
+  private readAt = new Map<string, number>();
+  private dirty = new Set<string>();
+  private stopUpdates?: () => void;
   constructor(private readonly host: GroupHost) {
     host.db.exec(`
       CREATE TABLE IF NOT EXISTS gh_promotion_inputs(receipt_id TEXT PRIMARY KEY,enrollment_handle TEXT NOT NULL,source_json TEXT NOT NULL,registered INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL);
@@ -49,13 +52,24 @@ export class GroupFeaturePromotion {
   start(synthesis?: GroupPromotionSynthesis) {
     this.synthesis = synthesis;
     if (this.timer) return;
+    this.stopUpdates = this.host.updates.subscribe((update) => {
+      if (!update.changed) return;
+      for (const row of this.host.db
+        .prepare(
+          "SELECT handle FROM gh_groups WHERE json_extract(body,'$.identity.groupId')=? AND json_extract(body,'$.identity.memberId')=? AND json_extract(body,'$.identity.installationId')=?",
+        )
+        .all(update.groupId, update.memberId, update.installationId))
+        this.dirty.add(String(row.handle));
+      void this.pass(false);
+    });
     this.timer = setInterval(() => {
-      void this.pass();
+      void this.pass(false);
     }, 20_000);
     this.timer.unref();
   }
   async close() {
     this.closed = true;
+    this.stopUpdates?.();
     if (this.timer) clearInterval(this.timer);
     await this.running;
     this.index.close();
@@ -283,17 +297,17 @@ export class GroupFeaturePromotion {
         'This computer retains shared sources and resumes their concise feed delivery under native admission.',
     };
   }
-  pass(): Promise<void> {
+  pass(forceRead = true): Promise<void> {
     if (this.closed) return Promise.resolve();
     if (this.running) return this.running;
-    this.running = this.runPass()
+    this.running = this.runPass(forceRead)
       .catch(() => {})
       .finally(() => {
         this.running = undefined;
       });
     return this.running;
   }
-  private async runPass() {
+  private async runPass(forceRead: boolean) {
     // Bounded round-robin over finite local producer and writer journals.
     let pending = this.host.db
       .prepare(
@@ -328,6 +342,20 @@ export class GroupFeaturePromotion {
       if (this.closed) return;
       const handle = String(writer.enrollment_handle);
       if (!this.host.localVisible(handle) || !this.host.localContributing(handle)) continue;
+      const retained = this.host.db
+        .prepare('SELECT body FROM gh_groups WHERE handle=?')
+        .get(handle);
+      const identity = retained ? JSON.parse(String(retained.body)).identity : null;
+      const interval = identity && this.host.updates.connected(identity) ? 300_000 : 60_000;
+      if (
+        !forceRead &&
+        this.readAt.has(handle) &&
+        !this.dirty.has(handle) &&
+        Date.now() - (this.readAt.get(handle) ?? 0) < interval
+      )
+        continue;
+      this.dirty.delete(handle);
+      this.readAt.set(handle, Date.now());
       let stage = 'writer enrollment';
       try {
         const port = await this.host.promotionContext(handle);
@@ -339,10 +367,11 @@ export class GroupFeaturePromotion {
           .prepare('UPDATE gh_promotion_writers SET cursor=?,state=? WHERE enrollment_handle=?')
           .run(
             pending.value.position,
-            `${pending.value.pending} pending; ${pending.value.retained}/${pending.value.capacity} retained`,
+            `${pending.value.pending} pending; ${pending.value.retained} retained; ${pending.value.capacity === 0 ? 'shared byte budget' : `legacy limit ${pending.value.capacity}`}`,
             handle,
           );
         if (!source) continue;
+        this.dirty.add(handle);
         const renewed = await port.command({ kind: 'renew' });
         if (!renewed.ok) throw new Error('writer unavailable');
         if (source.scope.groupId !== port.context.groupId)
@@ -436,7 +465,7 @@ export class GroupFeaturePromotion {
         this.host.db
           .prepare('UPDATE gh_promotion_writers SET state=? WHERE enrollment_handle=?')
           .run(
-            `${result.state}; ${pending.value.pending} pending; ${pending.value.retained}/${pending.value.capacity} retained`,
+            `${result.state}; ${pending.value.pending} pending; ${pending.value.retained} retained; ${pending.value.capacity === 0 ? 'shared byte budget' : `legacy limit ${pending.value.capacity}`}`,
             handle,
           );
       } catch {

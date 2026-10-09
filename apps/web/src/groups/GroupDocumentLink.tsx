@@ -17,6 +17,10 @@ import {
   type GroupDocumentOffer,
 } from '@dock/shared/dist/group-documents.js';
 import { api, apiScope, ApiError } from '../api';
+import {
+  groupDocumentCapacitySchema,
+  type GroupDocumentCapacity,
+} from '@dock/shared/dist/group-document-capacity.js';
 import '../documents.css';
 import './group-documents.css';
 
@@ -29,20 +33,25 @@ export interface GroupDocumentReaderProps {
 }
 const Scope = createContext<string | null>(null);
 const SharedTarget = createContext<string | null>(null);
+const ReadOnly = createContext(false);
 export const useGroupDocumentScope = () => useContext(Scope);
 /** Normal GroupChat owner wraps Conversation with this scope, never with synthetic Store.agent IDs. */
 export function GroupDocumentScope({
   handle,
   sharedHandle,
+  readOnly = false,
   children,
 }: {
   handle: string;
   sharedHandle?: string;
+  readOnly?: boolean;
   children: ReactNode;
 }) {
   return (
     <Scope.Provider value={handle}>
-      <SharedTarget.Provider value={sharedHandle ?? null}>{children}</SharedTarget.Provider>
+      <SharedTarget.Provider value={sharedHandle ?? null}>
+        <ReadOnly.Provider value={readOnly}>{children}</ReadOnly.Provider>
+      </SharedTarget.Provider>
     </Scope.Provider>
   );
 }
@@ -81,6 +90,7 @@ export function GroupDocumentHost({
 }) {
   const handle = useContext(Scope),
     sharedHandle = useContext(SharedTarget),
+    readOnly = useContext(ReadOnly),
     [selected, setSelected] = useState<{ grantId: string; version: string; shared?: true } | null>(
       null,
     );
@@ -109,10 +119,12 @@ export function GroupDocumentHost({
       actions={
         !selected.shared && sharedHandle ? (
           <GroupReportPublish
+            key={`${handle}:${selected.grantId}:${selected.version}:${sharedHandle}`}
             handle={handle}
             sharedHandle={sharedHandle}
             grantId={selected.grantId}
             version={selected.version}
+            readOnly={readOnly}
           />
         ) : undefined
       }
@@ -347,25 +359,79 @@ function GroupReportPublish({
   sharedHandle,
   grantId,
   version,
+  readOnly,
 }: {
   handle: string;
   sharedHandle: string;
   grantId: string;
   version: string;
+  readOnly: boolean;
 }) {
+  const storage = `swa:group-report-share:${apiScope()}:${handle}:${grantId}:${version}:${sharedHandle}`;
   const [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(''),
-    [href, setHref] = useState('');
+    [href, setHref] = useState(''),
+    [capacity, setCapacity] = useState<GroupDocumentCapacity | null>(null),
+    [capacityError, setCapacityError] = useState(''),
+    [checking, setChecking] = useState(false),
+    [saved, setSaved] = useState(() => {
+      try {
+        return !!sessionStorage.getItem(storage);
+      } catch {
+        return false;
+      }
+    });
+  const inFlight = useRef(false),
+    capacityRead = useRef(false),
+    currentReadOnly = useRef(readOnly);
+  currentReadOnly.current = readOnly;
+  const preflight = async () => {
+    if (capacityRead.current) return null;
+    capacityRead.current = true;
+    setChecking(true);
+    setCapacityError('');
+    try {
+      const result = groupDocumentCapacitySchema.parse(
+        await api(`${groupDocumentEndpoint(handle, grantId, version)}/preflight`, { sharedHandle }),
+      );
+      setCapacity(result);
+      return result;
+    } catch (error) {
+      setCapacity(null);
+      setCapacityError(
+        error instanceof ApiError && error.code === 'GROUP_REPORT_HOSTING_UPDATE'
+          ? 'The group creator needs to update the hosted Groups service before sharing a new report. This storage check does not upload files.'
+          : 'Hosted report storage could not be checked. Recheck when connected. This storage check does not upload files.',
+      );
+      return null;
+    } finally {
+      capacityRead.current = false;
+      setChecking(false);
+    }
+  };
   const publish = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setNotice('');
+    let retained = false;
     try {
-      const storage = `swa:group-report-share:${apiScope()}:${handle}:${grantId}:${version}:${sharedHandle}`;
       let key = sessionStorage.getItem(storage);
+      retained = !!key;
       if (!key) {
+        if (currentReadOnly.current) {
+          setNotice('Choose Contribute in Groups before sharing a new report.');
+          return;
+        }
+        const latest = await preflight();
+        if (!latest?.fits || currentReadOnly.current) return;
         key = crypto.randomUUID();
         sessionStorage.setItem(storage, key);
+        retained = true;
+        setSaved(true);
       }
+      // A saved key must reconcile even if today's advisory is full, unavailable
+      // or Read-only. Only the server's exact prior lookup can settle that share.
       const link = groupDocumentLinkSchema.parse(
         await api(`${groupDocumentEndpoint(handle, grantId, version)}/publish`, {
           key,
@@ -373,25 +439,77 @@ function GroupReportPublish({
         }),
       );
       sessionStorage.removeItem(storage);
+      setSaved(false);
       setHref(link.href);
       setNotice(
         'Shared the selected report and supporting files. Members can open its notification in Group chat; Advanced also keeps the report list.',
       );
     } catch (error) {
-      setNotice(`${(error as Error).message} Retry uses the same saved publication.`);
+      setNotice(
+        `${error instanceof Error ? error.message : 'The share could not be confirmed.'} ${retained ? 'Retry uses the same saved publication.' : 'No new report was uploaded.'}`,
+      );
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
   return (
-    <details>
+    <details
+      className="group-report-publish"
+      onToggle={(event) => {
+        if (event.currentTarget.open && !inFlight.current) void preflight();
+      }}
+    >
       <summary>Share this report</summary>
       <p>
-        This publishes only this report and its selected supporting files to the group. Your private
-        conversation stays private.
+        This stores only the selected report and supporting files as a hosted group attachment. Your
+        private conversation stays private. Project files and private Git are separate.
       </p>
-      <button disabled={busy} onClick={() => void publish()}>
-        {busy ? 'Sharing report…' : 'Share selected report files with group'}
+      {capacity && (
+        <div role="status">
+          <p>
+            This selected report and its supporting files require{' '}
+            {reportBytes(capacity.logical.requiredBytes)} of hosted report storage.{' '}
+            {reportBytes(Math.max(0, capacity.logical.limitBytes - capacity.logical.usedBytes))}{' '}
+            remains of {reportBytes(capacity.logical.limitBytes)}.
+          </p>
+          <p>
+            {capacity.reason === 'available'
+              ? 'There is room now. Sharing checks current limits again.'
+              : capacity.reason === 'logical-limit'
+                ? 'Hosted report storage cannot fit this new attachment. Existing copies stay available; your separate project files and Git can continue.'
+                : capacity.reason === 'physical-limit'
+                  ? 'The hosted Groups service cannot fit this attachment alongside its retained data and reservations. Existing copies and separate Git files are preserved.'
+                  : 'All pending report upload slots are occupied. Reconcile the existing uploads before starting another; existing copies and separate Git files are preserved.'}
+          </p>
+        </div>
+      )}
+      {checking && <p role="status">Checking hosted report storage…</p>}
+      {capacityError && <p role="alert">{capacityError}</p>}
+      {saved && (
+        <p>
+          A saved share is not yet confirmed here. Retry checks that exact publication, even if new
+          attachments are currently refused. Nothing is automatically resent.
+        </p>
+      )}
+      {readOnly && !saved && (
+        <p>
+          This group is Read-only. Choose Contribute in Groups to share a new report; reading and
+          separate Git sync remain available.
+        </p>
+      )}
+      <button disabled={busy || checking} onClick={() => void preflight()}>
+        Recheck hosted storage
+      </button>
+      <button
+        disabled={busy || (!saved && (checking || readOnly || !capacity?.fits))}
+        onClick={() => void publish()}
+      >
+        {busy
+          ? 'Sharing report…'
+          : saved
+            ? 'Retry saved report share'
+            : 'Share selected report files with group'}
       </button>
       {notice && <p role="status">{notice}</p>}
       {href && (
@@ -411,4 +529,9 @@ function GroupReportPublish({
       )}
     </details>
   );
+}
+
+function reportBytes(bytes: number) {
+  const unit = bytes >= 1024 ** 2 ? 1024 ** 2 : bytes >= 1024 ? 1024 : 1;
+  return `${(bytes / unit).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${unit === 1024 ** 2 ? 'MiB' : unit === 1024 ? 'KiB' : 'bytes'}`;
 }

@@ -721,6 +721,11 @@ describe('isolated computer connections', () => {
       `/projects/${agentId}/open-in-editor`,
     ])
       expect(proxyPath('POST', path)).toBe(`/api${path}`);
+    const preflight = `/groups/documents/${agentId}/${agentId}/${'a'.repeat(64)}/preflight`;
+    expect(proxyPath('POST', preflight)).toBe(`/api${preflight}`);
+    expect(proxyPath('GET', preflight)).toBeNull();
+    expect(proxyPath('POST', preflight + '?path=/tmp')).toBeNull();
+    expect(proxyPath('POST', preflight.replace('/preflight', '/capacity/rpc'))).toBeNull();
     expect(proxyPath('GET', '/bug-reports')).toBe('/api/bug-reports');
     expect(proxyPath('POST', '/bug-reports')).toBe('/api/bug-reports');
     expect(proxyPath('GET', '/bug-reports?path=/tmp')).toBeNull();

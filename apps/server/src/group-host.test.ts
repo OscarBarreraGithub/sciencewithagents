@@ -3049,10 +3049,17 @@ it.skipIf(!process.env.GROUP_DOCUMENT_COMPILER_FIXTURE)(
         close: async () => {},
       }),
     };
-    let lose = false;
+    let lose = false,
+      capacityUnsupported = false;
     const a = await installation(undefined, {
       documents: native,
       http: async (url, options) => {
+        if (
+          capacityUnsupported &&
+          String(url).endsWith('/documents') &&
+          JSON.parse(String(options?.body)).kind === 'capacity'
+        )
+          return Response.json({ ok: false, error: 'invalid' });
         const response = await fetch(url, options);
         if (
           lose &&
@@ -3135,10 +3142,75 @@ it.skipIf(!process.env.GROUP_DOCUMENT_COMPILER_FIXTURE)(
       (await b.post('reports', { handle: joined.open.shared.handle })).json().entries,
     ).toHaveLength(0);
     const publication = { key: randomUUID(), sharedHandle: open.shared.handle };
+    const beforePreflight = a.host.db
+      .prepare('SELECT count(*) n FROM gh_document_publications')
+      .get()!.n;
+    capacityUnsupported = true;
+    const legacy = await a.post(`${localBase}/preflight`, { sharedHandle: open.shared.handle });
+    expect(legacy.statusCode, legacy.body).toBe(409);
+    expect(legacy.json().code).toBe('GROUP_REPORT_HOSTING_UPDATE');
+    expect((await a.post(`${localBase}/publish`, publication)).statusCode).toBe(409);
+    expect(a.host.db.prepare('SELECT count(*) n FROM gh_document_publications').get()!.n).toBe(
+      beforePreflight,
+    );
+    capacityUnsupported = false;
+    const advisory = await a.post(`${localBase}/preflight`, { sharedHandle: open.shared.handle });
+    expect(advisory.statusCode, advisory.body).toBe(200);
+    expect(advisory.json()).toMatchObject({
+      kind: 'capacity',
+      fits: true,
+      reason: 'available',
+      pending: 0,
+    });
+    expect(a.host.db.prepare('SELECT count(*) n FROM gh_document_publications').get()!.n).toBe(
+      beforePreflight,
+    );
+    expect(
+      (await b.post(`${localBase}/preflight`, { sharedHandle: joined.open.shared.handle }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await a.post('local-mode', {
+          handle: open.group.handle,
+          key: randomUUID(),
+          revision: 0,
+          mode: 'read-only',
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await a.post(`${localBase}/publish`, publication)).json().code).toBe(
+      'GROUP_LOCAL_READ_ONLY',
+    );
+    expect(a.host.db.prepare('SELECT count(*) n FROM gh_document_publications').get()!.n).toBe(
+      beforePreflight,
+    );
+    expect(
+      (
+        await a.post('local-mode', {
+          handle: open.group.handle,
+          key: randomUUID(),
+          revision: 1,
+          mode: 'contribute',
+        })
+      ).statusCode,
+    ).toBe(200);
     lose = true;
     expect((await a.post(`${localBase}/publish`, publication)).statusCode).toBe(503);
+    expect(
+      (
+        await a.post('local-mode', {
+          handle: open.group.handle,
+          key: randomUUID(),
+          revision: 2,
+          mode: 'read-only',
+        })
+      ).statusCode,
+    ).toBe(200);
+    capacityUnsupported = true;
     const shared = await a.post(`${localBase}/publish`, publication);
     expect(shared.statusCode, shared.body).toBe(200);
+    capacityUnsupported = false;
     const link = shared.json();
     expect(link.href).toMatch(/^#\/groups\/report\//);
     const reports = await b.post('reports', { handle: joined.open.shared.handle });

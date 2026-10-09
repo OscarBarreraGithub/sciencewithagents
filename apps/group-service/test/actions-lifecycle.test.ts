@@ -19,6 +19,11 @@ import {
 } from '@dock/shared/dist/group-actions.js';
 import { creationGroupId, setupHash } from '../src/crypto.js';
 import { MEMBERSHIP_CAPACITY as C } from '../src/capacity.js';
+import {
+  fillNormalFeatureFence,
+  pressureMembers,
+  revokeIntoProtectedEnvelope,
+} from './capacity-pressure.js';
 
 const uuid = () => crypto.randomUUID();
 const secret = () =>
@@ -232,6 +237,34 @@ afterEach(async () => {
   Object.assign(env, { HOSTING_MODE: 'disabled', GROUP_SETUP_HASH: '' });
 });
 
+it('keeps accepted action lifecycle and authoritative reads after unrelated members use the revocation envelope', async () => {
+  const f = await fixture(),
+    members = await pressureMembers(f.membership),
+    a = await f.confirm('start', 0);
+  await fillNormalFeatureFence(f.stub);
+  const pressure = await revokeIntoProtectedEnvelope(f.stub, f.membership, members);
+  expect(
+    await f.call({ kind: 'instruction', operationId: uuid(), text: 'New work remains refused.' }),
+  ).toEqual({ ok: false, error: 'limit' });
+  await evictDurableObject(f.stub);
+  expect(await f.call({ kind: 'board', after: 0, limit: 50 })).toMatchObject({ ok: true });
+  expect(action(await f.phase(a, 'claim')).state).toBe('dispatching');
+  const complete = {
+    kind: 'complete' as const,
+    actionId: a.actionId,
+    operationId: a.actionId,
+    outcome: f.outcome(a),
+  };
+  const completed = await f.call(complete);
+  expect(completed).toMatchObject({ ok: true, value: { action: { state: 'completed' } } });
+  await evictDurableObject(f.stub);
+  expect(await f.call(complete)).toEqual(completed);
+  expect(await f.call({ kind: 'board', after: 0, limit: 50 })).toMatchObject({ ok: true });
+  expect(await f.call({ kind: 'board', after: 0, limit: 50 }, pressure.revoked.credential)).toEqual(
+    { ok: false, error: 'denied' },
+  );
+});
+
 it('reserves lifecycle writes before accepting work and completes across admission exhaustion, lost acknowledgements and eviction', async () => {
   const f = await fixture(),
     a = await f.confirm('start', 0);
@@ -250,6 +283,9 @@ it('reserves lifecycle writes before accepting work and completes across admissi
         C.normalOperations,
         MEMBERSHIP_LIMITS.dailyMutations,
       )
+      .toArray();
+    state.storage.sql
+      .exec('UPDATE delivery_feature_daily SET mutations=1000 WHERE singleton=1')
       .toArray();
     state.storage.sql
       .exec('UPDATE delivery_control SET logical=? WHERE singleton=1', DELIVERY_LIMITS.logicalBytes)
@@ -454,7 +490,18 @@ it('legacy unresolved rows receive additive reservations without rewriting immut
         GROUP_ACTION_LIMITS.lifecyclePhysicalReserve,
       )
       .toArray();
-    state.storage.sql.exec('DROP TABLE ga_lifecycle_reservations').toArray();
+    state.storage.sql
+      .exec('DROP TABLE ga_lifecycle_reservations; DROP TABLE ga_capacity_migration')
+      .toArray();
+    state.storage.sql
+      .exec("DELETE FROM delivery_feature_table_bytes WHERE name='ga_lifecycle_reservations'")
+      .toArray();
+    state.storage.sql
+      .exec(
+        'UPDATE delivery_control SET future_physical=future_physical-?',
+        GROUP_ACTION_LIMITS.lifecyclePhysicalReserve,
+      )
+      .toArray();
   });
   await evictDurableObject(f.stub);
   const before = await runInDurableObject(f.stub, (_instance, state) =>

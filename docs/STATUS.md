@@ -244,6 +244,22 @@ backups remain acceptance gates. Check the matching published CI result separate
 See [Groups release readiness](GROUP_RELEASE_READINESS.md) and
 [manager lessons](FAILURE_REVIEW.md).
 
+**Current source capacity checks, 2026-10-09:** shared originals use byte admission,
+with reserved completion storage for accepted originals, reports and actions. Limits are
+128 MiB logical chat/action/promotion storage, 256 MiB hosted reports and a shared
+512 MiB physical feature allocation. Separate daily guards cover 500 normal membership mutations
+and 1,000 feature transitions; original human sends are outside the feature guard. Report
+preflight checks current capacity without creating a publication or model turn; atomic
+upload admission rechecks it. Workers Free capacity remains finite. Project files use
+separate private Git; hosted report originals remain in Cloudflare. See
+[hosting limits](GROUP_HOSTING.md#practical-shared-capacity-and-daily-costs) and
+[shared reports](GROUP_DOCUMENTS.md).
+
+Evidence covers provider-free actual local Durable Object storage and desktop plus three
+emulated layouts. Installed-app activation, creator Worker update, two-person Git/native-provider
+workflow and larger/interrupted deployed-export acceptance remain pending. Source checks do
+not establish installed or deployed acceptance.
+
 Readiness corrections cover exact-key delivery retries near timer deadlines, visible report
 capture failures, the full accepted Claude prompt plus bounded app context, and browser
 download handoff. Follow QUARK Off now covers local-job demand, provider slots and preemption;
@@ -319,6 +335,14 @@ The encoded archive bound is 1 GiB and retained local archive aggregate is 4 GiB
 fixture verifies admission above the old aggregate bound and refusal at the new bound.
 Deployed larger/full-capacity and interrupted exports remain acceptance gates; these local
 checks do not establish Cloudflare quota sufficiency or new-person recovery acceptance.
+
+**Report sharing UI checks, 2026-10-09:** sixteen focused Chromium cases use the real scoped
+reader at desktop, 412×915, 360×800 and 915×412. Controlled replies cover charged bundle/remaining
+storage, logical/physical/pending and legacy-service refusals, Read-only mode, a capacity change
+at confirmation, and exact saved-key recovery after lost acknowledgement/reload. Saved shares
+remain retryable while the independent capacity read is stalled or currently refuses new shares.
+These are local contract fixtures and emulated layouts, not real provider artifacts,
+full-quota hosted acceptance, physical phones or a two-person installation.
 
 **Maintainer activation, 2026-10-08:** the reviewed candidate is installed and the existing
 creator Worker is updated. Baseline project/conversation/task identities, queued requests,

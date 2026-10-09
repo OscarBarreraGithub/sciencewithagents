@@ -337,8 +337,8 @@ indexed. Lifetime bounds also bound stored-row scans (including historical invit
 | Normal mutation admission                                    | Stops at 1,536 recorded operations or 500 mutations/day      |
 | Member revocation                                            | Exempt from normal admission; at most 512 successes/lifetime |
 | Normal non-delivery SQLite ceiling                           | 16,777,216 bytes (16 MiB), checked before and after writes   |
-| Additional revocation envelope (incl. delivery pointer maps) | 104,484,864 bytes (99.64453125 MiB), not eagerly allocated   |
-| Derived total membership envelope                            | 121,262,080 bytes (115.64453125 MiB), application bound      |
+| Additional revocation envelope (incl. delivery pointer maps) | 105,058,304 bytes (100.19140625 MiB), not eagerly allocated  |
+| Derived total membership envelope                            | 121,835,520 bytes (116.19140625 MiB), application bound      |
 
 Every successful member revocation still increments both counters and appends its audit
 and exact receipt atomically. Normal admission counts those operations too, so revocations
@@ -370,13 +370,13 @@ an empirical per-write allowance. Normal membership writes still stop at 16 MiB 
 guard is 2,048 (reduced from 10,000); permissions and 512 lifetime enrollments stay intact. The reserve charges replacement of the **entire maximum live
 contents** of all eleven trees touched by member revocation, including unchanged old rows.
 It is substantially larger than observed growth and is not allocated as padding by the
-service. The resulting 115.64453125 MiB total is below the **128 MiB membership design budget**, leaving
-room within the proposed **250 MB/group** envelope for the separately fenced delivery tables and indexes.
+service. The resulting 116.19140625 MiB total is below the **128 MiB membership design budget**, leaving
+room within the proposed **628.2 MiB/group** envelope for the separately fenced delivery tables and indexes.
 The guard limits retained membership history and can close normal mutations before all
 otherwise eligible joins/approvals; this is an internal bound for the isolated slice. The
 512 lifetime enrollment/revocation limit remains reachable, as the actual RPC fixture
 shows, but unlimited re-enrollment, invitation cleanup or approval history is not provided.
-Delivery allocation is now independently fenced at 64 MiB; no production quota configuration is implemented here.
+Delivery allocation is now shared by chat/actions, promotion and reports and fenced at 512 MiB; no production quota configuration is implemented here.
 
 Payload bounds use the existing 120 UTF-16-unit name contract: at most 360 UTF-8 bytes, or
 720 ASCII characters after worst-case JSON escaping (for example 120 control characters).
@@ -402,9 +402,9 @@ for all eleven trees, or **858 pages**, even though their modifications run sequ
 The allocation assumption is SQLite freelist reuse before file extension, so free pages
 from earlier operations do not accumulate beyond the initial size plus the calculated
 maximum live/transient envelope. It must be rechecked for a changed runtime/storage engine. Include
-**58 pointer-map pages** conservatively for the initial 4,096 normal pages, delivery’s
-maximum 16,384 additional pages, and the tree/balancing pages (five-byte map entries), even when auto-vacuum is disabled. Thus the
-additional reserve is `(24,593 + 858 + 58) × 4,096 = 104,484,864 bytes`. Metadata/counters,
+**198 pointer-map pages** conservatively for the initial 4,096 normal pages, delivery’s
+maximum 131,072 additional pages, and the tree/balancing pages (five-byte map entries), even when auto-vacuum is disabled. Thus the
+additional reserve is `(24,593 + 858 + 198) × 4,096 = 105,058,304 bytes`. Metadata/counters,
 audit's sequence, receipt's primary index and open-invite state/index changes are included.
 Across a closure period with no new normal writes, at most 32 open invites can change;
 this envelope nevertheless includes every historical invitation and both affected trees.
@@ -462,3 +462,15 @@ exact receipts/audit and deny revoked status/roster/pending/audit and receipt re
 ordered outcomes plus concurrent approval/revocation races assert durable final states. Test secrets are random in-memory values.
 The test harness owns and resets local runtime storage; it does not bind a public test port,
 launch providers, change Cloudflare accounts or touch the running app.
+
+### Practical shared capacity and daily costs
+
+Normal shared originals no longer stop at 2,048 operations or 4,096 source IDs. The service retains immutable IDs/chunks/receipts and admits by bytes: 128 MiB logical chat/action/promotion storage, 256 MiB logical reports, and one 512 MiB physical feature allocation. Accepted originals reserve their remaining chunks/completion before admission, including an 8 KiB staged receipt column replaced atomically by the exact committed receipt. Reports reserve their whole remaining body; action lifecycle reserves remain intact. New admission cannot spend any accepted operation's future allocation. Logical counters and feature row counts update in O(1), with additive once-only backfills; completed padding is not long-term charged. Active original stages remain bounded at 64 per installation and report stages at eight.
+
+New ordinary admission uses the 16 MiB normal membership envelope. Already accepted exact completion and authorized original/receipt reads use the protected membership/revocation envelope, so revoking another member cannot consume their feature reservation or make an unrelated active member's retained history unavailable. The 512 MiB feature ledger and exact per-operation future limits remain enforced. Revoked readers remain denied; platform write/read failure or daily quota exhaustion can still make recovery temporarily unavailable.
+
+Feature transitions do not append membership receipts/audit and no longer consume its 1,536 normal history slots. True membership history is reconciled once from retained audit; its 500/day normal guard and 512 reserved revocations stay intact. Shared feature transitions use a separate conservative 1,000/day guard; original human sends are outside it. A provider-free actual-DO measurement of 100 small originals and ten completed summaries used 5,321 written and 46,092 read rows, with 91 feature transitions including a subsequent report begin. Eight steady notified members reconcile about 13,824 service reads/day before startup/effects/files. Ten representative chat/summary journeys therefore leave headroom under the account's Free 100,000 rows-written/day; large payloads, other groups/apps and explicit chat traffic can exhaust platform quotas earlier. The guard reserves no account quota. Daily refusal/storage failure leaves original IDs and receipts for exact recovery; it cannot promise same-day platform recovery.
+
+The measured 100-original/ten-summary journey grew logical storage 549,234 bytes and physical storage 802,816 bytes (about 0.524/0.766 MiB). With that exact daily workload, the 128 MiB logical budget lasts roughly 244 days before other actions/data; this is an example, not a guarantee. One 5 MiB report added 5,337,088 physical bytes. The 256 MiB hosted report budget fits roughly fifty such reports, or about seven weeks at one daily report. Preflight explains current required/remaining capacity before a new upload. Normal project files/private Git stay separate; hosted manifest links still consume Cloudflare and are never silently redirected or deleted.
+
+The combined conservative membership/revocation plus feature envelope is approximately 628.2 MiB. Use the conservative 1 GB Free object guidance and the account's 5 GB total: roughly seven fully occupied groups would approach that account total before other storage. These are application limits, not storage or daily-quota reservations. See current [Cloudflare pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [limits](https://developers.cloudflare.com/durable-objects/platform/limits/). No paid upgrade, account operation or production deployment is implied by these local source/fixture checks.

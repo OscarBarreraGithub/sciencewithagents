@@ -64,7 +64,7 @@ async function create(displayName = 'Alice', groupName = 'Group') {
   const alice = identity(await call(groupId, credential, init, setup));
   return { groupId, credential, alice, init, stub: env.GROUPS.getByName(groupId) };
 }
-it('actions share the membership mutation budget, preserve same-ID replay and retain revocation reserve', async () => {
+it('actions use a separate daily feature budget, preserve true membership history, exact replay and revocation reserve', async () => {
   const a = await create();
   const command = {
     kind: 'instruction',
@@ -88,6 +88,19 @@ it('actions share the membership mutation budget, preserve same-ID replay and re
   await runInDurableObject(a.stub, (_instance, state) => {
     state.storage.sql
       .exec('UPDATE metadata SET operations=? WHERE singleton=1', C.normalOperations)
+      .toArray();
+  });
+  expect(
+    await a.stub.actions({ ...envelope, command: { ...command, operationId: operationId() } }),
+  ).toMatchObject({ ok: true, value: { kind: 'instruction' } });
+  expect(await operations()).toBe(C.normalOperations);
+  await runInDurableObject(a.stub, (_, state) => {
+    expect(state.storage.sql.exec('SELECT count(*) n FROM audit').one().n).toBe(1);
+    state.storage.sql
+      .exec(
+        'UPDATE delivery_feature_daily SET day=?,mutations=1000',
+        Math.floor(Date.now() / 86400000),
+      )
       .toArray();
   });
   expect(
@@ -366,78 +379,82 @@ describe('actual SQLite DO membership', () => {
     expect(counts).toBe(3);
   });
 
-  it('serializes both approval/revocation orders and races with exact final states', async () => {
-    for (const kind of ['target', 'issuer', 'invite'] as const) {
-      for (const order of ['approve-first', 'revoke-first', 'concurrent'] as const) {
-        const a = await create();
-        const admin = await legacyPending(a.groupId, a.credential);
-        await call(a.groupId, a.credential, admin.approval);
-        const b = await legacyPending(a.groupId, a.credential);
-        const revocation =
-          kind === 'invite'
-            ? { kind: 'revokeInvite', operationId: operationId(), inviteId: b.invitation.inviteId }
-            : {
-                kind: 'revoke',
-                operationId: operationId(),
-                installationId: kind === 'target' ? b.bob.installationId : a.alice.installationId,
-              };
-        let approve: MembershipResult;
-        let revoke: MembershipResult;
-        if (order === 'concurrent') {
-          [approve, revoke] = await Promise.all([
-            call(a.groupId, admin.credential, b.approval),
-            call(a.groupId, admin.credential, revocation),
-          ]);
-        } else if (order === 'approve-first') {
-          approve = await call(a.groupId, admin.credential, b.approval);
-          revoke = await call(a.groupId, admin.credential, revocation);
-          expect(approve.ok).toBe(true);
-        } else {
-          revoke = await call(a.groupId, admin.credential, revocation);
-          approve = await call(a.groupId, admin.credential, b.approval);
-          expect(approve).toEqual(deny);
-        }
-        expect(revoke.ok).toBe(true);
-        if (!approve.ok) expect(approve).toEqual(deny);
-        await evictDurableObject(a.stub);
-        const final = await call(a.groupId, b.credential, { kind: 'status' });
-        const replay = await call(a.groupId, admin.credential, b.approval);
-        const roster = await call(a.groupId, b.credential, { kind: 'roster', after: 0, limit: 50 });
-        if (kind === 'target') {
-          expect(final).toEqual(deny);
-          expect(roster).toEqual(deny);
-          expect(replay).toEqual(deny);
-        } else if (approve.ok) {
-          expect(identity(final)).toEqual({ ...b.bob, state: 'active' });
-          expect(replay).toEqual(approve);
-          if (!roster.ok || roster.value.kind !== 'members') throw new Error('roster');
-          expect(roster.value.entries.map((entry) => entry.identity.installationId)).toContain(
-            b.bob.installationId,
-          );
-        } else {
-          expect(final).toEqual(deny);
-          expect(roster).toEqual(deny);
-          expect(replay).toEqual(deny);
-        }
-        await runInDurableObject(a.stub, (_instance, state) => {
-          expect(
-            state.storage.sql
-              .exec<{
-                state: string;
-              }>('SELECT state FROM enrollments WHERE installation_id=?', b.bob.installationId)
-              .one().state,
-          ).toBe(kind === 'target' ? 'revoked' : approve.ok ? 'active' : 'pending');
-          expect(
-            state.storage.sql
-              .exec<{
-                state: string;
-              }>('SELECT state FROM invitations WHERE invite_id=?', b.invitation.inviteId)
-              .one().state,
-          ).toBe(kind === 'invite' ? 'revoked' : 'consumed');
-        });
+  it.each(
+    (['target', 'issuer', 'invite'] as const).flatMap((kind) =>
+      (['approve-first', 'revoke-first', 'concurrent'] as const).map((order) => ({ kind, order })),
+    ),
+  )(
+    'serializes $kind approval/revocation in $order order with exact final states',
+    async ({ kind, order }) => {
+      const a = await create();
+      const admin = await legacyPending(a.groupId, a.credential);
+      await call(a.groupId, a.credential, admin.approval);
+      const b = await legacyPending(a.groupId, a.credential);
+      const revocation =
+        kind === 'invite'
+          ? { kind: 'revokeInvite', operationId: operationId(), inviteId: b.invitation.inviteId }
+          : {
+              kind: 'revoke',
+              operationId: operationId(),
+              installationId: kind === 'target' ? b.bob.installationId : a.alice.installationId,
+            };
+      let approve: MembershipResult;
+      let revoke: MembershipResult;
+      if (order === 'concurrent') {
+        [approve, revoke] = await Promise.all([
+          call(a.groupId, admin.credential, b.approval),
+          call(a.groupId, admin.credential, revocation),
+        ]);
+      } else if (order === 'approve-first') {
+        approve = await call(a.groupId, admin.credential, b.approval);
+        revoke = await call(a.groupId, admin.credential, revocation);
+        expect(approve.ok).toBe(true);
+      } else {
+        revoke = await call(a.groupId, admin.credential, revocation);
+        approve = await call(a.groupId, admin.credential, b.approval);
+        expect(approve).toEqual(deny);
       }
-    }
-  });
+      expect(revoke.ok).toBe(true);
+      if (!approve.ok) expect(approve).toEqual(deny);
+      await evictDurableObject(a.stub);
+      const final = await call(a.groupId, b.credential, { kind: 'status' });
+      const replay = await call(a.groupId, admin.credential, b.approval);
+      const roster = await call(a.groupId, b.credential, { kind: 'roster', after: 0, limit: 50 });
+      if (kind === 'target') {
+        expect(final).toEqual(deny);
+        expect(roster).toEqual(deny);
+        expect(replay).toEqual(deny);
+      } else if (approve.ok) {
+        expect(identity(final)).toEqual({ ...b.bob, state: 'active' });
+        expect(replay).toEqual(approve);
+        if (!roster.ok || roster.value.kind !== 'members') throw new Error('roster');
+        expect(roster.value.entries.map((entry) => entry.identity.installationId)).toContain(
+          b.bob.installationId,
+        );
+      } else {
+        expect(final).toEqual(deny);
+        expect(roster).toEqual(deny);
+        expect(replay).toEqual(deny);
+      }
+      await runInDurableObject(a.stub, (_instance, state) => {
+        expect(
+          state.storage.sql
+            .exec<{
+              state: string;
+            }>('SELECT state FROM enrollments WHERE installation_id=?', b.bob.installationId)
+            .one().state,
+        ).toBe(kind === 'target' ? 'revoked' : approve.ok ? 'active' : 'pending');
+        expect(
+          state.storage.sql
+            .exec<{
+              state: string;
+            }>('SELECT state FROM invitations WHERE invite_id=?', b.invitation.inviteId)
+            .one().state,
+        ).toBe(kind === 'invite' ? 'revoked' : 'consumed');
+      });
+    },
+    5000,
+  );
 
   it('approves accepted pending requests after invitation expiry while preserving join and revocation checks', async () => {
     const a = await create();

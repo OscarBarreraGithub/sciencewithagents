@@ -124,3 +124,9 @@ failure flaky or repaired without evidence.
 These lessons do not authorize another computer's changes, a deployment, an account action,
 a restart during active work or messages to other people. Apply the current person's request
 and the existing native permissions.
+
+## Polling and application caps hid ordinary Groups capacity
+
+Mounted UI and background readers originally polled without a whole-group daily request/write budget. Independent application history caps also stopped small retained messages and summary inputs long before platform storage was full. These were application bounds, not evidence of Cloudflare Free capacity. A separate suspected automatic-Git receipt-growth issue was withdrawn after source inspection; idle Git synchronization did not create those receipts.
+
+Reviewed notifications/fallback work uses scoped invalidation hints, pauses hidden views and keeps periodic reconciliation; hints never authorize effects. Capacity work separates true membership history from feature transitions and reserves accepted original/report/action completion before new byte admission. Managers must measure complete ordinary journeys, account for every mounted/background reader and retained local/remote receipt, and explain finite hosted attachment capacity before upload. Preserve old identities and retry evidence; do not solve a limit by pruning history, resetting IDs, buying storage or claiming Git backs existing hosted links. Local fixture measurements and reviewed source remain separate from deployed Free-account and two-person acceptance.
