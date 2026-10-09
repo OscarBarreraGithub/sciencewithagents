@@ -13,6 +13,8 @@ export function requireQueueHold(
     );
   if (run.queueEdit?.state === 'steering' && input.text !== undefined)
     throw new Conflict('The steering outcome is uncertain. Its submitted text cannot be changed.');
+  // An unheld queued item can be removed atomically at its exact revision.
+  if (input.action === 'remove' && !run.queueEdit) return;
   if (['edit', 'takeover'].includes(input.action)) {
     if (input.action !== 'takeover' && run.queueEdit && run.queueEdit.clientId !== input.clientId)
       throw new Conflict(

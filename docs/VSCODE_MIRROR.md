@@ -95,7 +95,9 @@ shows it beside separately labelled native editor messages. Opening **Edit** ato
 that item; autosave, minimize and reload keep the hold. **Save and queue** explicitly releases
 it; discarding edits explicitly queues the earlier wording. Revisions and browser ownership
 prevent competing devices from overwriting an edit. Original submissions and saved revisions
-remain private in outbox records and action receipts.
+remain private in outbox records and action receipts. **Delete queued message** removes an
+app-owned queued or own-held follow-up before handoff, with confirmation; saved originals
+and receipts stay retained. Native editor queue entries keep their editor controls.
 
 Delivery waits for the observed turn boundary. An idle conversation receives a normal message;
 if native goal work has already started another turn, a supported native queue can accept the

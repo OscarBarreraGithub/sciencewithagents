@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pencil, Zap } from 'lucide-react';
 import { withoutChatAttachments, type QueuedMessageAction } from '@dock/shared';
 import { apiScope } from './api';
+import { Modal } from './Modal';
 import { MessageQueue } from './MessageQueue';
 import { Notepad, type DraftSelection } from './Notepad';
 import { useBrowserNotepad } from './useBrowserNotepad';
@@ -63,6 +64,7 @@ export function EditableMessageQueue({
   const workspace = useWorkspaceState();
   const scope = useRef(apiScope()).current;
   const [updates, setUpdates] = useState<Record<string, EditableQueuedMessage>>({});
+  const [deleting, setDeleting] = useState<EditableQueuedMessage | null>(null);
   const [selected, setSelected] = useState<EditableQueuedMessage | null>(null);
   const [inspection, setInspection] = useState<{
     id: string;
@@ -194,6 +196,29 @@ export function EditableMessageQueue({
       setBusy(false);
     }
   };
+  const removeQueued = async () => {
+    if (!deleting || !clientId || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      if (apiScope() !== scope)
+        throw new Error('Reopen the original computer before deleting this message.');
+      changed(
+        await operations.submit(deleting.id, {
+          key: crypto.randomUUID(),
+          clientId,
+          revision: deleting.queueRevision ?? 0,
+          action: 'remove',
+        }),
+      );
+      setDeleting(null);
+    } catch (reason) {
+      setError(errorText(reason));
+      setRecoveries(operations.recoveries());
+    } finally {
+      setBusy(false);
+    }
+  };
   const counts = { queued: 0, handedOff: 0, uncertain: 0, held: 0 };
   for (const run of shown) {
     if (run.status === 'uncertain' || run.queueEdit?.state === 'steering') counts.uncertain++;
@@ -292,6 +317,24 @@ export function EditableMessageQueue({
                   {other ? 'Take over edit' : run.queueEdit ? 'Resume edit' : 'Edit'}
                 </button>
               )}
+              {run.status === 'queued' &&
+                run.queueEditable &&
+                !other &&
+                run.queueEdit?.state !== 'steering' && (
+                  <button
+                    type="button"
+                    className="subtle"
+                    disabled={
+                      !clientId || busy || recoveries.some((saved) => saved.messageId === run.id)
+                    }
+                    onClick={() => {
+                      setError('');
+                      setDeleting(run);
+                    }}
+                  >
+                    Delete queued message
+                  </button>
+                )}
               {run.queueEditable && target.canSteer && !run.queueEdit && (
                 <button
                   type="button"
@@ -306,6 +349,17 @@ export function EditableMessageQueue({
           );
         }}
       />
+      {deleting && (
+        <QueueDeleteConfirmation
+          text={deleting.queueEdit?.text ?? deleting.text}
+          busy={busy}
+          error={error}
+          confirm={() => void removeQueued()}
+          close={() => {
+            if (!busy) setDeleting(null);
+          }}
+        />
+      )}
       {selected && clientId && (
         <QueueEditor
           key={selected.id}
@@ -325,6 +379,38 @@ export function EditableMessageQueue({
         />
       )}
     </>
+  );
+}
+
+function QueueDeleteConfirmation({
+  text,
+  busy,
+  error,
+  confirm,
+  close,
+}: {
+  text: string;
+  busy: boolean;
+  error: string;
+  confirm: () => void;
+  close: () => void;
+}) {
+  return (
+    <Modal title="Delete queued message?" close={close}>
+      <p>
+        This removes this message from the app queue. Saved history and running replies stay intact.
+      </p>
+      <pre className="draft-preview">{withoutChatAttachments(text)}</pre>
+      {error && <p role="alert">{error}</p>}
+      <div className="message-queue-actions">
+        <button type="button" className="secondary" disabled={busy} onClick={close}>
+          Close
+        </button>
+        <button type="button" className="primary" disabled={busy || !!error} onClick={confirm}>
+          {busy ? 'Deleting…' : 'Delete message'}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -445,6 +531,7 @@ function QueueEditor({
   const selection = useRef<DraftSelection>({ start: 0, end: 0 });
   const [busy, setBusy] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState(
     pending.current ? 'An earlier queued action needs inspection. It has not been repeated.' : '',
   );
@@ -505,6 +592,15 @@ function QueueEditor({
         if (['queue', 'discard', 'steer', 'remove'].includes(input.action)) close();
         return true;
       } catch (reason) {
+        if (
+          pending.current &&
+          !operations
+            .recoveries()
+            .some(
+              (record) => record.messageId === run.id && record.input.key === pending.current!.key,
+            )
+        )
+          pending.current = null;
         setError(errorText(reason));
         // Minimize can unmount the editor while its final save finishes. Keep the
         // receipt recovery visible in the queue even when that save loses its acknowledgement.
@@ -587,6 +683,13 @@ function QueueEditor({
     setFinishing(true);
     try {
       if (working.current && !(await working.current)) return;
+      if (
+        action === 'remove' &&
+        !uncertain &&
+        currentText.current !== saved.current.queueEdit?.text &&
+        !(await send('save'))
+      )
+        return;
       local.checkpoint();
       await send(action);
     } finally {
@@ -595,128 +698,158 @@ function QueueEditor({
     }
   };
   return (
-    <Notepad
-      draft={{
-        ...local.draft,
-        saving: busy,
-        unsaved: text !== saved.current.queueEdit?.text,
-        error: error || local.draft.error,
-      }}
-      agentId={target.id}
-      clientId={clientId}
-      agentName={target.name}
-      maxLength={target.maxLength}
-      mode="message"
-      selection={selection}
-      title="Edit queued message"
-      sendLabel={blocked ? 'Editing closed' : 'Save and queue'}
-      initialOptionsOpen={steerOptions}
-      statusLabel={
-        blocked
-          ? 'Editing closed · local copy'
-          : uncertain
-            ? 'Held · inspect steering outcome'
-            : busy
-              ? 'Held · saving…'
-              : 'Held for editing'
-      }
-      canSend={
-        !blocked &&
-        !uncertain &&
-        !error &&
-        !!text.trim() &&
-        !promptLengthError(text, target.maxLength)
-      }
-      sending={finishing || (busy && pending.current?.action !== 'save')}
-      readOnly={!!blocked || finishing || uncertain || (busy && pending.current?.action !== 'save')}
-      notice={
-        blocked ||
-        error ||
-        (uncertain
-          ? 'Steering was not acknowledged. Inspect the reply before removing this held item. It will not be resent.'
-          : '')
-      }
-      onSend={() => void finish('queue')}
-      onMinimize={() => {
-        local.checkpoint();
-        if (
-          !blockedRef.current &&
-          !busy &&
-          !error &&
+    <>
+      <Notepad
+        draft={{
+          ...local.draft,
+          saving: busy,
+          unsaved: text !== saved.current.queueEdit?.text,
+          error: error || local.draft.error,
+        }}
+        agentId={target.id}
+        clientId={clientId}
+        agentName={target.name}
+        maxLength={target.maxLength}
+        mode="message"
+        selection={selection}
+        title="Edit queued message"
+        sendLabel={blocked ? 'Editing closed' : 'Save and queue'}
+        initialOptionsOpen={steerOptions}
+        statusLabel={
+          blocked
+            ? 'Editing closed · local copy'
+            : uncertain
+              ? 'Held · inspect steering outcome'
+              : busy
+                ? 'Held · saving…'
+                : 'Held for editing'
+        }
+        canSend={
+          !blocked &&
           !uncertain &&
-          text !== saved.current.queueEdit?.text
-        )
-          void send('save');
-        close();
-      }}
-      localOnly
-      localHistory={local.history}
-      recoveryDescription={
-        blocked
-          ? 'Your local text and Versions are retained. Copy or download this local version before closing if needed.'
-          : 'Minimize keeps this message held. Save and queue returns it to the queue. Edits save to this computer; Versions keeps browser recovery copies.'
-      }
-      controls={
-        <div className="message-queue-actions">
-          {blocked && (
-            <button
-              type="button"
-              className="subtle"
-              onClick={() => {
-                local.checkpoint();
-                close();
-              }}
-            >
-              Close edit
-            </button>
-          )}
-          {!blocked && error && pending.current && (
-            <button
-              type="button"
-              className="subtle"
-              disabled={busy}
-              onClick={() => void send(pending.current!.action, true)}
-            >
-              Retry saved action
-            </button>
-          )}
-          {(error || blocked) && (
-            <button type="button" className="subtle" disabled={busy} onClick={() => void reopen()}>
-              Inspect saved edit
-            </button>
-          )}
-          {!blocked && !uncertain && (
-            <button
-              type="button"
-              className="subtle"
-              disabled={busy || !!error}
-              onClick={() => void finish('discard')}
-            >
-              Discard edits and queue original
-            </button>
-          )}
-          {!blocked && !uncertain && target.canSteer && (
-            <button
-              type="button"
-              className="subtle"
-              disabled={busy || !!error || !text.trim()}
-              onClick={() => void finish('steer')}
-            >
-              <Zap size={14} /> Steer now
-            </button>
-          )}
-          {!blocked && uncertain && (
-            <button
-              type="button"
-              className="subtle"
-              disabled={busy}
-              onClick={() => void finish('remove')}
-            >
-              Remove held item after inspection
-            </button>
-          )}
-        </div>
-      }
-    />
+          !error &&
+          !!text.trim() &&
+          !promptLengthError(text, target.maxLength)
+        }
+        sending={finishing || (busy && pending.current?.action !== 'save')}
+        readOnly={
+          !!blocked || finishing || uncertain || (busy && pending.current?.action !== 'save')
+        }
+        notice={
+          blocked ||
+          error ||
+          (uncertain
+            ? 'Steering was not acknowledged. Inspect the reply before removing this held item. It will not be resent.'
+            : '')
+        }
+        onSend={() => void finish('queue')}
+        onMinimize={() => {
+          local.checkpoint();
+          if (
+            !blockedRef.current &&
+            !busy &&
+            !error &&
+            !uncertain &&
+            text !== saved.current.queueEdit?.text
+          )
+            void send('save');
+          close();
+        }}
+        localOnly
+        localHistory={local.history}
+        recoveryDescription={
+          blocked
+            ? 'Your local text and Versions are retained. Copy or download this local version before closing if needed.'
+            : 'Minimize keeps this message held. Save and queue returns it to the queue. Edits save to this computer; Versions keeps browser recovery copies.'
+        }
+        controls={
+          <div className="message-queue-actions">
+            {blocked && (
+              <button
+                type="button"
+                className="subtle"
+                onClick={() => {
+                  local.checkpoint();
+                  close();
+                }}
+              >
+                Close edit
+              </button>
+            )}
+            {!blocked && error && pending.current && (
+              <button
+                type="button"
+                className="subtle"
+                disabled={busy}
+                onClick={() => void send(pending.current!.action, true)}
+              >
+                Retry saved action
+              </button>
+            )}
+            {(error || blocked) && (
+              <button
+                type="button"
+                className="subtle"
+                disabled={busy}
+                onClick={() => void reopen()}
+              >
+                Inspect saved edit
+              </button>
+            )}
+            {!blocked && !uncertain && (
+              <button
+                type="button"
+                className="subtle"
+                disabled={busy || !!error}
+                onClick={() => void finish('discard')}
+              >
+                Discard edits and queue original
+              </button>
+            )}
+            {!blocked && !uncertain && target.canSteer && (
+              <button
+                type="button"
+                className="subtle"
+                disabled={busy || !!error || !text.trim()}
+                onClick={() => void finish('steer')}
+              >
+                <Zap size={14} /> Steer now
+              </button>
+            )}
+            {!blocked && !uncertain && (
+              <button
+                type="button"
+                className="subtle"
+                disabled={finishing || !!error}
+                onClick={() => setDeleteOpen(true)}
+              >
+                Delete queued message
+              </button>
+            )}
+            {!blocked && uncertain && (
+              <button
+                type="button"
+                className="subtle"
+                disabled={busy}
+                onClick={() => void finish('remove')}
+              >
+                Remove held item after inspection
+              </button>
+            )}
+          </div>
+        }
+      />
+      {deleteOpen && (
+        <QueueDeleteConfirmation
+          text={text}
+          busy={finishing}
+          error={error || blocked}
+          confirm={() => void finish('remove')}
+          close={() => {
+            if (!finishing) setDeleteOpen(false);
+          }}
+        />
+      )}
+    </>
   );
 }

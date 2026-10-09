@@ -1,5 +1,5 @@
 import { id, queuedMessageActionSchema, runSchema, type QueuedMessageAction } from '@dock/shared';
-import { api } from './api';
+import { api, ApiError, connectionLost } from './api';
 import { workspaceStorageKey } from './useWorkspaceState';
 
 export type QueueRecovery = { messageId: string; input: QueuedMessageAction };
@@ -41,7 +41,26 @@ export function rememberQueuedAction(
   messageId: string,
   input: QueuedMessageAction,
 ) {
+  const retained = localStorage.getItem(key(target, messageId, input.key)) !== null;
   localStorage.setItem(key(target, messageId, input.key), JSON.stringify({ messageId, input }));
+  return retained;
+}
+/** A fresh, definitively refused delete needs no lost-ack recovery. Older attempts stay intact. */
+export function clearRefusedQueuedDelete(
+  target: string,
+  messageId: string,
+  input: QueuedMessageAction,
+  retained: boolean,
+  error: unknown,
+) {
+  if (
+    !retained &&
+    input.action === 'remove' &&
+    error instanceof ApiError &&
+    !connectionLost(error) &&
+    [400, 403, 404, 409, 413, 422].includes(error.status)
+  )
+    clearQueuedAction(target, { messageId, input });
 }
 export async function submitQueuedAction(
   agentId: string,
@@ -49,8 +68,14 @@ export async function submitQueuedAction(
   input: QueuedMessageAction,
 ) {
   // Persist the exact immutable attempt before the request. Reload only offers inspection/retry.
-  rememberQueuedAction(agentId, runId, input);
-  const result = runSchema.parse(await api(`/agents/${agentId}/queued/${runId}`, input));
+  const retained = rememberQueuedAction(agentId, runId, input);
+  let result;
+  try {
+    result = runSchema.parse(await api(`/agents/${agentId}/queued/${runId}`, input));
+  } catch (error) {
+    clearRefusedQueuedDelete(agentId, runId, input, retained, error);
+    throw error;
+  }
   clearQueuedAction(agentId, { messageId: runId, input });
   if (input.action === 'remove')
     for (const saved of queuedActionRecoveries(agentId)) {

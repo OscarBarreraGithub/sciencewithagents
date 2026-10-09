@@ -18,6 +18,7 @@ import {
   queuedActionRecoveries,
   clearQueuedAction,
   rememberQueuedAction,
+  clearRefusedQueuedDelete,
 } from './queued-action-recovery';
 
 /** App-owned follow-ups are separate from messages already in the native editor queue. */
@@ -53,8 +54,14 @@ export function MirrorMessageQueue({
     clear: (saved) => clearQueuedAction(recoveryKey, saved),
     submit: async (id, raw) => {
       const input = mirrorQueuedActionSchema.parse(raw);
-      rememberQueuedAction(recoveryKey, id, input);
-      const result = row(mirrorQueuedMessageSchema.parse(await api(`/vscode/queued/${id}`, input)));
+      const retained = rememberQueuedAction(recoveryKey, id, input);
+      let result;
+      try {
+        result = row(mirrorQueuedMessageSchema.parse(await api(`/vscode/queued/${id}`, input)));
+      } catch (error) {
+        clearRefusedQueuedDelete(recoveryKey, id, input, retained, error);
+        throw error;
+      }
       clearQueuedAction(recoveryKey, { messageId: id, input });
       if (input.action === 'remove')
         for (const saved of operations.recoveries())

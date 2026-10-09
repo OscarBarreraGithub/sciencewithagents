@@ -226,7 +226,10 @@ its owner message **In progress**. The row opens a full-height list of short pre
 text** expands a message. App-managed messages and
 follow-ups queued here for shared VS Code chats can be held and edited in the notepad
 before dispatch; minimizing, reloads or another message completing never
-release the edit hold. **Save and queue** waits for an in-progress autosave before releasing
+release the edit hold. **Delete queued message** removes an app-owned message before
+dispatch, including an edit held by this browser; another browser's hold must first be
+explicitly taken over. Confirmation retains saved history and does not stop a running reply.
+**Save and queue** waits for an in-progress autosave before releasing
 the hold explicitly; a failed save keeps the message held for recovery. Supported Codex sessions
 also offer an explicit **Steer now** action. Lost acknowledgements stay available for
 inspection rather than being silently resent. Messages queued directly in the native editor

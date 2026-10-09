@@ -308,3 +308,83 @@ it('does not advertise native steering for Claude or edit generated/native-owned
   expect(proxyPath('POST', `/agents/${agent}/queued/${run.id}`)).not.toBeNull();
   expect(proxyPath('POST', `/agents/${agent}/queued/arbitrary`)).toBeNull();
 });
+
+it('atomically deletes an unheld queued message, preserves history and receipts, and settles the last queue', async () => {
+  const run = queued();
+  const input = { key: randomUUID(), clientId: client, revision: 0, action: 'remove' as const };
+  const removed = await edit(run.id, 'remove', input);
+  expect(removed.statusCode).toBe(200);
+  expect(removed.json()).toMatchObject({ status: 'cancelled', queueRevision: 1, queueEdit: null });
+  expect(store.agent(agent).status).toBe('idle');
+  expect(store.entries(agent).find((entry) => entry.id === run.id)).toMatchObject({
+    text: run.text,
+    title: 'You · removed from queue',
+    status: 'complete',
+  });
+  expect(store.transaction(() => store.claimQueuedRun(run.id))).toBeNull();
+  expect((await edit(run.id, 'remove', input)).json()).toEqual(removed.json());
+  expect((await edit(run.id, 'remove', { ...input, revision: 1 })).statusCode).toBe(409);
+  const reopened = new Store(join(root, 'dock.sqlite'));
+  try {
+    expect(reopened.run(run.id).status).toBe('cancelled');
+  } finally {
+    reopened.close();
+  }
+  expect(
+    (
+      await app.inject({
+        url: `/api/agents/${agent}/queued/${run.id}/receipts/${input.key}`,
+        headers,
+      })
+    ).json().status,
+  ).toBe('applied');
+  expect(
+    (
+      await app.inject({ url: `/api/agents/${agent}/receipts/${store.run(run.id).key}`, headers })
+    ).json().submitted.text,
+  ).toBe(run.text);
+});
+
+it('deletion respects held ownership, exact revision, and already-started work', async () => {
+  const run = queued();
+  await edit(run.id, 'edit');
+  const other = new WorkspaceState(store).register({ key: randomUUID(), label: 'Other browser' })
+    .client.id;
+  expect((await edit(run.id, 'remove', { clientId: other })).statusCode).toBe(409);
+  expect((await edit(run.id, 'remove', { revision: 0 })).statusCode).toBe(409);
+  await edit(run.id, 'save', { text: 'Saved held revision' });
+  expect((await edit(run.id, 'remove')).statusCode).toBe(200);
+  expect(
+    store.entries(agent).find((entry) => entry.title === 'Original queued message')?.text,
+  ).toBe(run.text);
+  expect(store.entries(agent).find((entry) => entry.id === run.id)?.text).toBe(
+    'Saved held revision',
+  );
+  const active = queued('Already started');
+  store.transaction(() => store.claimQueuedRun(active.id));
+  expect((await edit(active.id, 'remove')).statusCode).toBe(409);
+  expect(store.run(active.id).status).not.toBe('cancelled');
+});
+
+it('keeps other queued or running work active and clears a final queued Waiting state', async () => {
+  const first = queued(),
+    second = queued();
+  await edit(first.id, 'remove');
+  expect(store.agent(agent).status).toBe('queued');
+  store.updateAgent(agent, { status: 'waiting' });
+  await edit(second.id, 'remove');
+  expect(store.agent(agent).status).toBe('idle');
+  const running = queued();
+  store.transaction(() => store.claimQueuedRun(running.id));
+  store.updateAgent(agent, { status: 'running' });
+  const pending = queued();
+  store.transaction(() =>
+    store.queuedMessage(agent, pending.id, {
+      key: randomUUID(),
+      clientId: client,
+      revision: 0,
+      action: 'remove',
+    }),
+  );
+  expect(store.agent(agent).status).toBe('running');
+});

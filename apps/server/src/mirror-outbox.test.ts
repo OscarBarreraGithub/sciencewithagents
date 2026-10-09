@@ -301,6 +301,12 @@ it('the existing mirror send route acknowledges durable app enqueue without touc
       return result;
     },
     control: async () => result,
+    goal: async () => {
+      throw new Error('Native goal is outside this queue fixture.');
+    },
+    goalAction: async () => {
+      throw new Error('Native goal is outside this queue fixture.');
+    },
     close: () => {},
   };
   state.source = 'codex-daemon';
@@ -469,6 +475,12 @@ it('public app queue availability never enables unsupported native queue dispatc
       return result;
     },
     control: async () => result,
+    goal: async () => {
+      throw new Error('Native goal is outside this queue fixture.');
+    },
+    goalAction: async () => {
+      throw new Error('Native goal is outside this queue fixture.');
+    },
     close: () => {},
   };
   const mirrors = new VscodeMirrors(store, daemon),
@@ -498,4 +510,68 @@ it('public app queue availability never enables unsupported native queue dispatc
     await app.close();
     mirrors.close();
   }
+});
+
+it('deletes an unheld app queue item at its exact revision without native dispatch, retaining restart receipts', async () => {
+  const row = enqueue();
+  const input = { key: randomUUID(), clientId: client, revision: 0, action: 'remove' as const };
+  const removed = await queue.action(row.id, input);
+  expect(removed).toMatchObject({ status: 'cancelled', queueRevision: 1, queueEdit: null });
+  expect(await queue.action(row.id, input)).toEqual(removed);
+  await expect(queue.action(row.id, { ...input, revision: 1 })).rejects.toThrow();
+  queue.close();
+  store.close();
+  store = new Store(join(root, 'dock.sqlite'));
+  queue = new MirrorOutbox(store, transport());
+  expect(queue.item(row.id)).toMatchObject({ status: 'cancelled', text: row.text });
+  expect(
+    JSON.parse(
+      String(store.db.prepare('SELECT body FROM mirror_outbox WHERE id=?').get(row.id)?.body),
+    ).acceptedText,
+  ).toBe(row.text);
+  expect(queue.receipt(row.id, input.key).status).toBe('applied');
+  await queue.pump();
+  expect(sends).toEqual([]);
+});
+
+it('a delete winning during native read prevents dispatch and cannot erase another browser hold', async () => {
+  const row = enqueue();
+  state.status = 'idle';
+  let release!: () => void,
+    started = false;
+  read = () =>
+    new Promise((resolve) => {
+      started = true;
+      release = () => resolve(state);
+    });
+  const pump = queue.pump();
+  await expect.poll(() => started).toBe(true);
+  await action(row.id, 'remove');
+  release();
+  await pump;
+  expect(sends).toEqual([]);
+  const held = enqueue();
+  await action(held.id, 'edit');
+  const other = new WorkspaceState(store).register({ key: randomUUID(), label: 'Other browser' })
+    .client.id;
+  await expect(action(held.id, 'remove', { clientId: other })).rejects.toThrow();
+  expect(queue.item(held.id).queueEdit?.clientId).toBe(client);
+  await action(held.id, 'save', { text: 'Saved held text' });
+  expect(await action(held.id, 'remove')).toMatchObject({ status: 'cancelled' });
+});
+
+it('refuses another browser deleting an uncertain held steering item and keeps native work unchanged', async () => {
+  const row = enqueue();
+  await action(row.id, 'edit');
+  result = { state: 'uncertain', message: 'No native acknowledgement' };
+  await action(row.id, 'steer');
+  const other = new WorkspaceState(store).register({ key: randomUUID(), label: 'Other browser' })
+    .client.id;
+  await expect(action(row.id, 'remove', { clientId: other })).rejects.toThrow('Hold this message');
+  expect(queue.item(row.id)).toMatchObject({
+    status: 'uncertain',
+    queueEdit: { clientId: client, state: 'steering' },
+  });
+  expect(await action(row.id, 'remove')).toMatchObject({ status: 'cancelled' });
+  expect(sends).toHaveLength(1);
 });

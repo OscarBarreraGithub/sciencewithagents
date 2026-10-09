@@ -402,3 +402,48 @@ test('individual steering binds the current turn; unknown acknowledgement stays 
   await expect(pad.getByRole('button', { name: 'Steer now', exact: true })).toHaveCount(0);
   expect(saved.commands).toHaveLength(1);
 });
+
+test('deletes only app-owned shared queued messages and reconciles a lost delete acknowledgement without replay', async ({
+  page,
+  baseURL,
+}) => {
+  const saved = await fixture(page, baseURL!);
+  await open(page, saved);
+  const item = await queue(page, saved, 'App-owned message to delete');
+  const attempts: MirrorQueuedAction[] = [];
+  await page.route(`**/api/vscode/queued/${item.id}`, async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    attempts.push(route.request().postDataJSON());
+    expect((await route.fetch()).ok()).toBe(true);
+    await route.abort('failed');
+  });
+  const expanded = await openQueue(page);
+  const native = expanded
+    .getByRole('listitem')
+    .filter({ hasText: 'Written directly in the editor' });
+  await expect(
+    native.getByRole('button', { name: 'Delete queued message', exact: true }),
+  ).toHaveCount(0);
+  await expanded.getByRole('button', { name: 'Delete queued message', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: 'Delete queued message?', exact: true });
+  await expect(
+    confirmation.getByRole('button', { name: 'Delete message', exact: true }),
+  ).toBeInViewport();
+  await confirmation.getByRole('button', { name: 'Delete message', exact: true }).click();
+  await expect(confirmation.getByRole('alert')).toBeVisible();
+  await confirmation.getByRole('button', { name: 'Close', exact: true }).click();
+  expect(attempts).toHaveLength(1);
+  expect(attempts[0]).toMatchObject({ action: 'remove', revision: 0 });
+  expect((await saved.read(item.id)).status).toBe('cancelled');
+  await page.reload();
+  await openQueue(page);
+  await page.getByRole('button', { name: 'Inspect queued action', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Inspect queued action', exact: true }),
+  ).toHaveCount(0);
+  expect(attempts).toHaveLength(1);
+  expect(saved.commands).toEqual([]);
+  await expect(page.getByRole('list', { name: 'Queued messages', exact: true })).toContainText(
+    'Written directly in the editor',
+  );
+});

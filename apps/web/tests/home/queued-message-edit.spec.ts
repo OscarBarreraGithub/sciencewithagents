@@ -589,3 +589,144 @@ test('queued Steer now holds the selected item before a separate explicit Codex 
   expect(steering).toEqual([{ text: 'Guide only this running reply', wasHeld: true }]);
   await expect(list.getByRole('listitem')).toHaveCount(1);
 });
+
+test('deletes queued messages atomically and resolves a lost delete acknowledgement after reload', async ({
+  page,
+  baseURL,
+}) => {
+  const saved = await fixture(page, baseURL!);
+  await page.goto(`/#/chat/${saved.agentId}`);
+  const path = `/api/agents/${saved.agentId}/queued/${saved.runId}`;
+  const attempts: { key: string; action: string; revision: number }[] = [];
+  await page.route(`**${path}`, async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    attempts.push(route.request().postDataJSON());
+    const reply = await route.fetch();
+    expect(reply.ok()).toBe(true);
+    await route.abort('failed');
+  });
+  await openQueue(page);
+  const row = page
+    .getByRole('dialog', { name: 'Queued messages', exact: true })
+    .getByRole('listitem')
+    .filter({ hasText: 'First queued scientific question' });
+  await row.getByRole('button', { name: 'Delete queued message', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: 'Delete queued message?', exact: true });
+  await expect(confirmation).toContainText('First queued scientific question');
+  await expect(
+    confirmation.getByRole('button', { name: 'Delete message', exact: true }),
+  ).toBeInViewport();
+  await page.screenshot({ path: test.info().outputPath('delete-confirmation.png') });
+  await confirmation.getByRole('button', { name: 'Close', exact: true }).click();
+  expect(attempts).toEqual([]);
+  await row.getByRole('button', { name: 'Delete queued message', exact: true }).click();
+  await confirmation.getByRole('button', { name: 'Delete message', exact: true }).click();
+  await expect(confirmation.getByRole('alert')).toBeVisible();
+  await confirmation.getByRole('button', { name: 'Close', exact: true }).click();
+  expect(attempts).toHaveLength(1);
+  expect(attempts[0]).toMatchObject({ action: 'remove', revision: 0 });
+  expect((await saved.read()).status).toBe('cancelled');
+  await page.reload();
+  await openQueue(page);
+  await page.getByRole('button', { name: 'Inspect queued action', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Inspect queued action', exact: true }),
+  ).toHaveCount(0);
+  expect(attempts).toHaveLength(1);
+  await expect(page.getByRole('list', { name: 'Queued messages', exact: true })).toContainText(
+    'Second queued question stays separate',
+  );
+  expect(
+    (
+      await (
+        await page.request.get(`/api/agents/${saved.agentId}/receipts/${saved.firstKey}`)
+      ).json()
+    ).submitted.text,
+  ).toBe('First queued scientific question');
+});
+
+test('owned queued editor delete waits for autosave and uses its latest revision', async ({
+  page,
+  baseURL,
+}) => {
+  const saved = await fixture(page, baseURL!);
+  await page.goto(`/#/chat/${saved.agentId}`);
+  await openQueue(page);
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: 'First queued scientific question' })
+    .getByRole('button', { name: 'Edit', exact: true })
+    .click();
+  const pad = page.getByRole('dialog', { name: 'Edit queued message', exact: true });
+  let release = () => {},
+    saving = false,
+    holding = true;
+  const attempts: { action: string; revision: number }[] = [];
+  await page.route(`**/api/agents/${saved.agentId}/queued/${saved.runId}`, async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    const input = route.request().postDataJSON();
+    attempts.push(input);
+    if (input.action === 'save' && holding) {
+      saving = true;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    }
+    await route.fulfill({ response: await route.fetch() });
+  });
+  try {
+    const options = pad.getByRole('button', { name: 'Notepad options', exact: true });
+    await options.click();
+    await expect(options).toHaveAttribute('aria-expanded', 'true');
+    await pad.getByRole('textbox').fill('Latest held wording before deletion');
+    await expect.poll(() => saving).toBe(true);
+    await pad.getByRole('button', { name: 'Delete queued message', exact: true }).click();
+    const confirmation = page.getByRole('dialog', { name: 'Delete queued message?', exact: true });
+    await confirmation.getByRole('button', { name: 'Delete message', exact: true }).click();
+    await expect(
+      confirmation.getByRole('button', { name: 'Deleting…', exact: true }),
+    ).toBeDisabled();
+    expect(attempts.map((input) => input.action)).toEqual(['save']);
+    holding = false;
+    release();
+    await expect(pad).toHaveCount(0);
+    expect(attempts).toEqual([
+      expect.objectContaining({ action: 'save', revision: 1 }),
+      expect.objectContaining({ action: 'remove', revision: 2 }),
+    ]);
+    expect((await saved.read()).status).toBe('cancelled');
+  } finally {
+    holding = false;
+    release();
+  }
+});
+
+test('a definite queued delete refusal is readable and closable without a new recovery loop', async ({
+  page,
+  baseURL,
+}) => {
+  const saved = await fixture(page, baseURL!);
+  await page.goto(`/#/chat/${saved.agentId}`);
+  await openQueue(page);
+  await page.route(`**/api/agents/${saved.agentId}/queued/${saved.runId}`, async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    await route.fulfill({
+      status: 409,
+      json: { error: 'This message has already started or left the queue. It was not changed.' },
+    });
+  });
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: 'First queued scientific question' })
+    .getByRole('button', { name: 'Delete queued message', exact: true })
+    .click();
+  const confirmation = page.getByRole('dialog', { name: 'Delete queued message?', exact: true });
+  await confirmation.getByRole('button', { name: 'Delete message', exact: true }).click();
+  await expect(confirmation.getByRole('alert')).toContainText('already started');
+  await confirmation.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Inspect queued action', exact: true }),
+  ).toHaveCount(0);
+  expect((await saved.read()).status).toBe('queued');
+});

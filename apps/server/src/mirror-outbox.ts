@@ -233,6 +233,7 @@ export class MirrorOutbox {
               'QUEUE_CHANGED',
             );
           if (row.status === 'uncertain' && input.action === 'remove') {
+            if (row.queueEdit) requireQueueHold(row, input);
             // Explicit inspection/removal is not a resend or cancellation of native work.
             return this.put({
               ...row,

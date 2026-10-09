@@ -796,6 +796,15 @@ export class Store extends EventEmitter {
             : {}),
         });
     }
+    const agent = this.agent(agentId);
+    if (
+      input.action === 'remove' &&
+      ['queued', 'waiting'].includes(agent.status) &&
+      !this.db
+        .prepare("SELECT 1 FROM runs WHERE agent_id=? AND status IN ('queued','running') LIMIT 1")
+        .get(agentId)
+    )
+      this.updateAgent(agentId, { status: 'idle' });
     this.event(
       input.action === 'remove' ? 'queue.removed' : release ? 'queue.requeued' : 'queue.held',
       this.agent(agentId).projectId,
