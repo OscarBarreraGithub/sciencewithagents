@@ -145,7 +145,20 @@ test('fresh Groups separates creator, joining and shared-file setup with optiona
   await choices.getByRole('button', { name: 'Join a group', exact: true }).click();
   await expect(setup.getByLabel('Groups join setup prompt', { exact: true })).toBeHidden();
   await setup.getByRole('button', { name: 'Copy join setup prompt', exact: true }).click();
-  await expect.poll(copied).toContain('reuse it and only join the group');
+  await expect.poll(copied).toContain('helper reuses an exact matching route');
+  const joinPrompt = (await copied())!.replace(/\s+/g, ' ');
+  expect(joinPrompt).toContain(
+    'helper reuses an exact matching route or imports a separate protected member route.',
+  );
+  expect(joinPrompt).toContain(
+    'Preserve existing services, creator authority and pending bundles; a different creator does not require replacing the current mapping.',
+  );
+  expect(joinPrompt).toContain(
+    'A changed approval for an existing service identity needs reconciliation; never overwrite it.',
+  );
+  expect(joinPrompt).toContain(
+    'Never fetch a URL merely because it appears in an invitation or copy creator setup credentials.',
+  );
   await choices.getByRole('button', { name: 'Shared files', exact: true }).click();
   await expect(choices.getByRole('button', { name: 'Shared files', exact: true })).toHaveAttribute(
     'aria-pressed',
