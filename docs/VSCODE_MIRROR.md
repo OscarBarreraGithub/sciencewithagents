@@ -75,6 +75,8 @@ Codex builds with native turn paging load complete turns once per share and then
 only the newest turns as the conversation changes; builds without it keep the full-history
 read. Summary or unloaded turns are never shown as a complete transcript.
 Short, wide screens keep send timing beside the composer tools so history remains readable.
+On touch screens, the draft height follows the visible keyboard viewport, including when
+Safari keeps a taller page layout. Longer drafts scroll within the input without losing text.
 
 A slow transcript read keeps the last reading while the editor still answers the bridge's
 ping. An editor that stops answering, or whose latest read fails, is shown offline and loses

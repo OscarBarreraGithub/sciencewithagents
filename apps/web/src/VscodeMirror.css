@@ -585,6 +585,10 @@
   .mirror-input-row textarea {
     font-size: var(--text-reading);
   }
+}
+/* Safari's portrait layout viewport stays tall while the keyboard reduces the
+   visible chat. Use its observed keyboard state and height for the draft cap. */
+@media (pointer: coarse) {
   .mirror-composer[data-keyboard] .mirror-input-row textarea {
     max-height: max(44px, min(calc(var(--home-visible-height, 100dvh) * 0.15), 88px));
   }

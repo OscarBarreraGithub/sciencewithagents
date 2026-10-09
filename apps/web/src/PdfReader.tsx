@@ -245,8 +245,15 @@ function PdfPages({
       destroy?.();
     };
   }, [doc.id, doc.builtAt, endpoint, onReady, onFailure, controller]);
+  // pdf.js checks this position before a reloaded stylesheet may have arrived.
   return (
-    <div ref={container} className="pdf-scroll" tabIndex={0} aria-label="PDF pages">
+    <div
+      ref={container}
+      className="pdf-scroll"
+      style={{ position: 'absolute' }}
+      tabIndex={0}
+      aria-label="PDF pages"
+    >
       <div className="pdfViewer" ref={pages} />
     </div>
   );

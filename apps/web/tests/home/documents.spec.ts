@@ -484,8 +484,16 @@ test('a direct document link opens on first load and one Back closes it', async 
   const data = await fixture(page);
   await page.goto(`/${data.doc.href}`);
   const reader = await rendered(page);
+  // WebKit may initialize cached viewer modules before the reloaded stylesheet arrives.
+  let delayedStylesheets = 0;
+  await page.route(/\/assets\/index-[^/]+\.css$/, async (route) => {
+    delayedStylesheets++;
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    await route.continue();
+  });
   await page.reload();
   await rendered(page);
+  expect(delayedStylesheets).toBe(1);
   await reader.getByRole('button', { name: 'Back to where I was' }).click();
   await expect(reader).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'LaTeX', exact: true })).toBeVisible();

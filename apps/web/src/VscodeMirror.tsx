@@ -449,7 +449,7 @@ export function VscodeMirror({
     element.style.overflowY = wanted > maximum ? 'auto' : 'hidden';
     element.scrollTop = scrollTop;
   };
-  useLayoutEffect(resizeInput, [text]);
+  useLayoutEffect(resizeInput, [text, visible?.height, visible?.keyboard]);
   useEffect(() => {
     // Resize saved drafts too: zoom, rotation and side panels change line wrapping
     // without changing the text. Ignore our own height changes to avoid a resize loop.

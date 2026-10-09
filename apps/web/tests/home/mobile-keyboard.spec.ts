@@ -348,6 +348,21 @@ async function checkKeyboard(page: Page, elements: ChatElements, screenshot: str
   // Dismissing the keyboard must preserve the older reading position and the draft.
   await expect(input).toHaveValue(draft);
   if (elements.latest) {
+    // Recalculate the expanded draft after the visible viewport commits. A resize
+    // callback that reads the previous keyboard cap leaves the input too short.
+    const expansion = await input.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return {
+        height: node.getBoundingClientRect().height,
+        expected: Math.min(
+          node.scrollHeight +
+            Number.parseFloat(style.borderTopWidth) +
+            Number.parseFloat(style.borderBottomWidth),
+          Number.parseFloat(style.maxHeight),
+        ),
+      };
+    });
+    expect(Math.abs(expansion.height - expansion.expected)).toBeLessThanOrEqual(1);
     await page.locator(elements.latest).click();
     await expect
       .poll(async () =>

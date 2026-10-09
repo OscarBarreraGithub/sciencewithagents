@@ -362,7 +362,13 @@ test('local removal and restore keep original history and draft with lost-ack re
   await expect(dialog).toHaveCount(0);
   expect(requests).toHaveLength(2);
   expect(requests[1]).toEqual(requests[0]);
-  await page.getByRole('button', { name: 'Restore group', exact: true }).click();
+  const restoreTrigger = page
+    .locator('.groups-removed-row')
+    .filter({ has: page.getByText('Retained Creek', { exact: true }) })
+    .locator(':scope > button')
+    .and(page.getByRole('button', { name: 'Restore group', exact: true }));
+  await expect(restoreTrigger).toHaveCount(1);
+  await restoreTrigger.click();
   dialog = page.getByRole('dialog', { name: 'Restore group to this app', exact: true });
   await dialog.getByRole('button', { name: 'Restore group', exact: true }).click();
   await expect(dialog).toHaveCount(0);

@@ -40,6 +40,8 @@ view, zoom buttons, pinch zoom, page navigation, selectable text and download. A
 conversation. Back, browser Back, or a right swipe at fitted width returns to the same
 chat position and keeps the draft. When zoomed in, horizontal gestures pan the page.
 Reading position is also remembered locally for recent documents.
+A saved document link can open directly and survive a reload. Without an underlying chat,
+Back returns to the LaTeX page.
 When a simple table with one complete header row overflows a narrow Reading column,
 it uses labeled card rows,
 retaining full header labels, units and original cell order. Merged or ambiguous tables

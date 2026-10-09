@@ -73,6 +73,11 @@ toolbar resolved the original assertions. Eighteen focused cases covered both pr
 fresh native questions, older/native-only requests and keyboard reading anchors at desktop
 and emulated phone sizes. This is local source verification; public CI and actual devices
 remain separate acceptance.
+A separate iPhone WebKit regression reproduced a long shared-chat draft extending below
+the keyboard viewport. The existing draft cap now follows the observed visible height,
+and dismissal recalculates its expanded height. Focused synthetic keyboard checks retain
+drafts and older reading anchors at 412×915, 360×800, 915×412 and iPhone WebKit sizes;
+physical keyboard behavior and installed-app acceptance remain separate.
 Compatible shared Codex connections also expose native goal creation, status, accounting,
 pause, resume and clearing in the app. Existing budgets and native conversation identities
 are preserved. An older companion needs a safe update/reload; the app does not interrupt
