@@ -436,6 +436,8 @@ export function VscodeMirror({
     const element = input.current;
     if (!element) return;
     const scrollTop = element.scrollTop;
+    const log = viewport.current;
+    const logTop = log?.scrollTop ?? 0;
     element.style.overflowY = 'hidden';
     element.style.height = 'auto';
     const style = getComputedStyle(element);
@@ -448,6 +450,9 @@ export function VscodeMirror({
     element.style.height = `${Math.min(wanted, maximum)}px`;
     element.style.overflowY = wanted > maximum ? 'auto' : 'hidden';
     element.scrollTop = scrollTop;
+    // Measuring at height:auto briefly enlarges the log and WebKit clamps its top.
+    // Restore the reader's position before queued scroll events classify that clamp.
+    if (log && !document.documentElement.dataset.pdfOpen) log.scrollTop = logTop;
   };
   useLayoutEffect(resizeInput, [text, visible?.height, visible?.keyboard]);
   useEffect(() => {

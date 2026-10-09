@@ -1219,6 +1219,8 @@ export function Composer({
   const resize = () => {
     const area = textarea.current;
     if (!area) return;
+    const log = area.parentElement?.parentElement?.querySelector<HTMLElement>('.conversation');
+    const logTop = log?.scrollTop ?? 0;
     area.style.height = 'auto';
     const style = getComputedStyle(area);
     let limit = Number.parseFloat(style.maxHeight);
@@ -1252,6 +1254,14 @@ export function Composer({
     const capped = Number.isFinite(limit) && wanted > limit;
     area.style.height = `${capped ? limit : wanted}px`;
     area.style.overflowY = capped ? 'auto' : 'hidden';
+    // The temporary measurement height can clamp WebKit's chat scroll position.
+    // Preserve it while the existing timeline observer handles the final geometry.
+    if (
+      log &&
+      !document.documentElement.dataset.pdfOpen &&
+      !document.documentElement.dataset.imageOpen
+    )
+      log.scrollTop = logTop;
   };
   useLayoutEffect(resize, [text, expanded, steer, canSteer]);
   useEffect(() => {

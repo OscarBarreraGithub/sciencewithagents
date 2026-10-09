@@ -17,7 +17,7 @@ opened with the reader below. Source messages are retained unchanged.
 
 ## Read documents
 
-Open **Apps → LaTeX** on a computer with recent documents, or **? → LaTeX / PDF reader**
+Open **Apps → LaTeX** on a computer with recent documents, or the `#/latex` reader route
 to get started. Browse the selected computer’s folders, choose a `.tex` or `.pdf`,
 or reopen a recent document. PDF files need no compiler. LaTeX builds on the computer;
 the phone displays the result. Both devices use the existing authenticated connection.

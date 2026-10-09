@@ -65,9 +65,9 @@ summary runs are retained without replay. One real Claude batch passed with synt
 publication receipts; real group publication and separate-computer acceptance remain open.
 See [summary limits](GROUP_PROMOTION.md#per-member-local-feed-summaries).
 
-## Report an issue
+## Report a problem on GitHub
 
-Open **? → Report an issue**, enter a summary and what happened, then **Open GitHub issue
+Open **? → Report a problem on GitHub**, enter a summary and what happened, then **Open GitHub issue
 draft**. Review and submit it on GitHub to reach the sciencewithagents maintainers. Issues
 are public and require GitHub sign-in. The draft includes only your entered text and the
 app screen name; it does not attach logs, conversations or account details. Closing the
@@ -77,10 +77,11 @@ on GitHub. If clipboard access is blocked, the original fields remain selectable
 
 ### Private maintenance reports
 
-Open **? → Report a bug**, describe the problem, then **Save and assign**. The selected
+Open **? → Ask an agent to fix a problem**, describe the problem, then **Save and assign**. The selected
 computer saves a private report under `data/bug-reports/<id>/report.md`, with the page and
 a bounded queue snapshot. One maintenance manager receives an internal to-do and a message;
-it delegates a bounded fix and independent review using the normal model/project policy.
+it delegates a bounded fix and independent review using the normal model/project policy
+and may use your model allowance.
 Reports never become public GitHub issues automatically. Existing running work is preserved;
 publishing, external permission grants and app restarts are not automatic.
 
@@ -322,7 +323,7 @@ See [project apps](APPS.md).
 All chat views render inline and displayed LaTeX equations automatically, including saved
 and shared VS Code messages. Wide equations scroll within their message; code remains literal.
 
-Apps retains a LaTeX tile on computers with recent documents; Help also opens the reader.
+Apps retains a LaTeX tile on computers with recent documents; document links also open the reader.
 It supports computer-side compilation, folder browsing with location shortcuts and a
 tappable folder path, recent files, selectable text, page navigation and zoom. Manager links open over chat and return
 to the same reading position and draft. Failed builds retain the previous PDF; existing

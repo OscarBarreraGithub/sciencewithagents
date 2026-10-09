@@ -95,7 +95,7 @@ test('GitHub and Cloudflare prompts are readable and copyable in Apps and Help',
   page,
 }) => {
   await page.addInitScript(() => {
-    const state = window as Window & { setupCopies: string[]; setupCopyFails: boolean };
+    const state = window as unknown as Window & { setupCopies: string[]; setupCopyFails: boolean };
     state.setupCopies = [];
     state.setupCopyFails = false;
     Object.defineProperty(navigator, 'clipboard', {
@@ -156,7 +156,7 @@ test('GitHub and Cloudflare prompts are readable and copyable in Apps and Help',
       await expect(card.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
       expect(
         await page.evaluate(() =>
-          (window as Window & { setupCopies: string[] }).setupCopies.at(-1),
+          (window as unknown as Window & { setupCopies: string[] }).setupCopies.at(-1),
         ),
       ).toBe(await prompt.textContent());
       expect((await prompt.boundingBox())!.height).toBeGreaterThan(50);
@@ -167,7 +167,7 @@ test('GitHub and Cloudflare prompts are readable and copyable in Apps and Help',
     await noHorizontalOverflow(page);
   }
   await page.evaluate(() => {
-    (window as Window & { setupCopyFails: boolean }).setupCopyFails = true;
+    (window as unknown as Window & { setupCopyFails: boolean }).setupCopyFails = true;
   });
   const lastCard = page
     .getByRole('dialog', { name: 'Help and setup', exact: true })
@@ -248,11 +248,11 @@ test('unknown and stale allowances remain honest and destinations survive reload
   await expect(page.getByText('No apps added yet.', { exact: false })).toBeVisible();
   await expect(page.locator('.apps-grid .apps-tile[href="#/latex"]')).toHaveCount(0);
   await page.getByRole('button', { name: 'Help and setup', exact: true }).click();
-  await expect(page.getByRole('link', { name: 'LaTeX / PDF reader', exact: true })).toHaveAttribute(
-    'href',
-    '#/latex',
-  );
-  await page.getByRole('link', { name: 'LaTeX / PDF reader', exact: true }).click();
+  const help = page.getByRole('dialog', { name: 'Help and setup', exact: true });
+  await expect(help.getByRole('link', { name: 'LaTeX / PDF reader', exact: true })).toHaveCount(0);
+  await help.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page.goto('/#/latex');
+  await expect(page.getByRole('heading', { name: 'LaTeX', exact: true, level: 1 })).toBeVisible();
   await page.goto('/#/home');
   await page.unroute('**/api/capacity');
   await readings(page, { stale: true });

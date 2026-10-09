@@ -131,7 +131,7 @@ Physical iPhone acceptance, Claude authentication through a full renewal cycle a
 completed real-account five-hour utilization/precision remain open checks.
 
 Routine work is not stopped by raw-token estimates. Actual provider allowance caps,
-reserves, resource checks and saved pauses remain enforced. **Help → Report a bug** saves a
+reserves, resource checks and saved pauses remain enforced. **Help → Ask an agent to fix a problem** saves a
 private report and dispatches it to one maintenance manager through normal delegation/review.
 A real disposable bug-report journey completed independent review, exact-preview application,
 passing fix tests and closure of the original report, including an authorized continuation
@@ -223,7 +223,7 @@ and model choices remain. Active work is never discarded by an inactivity timer.
   Optional provider plugins, integrations and the standalone Codex allowance reader require
   an explicit choice to install or connect. Existing native configuration stays intact.
 - **Apps:** new galleries start empty. Registered project apps and the LaTeX tile on
-  computers with recent documents are retained. Help and document links also open the reader.
+  computers with recent documents are retained. Its normal route and saved document links also open the reader.
   Local app ports and optional published HTTPS links are recorded; registration does not
   publish or tunnel a project site. Remote devices need a reachable published address.
 - **Setup progress:** GitHub/Cloudflare status checks detect native sign-in and collapse
@@ -381,9 +381,9 @@ phone follow-up is deferred by the owner. No automatic paid hosting fallback or 
 credential copying is used. See [Groups workflow](GROUP_WORKFLOW.md),
 [native setup](GROUP_NATIVE_OWNER_SETUP.md) and [delivery limits](GROUP_DELIVERY.md).
 
-**Help → Report an issue** opens a public GitHub issue draft for user review and submission.
+**Help → Report a problem on GitHub** opens a public GitHub issue draft for user review and submission.
 It sends only the entered report and the screen name; private chats/logs are not attached.
-The separate **Report a bug** flow remains a private local report.
+The separate **Ask an agent to fix a problem** flow remains a private local report.
 
 ## Local Groups folder preparation evidence
 

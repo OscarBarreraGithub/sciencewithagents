@@ -359,7 +359,7 @@ reset before one automatic continuation ([details](QUARK_ACCOUNTING.md)).
 Lowering below recent spending can wait for older usage to leave the hour; in-flight work can
 overshoot while stopping. **Total allowance caps** remain secondary cumulative controls.
 Task caps can also use a rolling hour. See [accounting](QUARK_ACCOUNTING.md).
-If ordinary work waits unexpectedly, **Help → Report a bug** preserves its queue reason and
+If ordinary work waits unexpectedly, **Help → Ask an agent to fix a problem** preserves its queue reason and
 assigns a bounded investigation without raising the owner’s allowance limits.
 
 ## Shared reserve controls

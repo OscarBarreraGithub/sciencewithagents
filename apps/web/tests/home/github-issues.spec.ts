@@ -18,11 +18,24 @@ test('Help opens a reviewable GitHub issue draft and retains typed text across c
   const open = async () => {
     await page.getByRole('button', { name: 'Help and setup', exact: true }).click();
     const help = page.getByRole('dialog', { name: 'Help and setup', exact: true });
-    await expect(help.getByRole('button').filter({ hasText: 'Report an issue' })).toBeVisible();
-    await help.getByRole('button', { name: 'Report an issue', exact: true }).click();
+    await expect(
+      help.getByRole('button', { name: 'Report a problem on GitHub', exact: true }),
+    ).toBeVisible();
+    await expect(
+      help.getByRole('button', { name: 'Ask an agent to fix a problem', exact: true }),
+    ).toBeVisible();
+    await expect(help).toContainText('public GitHub draft that you review and submit');
+    await expect(help).toContainText('private repair request');
+    await expect(help).toContainText('model allowance');
+    await expect(help.getByRole('heading', { name: 'Read documents', exact: true })).toHaveCount(0);
+    await expect(help.getByRole('link', { name: 'LaTeX / PDF reader', exact: true })).toHaveCount(
+      0,
+    );
+    await help.screenshot({ path: test.info().outputPath('help-menu.png') });
+    await help.getByRole('button', { name: 'Report a problem on GitHub', exact: true }).click();
   };
   await open();
-  const dialog = page.getByRole('dialog', { name: 'Report an issue', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Report a problem on GitHub', exact: true });
   await expect(dialog).toContainText('GitHub issues are public');
   await expect(dialog).toContainText('require GitHub sign-in');
   await expect(dialog.getByRole('button', { name: 'Open GitHub issue draft' })).toBeDisabled();

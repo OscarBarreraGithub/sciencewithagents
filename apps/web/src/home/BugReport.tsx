@@ -81,7 +81,7 @@ export function BugReport({ page, close }: { page: string; close: () => void }) 
     }
   }
   return (
-    <Modal title="Report a bug" close={close} className="bug-report-dialog">
+    <Modal title="Ask an agent to fix a problem" close={close} className="bug-report-dialog">
       {saved ? (
         <div className="bug-report-result" role="status">
           <h3>Report saved</h3>
@@ -109,8 +109,8 @@ export function BugReport({ page, close }: { page: string; close: () => void }) 
           }}
         >
           <p>
-            Describe what happened and what you expected. Your report and this page’s queue status
-            stay on the selected computer.
+            Describe what happened and what you expected. Your private repair request and this
+            page’s queue status stay on the selected computer.
           </p>
           <label htmlFor="bug-description">What went wrong?</label>
           <textarea
@@ -123,8 +123,9 @@ export function BugReport({ page, close }: { page: string; close: () => void }) 
             onChange={(event) => edit(event.target.value)}
           />
           <p className="bug-report-note">
-            Sending starts the app’s maintenance manager using your model settings. It can delegate
-            and apply reviewed fixes; it won’t publish the report or restart running work.
+            Assigning starts the app’s maintenance manager using your model settings and may use
+            your model allowance. It can delegate and apply reviewed fixes; it won’t publish the
+            report or restart running work.
           </p>
           {error && (
             <p role="alert" className="form-error">

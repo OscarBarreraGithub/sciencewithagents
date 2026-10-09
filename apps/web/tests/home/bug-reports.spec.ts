@@ -35,10 +35,13 @@ test('Help saves a report, retains its receipt across a lost response and reopen
   await page.goto('/#/work');
   const open = async () => {
     await page.getByRole('button', { name: 'Help and setup', exact: true }).click();
-    await page.getByRole('button', { name: 'Report a bug', exact: true }).click();
+    await page.getByRole('button', { name: 'Ask an agent to fix a problem', exact: true }).click();
   };
   await open();
-  const dialog = page.getByRole('dialog', { name: 'Report a bug' });
+  const dialog = page.getByRole('dialog', { name: 'Ask an agent to fix a problem', exact: true });
+  await expect(dialog).toContainText('private repair request');
+  await expect(dialog).toContainText('may use your model allowance');
+  await expect(dialog).toContainText('won’t publish the report');
   await dialog
     .getByLabel('What went wrong?')
     .fill('My implementation is blocked by a raw-token cap despite spare allowance.');

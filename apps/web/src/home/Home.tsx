@@ -565,21 +565,18 @@ export function Home() {
             <div className="home-help" onClickCapture={closeOnLink}>
               <section>
                 <button type="button" className="setup-link" onClick={() => setDialog('issue')}>
-                  Report an issue
+                  Report a problem on GitHub
                 </button>
-                <p>Describe a problem and open a public GitHub issue draft for the maintainers.</p>
+                <p>Open a public GitHub draft that you review and submit to the maintainers.</p>
               </section>
               <section>
                 <button type="button" className="setup-link" onClick={() => setDialog('bug')}>
-                  Report a bug
+                  Ask an agent to fix a problem
                 </button>
-                <p>Save an issue locally and assign it to the app’s maintenance manager.</p>
-              </section>
-              <section>
-                <h3>Read documents</h3>
-                <a className="setup-link" href={href('latex')}>
-                  LaTeX / PDF reader <ArrowRight size={16} />
-                </a>
+                <p>
+                  Save a private repair request on the selected computer. The agent may use your
+                  model allowance.
+                </p>
               </section>
               <section>
                 <h3>App updates</h3>

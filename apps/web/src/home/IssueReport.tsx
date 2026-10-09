@@ -56,7 +56,7 @@ export function IssueReport({ page, close }: { page: string; close: () => void }
     }
   }
   return (
-    <Modal title="Report an issue" close={close} className="issue-report-dialog">
+    <Modal title="Report a problem on GitHub" close={close} className="issue-report-dialog">
       <div className="issue-report-form">
         <p id={noteId} className="issue-report-note">
           Tell the sciencewithagents maintainers what went wrong. GitHub issues are public and

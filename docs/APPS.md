@@ -3,7 +3,7 @@
 **Apps** starts empty on a new computer. It shows registered web apps and restores the
 **LaTeX** tile when that computer has recent documents. Updates preserve existing apps
 and document history. The [LaTeX/PDF reader](LATEX.md) is also available through
-**? → LaTeX / PDF reader** and saved document links.
+its normal `#/latex` route and saved document links.
 
 ## Project apps
 
