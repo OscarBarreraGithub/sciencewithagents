@@ -2,8 +2,12 @@ import { expect, test, type Locator, type Page, type Route } from '@playwright/t
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import {
+  chatFileIds,
+  chatFileSchema,
   managedGoalActionSchema,
   managedGoalViewSchema,
+  withoutChatAttachments,
+  workspaceDraftsSchema,
   type Agent,
   type ManagedGoalAction,
   type ManagedGoalView,
@@ -717,14 +721,33 @@ test('/goal opens only the scoped manager dialog and preserves draft, attachment
   await page.goto(`/#/chat/${id}`);
   const composer = page.locator('.composer > textarea');
   await expect(composer).toBeVisible();
+  // The hidden chooser can be set directly even while the visible picker is disabled.
+  // Establish the real picker readiness and retained typing before the goal workflow.
+  await expect(page.getByRole('button', { name: 'Attach files', exact: true })).toBeEnabled();
   await composer.fill('Unsent working notes');
+  await expect(composer).toHaveValue('Unsent working notes');
+  const upload = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/chat-files',
+  );
   // Attach through the normal picker, preserving the actual shared draft machinery.
   await page.getByLabel('Choose files').setInputFiles({
     name: 'draft.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('Draft attachment'),
   });
+  const file = chatFileSchema.parse(await (await upload).json());
+  expect(file.name).toBe('draft.txt');
   await expect(page.getByText('draft.txt', { exact: true }).first()).toBeVisible();
+  expect(
+    chatFileIds(
+      await page.evaluate(
+        (id) => JSON.parse(localStorage.getItem(`dock:local:workspace:draft:${id}`)!).text,
+        id,
+      ),
+    ),
+  ).toEqual([file.id]);
   await openGoal(page);
   const dialog = page.getByRole('dialog', { name: 'Manager goal' });
   await expect(dialog).toBeVisible();
@@ -764,6 +787,89 @@ test('/goal opens only the scoped manager dialog and preserves draft, attachment
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Send as text' })).toBeVisible();
   await expect(composer).toHaveValue('/unknown');
+  expect(modelCalls).toEqual([]);
+});
+
+test('the first draft read gates file selection and retains early typing through a real upload', async ({
+  page,
+  baseURL,
+}) => {
+  const id = await manager(page, baseURL!, 'codex');
+  await goalEndpoint(page, id);
+  const modelCalls = watchModelCalls(page, id);
+  const uploads: unknown[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/chat-files')
+      uploads.push(request.postDataJSON());
+  });
+  let release!: () => void;
+  let observed!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const started = new Promise<void>((resolve) => (observed = resolve));
+  const initialRead = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname.startsWith('/api/workspace/') &&
+      new URL(response.url()).pathname.endsWith(`/drafts/${id}`),
+  );
+  let first = true;
+  await page.route(`**/api/workspace/*/drafts/${id}`, async (route) => {
+    if (first && route.request().method() === 'GET') {
+      first = false;
+      const response = await route.fetch();
+      observed();
+      await held;
+      await route.fulfill({ response });
+    } else await route.continue();
+  });
+  const notes = 'Early attachment notes 🧪 café 漢字';
+  const composer = page.locator('.composer > textarea');
+  const picker = page.getByRole('button', { name: 'Attach files', exact: true });
+  const payload = {
+    name: 'early-draft.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Exact early attachment bytes'),
+  };
+  try {
+    await page.goto(`/#/chat/${id}`);
+    await started;
+    await expect(page.locator('.composer [data-draft]')).toHaveAttribute(
+      'data-draft',
+      'connecting',
+    );
+    await composer.fill(notes);
+    await expect(composer).toHaveValue(notes);
+    await expect(picker).toBeDisabled();
+    // Reproduce the premature fixture selection: a disabled picker admits no upload.
+    await page.getByLabel('Choose files').setInputFiles(payload);
+    expect(uploads).toEqual([]);
+  } finally {
+    release();
+  }
+  expect(workspaceDraftsSchema.parse(await (await initialRead).json()).own.text).toBe('');
+  await expect(picker).toBeEnabled();
+  await expect(composer).toHaveValue(notes);
+  expect(uploads).toEqual([]);
+  const upload = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/chat-files',
+  );
+  const chooser = page.waitForEvent('filechooser');
+  await picker.click();
+  await (await chooser).setFiles(payload);
+  const file = chatFileSchema.parse(await (await upload).json());
+  await expect(page.getByText(payload.name, { exact: true })).toBeVisible();
+  const retained = await page.evaluate(
+    (id) => JSON.parse(localStorage.getItem(`dock:local:workspace:draft:${id}`)!).text,
+    id,
+  );
+  expect(withoutChatAttachments(retained)).toBe(notes);
+  expect(chatFileIds(retained)).toEqual([file.id]);
+  expect(await (await page.request.get(`/api/chat-files/${file.id}`)).body()).toEqual(
+    payload.buffer,
+  );
+  expect(uploads).toHaveLength(1);
   expect(modelCalls).toEqual([]);
 });
 

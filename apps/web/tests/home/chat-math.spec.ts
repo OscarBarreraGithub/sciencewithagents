@@ -6,6 +6,9 @@ import { prepareChatMath } from '../../src/chatMath';
 
 const require = createRequire(new URL('../../../server/package.json', import.meta.url));
 const WebSocket = require('ws') as typeof import('ws').default;
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'wait' });
+});
 const equations =
   String.raw`The temperature is \(T = 300\,\mathrm{K}\), with $E = mc^2$.
 
