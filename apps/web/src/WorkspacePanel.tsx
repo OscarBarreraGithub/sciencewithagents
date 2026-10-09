@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Agent } from '@dock/shared';
 import { Modal } from './Modal';
 import { useWorkspaceState, type SharedDraft } from './useWorkspaceState';
+import { downloadBlob } from './downloadBlob';
 
 export function WorkspacePanel({
   workspace,
@@ -243,14 +244,10 @@ export function DraftHandoff({
             className="secondary"
             type="button"
             onClick={() => {
-              const url = URL.createObjectURL(
+              downloadBlob(
                 new Blob([draft.rejectedDraft!], { type: 'text/plain' }),
+                'retained-draft.txt',
               );
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = 'retained-draft.txt';
-              link.click();
-              URL.revokeObjectURL(url);
             }}
           >
             Download earlier draft

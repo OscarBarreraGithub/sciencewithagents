@@ -81,7 +81,7 @@ installing with `sudo`, or silently changing to API-key billing.
 
 | Computer          | Current support and setup boundary                                                                                                                                                                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Apple Silicon Mac | Verified source installation, native Mac launcher and local Codex/Claude flows. The optional usage reader can be downloaded automatically. The VS Code companion supports this platform.                                                                       |
+| Apple Silicon Mac | Verified source installation, native Mac launcher and local Codex/Claude flows. The optional usage reader is installed only when explicitly chosen. The VS Code companion supports this platform.                                                              |
 | Intel Mac         | The launcher has no architecture restriction, but a populated installation has not been certified here. Usage-reader installation is manual; the companion currently refuses this platform.                                                                    |
 | Linux             | Ubuntu CI checks the source build, backend and emulated browsers. That does not certify native provider sign-in, desktop integration or a real phone. Install the Node native-build toolchain if needed; there is no Mac launcher or supported companion here. |
 | Windows           | Native source setup is not qualified: setup uses POSIX shell/process conventions. Do not promise Windows or WSL desktop/phone/provider integration from Linux CI results.                                                                                      |
@@ -93,6 +93,11 @@ Transcription additionally needs yt-dlp, FFmpeg and whisper.cpp. Phone connectio
 private GitHub backup need their chosen native connection tool and GitHub CLI respectively.
 Install optional tools for the features the person wants; a missing optional tool must not
 be described as a failed core installation. Browser-test downloads are developer-only.
+Native Groups report capture additionally requires Python 3 on the owner computer with
+macOS/Linux descriptor-relative file reads. `setup.mjs --check` probes the current setup PATH
+without installing anything; confirm Python is also available on the actual app/launcher PATH
+if it differs. Repair a warning before report Work. Missing Python does not prevent the core app
+or existing PDF reading. See [Group reports](GROUP_DOCUMENTS.md).
 
 1. Read AGENTS.md, README.md, STATUS.md and DECISIONS.md.
    Confirm the actual directory and installed **Node 24+ and Git**, then the owner’s chosen
@@ -269,11 +274,11 @@ dependency. Report which optional step needs repair and leave the local workspac
 
 ## QUARK tools and usage
 
-The normal setup script installs a standalone usage reader when available (pinned,
-checksum-verified Apple Silicon download otherwise). Reader failures do not turn a successful
-source build into a failed app install. They leave a clear incomplete usage step: readings stay
-unknown and QUARK can hold jobs requiring them. Retry `node scripts/setup-usage-collector.mjs`
-after correcting that step; do not disable admission or invent a zero reading. Native Claude reads its existing
+Ordinary setup does not install the optional standalone usage reader. If the owner chooses
+Codex allowance monitoring, run `node scripts/setup-usage-collector.mjs`: it reuses an available
+reader or downloads the pinned, checksum-verified Apple Silicon release. Existing readers
+are preserved. Missing or failed readings stay unknown, and enabled QUARK protection can hold
+jobs requiring them; do not invent a zero reading. Native Claude reads its existing
 subscription sign-in. Follow USAGE_COLLECTOR.md; no menu-bar app or copied credentials.
 
 For local transcription, install FFmpeg and whisper.cpp as host dependencies. Keep the
@@ -289,6 +294,9 @@ ignored data/, outside the distributable repository.
 New installations leave QUARK pacing and automatic coordinator checks off, and Apps empty.
 Do not enable scheduling or seed example/personal apps during ordinary setup. The owner can
 opt in later; LaTeX/PDF reading remains under Help. Preserve existing settings and apps.
+Do not bundle, install or connect optional provider plugins, MCP integrations or third-party
+accounts during ordinary setup. Install or connect them only when the owner explicitly
+chooses them. Preserve plugins and connections already configured in the native provider.
 
 When upgrading, inspect old queued work before enabling QUARK through Work queue. Fresh
 managers inherit scheduling instructions automatically; preserve existing provider contexts

@@ -19,6 +19,7 @@ import { repoRoot } from './paths.js';
 import { GroupHost, GroupHostError } from './group-host.js';
 import { groupDocumentVersion } from './group-documents.js';
 import { GroupFeatureDocuments } from './group-feature-documents.js';
+import { GroupDocumentCaptureError } from './group-documents-native.js';
 import { GroupFeatureCoordination } from './group-feature-coordination.js';
 import { GroupHostNativeActivity, registerGroupHostActivity } from './group-native-activity.js';
 import {
@@ -49,6 +50,7 @@ import {
   type GroupHostOpen,
 } from '@dock/shared/dist/group-host.js';
 import { publicationCanonical } from './group-publication-protocol.js';
+import { GroupPublicationController, type PublicationAccess } from './group-publication.js';
 import { proxyPath } from './hosts.js';
 import { verifyHostedArchive } from './group-hosted-archive.js';
 import { groupExportArchiveSchema } from '@dock/shared/dist/group-hosted-export.js';
@@ -1353,6 +1355,232 @@ it('same durable human context publishes multiple exact originals, reconciles lo
   );
 }, 30000);
 
+function earlyPublicationClock(controller: GroupPublicationController, initial: number) {
+  const clock = { now: initial, frozen: false, waits: [] as number[] };
+  vi.spyOn(Date, 'now').mockImplementation(() => clock.now);
+  vi.spyOn(controller.scheduling, 'now').mockImplementation(() => clock.now);
+  const realSetTimeout = globalThis.setTimeout;
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+    callback: (...args: unknown[]) => void,
+    delay = 0,
+    ...args: unknown[]
+  ) => {
+    if (delay > 0 && delay <= 1000) {
+      clock.waits.push(delay);
+      if (!clock.frozen) clock.now += delay > 1 ? delay - 1 : delay;
+      return realSetTimeout(callback, 0, ...args);
+    }
+    return realSetTimeout(callback, delay, ...args);
+  }) as typeof setTimeout);
+  return clock;
+}
+
+it('explicit host delivery retry rechecks an early timer wake against the durable deadline', async () => {
+  let controller!: GroupPublicationController, access!: PublicationAccess;
+  const originalStep = GroupPublicationController.prototype.step;
+  vi.spyOn(GroupPublicationController.prototype, 'step').mockImplementation(function (
+    this: GroupPublicationController,
+    ...args
+  ) {
+    controller = this;
+    access = args[0];
+    return originalStep.apply(this, args);
+  });
+  let loseCommit = true;
+  const receiptTimes: number[] = [];
+  const a = await installation(undefined, {
+    http: async (...args) => {
+      const command = JSON.parse(String(args[1]?.body ?? '{}'));
+      if (command.kind === 'receipt') receiptTimes.push(Date.now());
+      const response = await fetch(...args);
+      if (loseCommit && command.kind === 'effect' && command.packet.kind === 'commit') {
+        loseCommit = false;
+        throw new Error('Lost successful commit acknowledgement');
+      }
+      return response;
+    },
+  });
+  try {
+    const { open } = await create(a, 'Early delivery timer');
+    const input = {
+      handle: open.shared.handle,
+      key: randomUUID(),
+      text: 'Exact retained original',
+    };
+    const sent = await a.post('send', input);
+    expect(sent.json().delivery).toBe('uncertain');
+    const body = JSON.parse(
+      String(
+        a.host.db
+          .prepare('SELECT body FROM gh_sends WHERE handle=? AND key=?')
+          .get(input.handle, input.key)!.body,
+      ),
+    );
+    const scheduled = controller.inspect(access, body.deliveryOperation);
+    const deadline = scheduled.nextAttemptAt!;
+    const clock = earlyPublicationClock(controller, deadline - 1001);
+    receiptTimes.length = 0;
+    expect(
+      (await a.post('status', { handle: input.handle, key: input.key, retry: true })).json()
+        .delivery,
+    ).toBe('uncertain');
+    expect(clock.waits).toEqual([]);
+    expect(receiptTimes).toEqual([]);
+    expect(controller.inspect(access, body.deliveryOperation)).toEqual(scheduled);
+    // A stalled/backward wall clock cannot turn this into an unbounded wait or
+    // permit an early remote request. The same receipt stays explicitly retryable.
+    clock.now = deadline - 20;
+    clock.frozen = true;
+    expect(
+      (await a.post('status', { handle: input.handle, key: input.key, retry: true })).json()
+        .delivery,
+    ).toBe('uncertain');
+    expect(clock.waits).toEqual([20, 20, 20]);
+    expect(receiptTimes).toEqual([]);
+    expect(controller.inspect(access, body.deliveryOperation)).toEqual(scheduled);
+    clock.frozen = false;
+    clock.waits.length = 0;
+    const retry = await a.post('status', { handle: input.handle, key: input.key, retry: true });
+    expect(retry.statusCode, retry.body).toBe(200);
+    expect(retry.json().delivery).toBe('complete');
+    expect(clock.waits).toEqual([20, 1]);
+    expect(receiptTimes.length).toBeGreaterThan(0);
+    expect(receiptTimes.every((time) => time >= deadline)).toBe(true);
+    expect(controller.inspect(access, body.deliveryOperation).attempts).toBe(
+      scheduled.attempts! + 1,
+    );
+    expect(
+      JSON.parse(
+        String(
+          a.host.db
+            .prepare('SELECT body FROM gh_sends WHERE handle=? AND key=?')
+            .get(input.handle, input.key)!.body,
+        ),
+      ),
+    ).toEqual(body);
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+it('host publication drive reaches each saved deadline after early wakes without an early attempt', async () => {
+  const a = await installation();
+  const { open } = await create(a, 'Early normal delivery');
+  let clock: ReturnType<typeof earlyPublicationClock> | undefined;
+  const earlyAttempts: string[] = [];
+  const originalStep = GroupPublicationController.prototype.step;
+  vi.spyOn(GroupPublicationController.prototype, 'step').mockImplementation(function (
+    this: GroupPublicationController,
+    ...args
+  ) {
+    clock ??= earlyPublicationClock(this, Date.now());
+    const scheduled = this.inspect(args[0], args[1]!);
+    if (clock.now < (scheduled.nextAttemptAt ?? 0)) earlyAttempts.push(args[1]!);
+    return originalStep.apply(this, args);
+  });
+  try {
+    const response = await a.post('send', {
+      handle: open.shared.handle,
+      key: randomUUID(),
+      text: 'One exact original despite early timers',
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().delivery).toBe('complete');
+    expect(clock!.waits.length).toBeGreaterThan(1);
+    expect(clock!.waits).toContain(1);
+    expect(earlyAttempts).toEqual([]);
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+it('native result delivery retry waits for the exact receipt deadline without resubmitting the provider', async () => {
+  let submits = 0,
+    commitEffects = 0;
+  const factory: GroupNativeConnectorFactory = ({ events }) => ({
+    availability: () => ({
+      available: true,
+      productionReady: true,
+      authState: 'ready',
+      message: 'Controlled no-model fixture',
+    }),
+    async submit(input) {
+      submits++;
+      const { sessionId: _session, ...scope } = input.context;
+      const context = events.createContext({
+        ...scope,
+        provider: 'codex',
+        nativeSessionId: randomUUID(),
+      });
+      return {
+        requestId: input.requestId,
+        state: 'completed',
+        message: 'Retained native result',
+        result: {
+          context,
+          text: 'Exact controlled native result',
+          nativeToolItems: 0,
+          source: {
+            sessionId: context.sessionId,
+            provider: context.provider,
+            nativeSessionId: context.nativeSessionId,
+            messageId: randomUUID(),
+          },
+        },
+      };
+    },
+    async inspect() {
+      throw new Error('A retained final result must not need another provider inspection');
+    },
+  });
+  let controller!: GroupPublicationController, access!: PublicationAccess;
+  const originalStep = GroupPublicationController.prototype.step;
+  vi.spyOn(GroupPublicationController.prototype, 'step').mockImplementation(function (
+    this: GroupPublicationController,
+    ...args
+  ) {
+    controller = this;
+    access = args[0];
+    return originalStep.apply(this, args);
+  });
+  const a = await installation(undefined, {
+    nativeFactory: factory,
+    http: async (...args) => {
+      const command = JSON.parse(String(args[1]?.body ?? '{}'));
+      const response = await fetch(...args);
+      if (command.kind === 'effect' && command.packet.kind === 'commit' && ++commitEffects === 2)
+        throw new Error('Lost native result commit acknowledgement');
+      return response;
+    },
+  });
+  try {
+    const { open } = await create(a, 'Early native result retry');
+    const input = { handle: open.shared.handle, key: randomUUID(), text: 'One native question' };
+    const first = await a.post('request-agent', input);
+    expect(first.statusCode, first.body).toBe(200);
+    expect(first.json().delivery).toBe('uncertain');
+    const retained = a.host.nativeJournal.get(input.handle, input.key)!;
+    const scheduled = controller.inspect(access, retained.receipt.deliveryOperation!);
+    const clock = earlyPublicationClock(controller, scheduled.nextAttemptAt! - 20);
+    const retried = await a.post('request-agent', input);
+    expect(retried.statusCode, retried.body).toBe(200);
+    expect(retried.json()).toMatchObject({
+      requestId: retained.request.requestId,
+      resultId: first.json().resultId,
+      delivery: 'complete',
+    });
+    expect(clock.waits).toEqual([20, 1]);
+    expect(submits).toBe(1);
+    expect(commitEffects).toBe(2);
+    expect(a.host.nativeJournal.get(input.handle, input.key)!.result).toEqual(retained.result);
+    expect(controller.inspect(access, retained.receipt.deliveryOperation!).attempts).toBe(
+      scheduled.attempts! + 1,
+    );
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
 // Controlled host contract fixture: no provider/native process or acceptance
 // readiness is proved here. The production factory has its own review/canaries.
 it('delivers exact human messages and native question/reply between hosts without a feed writer, preserving retries and private results', async () => {
@@ -2210,6 +2438,7 @@ it('a legacy bound cross-host summary has no trusted attribution before delivery
 it('polling historical report replies makes no document or additional membership requests until the exact saved report is opened', async () => {
   let requests = 0,
     describes = 0;
+  let capture: 'retry' | 'pending' | 'unavailable' = 'retry';
   const http: typeof fetch = async (...args) => {
     requests++;
     return fetch(...args);
@@ -2221,7 +2450,8 @@ it('polling historical report replies makes no document or additional membership
       imageSourceDigest: '0'.repeat(64),
       describe: async () => {
         describes++;
-        throw new Error('Controlled capture pending');
+        if (capture !== 'retry') throw new GroupDocumentCaptureError(capture);
+        throw new Error('Private native diagnostic /private/canary');
       },
       export: async () => {
         throw new Error('No export permitted in this request-count check');
@@ -2269,14 +2499,25 @@ it('polling historical report replies makes no document or additional membership
     expect(requests).toBe(baseline);
     expect(describes).toBe(0);
   }
-  expect((await f.post('document-offer', { handle: open.private.handle, key })).statusCode).toBe(
-    503,
-  );
+  const retry = await f.post('document-offer', { handle: open.private.handle, key });
+  expect(retry.statusCode).toBe(503);
+  expect(retry.json().code).toBe('GROUP_DOCUMENT_OFFER_RETRY');
+  expect(retry.body).not.toContain('canary');
   expect(describes).toBe(1);
+  capture = 'pending';
+  const pending = await f.post('document-offer', { handle: open.private.handle, key });
+  expect(pending.statusCode).toBe(503);
+  expect(pending.json().code).toBe('GROUP_DOCUMENT_CAPTURE_PENDING');
+  capture = 'unavailable';
+  const unavailable = await f.post('document-offer', { handle: open.private.handle, key });
+  expect(unavailable.statusCode).toBe(409);
+  expect(unavailable.json().code).toBe('GROUP_DOCUMENT_CAPTURE_UNAVAILABLE');
+  expect(unavailable.json().error).toContain('explicitly request new Work');
+  expect(unavailable.body).not.toContain('canary');
   expect((await f.post('document-offer', { handle: open.shared.handle, key })).statusCode).toBe(
     404,
   );
-  expect(describes).toBe(1);
+  expect(describes).toBe(3);
 });
 
 it.skipIf(!process.env.GROUP_DOCUMENT_COMPILER_FIXTURE)(

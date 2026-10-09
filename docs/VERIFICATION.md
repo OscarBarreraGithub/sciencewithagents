@@ -5,6 +5,27 @@ How to check this source, and what the collected evidence does and does not show
 for the source actually checked. Historical passing runs do not certify a newer revision.
 Private logs, screenshots, disposable databases and native-session receipts stay under `data/`.
 
+## Readiness corrections — 2026-10-09
+
+Focused Node 24 checks cover QUARK's unconfigured Off default and saved On/Off switches,
+native-generation guards for settings retries, local-job pause ownership and Follow QUARK
+Off consistency. They also cover the accepted Claude prompt with separate bounded app
+context, durable report-capture guidance, and exact-key group publication retry deadlines.
+Ordinary-setup fixtures verify no optional reader installation and byte-preserved existing
+readers; the read-only report prerequisite check still works without Python.
+
+The [October 8 public run](https://github.com/OscarBarreraGithub/sciencewithagents/actions/runs/37879004792)
+finished with two failures: small-phone lost-acknowledgement delivery and an iPhone WebKit
+draft download. A deterministic host/Worker fixture reproduced the delivery deadline bug.
+The WebKit journey passed locally, while a separate browser lifecycle regression proved
+immediate blob disposal and failed against the old source. The shared download helper now
+retains the blob through handoff; focused checks pass across all four layouts and iPhone
+WebKit. Attribution of that particular CI download failure remains an inference.
+
+These are source checks, with no real-provider turns for this slice. Installed activation,
+the latest published CI result, separate people's installations and physical-phone
+acceptance must be recorded separately.
+
 ## Groups listener correction — 2026-10-07
 
 A real-listener integration check covers concurrent local and paired-device entries,

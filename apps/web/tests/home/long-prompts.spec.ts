@@ -69,6 +69,55 @@ async function downloaded(page: Page, button: Locator) {
   return readFile((await (await event).path())!, 'utf8');
 }
 
+test('a draft download keeps its blob available for browser handoff, then releases it', async ({
+  page,
+}) => {
+  const agent = await manager(page);
+  await page.goto(`/#/chat/${agent.id}`);
+  await page.getByRole('button', { name: 'Open notepad', exact: true }).click();
+  const notepad = page.getByRole('dialog', { name: 'Write at length', exact: true });
+  const editor = notepad.getByRole('textbox').first();
+  await paste(page, editor, longPrompt);
+  await notepad.getByRole('button', { name: 'Notepad options', exact: true }).click();
+  await page.clock.install({ time: new Date('2030-01-01T00:00:00Z') });
+  await page.clock.pauseAt(new Date('2030-01-01T00:00:01Z'));
+  type Probe = { clicks: { url: string; attached: boolean; name: string }[]; revoked: string[] };
+  await page.evaluate(() => {
+    const probe: Probe = { clicks: [], revoked: [] };
+    Reflect.set(window, 'downloadProbe', probe);
+    const click = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      probe.clicks.push({ url: this.href, attached: this.isConnected, name: this.download });
+      return click.call(this);
+    };
+    const revoke = URL.revokeObjectURL.bind(URL);
+    URL.revokeObjectURL = (url) => {
+      probe.revoked.push(url);
+      revoke(url);
+    };
+  });
+  const event = page.waitForEvent('download');
+  // The clock is frozen for exact cleanup boundaries, including animation frames.
+  await notepad.getByRole('button', { name: 'Download', exact: true }).click({ force: true });
+  expect(await readFile((await (await event).path())!, 'utf8')).toBe(longPrompt);
+  const probe = () => page.evaluate(() => Reflect.get(window, 'downloadProbe') as Probe);
+  expect((await probe()).revoked).toEqual([]);
+  const [click] = (await probe()).clicks;
+  expect(click).toMatchObject({
+    attached: true,
+    name: `${agent.name.replace(/[^\w -]+/g, '').trim() || 'draft'} draft.txt`,
+  });
+  expect(await page.locator('a[download]').count()).toBe(0);
+  const blobText = () => page.evaluate(async (url) => (await fetch(url)).text(), click!.url);
+  expect(await blobText()).toBe(longPrompt);
+  await page.clock.runFor(29_999);
+  expect((await probe()).revoked).toEqual([]);
+  expect(await blobText()).toBe(longPrompt);
+  await page.clock.runFor(1);
+  expect((await probe()).revoked).toEqual([click!.url]);
+  await expect(editor).toHaveValue(longPrompt);
+});
+
 test('a 50k Unicode notepad prompt autosaves, reloads and delivers exactly once after a lost response', async ({
   page,
 }) => {

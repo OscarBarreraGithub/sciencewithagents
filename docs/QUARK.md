@@ -148,6 +148,10 @@ Acknowledged scheduler stops resume through the existing recovery path; an uncer
 or actual native quota rejection is not replayed. QUARK continues accounting while Off but
 cannot automatically pause or send scheduling notices to an opted-out project. Explicit
 project controls supersede legacy reply-only exceptions. Global pacing is still optional.
+This includes local transcription: opted-out jobs do not trigger automatic coordinator
+checks or background preemption. Their actual computer and account usage remains visible.
+Resuming a project releases only its own recorded local-job pause. A later job Pause wins,
+including across restart; a paused job that never started keeps its saved state.
 
 Misc manager conversations retain the separate, off-by-default **Ignore QUARK**
 preference. Its typed `GET/POST /api/agents/:id/chat-quark` contract saves an enabled value

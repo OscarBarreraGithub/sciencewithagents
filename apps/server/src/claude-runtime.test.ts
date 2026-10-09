@@ -50,7 +50,7 @@ const models: ClaudeModel[] = [
 ];
 class FixtureSession extends ClaudeSession {
   override inspectCommands = vi.fn(async () => ['compact', 'context', 'verify']);
-  override submit = vi.fn(async (input: { deliveryId: string; text: string }) => {
+  override submit = vi.fn(async (input: Parameters<ClaudeSession['submit']>[0]) => {
     if (this.submit.mock.calls.length === 1) this.options.beforeStart?.();
     this.options.beforeWrite?.(input.deliveryId);
   });
@@ -232,8 +232,8 @@ describe('Claude uses the shared runtime without Codex protocol substitution', (
         .entries(id)
         .some((entry) => entry.text === 'Distinctive prior transcript retained only in archive'),
     ).toBe(true);
-    expect(next.submit.mock.calls[0]![0].text).toContain('Keep the owner pause.');
-    expect(next.submit.mock.calls[0]![0].text).not.toContain('Distinctive prior transcript');
+    expect(next.submit.mock.calls[0]![0].appContext).toContain('Keep the owner pause.');
+    expect(next.submit.mock.calls[0]![0].appContext).not.toContain('Distinctive prior transcript');
     expect(
       store
         .events(0, 2000)

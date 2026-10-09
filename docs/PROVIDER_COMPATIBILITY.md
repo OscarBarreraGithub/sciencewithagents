@@ -7,6 +7,9 @@ models explicitly. See [model policy](MODEL_POLICY.md) and [managed Claude](MANA
 sciencewithagents does not replace provider authentication, plugin/MCP installation, skills
 or native permissions. New contexts inherit native capabilities. It adds durable agent/task
 relationships, observations, QUARK supervision, review boundaries and typed controls.
+Ordinary installation bundles no optional provider plugins or third-party integrations and
+does not connect accounts. Those require the owner's explicit choice; existing native
+plugins and connections remain available under their saved permissions.
 Saved restrictions remain optional compatibility behavior; [worker settings](WORKER_TOOLS.md)
 explains migration without losing history or pending saves. Opening archived work does not
 require a tool inventory or start a prompt.

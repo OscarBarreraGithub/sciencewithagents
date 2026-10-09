@@ -12,8 +12,10 @@ import {
   type GroupDocumentManifest,
 } from '@dock/shared/dist/group-documents.js';
 import type { GroupHost } from './group-host.js';
+import type { GroupHostNativeRecord } from './group-host-native-journal.js';
 import type { GroupHostNativeCompletion } from './group-native-host-runtime.js';
 import type { GroupDocumentsNative, GroupDocumentsAuthority } from './group-documents-native.js';
+import { GroupDocumentCaptureError } from './group-documents-native.js';
 import { groupDocumentVersion } from './group-documents.js';
 import { publicationCanonical } from './group-publication-protocol.js';
 import { privateGroupFile, protectGroupSidecars } from './group-host-storage.js';
@@ -108,7 +110,7 @@ export class GroupHostNativeDocuments implements GroupDocumentsNative {
   private readonly workspaceRoot: string;
   private authority?: GroupDocumentsAuthority;
   private closed = false;
-  private readonly captures = new Set<Promise<void>>();
+  private readonly captures = new Map<string, Promise<void>>();
   constructor(private readonly host: GroupHost) {
     this.workspaceRoot = join(realpathSync.native(host.directory), 'host-workspaces');
     mkdirSync(this.workspaceRoot, { recursive: true, mode: 0o700 });
@@ -136,6 +138,39 @@ export class GroupHostNativeDocuments implements GroupDocumentsNative {
       !this.closed &&
       Boolean(this.db.prepare('SELECT 1 FROM hnd_results WHERE result_id=?').get(resultId))
     );
+  }
+  documentCaptureState(
+    resultId: string,
+    selected?: GroupHostNativeRecord,
+  ): 'pending' | 'unavailable' | undefined {
+    if (this.closed) return 'pending';
+    if (this.documentAvailable(resultId)) return undefined;
+    // Polling already has the exact retained record; do not scan the request journal per reply.
+    let record = selected?.ids.resultId === resultId ? selected : undefined;
+    if (!record) {
+      const request = this.host.db
+        .prepare("SELECT handle,key FROM ghn_requests WHERE json_extract(ids,'$.resultId')=?")
+        .get(resultId);
+      record = request
+        ? (this.host.nativeJournal.get(String(request.handle), String(request.key)) ?? undefined)
+        : undefined;
+    }
+    if (record && this.captures.has(record.request.requestId)) return 'pending';
+    if (
+      record?.receipt.state === 'completed' &&
+      record.result &&
+      record.request.intent === 'work' &&
+      record.request.context.visibility === 'shared'
+    ) {
+      try {
+        // Link detection explains a missing immutable capture; it grants no path/file access.
+        if (hostDocumentResultNames(record.result.text, this.workspaceRoot).length)
+          return 'unavailable';
+      } catch {
+        return 'unavailable';
+      }
+    }
+    return undefined;
   }
   private transaction<T>(body: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');
@@ -174,13 +209,12 @@ export class GroupHostNativeDocuments implements GroupDocumentsNative {
       throw new Conflict('Local report storage is full. Existing reports remain available.');
   }
   private record(resultId: string, requireProjection: boolean): Capture {
-    if (this.closed) throw new Conflict('Scoped report capture is restarting.');
+    if (this.closed) throw new GroupDocumentCaptureError('pending');
     z.uuid().parse(resultId);
     const row = this.db.prepare('SELECT body FROM hnd_results WHERE result_id=?').get(resultId);
-    if (!row)
-      throw new Conflict(
-        'This completion has no captured report. Later working files cannot replace it.',
-      );
+    if (!row) {
+      throw new GroupDocumentCaptureError(this.documentCaptureState(resultId) ?? 'unavailable');
+    }
     const captured = JSON.parse(String(row.body)) as Capture;
     groupDocumentManifestSchema.parse(captured.manifest);
     const reserved = this.host.db
@@ -204,9 +238,12 @@ export class GroupHostNativeDocuments implements GroupDocumentsNative {
     return captured;
   }
   captureCompleted(completion: GroupHostNativeCompletion): Promise<void> {
+    const requestId = completion.request.requestId;
+    const active = this.captures.get(requestId);
+    if (active) return active;
     const capture = this.captureExact(completion);
-    this.captures.add(capture);
-    void capture.finally(() => this.captures.delete(capture)).catch(() => {});
+    this.captures.set(requestId, capture);
+    void capture.finally(() => this.captures.delete(requestId)).catch(() => {});
     return capture;
   }
   private async captureExact(completion: GroupHostNativeCompletion): Promise<void> {
@@ -346,7 +383,7 @@ export class GroupHostNativeDocuments implements GroupDocumentsNative {
   async close() {
     if (!this.closed) {
       this.closed = true;
-      await Promise.allSettled(this.captures);
+      await Promise.allSettled(this.captures.values());
       this.db.close();
     }
   }

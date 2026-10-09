@@ -8,6 +8,8 @@ import type { ClaudeSessionAuthDiagnostic } from './claude-auth-diagnostics.js';
 import {
   ClaudeSession,
   ClaudeSubmissionCancelled,
+  ClaudePreflightError,
+  claudeAppContextJsonByteLimit,
   assertClaudeSubscriptionEnvironment,
   claudeArguments,
   nativeFullAccessNote,
@@ -92,6 +94,45 @@ function fixture(
   return { session, events, writes, config, spawn, auth, emit, channel, submit, end };
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+it('bounds app context separately from owner text using encoded JSON bytes', async () => {
+  const beforeWrite = vi.fn();
+  const f = fixture(options({ beforeWrite }));
+  const text = 'x'.repeat(200_000);
+  const appContext = 'c'.repeat(claudeAppContextJsonByteLimit - 2);
+  await f.session.submit({ deliveryId: randomUUID(), text, appContext });
+  expect(f.writes.find((frame) => frame.type === 'user')?.message.content).toBe(text + appContext);
+  expect(beforeWrite).toHaveBeenCalledOnce();
+
+  for (const invalid of [
+    appContext + 'c',
+    '界'.repeat(Math.ceil(claudeAppContextJsonByteLimit / 3)),
+    '\0'.repeat(Math.ceil(claudeAppContextJsonByteLimit / 6)),
+  ]) {
+    const refused = fixture(options({ beforeWrite: vi.fn() }));
+    await expect(
+      refused.session.submit({ deliveryId: randomUUID(), text: 'Owner text', appContext: invalid }),
+    ).rejects.toBeInstanceOf(ClaudePreflightError);
+    expect(refused.spawn).not.toHaveBeenCalled();
+    expect(refused.config.beforeWrite).not.toHaveBeenCalled();
+    expect(refused.writes).toHaveLength(0);
+  }
+});
+it('keeps the owner limit and native command arguments independent of app context', async () => {
+  const f = fixture(options({ beforeWrite: vi.fn(), inheritNative: true }));
+  await expect(
+    f.session.submit({ deliveryId: randomUUID(), text: 'x'.repeat(200_001), appContext: '' }),
+  ).rejects.toThrow();
+  await expect(
+    f.session.submit({
+      deliveryId: randomUUID(),
+      text: '/compact exact',
+      nativeCommand: true,
+      appContext: 'extra',
+    }),
+  ).rejects.toThrow('cannot include app context');
+  expect(f.spawn).not.toHaveBeenCalled();
+  expect(f.config.beforeWrite).not.toHaveBeenCalled();
+});
 it('uses native bounded forks with an identity distinct from the source and fences startup before I/O', async () => {
   const forkFrom = { sessionId: randomUUID(), messageId: randomUUID() };
   const beforeStart = vi.fn();

@@ -22,7 +22,7 @@ const request = () => ({
   url: 'https://youtu.be/abcdefghijk',
   resources: localResourcesSchema.parse({}),
 });
-function fixture(hold = false, fail = false) {
+function fixture(hold = false, fail = false, pause?: () => Promise<void>) {
   const model = join(root, 'model.bin');
   writeFileSync(model, 'fixture');
   const calls: { binary: string; args: string[]; controls: string[] }[] = [];
@@ -56,6 +56,7 @@ function fixture(hold = false, fail = false) {
         done,
         control: async (action) => {
           call.controls.push(action);
+          if (action === 'pause') await pause?.();
           if (action === 'cancel') resolve();
         },
         close: async () => {
@@ -108,6 +109,85 @@ it('retains an idempotent local job, fixed argument stages, transcript and one m
   await expect(jobs.read({ jobId: job.id }, store.agent(other.managerId))).rejects.toThrow(
     'another project',
   );
+});
+it('does not automatically preempt an opted-out project, then restores normal local yielding', async () => {
+  const f = fixture(true);
+  const project = store.register(root, 'Opted out local work', '');
+  const job = jobs.create({
+    ...request(),
+    projectId: project.id,
+    resources: { priority: 'background' },
+  });
+  await jobs.start(job.id);
+  await vi.waitFor(() => expect(jobs.get(job.id).phase).toBe('transcribing'));
+  store.setSetting(`quark:project-scheduler:${project.id}`, {
+    projectId: project.id,
+    enabled: false,
+    revision: 1,
+  });
+  expect(jobs.hasYieldableBackground()).toBe(false);
+  await jobs.yieldBackground();
+  expect(jobs.get(job.id).status).toBe('running');
+  expect(f.calls[2]!.controls).toEqual([]);
+  store.setSetting(`quark:project-scheduler:${project.id}`, {
+    projectId: project.id,
+    enabled: true,
+    revision: 2,
+  });
+  await jobs.yieldBackground();
+  expect(jobs.get(job.id)).toMatchObject({ status: 'paused', autoPaused: true });
+  expect(f.calls[2]!.controls).toEqual(['pause']);
+  await jobs.start(job.id);
+  expect(f.calls[2]!.controls).toEqual(['pause', 'resume']);
+  f.finish();
+  await vi.waitFor(() => expect(jobs.get(job.id).status).toBe('completed'));
+});
+it('retains exact project-pause ownership and later owner Pause receipts across restart', async () => {
+  fixture();
+  const project = store.register(root, 'Project pause', '');
+  const first = jobs.create({ ...request(), projectId: project.id });
+  const second = jobs.create({ ...request(), projectId: project.id });
+  await jobs.pauseForProject(first.id);
+  await jobs.pauseForProject(second.id);
+  const pause = { key: randomUUID(), jobId: second.id, action: 'pause' };
+  expect(await jobs.control(pause)).toEqual(await jobs.control(pause));
+  const revision = store.getSetting(`localjob:control-revision:${second.id}`);
+  await jobs.close();
+  store.close();
+  store = new Store(join(root, 'dock.sqlite'));
+  jobs = new LocalJobs(store, root);
+  jobs.recover();
+  expect(jobs.get(first.id).status).toBe('paused');
+  expect(jobs.resumeProjectPause(first.id)).toBe(true);
+  expect(jobs.resumeProjectPause(first.id)).toBe(false);
+  expect(jobs.get(first.id).status).toBe('queued');
+  expect(jobs.resumeProjectPause(second.id)).toBe(false);
+  expect(jobs.get(second.id).status).toBe('paused');
+  expect(await jobs.control(pause)).toMatchObject({ status: 'paused' });
+  expect(store.getSetting(`localjob:control-revision:${second.id}`)).toBe(revision);
+  store.setSetting(`quark:local-project-pause:${second.id}`, true);
+  expect(jobs.resumeProjectPause(second.id)).toBe(false);
+  expect(jobs.get(second.id).status).toBe('paused');
+});
+it('does not claim a concurrent owner Pause while a project pause awaits the owned process', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = fixture(true, false, () => gate);
+  const job = jobs.create(request());
+  await jobs.start(job.id);
+  await vi.waitFor(() => expect(jobs.get(job.id).phase).toBe('transcribing'));
+  const projectPause = jobs.pauseForProject(job.id);
+  await vi.waitFor(() => expect(f.calls[2]!.controls).toEqual(['pause']));
+  const ownerPause = jobs.control({ key: randomUUID(), jobId: job.id, action: 'pause' });
+  release();
+  await Promise.all([projectPause, ownerPause]);
+  expect(jobs.get(job.id)).toMatchObject({ status: 'paused', autoPaused: false });
+  expect(jobs.resumeProjectPause(job.id)).toBe(false);
+  expect(jobs.get(job.id).status).toBe('paused');
+  f.finish();
+  await vi.waitFor(() => expect(jobs.get(job.id).status).toBe('completed'));
 });
 it('preempts only owned background local compute, retains memory and resumes the same process', async () => {
   const f = fixture(true);

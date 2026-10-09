@@ -9,6 +9,8 @@ import { Quark } from './quark.js';
 import { ModelPolicy } from './model-policy.js';
 import { QuarkCoordinator } from './quark-coordinator.js';
 import { parseCapacity } from './capacity.js';
+import { LocalJobs } from './local-jobs.js';
+import { defaultModelPolicy } from '@dock/shared';
 let root: string,
   store: Store,
   pulsar: Pulsar,
@@ -23,6 +25,7 @@ beforeEach(() => {
   pulsar = new Pulsar(store, () => null);
   quark = new Quark(store, pulsar);
   pulsar.allowanceDecision = (r) => quark.reason(r, r.status === 'queued');
+  store.setSetting('model-policy', structuredClone(defaultModelPolicy));
   models = new ModelPolicy(store, async (provider) => [
     {
       id: provider === 'claude' ? 'opus' : 'sol',
@@ -59,6 +62,34 @@ afterEach(() => {
   vi.useRealTimers();
   if (store.db.isOpen) store.close();
   rmSync(root, { recursive: true, force: true });
+});
+it('does not wake for opted-out local work, then considers the same saved job when restored', async () => {
+  store.setSetting('quark:coordinator:settings', { automatic: true });
+  const jobs = new LocalJobs(store, root);
+  coordinator = new QuarkCoordinator(store, root, quark, pulsar, models, Date.now, () =>
+    jobs.all(),
+  );
+  try {
+    const desk = await coordinator.start({ key: randomUUID() });
+    const project = store.register(join(root, 'local-opt-out'), 'Local work', '');
+    quark.saveProjectPolicy(project.id, { key: randomUUID(), enabled: false, expectedRevision: 0 });
+    const job = jobs.create({
+      key: randomUUID(),
+      projectId: project.id,
+      url: 'https://youtu.be/abcdefghijk',
+    });
+    coordinator.tick();
+    expect(store.runs(['queued']).filter((r) => r.agentId === desk.agentId)).toEqual([]);
+    quark.saveProjectPolicy(project.id, { key: randomUUID(), enabled: true, expectedRevision: 1 });
+    vi.advanceTimersByTime(31_000);
+    coordinator.tick();
+    expect(store.runs(['queued']).filter((r) => r.agentId === desk.agentId)).toHaveLength(1);
+    expect(jobs.get(job.id).status).toBe('queued');
+    coordinator.tick();
+    expect(store.runs(['queued']).filter((r) => r.agentId === desk.agentId)).toHaveLength(1);
+  } finally {
+    await jobs.close();
+  }
 });
 async function active(kind: 'user' | 'report' = 'user') {
   const s = await coordinator.start({ key: randomUUID() });
@@ -453,6 +484,7 @@ it('owner allocation edits retain the original accounting baseline and prevent s
   );
 });
 it('coalesces automatic wakes durably and never wakes an idle queue', async () => {
+  store.setSetting('quark:coordinator:settings', { automatic: true });
   const s = await coordinator.start({ key: randomUUID() });
   coordinator.tick();
   expect(store.runs()).toHaveLength(0);
@@ -470,6 +502,7 @@ it('coalesces automatic wakes durably and never wakes an idle queue', async () =
   expect(store.runs().filter((r) => r.agentId === s.agentId)).toHaveLength(1);
 });
 it('excludes projects with Follow QUARK off from automatic demand until restored', async () => {
+  store.setSetting('quark:coordinator:settings', { automatic: true });
   const s = await coordinator.start({ key: randomUUID() });
   const p = store.register(join(root, 'Independent'), 'Independent', '');
   const work = store.enqueue(p.managerId, randomUUID(), 'Saved project work');
@@ -522,6 +555,7 @@ it('refuses automatic pause and advice for an opted-out project while retaining 
   expect(coordinator.updateProjectPolicy(pause, true)).toMatchObject({ paused: true, revision: 1 });
 });
 it('never wakes or notifies a finished zero-limit project for its own pending notices', async () => {
+  store.setSetting('quark:coordinator:settings', { automatic: true });
   const s = await coordinator.start({ key: randomUUID() });
   const p = store.register(join(root, 'Thermal'), 'Thermal', '', 'codex');
   zeroRate(p.id, 'codex');
@@ -556,6 +590,7 @@ it('rejects a notice when the manager provider is owner-blocked even with other 
   expect(store.runs(['queued']).filter((r) => r.agentId === p.managerId)).toHaveLength(0);
 });
 it('wakes on new material work only, coalesces pending notices and keeps owner notices', async () => {
+  store.setSetting('quark:coordinator:settings', { automatic: true });
   const s = await coordinator.start({ key: randomUUID() });
   const p = store.register(join(root, 'A'), 'A', '', 'codex');
   store.enqueue(p.managerId, randomUUID(), 'Work');

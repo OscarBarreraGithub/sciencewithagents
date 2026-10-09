@@ -23,6 +23,7 @@ import { DraftHandoff } from './WorkspacePanel';
 import { fitToVisibleViewport } from './useVisibleViewport';
 import './Notepad.css';
 import { promptLengthError } from './promptLength';
+import { downloadBlob } from './downloadBlob';
 
 export type DraftSelection = { start: number; end: number };
 // Every autosave is a version, so older pages stay behind an explicit request.
@@ -139,12 +140,10 @@ export function Notepad({
     }
   };
   const download = () => {
-    const url = URL.createObjectURL(new Blob([draft.currentText()], { type: 'text/plain' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${agentName.replace(/[^\w -]+/g, '').trim() || 'draft'} draft.txt`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(
+      new Blob([draft.currentText()], { type: 'text/plain' }),
+      `${agentName.replace(/[^\w -]+/g, '').trim() || 'draft'} draft.txt`,
+    );
     setExported('Downloaded a text copy of this draft.');
   };
   // Keep the full-page editor outside the small composer's CSS ancestors.

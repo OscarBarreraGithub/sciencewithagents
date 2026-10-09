@@ -5,6 +5,8 @@ import {
   type DocumentTransportCommand,
 } from '@dock/shared/dist/group-document-transport.js';
 import { groupFeatureDocuments } from './group-feature-documents.js';
+import { GroupDocumentCaptureError } from './group-documents-native.js';
+import { groupDocumentOfferFailureMessages } from '@dock/shared/dist/group-documents.js';
 import {
   groupNativeActivitySchema,
   type GroupNativeActivity,
@@ -1878,6 +1880,24 @@ export class GroupHost {
     if (reply.kind !== 'registered') throw unavailable();
     return reply.sourceId;
   }
+  private async publicationDeadline(
+    pub: ReturnType<GroupHost['publication']>,
+    operationId: string,
+    maxWaitMs: number,
+  ) {
+    const deadline = pub.controller.inspect(pub.access, operationId).nextAttemptAt ?? 0;
+    const end = performance.now() + maxWaitMs;
+    // Node timers can wake before their requested deadline. Recheck the same
+    // durable deadline, with a finite retry count and the existing wait budget.
+    for (let i = 0; i < 3; i++) {
+      const remaining = deadline - pub.controller.scheduling.now();
+      if (remaining <= 0) return true;
+      const budget = Math.ceil(end - performance.now());
+      if (remaining > maxWaitMs || budget <= 0) return false;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(remaining, budget)));
+    }
+    return pub.controller.scheduling.now() >= deadline;
+  }
   private async drive(pub: ReturnType<GroupHost['publication']>, operationId: string) {
     for (let i = 0; i < 4; i++) {
       const prior = pub.controller.inspect(pub.access, operationId);
@@ -1895,9 +1915,7 @@ export class GroupHost {
         ].includes(prior.state)
       )
         return;
-      const delay = Math.max(0, (prior.nextAttemptAt ?? 0) - Date.now());
-      if (delay > 500) return;
-      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+      if (!(await this.publicationDeadline(pub, operationId, 500))) return;
       await pub.controller.step(pub.access, operationId);
     }
   }
@@ -2047,13 +2065,12 @@ export class GroupHost {
     }
     const pub = this.publication(value);
     if (input.retry) {
-      const scheduled = pub.controller.inspect(pub.access, send.deliveryOperation);
-      const delay = Math.max(0, (scheduled.nextAttemptAt ?? 0) - Date.now());
       // Honor durable backoff. A short remaining cooldown can be reconciled in
       // this explicit request; longer cooldowns retain their state for later retry.
-      if (delay > 0 && delay <= 1000) await new Promise((resolve) => setTimeout(resolve, delay));
-      await pub.controller.step(pub.access, send.deliveryOperation);
-      await this.drive(pub, send.deliveryOperation);
+      if (await this.publicationDeadline(pub, send.deliveryOperation, 1000)) {
+        await pub.controller.step(pub.access, send.deliveryOperation);
+        await this.drive(pub, send.deliveryOperation);
+      }
     }
     return { delivery: pub.controller.inspect(pub.access, send.deliveryOperation).state };
   }
@@ -2663,9 +2680,7 @@ export class GroupHost {
     });
     record = this.nativeJournal.mark(record, { deliveryOperation });
     if (retry) {
-      const scheduled = pub.controller.inspect(pub.access, deliveryOperation);
-      const delay = Math.max(0, (scheduled.nextAttemptAt ?? 0) - Date.now());
-      if (delay > 0 && delay <= 1000) await new Promise((resolve) => setTimeout(resolve, delay));
+      if (!(await this.publicationDeadline(pub, deliveryOperation, 1000))) return record;
       await pub.controller.step(pub.access, deliveryOperation);
     }
     await this.drive(pub, deliveryOperation);
@@ -2757,11 +2772,15 @@ export class GroupHost {
       );
     try {
       return await documents.offer(input.handle, input.key);
-    } catch {
+    } catch (error) {
       throw new GroupHostError(
-        503,
-        'GROUP_DOCUMENT_CAPTURE_PENDING',
-        'Verified report capture is pending. Retry this same saved reply after reconnecting.',
+        error instanceof GroupDocumentCaptureError && error.disposition === 'unavailable'
+          ? 409
+          : 503,
+        error instanceof GroupDocumentCaptureError ? error.code : 'GROUP_DOCUMENT_OFFER_RETRY',
+        error instanceof GroupDocumentCaptureError
+          ? groupDocumentOfferFailureMessages[error.code]
+          : groupDocumentOfferFailureMessages.GROUP_DOCUMENT_OFFER_RETRY,
       );
     }
   }

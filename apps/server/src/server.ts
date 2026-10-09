@@ -1190,12 +1190,7 @@ export async function createServer(
     runtime.withLock('quark:settings', () => runtime.coordinator.start(request.body)),
   );
   app.post('/api/quark/coordinator/settings', async (request) =>
-    runtime.withLock('quark:settings', async () => {
-      const previous = runtime.coordinator.identity()?.agentId;
-      const result = await runtime.coordinator.save(request.body);
-      if (previous) await runtime.reconnectTools(previous);
-      return result;
-    }),
+    runtime.withLock('quark:settings', () => runtime.saveCoordinatorSettings(request.body)),
   );
   app.get('/api/quark', async () => runtime.quark.status());
   app.post('/api/quark/settings', async (request) => {

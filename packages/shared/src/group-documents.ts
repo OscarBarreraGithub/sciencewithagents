@@ -78,6 +78,20 @@ export const groupDocumentGrantRequestSchema = z
     (v) =>
       !v.dependencies.includes(v.entry) && new Set(v.dependencies).size === v.dependencies.length,
   );
+/** Fixed public recovery guidance; native diagnostics and filesystem paths stay private. */
+export const groupDocumentCaptureStateSchema = z.enum(['pending', 'unavailable']);
+export const groupDocumentOfferFailureCodeSchema = z.enum([
+  'GROUP_DOCUMENT_CAPTURE_PENDING',
+  'GROUP_DOCUMENT_CAPTURE_UNAVAILABLE',
+  'GROUP_DOCUMENT_OFFER_RETRY',
+]);
+export const groupDocumentOfferFailureMessages = Object.freeze({
+  GROUP_DOCUMENT_CAPTURE_PENDING: 'Report capture is still finishing. Retry this same saved reply.',
+  GROUP_DOCUMENT_CAPTURE_UNAVAILABLE:
+    'This reply has no captured report. Ask your setup agent to check Python 3 and the linked report’s local dependencies. After repair, explicitly request new Work from Group manager, linking the matching PDF and LaTeX files. The original reply is preserved; retrying it cannot capture later files.',
+  GROUP_DOCUMENT_OFFER_RETRY:
+    'Report status could not be checked. Reconnect, confirm your group access and retry this same saved reply.',
+});
 export const groupDocumentActionSchema = z.strictObject({ key: z.uuid() });
 export const groupDocumentShareSchema = z.strictObject({ key: z.uuid(), sharedHandle: z.uuid() });
 /** Browser projection only; protected artifact proof/hash validation stays server-side. */

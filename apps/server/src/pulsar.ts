@@ -13,7 +13,6 @@ import {
   jobEstimateSchema,
   jobPrioritySchema,
   pulsarPolicySchema,
-  quarkCoordinatorSettingsSchema,
   providerReservePolicy,
   effectiveProviderReserve,
   pulsarPolicyUpdateSchema,
@@ -62,10 +61,7 @@ export function initializeScheduling(store: Store) {
     const policy = pulsarPolicySchema.parse({ enabled: false });
     store.setSetting('pulsar:policy', policy);
     if (!store.getSetting('quark:coordinator:settings'))
-      store.setSetting(
-        'quark:coordinator:settings',
-        quarkCoordinatorSettingsSchema.parse({ automatic: false }),
-      );
+      store.setSetting('quark:coordinator:settings', { automatic: false });
     store.event('pulsar.initialized', null, null, { enabled: false });
   });
 }
@@ -494,7 +490,14 @@ export class Pulsar {
         (this.store.run(l.runId).status === 'running' ||
           executing.has(this.store.run(l.runId).agentId)),
     );
-    const sameProvider = active.filter((l) => l.provider === agent.provider);
+    const sameProvider = active.filter(
+      (l) =>
+        l.provider === agent.provider &&
+        projectFollowsQuark(
+          this.store,
+          this.store.agent(this.store.run(l.runId).agentId).projectId,
+        ),
+    );
     const diagnostic = this.isUrgentDiagnostic(run);
     const diagnosticSlot =
       diagnostic && !active.some((l) => this.isUrgentDiagnostic(this.store.run(l.runId)));

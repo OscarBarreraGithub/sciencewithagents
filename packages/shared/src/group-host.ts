@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { groupDocumentCaptureStateSchema } from './group-documents.js';
 import { agentSchema, detailSchema } from './index.js';
 import {
   groupContextSchema,
@@ -96,6 +97,7 @@ export const groupHostNativeReceiptSchema = z.strictObject({
   requestId: z.uuid(),
   resultId: z.uuid().nullable(),
   documentAvailable: z.boolean().optional(),
+  documentCaptureState: groupDocumentCaptureStateSchema.optional(),
   state: z.enum(['queued', 'pending-consent', 'running', 'completed', 'unknown', 'blocked']),
   message: z.string().max(1000),
   delivery: z.string().max(100),

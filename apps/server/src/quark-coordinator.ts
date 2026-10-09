@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import {
   quarkCoordinatorSettingsSchema,
+  quarkModelChoiceSchema,
+  quarkDefaultFamilies,
   quarkCoordinatorSaveSchema,
   quarkCoordinatorStatusSchema,
   quarkCoordinatorInspectSchema,
@@ -36,6 +38,27 @@ type Material = z.infer<typeof materialSchema>;
 const identitySchema = z.object({ agentId: z.string().uuid(), projectId: z.string().uuid() });
 const settingsKey = 'quark:coordinator:settings';
 const identityKey = 'quark:coordinator:identity';
+export type QuarkCoordinatorReconnectSnapshot = {
+  agentId: string;
+  runtimeId: string;
+  clientId: string | null;
+  claudeId: string | null;
+  configuration: string;
+  lastRunId: string | null;
+};
+export interface QuarkCoordinatorReconnect {
+  capture(agentId: string): QuarkCoordinatorReconnectSnapshot;
+  apply(
+    snapshot: QuarkCoordinatorReconnectSnapshot,
+    beforeEffect: () => void,
+  ): Promise<'complete' | 'superseded'>;
+}
+type SettingsReceipt = {
+  saved: boolean;
+  reconnect?: QuarkCoordinatorReconnectSnapshot | null;
+  /** An older unproved receipt must never authorize a new native close. */
+  reconnectAgentId?: string | null;
+};
 export const quarkCoordinatorCharter = `You are QUARK, the owner's cross-project allocation desk. You live in a private runtime workspace, outside project repositories. Coordinate work; do not implement project tasks or read whole repositories. Use dock_quark_inspect for current queue, limits, saved instructions and timing evidence, and dock_quark_control to record and apply decisions. Replies should be brief, human-readable and explain what changed and what is waiting.
 The owner's direct messages may authorize project pause/resume, project priority and priority weights, project allowance caps and each provider's remaining-allowance reserve (0–100%). Specify provider codex or claude for one reserve; omitting it changes both. An owner can opt into releasing a reserve near that provider's actual reported reset. Record their intent accurately. Priority is ordering, not extra allowance. Do not invent a weekly window or a provider model. Ask only when a consequential ambiguity cannot be resolved from saved settings. An automatic wake is NOT owner authorization to raise caps, lower reserves, resume owner-paused projects or rewrite owner instructions. Automatic turns can advise managers and temporarily pause work on evidence. Never claim you made a change until the tool succeeds.
 Managers submit task estimates through the existing queue and need host-signed leases. Forecast overruns call for a judgement: warn the manager, slow/pause/replan, continue independent work. A forecast is not a spending authorization. Never automatically extend a hard cap or spend protected reserve. Host monitoring enforces those bounds regardless of your availability. Avoid repeated notifications; inspect saved decisions before acting. Automatic notices need concrete unfinished work the manager can act on: the host rejects them for finished, paused or owner-blocked projects and while an earlier notice is still pending. Report uncertainty in percentage attribution and completion forecasts.
@@ -90,7 +113,25 @@ export class QuarkCoordinator {
     return !!previous && Date.parse(run.createdAt) - Date.parse(previous) >= 3600_000;
   }
   settings() {
-    return quarkCoordinatorSettingsSchema.parse(this.store.getSetting(settingsKey) ?? {});
+    const settings = quarkCoordinatorSettingsSchema.parse(this.store.getSetting(settingsKey) ?? {});
+    if (this.hasConfiguredModel()) return settings;
+    const identity = this.identity();
+    const agent = identity ? this.store.agent(identity.agentId) : null;
+    return {
+      ...settings,
+      model: agent
+        ? quarkModelChoiceSchema.parse({
+            provider: agent.provider,
+            family: quarkDefaultFamilies[agent.provider],
+            model: agent.model,
+            effort: agent.effort,
+          })
+        : this.models.defaultQuarkChoice(),
+    };
+  }
+  private hasConfiguredModel() {
+    const raw = this.store.getSetting(settingsKey);
+    return !!raw && typeof raw === 'object' && Object.hasOwn(raw, 'model');
   }
   projectPolicy(id: string) {
     this.store.project(id);
@@ -163,9 +204,18 @@ export class QuarkCoordinator {
   async start(raw: unknown) {
     const input = z.object({ key: z.string().uuid() }).strict().parse(raw);
     if (this.identity()) return this.status();
-    const assignment = await this.models.resolveQuark(this.settings().model);
+    const settings = this.settings();
+    const assignment = await this.models.resolveQuark(settings.model);
     // Discovery is asynchronous: another start may have finished while it ran.
     if (this.identity()) return this.status();
+    const current = this.settings();
+    if (
+      current.revision !== settings.revision ||
+      JSON.stringify(current.model) !== JSON.stringify(settings.model)
+    )
+      throw new Conflict(
+        'QUARK settings changed during model discovery. Refresh before opening it.',
+      );
     const root = join(this.dataDir, 'quark-coordinator', input.key);
     mkdirSync(root, { recursive: true, mode: 0o700 });
     if (!lstatSync(root).isDirectory() || lstatSync(root).isSymbolicLink())
@@ -198,27 +248,66 @@ export class QuarkCoordinator {
         cwd: root,
       });
       this.store.setSetting(identityKey, { projectId: project.id, agentId: agent.id });
+      // Freeze the selected provider/family once; later general defaults do not move this conversation.
+      if (!this.hasConfiguredModel()) this.store.setSetting(settingsKey, settings);
       this.store.event('quark.coordinator_created', project.id, agent.id, { agentId: agent.id });
       return { agentId: agent.id };
     });
     this.writeCasebook();
     return this.status();
   }
-  async save(raw: unknown) {
+  async save(raw: unknown, reconnect?: QuarkCoordinatorReconnect) {
     const input = quarkCoordinatorSaveSchema.parse(raw);
-    const assignment = await this.models.resolveQuark(input.settings.model);
+    const key = `quark:coordinator:settings:${input.key}`;
+    // Replay validates the original input before discovery or current-state admission.
+    const prior = this.store.db.prepare('SELECT 1 FROM operations WHERE key=?').get(key);
+    const receipt = prior
+      ? this.store.operation<SettingsReceipt>(key, input, () => {
+          throw new Conflict('Saved QUARK settings receipt disappeared.');
+        })
+      : await this.saveSettings(input, key, reconnect);
+    if (receipt.reconnectAgentId && !receipt.reconnect)
+      throw new Conflict(
+        'Model settings are saved, but this old reconnect receipt has no native proof. Refresh and inspect the retained conversation.',
+      );
+    if (receipt.reconnect && reconnect) {
+      const effectKey = `quark:coordinator:reconnect:${input.key}`;
+      const settled = this.store.getSetting(effectKey) as { state: string } | null;
+      if (settled?.state === 'started')
+        throw new Conflict(
+          'Model settings are saved. Native reconnect acknowledgement is unavailable; this exact close will not be repeated. Inspect the retained conversation.',
+        );
+      if (!settled) {
+        const state = await reconnect.apply(receipt.reconnect, () => {
+          // Persist uncertainty before crossing the native process boundary.
+          this.store.setSetting(effectKey, { state: 'started' });
+        });
+        this.store.setSetting(effectKey, { state });
+      }
+    }
+    return this.status();
+  }
+  private async saveSettings(
+    input: ReturnType<typeof quarkCoordinatorSaveSchema.parse>,
+    key: string,
+    reconnect?: QuarkCoordinatorReconnect,
+  ): Promise<SettingsReceipt> {
+    const changedModel =
+      JSON.stringify(input.settings.model) !== JSON.stringify(this.settings().model);
+    const assignment = changedModel ? await this.models.resolveQuark(input.settings.model) : null;
     const id = this.identity();
     if (
+      assignment &&
       id &&
       this.store
         .runs()
         .some((r) => r.agentId === id.agentId && ['queued', 'running'].includes(r.status))
     )
       throw new Conflict('Let QUARK finish its reply before changing its model.');
-    this.store.operation(`quark:coordinator:settings:${input.key}`, input, () => {
+    return this.store.operation(key, input, () => {
       if (this.settings().revision !== input.settings.revision)
         throw new Conflict('QUARK settings changed. Refresh before saving.');
-      if (id) {
+      if (id && assignment) {
         const agent = this.store.agent(id.agentId);
         if (agent.provider !== assignment.provider) {
           // Preserve original provider history and start a fresh identity on the next Start.
@@ -238,9 +327,11 @@ export class QuarkCoordinator {
         revision: input.settings.revision + 1,
       });
       this.store.event('quark.coordinator_settings', null, id?.agentId ?? null, input.settings);
-      return { saved: true };
+      return {
+        saved: true,
+        reconnect: assignment && id && reconnect ? reconnect.capture(id.agentId) : null,
+      };
     });
-    return this.status();
   }
   status() {
     const identity = this.identity();
@@ -734,7 +825,12 @@ export class QuarkCoordinator {
     const runs = demand.flatMap((d) => d.runs);
     const paused = new Set(demand.filter((d) => d.paused).map((d) => d.projectId));
     const local = this.localJobs().filter(
-      (j) => ['queued', 'running'].includes(j.status) && !(j.projectId && paused.has(j.projectId)),
+      (j) =>
+        ['queued', 'running'].includes(j.status) &&
+        !(
+          j.projectId &&
+          (!projectFollowsQuark(this.store, j.projectId) || paused.has(j.projectId))
+        ),
     );
     if (!runs.length && !local.length) return;
     const ids = new Set(runs.map((r) => r.runId));

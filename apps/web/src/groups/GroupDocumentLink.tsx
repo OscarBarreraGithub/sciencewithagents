@@ -11,9 +11,12 @@ import {
   groupDocumentReference,
   groupDocumentOfferSchema,
   groupDocumentLinkSchema,
+  groupDocumentOfferFailureCodeSchema,
+  groupDocumentOfferFailureMessages,
+  groupDocumentCaptureStateSchema,
   type GroupDocumentOffer,
 } from '@dock/shared/dist/group-documents.js';
-import { api, apiScope } from '../api';
+import { api, apiScope, ApiError } from '../api';
 import '../documents.css';
 import './group-documents.css';
 
@@ -271,6 +274,20 @@ export function GroupDocumentShare({
 }
 
 /** Loads only this exact saved reply on demand; ordinary chat polling never resolves report exports. */
+export function GroupDocumentCaptureNotice({ state }: { state: 'pending' | 'unavailable' }) {
+  return (
+    <p role="status">
+      {
+        groupDocumentOfferFailureMessages[
+          groupDocumentCaptureStateSchema.parse(state) === 'pending'
+            ? 'GROUP_DOCUMENT_CAPTURE_PENDING'
+            : 'GROUP_DOCUMENT_CAPTURE_UNAVAILABLE'
+        ]
+      }
+    </p>
+  );
+}
+
 export function GroupDocumentOfferButton({
   handle,
   requestKey,
@@ -282,6 +299,7 @@ export function GroupDocumentOfferButton({
 }) {
   const [offer, setOffer] = useState<GroupDocumentOffer | null>(null),
     [busy, setBusy] = useState(false),
+    [unavailable, setUnavailable] = useState(false),
     [error, setError] = useState('');
   if (offer)
     return (
@@ -297,18 +315,24 @@ export function GroupDocumentOfferButton({
   return (
     <div>
       <button
-        disabled={busy}
+        disabled={busy || unavailable}
         onClick={() => {
           setBusy(true);
           setError('');
           void request('document-offer', { handle, key: requestKey })
             .then(groupDocumentOfferSchema.parse)
             .then(setOffer)
-            .catch(() =>
+            .catch((error: unknown) => {
+              const code = groupDocumentOfferFailureCodeSchema.safeParse(
+                error instanceof ApiError ? error.code : undefined,
+              );
+              setUnavailable(code.success && code.data === 'GROUP_DOCUMENT_CAPTURE_UNAVAILABLE');
               setError(
-                'Verified report capture is pending. Retry this same saved reply after reconnecting.',
-              ),
-            )
+                groupDocumentOfferFailureMessages[
+                  code.success ? code.data : 'GROUP_DOCUMENT_OFFER_RETRY'
+                ],
+              );
+            })
             .finally(() => setBusy(false));
         }}
       >

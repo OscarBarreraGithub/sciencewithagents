@@ -15,6 +15,7 @@ import { GroupDocuments, groupDocumentVersion } from './group-documents.js';
 import type { GroupHost } from './group-host.js';
 import type { GroupHostNativeCompletion } from './group-native-host-runtime.js';
 import type { GroupDocumentsAuthority } from './group-documents-native.js';
+import { GroupFeatureDocuments } from './group-feature-documents.js';
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -98,6 +99,7 @@ function fixture(text = '[Report](report.tex)') {
     handle,
     completion,
     db,
+    host,
     authority,
     revalidateOwner,
     get adapter() {
@@ -167,6 +169,80 @@ it('pins only exact Work-linked files and nested literal dependencies; later wor
   ).rejects.toThrow(/retry changed/);
   f.revoke();
   await expect(f.adapter.export(input)).rejects.toThrow(/Denied/);
+});
+
+it.each(['missing-python', 'missing-dependency'] as const)(
+  'retains terminal %s capture and visible receipt guidance after repair and restart without recapture',
+  async (failure) => {
+    const f = fixture();
+    writeFileSync(
+      join(f.cwd, 'report.tex'),
+      failure === 'missing-dependency' ? '\\input{missing}' : 'Exact report',
+    );
+    if (failure === 'missing-python') vi.stubEnv('PATH', '');
+    try {
+      await f.adapter.captureCompleted(f.completion);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    f.project();
+    expect(f.adapter.documentCaptureState(f.record.ids.resultId)).toBe('unavailable');
+    await expect(f.adapter.describe(f.record.ids.resultId)).rejects.toMatchObject({
+      code: 'GROUP_DOCUMENT_CAPTURE_UNAVAILABLE',
+      disposition: 'unavailable',
+    });
+    writeFileSync(join(f.cwd, 'missing.tex'), 'Later dependency');
+    writeFileSync(join(f.cwd, 'report.tex'), 'Later report');
+    await f.restart();
+    await f.adapter.captureCompleted(f.completion);
+    await expect(f.adapter.describe(f.record.ids.resultId)).rejects.toMatchObject({
+      code: 'GROUP_DOCUMENT_CAPTURE_UNAVAILABLE',
+    });
+    const documents = new GroupFeatureDocuments(f.host, {
+      documents: () => f.adapter,
+      documentAvailable: (id) => f.adapter.documentAvailable(id),
+      documentCaptureState: (id) => f.adapter.documentCaptureState(id),
+    });
+    try {
+      expect(documents.receipt(f.host.nativeJournal.get(f.handle, f.record.request.key)!)).toEqual({
+        documentAvailable: false,
+        documentCaptureState: 'unavailable',
+      });
+    } finally {
+      await documents.close();
+    }
+  },
+);
+
+it('only an active exact capture is pending; settling retains the captured bytes', async () => {
+  const f = fixture();
+  writeFileSync(join(f.cwd, 'report.tex'), 'Exact report');
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.revalidateOwner.mockImplementationOnce(async () => held);
+  const capture = f.adapter.captureCompleted(f.completion);
+  expect(f.adapter.captureCompleted(f.completion)).toBe(capture);
+  expect(f.adapter.documentCaptureState(f.record.ids.resultId)).toBe('pending');
+  await expect(f.adapter.describe(f.record.ids.resultId)).rejects.toMatchObject({
+    code: 'GROUP_DOCUMENT_CAPTURE_PENDING',
+    disposition: 'pending',
+  });
+  release();
+  await capture;
+  f.project();
+  expect(f.adapter.documentCaptureState(f.record.ids.resultId)).toBeUndefined();
+  expect((await f.adapter.describe(f.record.ids.resultId)).files[0]?.name).toBe('report.tex');
+});
+
+it('a missed completed Work report stays terminal; an ordinary reply without a report has no capture notice', async () => {
+  const missed = fixture();
+  missed.project();
+  expect(missed.adapter.documentCaptureState(missed.record.ids.resultId)).toBe('unavailable');
+  const ordinary = fixture('Completed the requested change.');
+  ordinary.project();
+  expect(ordinary.adapter.documentCaptureState(ordinary.record.ids.resultId)).toBeUndefined();
 });
 
 it('refuses symlink, parent escape, missing dependency and file limits without replacing failed capture on restart', async () => {

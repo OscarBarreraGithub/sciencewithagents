@@ -94,7 +94,11 @@ import {
   recordRecovery,
 } from './history.js';
 import { ProviderMaintenance } from './provider-maintenance.js';
-import { QuarkCoordinator, quarkCoordinatorCharter } from './quark-coordinator.js';
+import {
+  QuarkCoordinator,
+  quarkCoordinatorCharter,
+  type QuarkCoordinatorReconnectSnapshot,
+} from './quark-coordinator.js';
 import { ConversationSearch, conversationSearchCharter } from './conversation-search.js';
 import { isMemberFeedAgent, memberFeedCharter } from './group-member-feed.js';
 import { Frontdesk, frontdeskCharter } from './frontdesk.js';
@@ -232,6 +236,8 @@ export class Runtime {
   readonly providerMaintenance: ProviderMaintenance;
   readonly claude: ManagedClaude;
   clients = new Map<string, Provider>();
+  private readonly coordinatorRuntimeId = randomUUID();
+  private coordinatorNativeIds = new WeakMap<object, string>();
   externalControl = new Set<string>();
   private nativeTransitions = new Set<string>();
   private nativeViews = new Map<string, string>();
@@ -1598,13 +1604,10 @@ export class Runtime {
       const paused =
         this.quark.projectPolicy(job.projectId).enabled &&
         this.coordinator.projectPolicy(job.projectId).paused;
-      const marker = `quark:local-project-pause:${job.id}`;
       if (paused && ['queued', 'running'].includes(job.status)) {
-        this.store.setSetting(marker, true);
-        await this.localJobs.control({ key: randomUUID(), jobId: job.id, action: 'pause' });
-      } else if (!paused && job.status === 'paused' && this.store.getSetting(marker) === true) {
-        await this.localJobs.control({ key: randomUUID(), jobId: job.id, action: 'resume' });
-        this.store.setSetting(marker, false);
+        await this.localJobs.pauseForProject(job.id);
+      } else if (!paused && job.status === 'paused') {
+        this.localJobs.resumeProjectPause(job.id);
       }
     }
     for (const run of this.store.runs(['running'])) {
@@ -2319,6 +2322,97 @@ export class Runtime {
       }
     });
   }
+  private coordinatorReconnectSnapshot(agentId: string): QuarkCoordinatorReconnectSnapshot {
+    const agent = this.store.agent(agentId);
+    const generation = (native: object | undefined) => {
+      if (!native) return null;
+      let id = this.coordinatorNativeIds.get(native);
+      if (!id) this.coordinatorNativeIds.set(native, (id = randomUUID()));
+      return id;
+    };
+    const lastRun = this.store.db
+      .prepare('SELECT id FROM runs WHERE agent_id=? ORDER BY rowid DESC LIMIT 1')
+      .get(agentId);
+    return {
+      agentId,
+      runtimeId: this.coordinatorRuntimeId,
+      clientId: generation(this.clients.get(agentId)),
+      claudeId: generation(this.claude.get(agentId)),
+      configuration: createHash('sha256')
+        .update(
+          JSON.stringify({
+            provider: agent.provider,
+            model: agent.model,
+            effort: agent.effort,
+            selection: agent.modelSelection,
+            assignment: agent.assignment,
+            permission: agent.permission,
+            tools: agent.toolPolicy,
+            threadId: agent.threadId,
+            turnId: agent.turnId,
+            status: agent.status,
+            identity: this.coordinator.identity(),
+            settings: this.coordinator.settings(),
+          }),
+        )
+        .digest('hex'),
+      lastRunId: lastRun ? String(lastRun.id) : null,
+    };
+  }
+  async saveCoordinatorSettings(raw: unknown) {
+    return this.coordinator.save(raw, {
+      capture: (agentId) => this.coordinatorReconnectSnapshot(agentId),
+      apply: async (snapshot, beforeEffect) => {
+        const { agentId } = snapshot;
+        if (!isDeepStrictEqual(snapshot, this.coordinatorReconnectSnapshot(agentId)))
+          return 'superseded';
+        if (!this.coordinator.isRetired(agentId)) this.requireDirectControl(agentId);
+        if (
+          this.stopped ||
+          this.executing.has(agentId) ||
+          this.starting.has(agentId) ||
+          this.restoring.has(agentId) ||
+          this.releasing.has(agentId) ||
+          this.failures.has(agentId) ||
+          this.externalControl.has(agentId) ||
+          this.providerReads.has(agentId) ||
+          this.nativeTransitions.has(agentId) ||
+          this.pendingCompletions.has(agentId) ||
+          ['running', 'queued', 'waiting'].includes(this.store.agent(agentId).status) ||
+          this.store
+            .runs()
+            .some((run) => run.agentId === agentId && ['queued', 'running'].includes(run.status)) ||
+          this.activeChildren(agentId).length
+        )
+          throw new Conflict('Finish native work before reconnecting the saved QUARK model.');
+        const client = this.clients.get(agentId),
+          session = this.claude.get(agentId);
+        this.externalControl.add(agentId);
+        try {
+          await this.claude.forgetIfCurrent(agentId, session, () => {
+            if (!isDeepStrictEqual(snapshot, this.coordinatorReconnectSnapshot(agentId)))
+              throw new Conflict(
+                'QUARK native context changed before reconnect. Refresh and inspect it.',
+              );
+            beforeEffect();
+          });
+          // Close only the captured generation, never a newer client installed during an await.
+          await client?.close();
+          for (const member of this.nativeChildren.family(agentId))
+            if (this.clients.get(member.id) === client) this.clients.delete(member.id);
+          if (!this.clients.get(agentId) && !this.claude.get(agentId)) {
+            this.mcpConfigs.delete(agentId);
+            this.pluginPolicies.delete(agentId);
+            this.pluginsChanged.delete(agentId);
+          }
+          return 'complete';
+        } finally {
+          this.externalControl.delete(agentId);
+          this.kick();
+        }
+      },
+    });
+  }
   async reconnectTools(agentId: string, snapshotModelChange = false) {
     if (
       !this.coordinator.isRetired(agentId) &&
@@ -2507,10 +2601,13 @@ export class Runtime {
       await session.submit({
         deliveryId: run.id,
         // Native command arguments must remain exact; appended evidence changes them.
-        text: this.store.getSetting(`native:command:${run.id}`)
-          ? run.text
-          : `${this.chatImages.prompt(run.text)}\n\n<agent-dock-evidence>\n${this.context(current)}\n</agent-dock-evidence>`,
-        ...(this.store.getSetting(`native:command:${run.id}`) ? { nativeCommand: true } : {}),
+        text: run.text,
+        ...(this.store.getSetting(`native:command:${run.id}`)
+          ? { nativeCommand: true }
+          : {
+              // ChatImages.prompt preserves the original text as its exact prefix.
+              appContext: `${this.chatImages.prompt(run.text).slice(run.text.length)}\n\n<agent-dock-evidence>\n${this.context(current)}\n</agent-dock-evidence>`,
+            }),
       });
       return;
     }

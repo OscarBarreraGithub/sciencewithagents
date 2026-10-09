@@ -101,6 +101,9 @@ skipping live leases and future due times so they cannot starve other eligible w
 There is no polling loop, retry timer, model call or provider wake. The host supplies its
 clock/deadline scheduler and chooses bounded connectivity/owner wakes. Observe
 `inspect(...).nextAttemptAt`; calls before that time return `waiting` without network work.
+Normal host delivery and explicit retry wait for short saved deadlines, rechecking early timer
+wakes at most three times within the existing wait budget. Longer cooldowns or a stalled clock
+retain the same retryable receipt without an early remote attempt or native resubmission.
 
 Leases last 30 seconds; each I/O deadline is five seconds. Concurrent controllers/processes
 share the SQLite lease, and an expired owner cannot accept a response or send the next effect.

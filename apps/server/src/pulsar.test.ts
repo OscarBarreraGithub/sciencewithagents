@@ -44,6 +44,39 @@ afterEach(() => {
   store.close();
   rmSync(root, { recursive: true, force: true });
 });
+it('releases provider slots for opted-out running projects while retaining account and CPU guards', () => {
+  pulsar.savePolicy({
+    key: randomUUID(),
+    policy: { ...pulsar.policy(), claudeConcurrent: 1 },
+  });
+  const first = job('Opted out running'),
+    second = job('Protected queued');
+  const quark = new Quark(store, pulsar, () => clock);
+  pulsar.allowanceDecision = (r) => quark.reason(r, r.status === 'queued');
+  expect(pulsar.reserve(first.run, new Set())).toBe(true);
+  store.updateRun(first.run.id, { status: 'running' });
+  expect(pulsar.decision(second.run).reason).toMatch(/worker slot/);
+  quark.saveProjectPolicy(first.project.id, {
+    key: randomUUID(),
+    enabled: false,
+    expectedRevision: 0,
+  });
+  expect(pulsar.decision(second.run).eligible).toBe(true);
+  machine.cpuUsedPercent = 100;
+  expect(pulsar.decision(second.run).reason).toMatch(/CPU headroom/);
+  machine.cpuUsedPercent = 15;
+  usage(100);
+  expect(pulsar.decision(second.run).eligible).toBe(false);
+  expect(quark.block(second.run)?.cause).toBe('headroom');
+  usage(10);
+  quark.saveProjectPolicy(first.project.id, {
+    key: randomUUID(),
+    enabled: true,
+    expectedRevision: 1,
+  });
+  expect(pulsar.decision(second.run).reason).toMatch(/worker slot/);
+  expect(store.run(first.run.id).status).toBe('running');
+});
 it('keeps repeated queue reads and events bounded as completed history grows', () => {
   const old = job('History fixture');
   expect(pulsar.reserve(old.run)).toBe(true);

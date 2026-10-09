@@ -48,6 +48,11 @@ The existing queue, task worktree, independent review and manager arbitration re
 there is no second Claude scheduler. Managers apply exact reviewed changes by default.
 Projects may require human approval instead through their workflow setting.
 
+Owner messages retain the shared 200,000-character send limit. App-added attachment details
+and evidence use a separate 1 MiB JSON-encoded context allowance, within the adapter's 4 MiB
+frame limit. Neither is silently truncated. Excess app context fails before native input
+handoff and retains the original message for explicit retry; provider context limits still apply.
+
 This is different from [sharing a live VS Code chat](VSCODE_MIRROR.md). A mirrored chat
 remains owned by the original extension. A managed conversation is owned by sciencewithagents's
 native provider lifecycle and durable archive. Editor sharing does not import a manager.

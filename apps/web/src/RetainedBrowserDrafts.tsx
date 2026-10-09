@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { retainedBrowserDraftsSchema, type RetainedBrowserDrafts as Retained } from '@dock/shared';
+import { downloadBlob } from './downloadBlob';
 import './RetainedBrowserDrafts.css';
 
 const prefix = 'dock:local-access:retained:';
@@ -46,14 +47,10 @@ function display(value: string) {
 }
 
 function download(value: Retained) {
-  const url = URL.createObjectURL(
+  downloadBlob(
     new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }),
+    'sciencewithagents-retained-browser-drafts.json',
   );
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = 'sciencewithagents-retained-browser-drafts.json';
-  anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 /** Local browser evidence only. Never replays requests or replaces current drafts. */

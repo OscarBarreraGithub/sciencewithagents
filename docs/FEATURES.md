@@ -190,7 +190,8 @@ Manager and shared VS Code chat prompts, saved drafts and editable follow-ups ac
 200,000 characters. Pasting into the notepad never silently truncates text. Longer drafts
 stay available locally for editing or download, with a clear send limit. A definitively
 refused autosave no longer blocks a corrected draft; uncertain saves keep their original
-retry identity. Shared editor delivery needs companion 0.2.14 or newer. Groups retain their
+retry identity. Downloading a text copy leaves the editor and saved versions intact.
+Shared editor delivery needs companion 0.2.14 or newer. Groups retain their
 separate shared-message limits. Model context limits remain provider-specific.
 
 Failed app-managed turns offer an inline **Retry message** when the host has retained proof

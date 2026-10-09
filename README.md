@@ -4,6 +4,7 @@ Run Codex and Claude project teams from your computer or phone. QUARK coordinate
 queue, shared allowance and computer resources. Personal conversations and worker records
 stay local; Groups publishes explicitly shared content to its configured group service.
 New installations start with QUARK pacing and automatic checks off, and an empty Apps page.
+Optional plugins and integrations require an explicit choice to install or connect.
 
 ## Set up
 

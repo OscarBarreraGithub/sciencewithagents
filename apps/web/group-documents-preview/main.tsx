@@ -5,11 +5,15 @@ import {
   GroupDocumentLink,
   GroupDocumentHost,
   GroupDocumentGrant,
+  GroupDocumentOfferButton,
+  GroupDocumentCaptureNotice,
   type GroupDocumentReaderProps,
 } from '../src/groups/GroupDocumentLink';
 import { ChatMarkdown } from '../src/ChatMarkdown';
 import { GroupReports } from '../src/groups/GroupReports';
 import { DocumentReading } from '../src/DocumentReading';
+import { api } from '../src/api';
+import { groupDocumentCaptureStateSchema } from '@dock/shared/dist/group-documents.js';
 import '../src/documents.css';
 const handle = 'd5ced7dc-df8d-4e94-82b1-a4f97218cd9c',
   grantId = 'eeeb5ab8-e0c3-413b-b763-21f96af596d4',
@@ -78,10 +82,21 @@ function ReadingFixture({ id, endpoint, close }: GroupDocumentReaderProps) {
 }
 function App() {
   const [href, setHref] = useState(`#/groups/document/${grantId}/${version}`);
+  const capture = groupDocumentCaptureStateSchema.safeParse(
+    new URLSearchParams(location.search).get('capture'),
+  );
   return (
     <main style={{ maxWidth: 700, margin: 'auto', padding: 12 }}>
       <h1>Scoped document UI fixture</h1>
       <GroupDocumentScope handle={handle}>
+        <section aria-label="Saved report capture">
+          {capture.success && <GroupDocumentCaptureNotice state={capture.data} />}
+          <GroupDocumentOfferButton
+            handle={handle}
+            requestKey={grantId}
+            request={(path, body) => api(`/groups/${path}`, body)}
+          />
+        </section>
         <ChatMarkdown entry={{ agentId: grantId, id: grantId }}>
           {`[Personal report](#/latex/${grantId}) [Host report](/private/report.tex) [Web reference](https://example.com/research) [Scoped report](${href})`}
         </ChatMarkdown>

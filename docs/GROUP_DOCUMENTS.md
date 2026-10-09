@@ -33,6 +33,11 @@ capture reservations. Later app-managed Git preparation and native input wait fo
 control records cannot authorize capture or replace the final manager reply. A missed, interrupted or denied
 capture stays unavailable; browser retries/restart cannot substitute later working files.
 Capture failure preserves the exact native reply and never resends model input.
+The saved reply shows a terminal capture-unavailable note through reload/restart; reconnecting
+cannot repair that capture. Ask the setup agent to check Python 3 (`node scripts/setup.mjs --check`)
+and linked files/literal dependencies, then explicitly request new Work with matching PDF/source
+links in its final reply. An in-progress capture and a temporary status-check failure retain
+same-reply retry guidance. No private compiler/path diagnostics are exposed.
 
 The existing `GroupDocuments` and `GroupDocumentSharing` grant/read/share/revoke paths handle
 these copies, rechecking current owner/member authority even for cached/retried reads. Sharing

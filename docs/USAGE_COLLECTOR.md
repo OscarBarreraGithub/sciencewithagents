@@ -15,13 +15,14 @@ no model prompt.
 Reuse the standalone reader instead of forking the menu-bar app or creating a second
 sign-in store. CodexBar maintains Codex retrieval. A small native Claude reader supplements it because
 a CodexBar build can omit model-specific windows or fail to recognize a native Claude
-credential namespace. The setup script
+credential namespace. The explicitly requested reader setup script
 copies the installed CLI into ignored `data/tools/`, checks it and records its checksum.
 It retains the MIT license. The menu-bar app need not run or stay installed once this
 standalone copy and its usage access have been verified. Removing a menu-bar app is a separate user choice.
 
-`scripts/setup-usage-collector.mjs` is an agent-led setup step, not an instruction that
-normal phone users run commands. If absent on Apple Silicon macOS, setup downloads the official v0.65.0 standalone archive
+Ordinary installation does not install this optional reader, and updates preserve existing
+readers. If the owner chooses Codex allowance monitoring, `scripts/setup-usage-collector.mjs`
+is an agent-led setup step. If absent on Apple Silicon macOS, that step downloads the official v0.65.0 standalone archive
 and verifies SHA-256 before extracting the single executable. Other platforms require the
 setup agent to install the appropriate official CLI. That release was verified for Codex;
 Claude uses the separate narrow native reader within the same collector. Update deliberately by selecting the

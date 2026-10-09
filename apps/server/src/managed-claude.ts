@@ -405,6 +405,19 @@ export class ManagedClaude {
     });
     return session;
   }
+  /** Settings-only reconnect: claim before closing this exact native generation.
+   * An in-progress/replaced session is a pre-effect failure, never a guessed target. */
+  async forgetIfCurrent(
+    agentId: string,
+    expected: ClaudeSession | undefined,
+    beforeEffect: () => void,
+  ) {
+    if (this.starting.has(agentId) || this.sessions.get(agentId) !== expected)
+      throw new Conflict('Claude native session changed before reconnect. Refresh and inspect it.');
+    beforeEffect();
+    this.sessions.delete(agentId);
+    await expected?.close();
+  }
   async forget(agentId: string) {
     const starting = this.starting.get(agentId);
     if (starting) await starting.catch(() => {});

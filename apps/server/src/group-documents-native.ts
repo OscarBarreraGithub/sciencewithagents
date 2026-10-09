@@ -4,6 +4,20 @@ import type {
   GroupDocumentFile,
   groupDocumentBuildPolicy,
 } from '@dock/shared/dist/group-documents.js';
+import { groupDocumentOfferFailureMessages } from '@dock/shared/dist/group-documents.js';
+
+/** Only verified capture lifecycle facts can classify a reply as permanently unavailable. */
+export class GroupDocumentCaptureError extends Error {
+  readonly code: 'GROUP_DOCUMENT_CAPTURE_PENDING' | 'GROUP_DOCUMENT_CAPTURE_UNAVAILABLE';
+  constructor(readonly disposition: 'pending' | 'unavailable') {
+    const code =
+      disposition === 'pending'
+        ? 'GROUP_DOCUMENT_CAPTURE_PENDING'
+        : 'GROUP_DOCUMENT_CAPTURE_UNAVAILABLE';
+    super(groupDocumentOfferFailureMessages[code]);
+    this.code = code;
+  }
+}
 
 export interface GroupDocumentBytes {
   artifactId: string;

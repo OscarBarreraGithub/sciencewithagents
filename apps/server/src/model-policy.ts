@@ -7,6 +7,7 @@ import {
   modelFamilies,
   type Role,
   quarkModelChoiceSchema,
+  quarkDefaultFamilies,
   defaultModelPolicy,
   modelPolicySaveSchema,
   modelPolicySchema,
@@ -394,6 +395,11 @@ export class ModelPolicy {
         `${workflow.providerMix}, ${workflow.spending}: ${purpose}, latest available ${choice.family}.`,
       policyRevision: `${this.policy().revision}:${workflow.revision}`,
     });
+  }
+  defaultQuarkChoice() {
+    const enabled = this.policy().enabledProviders;
+    const provider = enabled.includes('claude') ? 'claude' : 'codex';
+    return quarkModelChoiceSchema.parse({ provider, family: quarkDefaultFamilies[provider] });
   }
   async resolveQuark(raw: unknown) {
     const choice = quarkModelChoiceSchema.parse(raw);

@@ -23,7 +23,9 @@ keeps the saved grant semantics. Hourly edits preserve the rolling spend and use
 revision/retry protections. Project cards offer these controls without starting an AI turn.
 
 Use the existing local runtime and queue. Store QUARK identity, instructions and decisions
-under private runtime data outside project worktrees. The default is current Opus; support explicit model/provider selection centrally.
+under private runtime data outside project worktrees. An unconfigured coordinator uses current
+Opus when Claude is enabled, or current Sol for a Codex-only installation. Opening it freezes
+that provider choice; saved explicit models and existing conversations remain unchanged.
 Keep it available while the app runs, waking on relevant events with bounded frequency and
 turn length, never an idle token-burning loop. Recover saved work after restart; a sleeping
 or stopped computer cannot run it. Project managers retain implementation responsibility.
@@ -74,9 +76,13 @@ up the conversation database. Never delete original prompts merely because the U
 Open Work, then Open QUARK conversation. Creating it does not spend a model turn. It wakes
 for your messages or relevant changes in active work. Model & settings selects a current
 catalog model/provider and can enable or disable automatic checks. New installations leave
-these checks off until the owner chooses them. Existing settings are preserved. A provider change retains the old
-conversation; project instructions stay in the host database. The default follows Opus;
+these checks off until the owner chooses them; missing settings also default to Off.
+Saved On or Off choices are preserved and remain switchable. A provider change retains the old
+conversation; project instructions stay in the host database. Defaults follow Opus when
+Claude is enabled, or Sol for a Codex-only policy;
 select an exact catalog entry to pin a different available model. Missing models fail visibly.
+Model-setting retries reconnect only the original idle native generation. A settled retry
+cannot close later work; an uncertain native close is retained for inspection, never repeated.
 
 Priority weight (1–10) orders jobs within the same urgency class; interactive/high priority
 still wins over normal/background. It is not a percentage entitlement or proportional CPU

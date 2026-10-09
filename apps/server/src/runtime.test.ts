@@ -54,6 +54,41 @@ afterEach(async () => {
   store.close();
   rmSync(root, { recursive: true, force: true });
 });
+it('project resume preserves a later explicit local-job Pause without launching a model', async () => {
+  const job = runtime.localJobs.create({
+    key: randomUUID(),
+    projectId: project,
+    url: 'https://youtu.be/abcdefghijk',
+  });
+  const enforce = () =>
+    (runtime as unknown as { enforceAllowances(): Promise<void> }).enforceAllowances();
+  runtime.coordinator.updateProjectPolicy(
+    {
+      action: 'project',
+      projectId: project,
+      expectedRevision: 0,
+      paused: true,
+      reason: 'Owner paused the project.',
+    },
+    true,
+  );
+  await enforce();
+  expect(runtime.localJobs.get(job.id).status).toBe('paused');
+  await runtime.localJobs.control({ key: randomUUID(), jobId: job.id, action: 'pause' });
+  runtime.coordinator.updateProjectPolicy(
+    {
+      action: 'project',
+      projectId: project,
+      expectedRevision: 1,
+      paused: false,
+      reason: 'Owner resumed the project.',
+    },
+    true,
+  );
+  await enforce();
+  expect(runtime.localJobs.get(job.id).status).toBe('paused');
+  expect(store.runs()).toEqual([]);
+});
 const task = async () =>
   (await managerTool(runtime, manager, randomUUID(), 'dock_task_create', {
     title: 'One result',

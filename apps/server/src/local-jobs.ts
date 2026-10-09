@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { existsSync, createReadStream } from 'node:fs';
 import { mkdir, readdir, readFile, stat, rename, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
+import { z } from 'zod';
 import {
   localJobSchema,
   localJobControlSchema,
@@ -14,6 +15,7 @@ import {
 } from '@dock/shared';
 import { Conflict, Missing, Store, type PrivateAgent } from './store.js';
 import { LocalProcess } from './local-process.js';
+import { projectFollowsQuark } from './quark-project.js';
 import {
   bindGroupNativeLocalJob,
   captureGroupLocalJobTransition,
@@ -25,6 +27,14 @@ export const whisperModel = {
   sha256: '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe',
 };
 const priorities = { interactive: 3, high: 2, normal: 1, background: 0 };
+const projectPauseSchema = z
+  .object({
+    controlRevision: z.number().int().nonnegative(),
+    attempt: z.number().int().positive(),
+    startedAt: z.string().nullable(),
+  })
+  .strict();
+const projectPauseKey = (id: string) => `quark:local-project-pause:${id}`;
 /** Project ordering applies to agent-dispatched work; direct owner jobs keep their choice. */
 export function localJobPriority(store: Store, job: LocalJob) {
   if (!job.requestedBy || !job.projectId) return job.resources.priority;
@@ -235,7 +245,7 @@ export class LocalJobs {
   }
   recover() {
     for (const job of this.all())
-      if (['running', 'paused'].includes(job.status))
+      if (job.status === 'running' || (job.status === 'paused' && job.startedAt !== null))
         this.update(job.id, {
           status: 'interrupted',
           message:
@@ -244,9 +254,68 @@ export class LocalJobs {
           expectedFinishAt: null,
         });
   }
+  private controlRevision(id: string) {
+    return z
+      .number()
+      .int()
+      .nonnegative()
+      .parse(this.store.getSetting(`localjob:control-revision:${id}`) ?? 0);
+  }
+  /** A project may release only the exact pause it established before any later job control. */
+  async pauseForProject(id: string) {
+    const job = this.get(id),
+      controlRevision = this.controlRevision(id);
+    if (job.status === 'queued')
+      this.update(id, {
+        status: 'paused',
+        autoPaused: false,
+        message: 'Paused with this project.',
+      });
+    else if (job.status === 'running') await this.pause(id, false);
+    else return;
+    const current = this.get(id);
+    if (
+      current.status === 'paused' &&
+      this.controlRevision(id) === controlRevision &&
+      current.attempt === job.attempt &&
+      current.startedAt === job.startedAt
+    )
+      this.store.setSetting(projectPauseKey(id), {
+        controlRevision,
+        attempt: job.attempt,
+        startedAt: job.startedAt,
+      });
+  }
+  resumeProjectPause(id: string) {
+    return this.store.transaction(() => {
+      const raw = this.store.getSetting(projectPauseKey(id));
+      if (raw === null) return false;
+      const proof = projectPauseSchema.safeParse(raw),
+        job = this.get(id);
+      // Legacy boolean markers have no ownership proof; leave their jobs for explicit Resume.
+      this.store.setSetting(projectPauseKey(id), null);
+      if (
+        !proof.success ||
+        job.status !== 'paused' ||
+        job.autoPaused ||
+        proof.data.controlRevision !== this.controlRevision(id) ||
+        proof.data.attempt !== job.attempt ||
+        proof.data.startedAt !== job.startedAt
+      )
+        return false;
+      this.update(
+        id,
+        job.startedAt === null
+          ? { status: 'queued', message: 'Waiting for capacity.' }
+          : { autoPaused: true, message: 'Waiting for capacity to resume.' },
+      );
+      return true;
+    });
+  }
   private yieldableBackground(job: LocalJob) {
     return (
       job.status === 'running' &&
+      (!job.projectId || projectFollowsQuark(this.store, job.projectId)) &&
       this.priority(job) === 'background' &&
       ['transcribing', 'converting'].includes(job.phase)
     );
@@ -537,12 +606,26 @@ export class LocalJobs {
       { kind: 'local.control', ...input },
       async () => {
         const job = this.get(input.jobId);
+        // Persist later intent before awaiting a process acknowledgement. Receipt retries
+        // never increment it; a concurrent project pause cannot claim this owner control.
+        this.store.transaction(() => {
+          this.store.setSetting(
+            `localjob:control-revision:${job.id}`,
+            this.controlRevision(job.id) + 1,
+          );
+          this.store.setSetting(projectPauseKey(job.id), null);
+        });
         if (input.action === 'pause') {
           if (job.status === 'queued')
             return this.update(job.id, {
               status: 'paused',
               message: 'Paused before starting.',
               autoPaused: false,
+            });
+          if (job.status === 'paused')
+            return this.update(job.id, {
+              autoPaused: false,
+              message: 'Paused by you. Resume when ready.',
             });
           await this.pause(job.id, false);
         } else if (input.action === 'resume') {

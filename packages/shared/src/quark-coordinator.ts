@@ -18,7 +18,7 @@ export const quarkModelChoiceSchema = z
 export const quarkCoordinatorSettingsSchema = z
   .object({
     revision: z.number().int().nonnegative().default(0),
-    automatic: z.boolean().default(true),
+    automatic: z.boolean().default(false),
     model: quarkModelChoiceSchema.default(() => quarkModelChoiceSchema.parse({})),
   })
   .strict();

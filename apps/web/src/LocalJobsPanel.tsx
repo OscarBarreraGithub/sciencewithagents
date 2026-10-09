@@ -8,6 +8,7 @@ import {
 } from '@dock/shared';
 import { api, apiScope } from './api';
 import { Modal } from './Modal';
+import { downloadBlob } from './downloadBlob';
 
 export function LocalJobsPanel({
   close,
@@ -325,13 +326,10 @@ export function LocalJobsPanel({
               <button
                 className="secondary"
                 onClick={() => {
-                  const blob = new Blob([transcript.text], { type: 'text/plain' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `transcript-${job.id}.txt`;
-                  a.click();
-                  URL.revokeObjectURL(url);
+                  downloadBlob(
+                    new Blob([transcript.text], { type: 'text/plain' }),
+                    `transcript-${job.id}.txt`,
+                  );
                 }}
                 disabled={transcript.nextOffset !== null}
               >

@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { GroupDocumentOfferButton } from './GroupDocumentLink';
+import { GroupDocumentOfferButton, GroupDocumentCaptureNotice } from './GroupDocumentLink';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   groupHostErrorSchema as groupErrorSchema,
@@ -514,6 +514,9 @@ export function GroupChat({
           <summary>Technical details</summary>
           <p>{receipt.message}</p>
         </details>
+        {receipt.documentCaptureState && (
+          <GroupDocumentCaptureNotice state={receipt.documentCaptureState} />
+        )}
         {receipt.documentAvailable && (
           <GroupDocumentOfferButton
             handle={slot.handle}
@@ -552,6 +555,7 @@ export function GroupChat({
       (receipt) =>
         receipt.state !== 'completed' ||
         receipt.documentAvailable ||
+        receipt.documentCaptureState ||
         !['complete', 'private'].includes(receipt.delivery),
     ) ?? [];
   const nativeOwner =

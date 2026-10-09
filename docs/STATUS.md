@@ -1,6 +1,6 @@
 # Current status
 
-Checked 2026-10-08. **Beta: current workflows have been exercised with real Codex/Claude
+Checked 2026-10-09. **Beta: current workflows have been exercised with real Codex/Claude
 projects and desktop/phone browser checks.** This is not a claim that every device or
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
@@ -197,7 +197,9 @@ and model choices remain. Active work is never discarded by an inactivity timer.
   See [shared native conversations](VSCODE_MIRROR.md).
 
 - **Fresh installs:** QUARK pacing and automatic coordinator checks start off. Existing
-  saved choices are preserved.
+  saved On/Off choices are preserved; missing automatic-check settings also default Off.
+  Optional provider plugins, integrations and the standalone Codex allowance reader require
+  an explicit choice to install or connect. Existing native configuration stays intact.
 - **Apps:** new galleries start empty. Registered project apps and the LaTeX tile on
   computers with recent documents are retained. Help and document links also open the reader.
   Local app ports and optional published HTTPS links are recorded; registration does not
@@ -220,10 +222,17 @@ and model choices remain. Active work is never discarded by an inactivity timer.
 **Release readiness:** the native Groups candidate now connects shared actions/reports,
 activity evidence, unfinished-file awareness and local/hosted recovery. Local checks and
 independent source reviews prepare it for joint testing; they do not certify production.
-Independent creator/member installation, real-provider/remote-Git collaboration, larger/interrupted deployed
-backups and public Linux CI remain acceptance gates.
+Independent creator/member installation, real-provider/remote-Git collaboration and larger/interrupted deployed
+backups remain acceptance gates. Check the matching published CI result separately.
 See [Groups release readiness](GROUP_RELEASE_READINESS.md) and
 [manager lessons](FAILURE_REVIEW.md).
+
+Readiness corrections cover exact-key delivery retries near timer deadlines, visible report
+capture failures, the full accepted Claude prompt plus bounded app context, and browser
+download handoff. Follow QUARK Off now covers local-job demand, provider slots and preemption;
+project resume retains a later explicit job Pause. Automatic-check toggles preserve native
+work, and settled model-setting retries cannot reconnect a later conversation. Focused source
+and emulated-browser checks cover these changes; see [verification](VERIFICATION.md).
 
 **Current v1 implementation:** Groups uses ordinary host-native agents with the
 existing Codex/Claude sign-in. The shared journey lives under **Chats → Groups**, with

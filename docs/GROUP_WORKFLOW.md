@@ -77,6 +77,10 @@ Each group has two tabs:
   reply; **Work** authorizes shared work. Other members' incoming messages do not authorize
   work on your computer.
 
+Opening or reloading a group, reading shared reports and receiving another member's messages
+do not request a model turn. Data transport and report reading do not call a model. **Ask** and **Work**
+request your agent and use your provider allowance, including an Ask for a read-only answer.
+
 Both tabs use the shared context. The current draft and exact retry identity remain retained
 when switching tabs. Saved private conversations and drafts stay private; this view neither
 opens nor publishes them. Failed requests retain their exact ID, text, destination and intent
@@ -94,6 +98,9 @@ and replies receive background summaries and labels using that provider's saved 
 model. Nearby messages share one bounded turn; opening a chat starts no summary turn.
 Each computer handles only its own shared originals. Private chats and local history are
 excluded, originals remain readable, and a failed/uncertain summary is never replayed.
+These background summaries use the contributing member's provider allowance, including
+summaries of their own human messages. Reading another member's originals or summaries
+does not run a summary on your account; already authorized local work may still finish.
 The older selected-writer workflow remains separate for retained activity; selecting it
 does not take over these per-member summaries. Long originals and full summary storage
 remain original-only. See [summary limits](GROUP_PROMOTION.md#per-member-local-feed-summaries).

@@ -37,7 +37,10 @@ function fixture(cloud = false) {
   writeFileSync(join(scripts, 'pnpm'), '#!/bin/sh\nprintf "%s\\n" "$*" >> setup-steps\n', {
     mode: 0o700,
   });
-  writeFileSync(join(scripts, 'setup-usage-collector.mjs'), 'process.exit(1);');
+  writeFileSync(
+    join(scripts, 'setup-usage-collector.mjs'),
+    "import { writeFileSync } from 'node:fs'; writeFileSync('reader-invoked', 'yes'); process.exit(1);",
+  );
   writeFileSync(
     join(scripts, 'create-launcher.mjs'),
     "import { writeFileSync } from 'node:fs'; writeFileSync('launcher-made', 'yes');",
@@ -77,11 +80,19 @@ it('checks prerequisites without installation or sign-in and refuses a missing o
   expect(existsSync(join(f.root, 'setup-steps'))).toBe(false);
   expect(existsSync(join(f.root, 'launcher-made'))).toBe(false);
 });
-it('finishes app setup after an optional reader failure, reports unknown quotas and keeps cloud-folder advice non-destructive', async () => {
+it('finishes ordinary setup without installing optional integrations and preserves an existing usage reader', async () => {
   const f = fixture(true);
+  const tools = join(f.root, 'data', 'tools');
+  mkdirSync(tools, { recursive: true });
+  writeFileSync(join(tools, 'codexbar'), 'existing reader');
+  writeFileSync(join(tools, 'codexbar-receipt.json'), '{"existing":true}');
   const result = await f.run();
   expect(result.stderr).toContain('may be cloud-synced');
-  expect(result.stderr).toContain('allowance readings stay unknown');
+  expect(result.stdout).toContain('allowance readings stay unknown');
+  expect(result.stdout).toContain('were not installed or connected');
+  expect(existsSync(join(f.root, 'reader-invoked'))).toBe(false);
+  expect(readFileSync(join(tools, 'codexbar'), 'utf8')).toBe('existing reader');
+  expect(readFileSync(join(tools, 'codexbar-receipt.json'), 'utf8')).toBe('{"existing":true}');
   expect(result.stdout).toContain('Available providers: Codex CLI');
   expect(readFileSync(join(f.root, 'setup-steps'), 'utf8')).toBe(
     'install --frozen-lockfile\nbuild\n',
@@ -99,6 +110,8 @@ it('builds for Claude-only and no-provider installations, with explicit invalid 
   );
   expect((await f.run()).stdout).toContain('Available providers: Claude Code');
   expect(existsSync(join(f.root, 'launcher-made'))).toBe(true);
+  expect(existsSync(join(f.root, 'reader-invoked'))).toBe(false);
+  expect(existsSync(join(f.root, 'data', 'tools', 'codexbar'))).toBe(false);
   rmSync(join(f.bin, 'claude'));
   expect((await f.run()).stdout).toContain('No agent provider is available yet');
   await expect(f.run(['--check'], { DOCK_CLAUDE_BIN: '/missing/claude' })).rejects.toThrow(

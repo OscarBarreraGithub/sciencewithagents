@@ -195,6 +195,9 @@ Opus, following the latest family entry. The QUARK
 model/settings panel supports exact catalog choices and another provider; no unavailable
 model is silently substituted. This is the owner's explicit exception to ordinary project
 manager postdoc defaults. Provider changes preserve the old conversation and use a new one.
+An unconfigured Codex-only installation uses current Sol for QUARK. Existing explicit choices
+stay saved. Toggling automatic checks with the same model performs no discovery or model turn
+and leaves queued/running work and native identity intact.
 
 Claude catalogs retain rolling aliases and now also expose concrete model IDs reported by
 the provider, so “exact version” selections can remain pinned when an alias moves forward.

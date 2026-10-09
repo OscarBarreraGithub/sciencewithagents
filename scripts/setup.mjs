@@ -50,6 +50,25 @@ try {
   console.log(
     'Install or update your chosen CLI before checking models. A desktop app alone is not enough. Terminal commands: docs/CONTRIBUTOR_SETUP.md#install-or-update-your-agent-cli',
   );
+  try {
+    execFileSync(
+      'python3',
+      [
+        '-I',
+        '-B',
+        '-c',
+        'import os, sys; assert sys.version_info.major == 3; assert os.open in os.supports_dir_fd; assert hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY")',
+      ],
+      { stdio: 'ignore', timeout: 5_000 },
+    );
+    console.log(
+      'Native Group report capture: Python 3 descriptor-relative reads available on this setup PATH. Verify the app/launcher PATH too if it differs.',
+    );
+  } catch {
+    console.warn(
+      'Native Group report capture is unavailable: Python 3 with macOS/Linux descriptor-relative reads is required on this computer before report Work. Ask your setup agent to check it; no tool was installed. Core installation and existing PDFs remain available. See docs/GROUP_DOCUMENTS.md.',
+    );
+  }
   const source = resolve(root),
     home = homedir();
   if (
@@ -72,19 +91,9 @@ try {
       timeout: 10 * 60 * 1000,
     });
   }
-  try {
-    execFileSync(process.execPath, [join(root, 'scripts/setup-usage-collector.mjs')], {
-      cwd: root,
-      stdio: 'inherit',
-      timeout: 180_000,
-    });
-  } catch {
-    // This collector is optional. A network/checksum/platform failure must not be
-    // mistaken for a broken source build or hide that quota readings remain unknown.
-    console.warn(
-      'Optional usage reader setup did not finish. The app can open; allowance readings stay unknown until the reader is repaired. QUARK may hold work that requires a fresh reading. Retry the usage-reader setup step when ready.',
-    );
-  }
+  console.log(
+    'Optional plugins, integrations and the standalone usage reader were not installed or connected. Existing installations are preserved. Without a Codex usage reader, its allowance readings stay unknown. If you choose allowance monitoring, ask your setup agent to run scripts/setup-usage-collector.mjs. QUARK pacing and automatic checks start off on new installations.',
+  );
   execFileSync(process.execPath, [join(root, 'scripts/create-launcher.mjs')], {
     cwd: root,
     stdio: 'inherit',

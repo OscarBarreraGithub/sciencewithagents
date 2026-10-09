@@ -1,9 +1,9 @@
 # Groups production release readiness
 
-Checked 2026-10-08. The native Groups release candidate connects shared actions,
+Checked 2026-10-09. The native Groups release candidate connects shared actions,
 activity evidence, unfinished-file awareness, reports/PDF sharing and recovery. Independent
-source reviews and local fixtures are release preparation. Production acceptance and public
-release remain pending the joint test below.
+source reviews and local fixtures are release preparation. Beta source is published;
+production acceptance remains pending the joint test below.
 
 [Status](STATUS.md#groups) separates current behavior from historical acceptance.
 [Manager lessons](FAILURE_REVIEW.md) record the maintenance failures and required safeguards.

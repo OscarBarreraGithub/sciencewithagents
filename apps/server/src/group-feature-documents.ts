@@ -23,6 +23,10 @@ export class GroupFeatureDocuments {
     private readonly native: {
       documents(authority: GroupDocumentsAuthority): GroupDocumentsNative;
       documentAvailable?(resultId: string): boolean;
+      documentCaptureState?(
+        resultId: string,
+        record: GroupHostNativeRecord,
+      ): 'pending' | 'unavailable' | undefined;
     },
   ) {
     const authority = {
@@ -43,7 +47,9 @@ export class GroupFeatureDocuments {
   receipt(record: GroupHostNativeRecord) {
     if (!record.result) return {};
     try {
+      const documentCaptureState = this.native.documentCaptureState?.(record.ids.resultId, record);
       return {
+        ...(documentCaptureState ? { documentCaptureState } : {}),
         documentAvailable:
           this.native.documentAvailable?.(record.ids.resultId) ??
           nativeDocumentResultNames(record.result.text).length > 0,

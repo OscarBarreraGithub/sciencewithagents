@@ -12,6 +12,7 @@ import {
   nativeRateLimitTypes,
   providerDefaultEffort,
   nativeCommandNameSchema,
+  promptTextSchema,
 } from '@dock/shared';
 import type { NativeProviderBoundary } from './native-provider-boundary.js';
 import {
@@ -29,6 +30,9 @@ const jsonObject = z.record(z.string(), z.unknown());
 const id = z.string().min(1).max(256);
 const uuid = z.uuid();
 const frameLimit = 4 * 1024 * 1024;
+// App-owned attachment/evidence expansion has its own transport budget. It must
+// never consume the owner's shared prompt allowance or be silently truncated.
+export const claudeAppContextJsonByteLimit = 1024 * 1024;
 const coordinationName = /^dock_[a-z_]+$/;
 const execute = promisify(execFile);
 
@@ -39,8 +43,9 @@ export type ClaudePreflightCode =
   | 'timeout'
   | 'unavailable'
   | 'account_changed'
-  | 'conflicting_environment';
-/** Sanitized native metadata failure, thrown only before this turn's input write. */
+  | 'conflicting_environment'
+  | 'input_too_large';
+/** Sanitized preflight failure, thrown only before this turn's input write. */
 export class ClaudePreflightError extends Error {
   constructor(
     readonly code: ClaudePreflightCode,
@@ -980,10 +985,31 @@ export class ClaudeSession extends EventEmitter {
   async submit(input: {
     deliveryId: string;
     text: string;
+    /** Host-owned suffix, separate from the original owner/queued text. */
+    appContext?: string;
     nativeCommand?: boolean;
   }): Promise<void> {
     uuid.parse(input.deliveryId);
-    z.string().trim().min(1).max(200_000).parse(input.text);
+    promptTextSchema.parse(input.text);
+    const appContext = input.appContext ?? '';
+    if (input.nativeCommand && appContext)
+      throw new Error('Native command arguments cannot include app context.');
+    const frame = {
+      type: 'user',
+      session_id: this.options.sessionId,
+      uuid: input.deliveryId,
+      origin: { kind: 'human' },
+      message: { role: 'user', content: input.text + appContext },
+      parent_tool_use_id: null,
+    };
+    if (
+      Buffer.byteLength(JSON.stringify(appContext)) > claudeAppContextJsonByteLimit ||
+      Buffer.byteLength(JSON.stringify(frame) + '\n') > frameLimit
+    )
+      throw new ClaudePreflightError(
+        'input_too_large',
+        'The app-added Claude context exceeds its transport limit. The original message is retained; no model request was sent. Inspect the conversation before retrying.',
+      );
     if (this.seenDeliveries.has(input.deliveryId))
       throw new Error(
         'This submission already reached the transport. Inspect its durable receipt.',
@@ -1004,14 +1030,7 @@ export class ClaudeSession extends EventEmitter {
       // Mark before write. A lost acknowledgement is never permission to resend.
       this.seenDeliveries.add(input.deliveryId);
       this.options.beforeWrite?.(input.deliveryId);
-      this.write({
-        type: 'user',
-        session_id: this.options.sessionId,
-        uuid: input.deliveryId,
-        origin: { kind: 'human' },
-        message: { role: 'user', content: input.text },
-        parent_tool_use_id: null,
-      });
+      this.write(frame);
     } catch (error) {
       this.busy = false;
       await this.close();
