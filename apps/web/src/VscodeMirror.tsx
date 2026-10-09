@@ -911,40 +911,42 @@ export function VscodeMirror({
                   : 'Offline. Open VS Code and share this conversation to continue. Your draft stays here.')}
           </div>
         )}
-      {chat.threadId && (
-        <MirrorNativeRequests
-          key={`${apiScope()}:${identity}`}
-          windowId={chat.windowId}
-          threadId={chat.threadId}
-          provider={chat.provider ?? 'codex'}
-          requests={nativeRequests.view?.nativeRequests}
-          unavailable={nativeRequests.view?.nativeRequestsUnavailable || !!nativeRequests.error}
-          online={nativeRequests.available}
-          readReady={!!nativeRequests.view || !!nativeRequests.error}
-          error={nativeRequests.error}
-          retry={nativeRequests.retry}
-          daemon={daemon}
-        />
-      )}
-      <nav className="mirror-history" aria-label="Conversation history">
-        <button type="button" onClick={() => setPromptsOpen(true)}>
-          Your prompts
-        </button>
-        {(historyQuery || promptSelection) && (
-          <>
-            <button
-              type="button"
-              disabled={!displayed?.page?.after}
-              onClick={() => history('after')}
-            >
-              Continue reading
-            </button>
-            <button type="button" onClick={() => history('latest')}>
-              Back to latest
-            </button>
-          </>
+      <div className="mirror-reading-controls">
+        {chat.threadId && (
+          <MirrorNativeRequests
+            key={`${apiScope()}:${identity}`}
+            windowId={chat.windowId}
+            threadId={chat.threadId}
+            provider={chat.provider ?? 'codex'}
+            requests={nativeRequests.view?.nativeRequests}
+            unavailable={nativeRequests.view?.nativeRequestsUnavailable || !!nativeRequests.error}
+            online={nativeRequests.available}
+            readReady={!!nativeRequests.view || !!nativeRequests.error}
+            error={nativeRequests.error}
+            retry={nativeRequests.retry}
+            daemon={daemon}
+          />
         )}
-      </nav>
+        <nav className="mirror-history" aria-label="Conversation history">
+          <button type="button" onClick={() => setPromptsOpen(true)}>
+            Your prompts
+          </button>
+          {(historyQuery || promptSelection) && (
+            <>
+              <button
+                type="button"
+                disabled={!displayed?.page?.after}
+                onClick={() => history('after')}
+              >
+                Continue reading
+              </button>
+              <button type="button" onClick={() => history('latest')}>
+                Back to latest
+              </button>
+            </>
+          )}
+        </nav>
+      </div>
       {promptsOpen && (
         <PromptHistory
           key={identity}

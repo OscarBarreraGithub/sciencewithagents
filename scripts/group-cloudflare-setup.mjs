@@ -6,6 +6,7 @@ import {
   openSync,
   closeSync,
   readFileSync,
+  readdirSync,
   writeFileSync,
   constants,
 } from 'node:fs';
@@ -13,12 +14,23 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { isIP } from 'node:net';
+import { isDeepStrictEqual } from 'node:util';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const secret = () => randomBytes(32).toString('hex');
 const hash = (prefix, value) => createHash('sha256').update(`${prefix}:${value}`).digest('hex');
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const hex = /^[a-f0-9]{64}$/;
+class SetupError extends Error {}
+function exists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
 function privateDirectory(path) {
   mkdirSync(path, { recursive: true, mode: 0o700 });
   const stat = lstatSync(path);
@@ -100,11 +112,38 @@ function memberService(raw) {
   if (value.endpoint !== `${origin}/`) throw new Error('Invitation origin mismatch.');
   return value;
 }
+function ownerService(raw) {
+  const { setupCapability, ...member } = raw ?? {};
+  if (!hex.test(setupCapability)) throw new Error('Missing private creator capability.');
+  memberService(member);
+  return raw;
+}
+function descriptor(config) {
+  const { setupCapability: _, ...member } = config;
+  return memberService(member);
+}
 function install(dataDir, config) {
   // Never replace an installation's existing mapping or pending membership.
   const directory = join(resolve(dataDir), 'groups');
   privateDirectory(directory);
-  privateWrite(join(directory, 'service.json'), config);
+  const path = join(directory, 'service.json');
+  if (exists(path)) {
+    const saved = JSON.parse(privateRead(path));
+    if ('setupCapability' in saved) ownerService(saved);
+    else memberService(saved);
+    if (
+      !isDeepStrictEqual(descriptor(saved), descriptor(config)) ||
+      ('setupCapability' in config && !isDeepStrictEqual(saved, config))
+    )
+      throw new SetupError(
+        'The existing Groups service differs. It was preserved; reconcile the intended service before continuing.',
+      );
+    console.log(
+      'Reused the matching saved Groups service. Existing credentials and files were preserved.',
+    );
+    return;
+  }
+  privateWrite(path, config);
   console.log('Saved private Groups service configuration. Reopen Groups and verify connection.');
 }
 
@@ -125,6 +164,14 @@ try {
       throw new Error('The prepared origin must be this Worker’s own workers.dev address.');
     const directory = join(resolve(dataDir), 'groups');
     privateDirectory(directory);
+    if (exists(join(directory, 'service.json')))
+      throw new SetupError(
+        'Groups is already configured. Use the saved deployment files and the upgrade command; no new credentials were prepared.',
+      );
+    if (readdirSync(directory).some((name) => name.startsWith('cloudflare-deploy-')))
+      throw new SetupError(
+        'A prepared Groups deployment already exists. Reuse its private files; no new credentials were prepared.',
+      );
     const prepared = join(directory, `cloudflare-deploy-${randomUUID()}`);
     privateDirectory(prepared);
     const setupCapability = secret(),
@@ -162,11 +209,58 @@ try {
     console.log(
       'No deployment performed. Deploy wrangler.json in your verified account, then activate owner-service.json.',
     );
+  } else if (command === 'upgrade') {
+    if (workerName !== '--verified-workers-free' || accountId)
+      throw new Error('Verify the existing account is Workers Free before preparing an upgrade.');
+    const directory = join(resolve(dataDir), 'groups');
+    privateDirectory(directory);
+    const active = ownerService(JSON.parse(privateRead(join(directory, 'service.json'))));
+    const savedPath = resolve(input);
+    privateDirectory(dirname(savedPath));
+    const owner = ownerService(
+      JSON.parse(privateRead(join(dirname(savedPath), 'owner-service.json'))),
+    );
+    const worker = JSON.parse(privateRead(savedPath));
+    const bindings = worker?.durable_objects?.bindings;
+    if (
+      !isDeepStrictEqual(active, owner) ||
+      !/^[a-z][a-z0-9-]{1,61}[a-z0-9]$/.test(worker?.name ?? '') ||
+      !/^[a-f0-9]{32}$/.test(worker?.account_id ?? '') ||
+      typeof worker?.main !== 'string' ||
+      worker.workers_dev !== true ||
+      worker.vars?.HOSTING_MODE !== 'hosted' ||
+      worker.vars?.HOSTING_ORIGIN !== owner.hostingAuthorization.origin ||
+      !new URL(owner.hostingAuthorization.origin).hostname.startsWith(`${worker.name}.`) ||
+      worker.vars?.GROUP_SETUP_HASH !== hash('dock-group-setup-v1', owner.setupCapability) ||
+      worker.vars?.HOSTING_APPROVAL_HASH !==
+        hash('dock-hosting-approval-v1', owner.hostingAuthorization.approvalCapability) ||
+      !Array.isArray(bindings) ||
+      bindings.filter((binding) => binding.name === 'GROUPS').length !== 1 ||
+      !bindings.some(
+        (binding) =>
+          binding.name === 'GROUPS' &&
+          binding.class_name === 'GroupMembership' &&
+          !binding.script_name,
+      ) ||
+      !Array.isArray(worker.migrations) ||
+      !worker.migrations.some((migration) =>
+        migration.new_sqlite_classes?.includes('GroupMembership'),
+      )
+    )
+      throw new SetupError(
+        'Saved deployment files do not match the active creator service. Nothing was changed; reconcile the original configuration first.',
+      );
+    const source = join(repoRoot, 'apps/group-service/src/index.ts');
+    if (!lstatSync(source).isFile() || lstatSync(source).isSymbolicLink())
+      throw new Error('The current checkout is missing the Groups Worker source.');
+    const candidate = join(dirname(savedPath), `wrangler-upgrade-${randomUUID()}.json`);
+    privateWrite(candidate, { ...worker, main: source });
+    console.log(`Prepared private upgrade configuration in ${candidate}`);
+    console.log(
+      'Only the source path changed. Verify this checkout is the reviewed revision, inspect the candidate, then dry-run and deploy it. No deployment performed.',
+    );
   } else if (command === 'activate') {
-    const config = JSON.parse(privateRead(resolve(input)));
-    const { setupCapability, ...member } = config;
-    if (!hex.test(setupCapability)) throw new Error('Missing private creator capability.');
-    memberService(member);
+    const config = ownerService(JSON.parse(privateRead(resolve(input))));
     install(dataDir, config);
   } else if (command === 'join') {
     const url = new URL(privateRead(resolve(input)).trim());
@@ -179,15 +273,17 @@ try {
     install(dataDir, memberService(invitation.service));
   } else {
     throw new Error(
-      'Usage: prepare <data-dir> <https-origin> <worker-name> <account-id> --verified-workers-free | activate <data-dir> <private-owner-file> | join <data-dir> <private-invitation-file>',
+      'Usage: prepare <data-dir> <https-origin> <worker-name> <account-id> --verified-workers-free | upgrade <data-dir> <private-wrangler-file> --verified-workers-free | activate <data-dir> <private-owner-file> | join <data-dir> <private-invitation-file>',
     );
   }
 } catch (error) {
   // Do not echo arguments, invitation fragments or parsed credentials.
   console.error(
-    error?.code === 'EEXIST'
-      ? 'An existing file/service mapping was preserved. Reconcile it explicitly before changing services.'
-      : 'Groups configuration was not completed. Check the command, private input file and hosting runbook.',
+    error instanceof SetupError
+      ? error.message
+      : error?.code === 'EEXIST'
+        ? 'An existing file/service mapping was preserved. Reconcile it explicitly before changing services.'
+        : 'Groups configuration was not completed. Check the command, private input file and hosting runbook.',
   );
   process.exitCode = 1;
 }

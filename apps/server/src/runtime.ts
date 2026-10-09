@@ -54,7 +54,12 @@ import {
 } from '@dock/shared';
 import { CodexRpc, threadResponse, toolCall, turnResponse, type Provider } from './codex.js';
 import { Conflict, Store, now, publicTask, type PrivateAgent, type PrivateRun } from './store.js';
-import { prepareRunDelivery, markRunHandoff, recordRunFailure } from './run-recovery.js';
+import {
+  prepareRunDelivery,
+  markRunHandoff,
+  recordRunFailure,
+  runDeliveryUnstarted,
+} from './run-recovery.js';
 import {
   managerCharter,
   workerCharter,
@@ -490,6 +495,7 @@ export class Runtime {
         invoke: async (agentId, key, name, input) =>
           this.managerToolResult(agentId, await this.tool(agentId, key, name, input)),
         beforeSubmit: (_agentId, runId, phase) => {
+          this.requireGroupUnstartedMode(store.run(runId));
           this.checkManagerStart(store.run(runId));
           markRunHandoff(store, store.run(runId), phase);
         },
@@ -2458,6 +2464,7 @@ export class Runtime {
     }
   }
   private async startRun(run: PrivateRun) {
+    this.requireGroupUnstartedMode(run);
     await this.nativeAdmissionVerify(run);
     let agent = this.store.agent(run.agentId);
     if (this.store.getSetting(`group:host-native-agent:${agent.id}`)) {
@@ -2602,6 +2609,7 @@ export class Runtime {
         this.kick();
         return;
       }
+      this.requireGroupUnstartedMode(run);
       await session.submit({
         deliveryId: run.id,
         // Native command arguments must remain exact; appended evidence changes them.
@@ -2642,6 +2650,7 @@ export class Runtime {
       this.kick();
       return;
     }
+    this.requireGroupUnstartedMode(run);
     markRunHandoff(this.store, this.store.run(run.id));
     const response = turnResponse.parse(
       await client.request('turn/start', {
@@ -6261,7 +6270,58 @@ export class Runtime {
         'The next turn will reconstruct from saved history, project state and checkpoints. The earlier transcript remains available.',
     );
   }
+  private requireGroupUnstartedMode(run: PrivateRun) {
+    if (!this.store.getSetting(`group:host-native-agent:${run.agentId}`)) return;
+    const reason = this.groupHostBackgroundReason?.(run.agentId, run.id);
+    if (reason) throw new Conflict(reason, 'GROUP_LOCAL_MODE_HOLD');
+  }
   private async failRun(run: PrivateRun, error: unknown) {
+    if (
+      error instanceof Conflict &&
+      error.code === 'GROUP_LOCAL_MODE_HOLD' &&
+      this.store.getSetting(`group:host-native-agent:${run.agentId}`)
+    ) {
+      const current = this.store.run(run.id);
+      const holdReason = error.message;
+      const unstarted = runDeliveryUnstarted(this.store, run.id);
+      const initialQueue =
+        current.status === 'queued' &&
+        this.store.getSetting(`run:delivery:${run.id}`) === null &&
+        !this.store.db.prepare('SELECT 1 FROM quark_runs WHERE run_id=?').get(run.id) &&
+        !this.store.db.prepare('SELECT 1 FROM pulsar_leases WHERE run_id=?').get(run.id);
+      error = new Conflict(
+        'Read-only prevented native input, but its admission cannot be proved unused. The original run, handoff and accounting evidence remain retained for explicit recovery.',
+        'GROUP_LOCAL_MODE_UNCERTAIN',
+      );
+      if (
+        (current.status === 'queued' && (initialQueue || unstarted)) ||
+        (current.status === 'running' && unstarted)
+      ) {
+        // Only exact never-dispatched input can return to its original queue ID.
+        // Observed or settled spend makes discard fail closed into ordinary recovery.
+        try {
+          this.store.transaction(() => {
+            if (unstarted) this.quark.discardUnconsumed(run.id);
+            this.store.updateRun(run.id, { status: 'queued', turnId: null });
+            const agent = this.store.agent(run.agentId);
+            if (!agent.turnId || agent.turnId === run.id)
+              this.store.updateAgent(agent.id, { status: 'queued', turnId: null });
+            this.store.event('run.group_local_hold', agent.projectId, agent.id, {
+              runId: run.id,
+              reason: holdReason,
+            });
+          });
+          this.executing.delete(run.agentId);
+          this.interruptedStarts.delete(run.id);
+          this.preparedRuns.delete(run.id);
+          this.kick();
+          return;
+        } catch {
+          // Accounting proved observed/settled, or the exact hold could not commit.
+          // Ordinary recovery retains the evidence instead of automatic replay.
+        }
+      }
+    }
     this.groupAuth
       .get(run.id)
       ?.reject(new Conflict('Native authentication admission failed; inspect the saved run.'));

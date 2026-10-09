@@ -81,7 +81,7 @@ test('Groups detects external setup without leaving, recovers a failed refresh a
   await expect(page.getByRole('button', { name: 'New group', exact: true })).toBeVisible();
 });
 
-test('fresh Groups shows creator-owned Cloudflare prompts, human steps and copyable join/phone/GitHub setup', async ({
+test('fresh Groups separates creator, joining and shared-file setup with optional phone access', async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -93,6 +93,11 @@ test('fresh Groups shows creator-owned Cloudflare prompts, human steps and copya
         },
       },
     });
+  });
+  const writes: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/groups'))
+      writes.push(request.url());
   });
   await page.route('**/api/groups', (route) =>
     route.fulfill({
@@ -113,61 +118,64 @@ test('fresh Groups shows creator-owned Cloudflare prompts, human steps and copya
     }),
   );
   await openGroups(page);
-  await page.getByRole('button', { name: 'Group setup', exact: true }).click();
+  const setupButton = page.getByRole('button', { name: 'Group setup', exact: true });
+  await expect(setupButton).toHaveText('Setup');
+  expect((await setupButton.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await setupButton.click();
   const setup = page.getByRole('dialog', { name: 'Group setup', exact: true });
   await expect(setup).toBeVisible();
-  await expect(setup).toContainText('The creator hosts Groups in their own Cloudflare account.');
-  await expect(setup.getByText('Recover an interrupted request', { exact: true })).toHaveCount(0);
-  await expect(setup).toContainText('Group messages already sync through Cloudflare.');
-  await setup.getByText('Your setup checklist', { exact: true }).click();
-  await expect(setup).toContainText('sign in to your Cloudflare account and confirm Workers Free');
+  const choices = setup.getByRole('group', { name: 'Setup purpose', exact: true });
+  await expect(choices.getByRole('button')).toHaveText([
+    'Create a group',
+    'Join a group',
+    'Shared files',
+  ]);
+  for (const button of await choices.getByRole('button').all())
+    expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect(setup).toContainText('What you do');
   await expect(setup.getByLabel('Cloudflare Groups setup prompt')).toBeHidden();
   await setup.getByRole('button', { name: 'Copy Cloudflare setup prompt', exact: true }).click();
-  await expect
-    .poll(() =>
-      page.evaluate(() => (window as Window & { copiedSetupPrompt?: string }).copiedSetupPrompt),
-    )
-    .toContain('MY OWN Cloudflare account');
-  for (const [title, label, button, expected] of [
-    [
-      '2. Member: join the creator’s service',
-      'Groups join setup prompt',
-      'Copy join setup prompt',
-      "creator's exact HTTPS service",
-    ],
-    [
-      '3. Phone: your own Cloudflare Tunnel',
-      'Groups Cloudflare phone setup prompt',
-      'Copy phone setup prompt',
-      'HTTP VPC Service',
-    ],
-    [
-      '4. GitHub for shared code and files (optional)',
-      'Groups GitHub setup prompt',
-      'Copy GitHub setup prompt',
-      'GitHub is optional for messaging',
-    ],
-  ]) {
-    const choice = setup.locator('.group-setup-choice').filter({
-      has: page.getByRole('heading', { name: title!, exact: true }),
-    });
-    await expect(choice.getByLabel(label!, { exact: true })).toBeHidden();
-    await choice.getByRole('button', { name: button!, exact: true }).click();
-    await expect
-      .poll(() =>
-        page.evaluate(() => (window as Window & { copiedSetupPrompt?: string }).copiedSetupPrompt),
-      )
-      .toContain(expected!);
-  }
-  await expect(setup.getByLabel('Beta setup code', { exact: true })).toHaveCount(0);
-  expect(await setup.textContent()).not.toContain('Tailscale');
+  const copied = () =>
+    page.evaluate(() => (window as Window & { copiedSetupPrompt?: string }).copiedSetupPrompt);
+  await expect.poll(copied).toContain('FIRST inspect the saved private');
+  expect(await copied()).toContain(
+    'scripts/group-cloudflare-setup.mjs upgrade DATA_DIR PRIVATE_WRANGLER_FILE --verified-workers-free',
+  );
+  expect(await copied()).toContain('Upgrade\ndoes not itself deploy');
+  await choices.getByRole('button', { name: 'Join a group', exact: true }).click();
+  await expect(setup.getByLabel('Groups join setup prompt', { exact: true })).toBeHidden();
+  await setup.getByRole('button', { name: 'Copy join setup prompt', exact: true }).click();
+  await expect.poll(copied).toContain('reuse it and only join the group');
+  await choices.getByRole('button', { name: 'Shared files', exact: true }).click();
+  await expect(choices.getByRole('button', { name: 'Shared files', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(
+    setup.getByRole('button', { name: 'Choose work folder', exact: true }),
+  ).toBeVisible();
+  await expect(
+    setup.getByRole('button', { name: 'Copy folder setup prompt', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    setup.getByRole('button', { name: 'Copy phone setup prompt', exact: true }),
+  ).toBeHidden();
+  await setup.getByText('Optional phone access', { exact: true }).click();
+  await expect(setup).toContainText('Groups works between computers without a phone or tunnel.');
+  await setup.getByRole('button', { name: 'Copy phone setup prompt', exact: true }).click();
+  await expect.poll(copied).toContain('HTTP VPC Service');
+  expect(writes).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     page.viewportSize()!.width + 2,
   );
+  await page.screenshot({ path: `../../data/groups-ui-${test.info().project.name}-setup.png` });
   await page.reload();
-  await expect(page.getByRole('dialog', { name: 'Group setup', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Group setup', exact: true }).click();
-  const creator = setup.locator('.group-setup-choice').first();
+  await expect(setup).toHaveCount(0);
+  await setupButton.click();
+  await expect(
+    choices.getByRole('button', { name: 'Create a group', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  const creator = setup.locator('.group-setup-choice');
   await expect(creator.getByLabel('Cloudflare Groups setup prompt')).toBeHidden();
   await creator.getByText('Read prompt', { exact: true }).click();
   await expect(creator.getByLabel('Cloudflare Groups setup prompt')).toBeVisible();

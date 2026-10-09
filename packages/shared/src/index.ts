@@ -249,6 +249,7 @@ export const projectFolderSchema = z
 export const projectTrackingSchema = z.object({ key: id, name: z.string().max(255) }).strict();
 export const projectFolderSelectionSchema = projectTrackingSchema.extend({
   needsTracking: z.boolean(),
+  workspacePath: z.string().max(4096).optional(),
 });
 export const projectTrackingRequestSchema = z
   .object({ key: id, confirmedTracking: z.literal(true) })
@@ -723,3 +724,4 @@ export * from './cluster-admission.js';
 export * from './cluster-admission-ledger.js';
 export * from './cluster-account-controls.js';
 export * from './cluster-coordination.js';
+export * from './group-updates.js';

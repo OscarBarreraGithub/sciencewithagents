@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { z } from 'zod';
 import {
   groupNativeGitRequestSchema,
   groupNativeGitViewSchema,
@@ -10,21 +11,27 @@ import {
 } from '@dock/shared/dist/group-native-git.js';
 import { integrationPreviewSchema, type GroupContext } from '@dock/shared';
 import type { Runtime } from './runtime.js';
-import type { GroupHostNativeRuntime } from './group-native-host-runtime.js';
+import type {
+  GroupHostNativeRuntime,
+  GroupHostNativeWorkspace,
+} from './group-native-host-runtime.js';
 import type { GroupHost } from './group-host.js';
 import { Conflict } from './store.js';
 import { git, integrationPreview, integrate } from './workspaces.js';
 import { groupNativePrivatePath } from './group-native-private-path.js';
+import {
+  assertGroupGitBlob,
+  groupProjectDataAllowed,
+  GROUP_NATIVE_GIT_FILE_LIMITS,
+} from './group-native-git-files.js';
 
-type Binding = ReturnType<GroupHostNativeRuntime['resolveLocalContext']>;
+type Binding = GroupHostNativeWorkspace;
 type Settings = { githubUsername: string; autoSync: boolean };
 const adapters = new WeakMap<GroupHost, GroupHostNativeGit>();
 export const groupHostNativeGit = (host: GroupHost) => adapters.get(host);
 const defaults: Settings = { githubUsername: '', autoSync: false };
 const oid = /^[a-f0-9]{40,64}$/;
 const exec = promisify(execFile);
-const secret =
-  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-(?:proj-)?[A-Za-z0-9_-]{32,}|AKIA[A-Z0-9]{16})\b/;
 
 /** The native shared checkout is host-selected. This adapter synchronizes approved
  * commits; native tools, task worktrees and independent Runtime review remain intact. */
@@ -41,6 +48,8 @@ export class GroupHostNativeGit {
     private readonly runtime: Runtime,
     private readonly connector: GroupHostNativeRuntime,
     private readonly localFixture = false,
+    /** Internal fixture seam; no browser/config can replace native access verification. */
+    private readonly verifyPrivateAccess?: (cwd: string, origin: string) => Promise<void>,
   ) {
     host.db.exec(`
       CREATE TABLE IF NOT EXISTS gng_settings(handle TEXT NOT NULL,key TEXT PRIMARY KEY,input TEXT NOT NULL,body TEXT NOT NULL);
@@ -48,6 +57,9 @@ export class GroupHostNativeGit {
       CREATE TABLE IF NOT EXISTS gng_operations(key TEXT PRIMARY KEY,input TEXT NOT NULL,result TEXT);
       CREATE TABLE IF NOT EXISTS gng_applies(key TEXT PRIMARY KEY,body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS gng_repositories(handle TEXT PRIMARY KEY,origin TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS gng_connections(handle TEXT NOT NULL,scope_key TEXT NOT NULL,origin TEXT NOT NULL,key TEXT PRIMARY KEY,UNIQUE(handle,scope_key,origin));
+      CREATE TRIGGER IF NOT EXISTS gng_connections_immutable BEFORE UPDATE ON gng_connections BEGIN SELECT RAISE(ABORT,'retained verified Git connection'); END;
+      CREATE TRIGGER IF NOT EXISTS gng_connections_retain BEFORE DELETE ON gng_connections BEGIN SELECT RAISE(ABORT,'retained verified Git connection'); END;
       CREATE TRIGGER IF NOT EXISTS gng_settings_immutable BEFORE UPDATE ON gng_settings BEGIN SELECT RAISE(ABORT,'retained Git settings'); END;
       CREATE TRIGGER IF NOT EXISTS gng_baselines_immutable BEFORE UPDATE ON gng_baselines BEGIN SELECT RAISE(ABORT,'retained Git baseline'); END;
       CREATE TRIGGER IF NOT EXISTS gng_operations_identity BEFORE UPDATE OF key,input ON gng_operations BEGIN SELECT RAISE(ABORT,'retained Git operation'); END;
@@ -56,13 +68,91 @@ export class GroupHostNativeGit {
     `);
     adapters.set(host, this);
   }
-  private settings(handle: string): Settings {
+  private scopeKey(binding: Binding) {
+    return binding.workspaceChoiceKey ?? binding.anchor.sessionId;
+  }
+  private connected(handle: string, binding: Binding) {
+    return !!this.host.db
+      .prepare('SELECT 1 FROM gng_connections WHERE handle=? AND scope_key=?')
+      .get(handle, this.scopeKey(binding));
+  }
+  private settings(handle: string, binding?: Binding): Settings {
     const row = this.host.db
       .prepare('SELECT body FROM gng_settings WHERE handle=? ORDER BY rowid DESC LIMIT 1')
       .get(handle);
-    return row ? (JSON.parse(String(row.body)) as Settings) : defaults;
+    const saved = row ? (JSON.parse(String(row.body)) as Settings) : defaults;
+    if (!binding) return saved;
+    const connected = this.connected(handle, binding);
+    return {
+      ...saved,
+      autoSync: row ? saved.autoSync && (!binding.workspaceChoiceKey || connected) : connected,
+    };
+  }
+  assertWorkspaceIdle(handle: string) {
+    if (
+      this.host.db
+        .prepare(
+          "SELECT 1 FROM gng_operations WHERE json_extract(input,'$.handle')=? AND result IS NULL LIMIT 1",
+        )
+        .get(handle)
+    )
+      throw new Conflict(
+        'Settle or retry the original pending shared-file operation before changing folders. Its exact target is retained.',
+      );
+    const scope = this.host.localSharedContext(handle);
+    const workspace = this.connector.workspaceScope?.(scope.context, scope.enrollmentHandle);
+    const starting = workspace ? this.starting.get(workspace.cwd) : null;
+    if (
+      starting &&
+      (this.connector.context(starting.requestId)?.runId || Date.now() >= starting.until)
+    )
+      this.starting.delete(workspace!.cwd);
+    if (workspace && (this.active.has(workspace.cwd) || this.starting.has(workspace.cwd)))
+      throw new Conflict(
+        'Wait for the current shared-file preparation or sync to finish before changing folders.',
+      );
+  }
+  private async privateAccess(cwd: string, origin: string) {
+    const label = origin
+      .replace(/^git@github\.com:/, 'https://github.com/')
+      .replace(/\.git\/?$/, '')
+      .replace(/\/$/, '');
+    if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(label))
+      throw new Conflict('Connect the chosen folder to the intended private GitHub repository.');
+    try {
+      const { stdout } = await exec(
+        'gh',
+        ['repo', 'view', label, '--json', 'nameWithOwner,isPrivate,viewerPermission'],
+        {
+          cwd,
+          timeout: 10_000,
+          maxBuffer: 16_384,
+          env: { ...process.env, GH_PROMPT_DISABLED: '1' },
+        },
+      );
+      const result = z
+        .object({
+          nameWithOwner: z.string().max(300),
+          isPrivate: z.literal(true),
+          viewerPermission: z.enum(['READ', 'TRIAGE', 'WRITE', 'MAINTAIN', 'ADMIN']),
+        })
+        .parse(JSON.parse(stdout));
+      if (`https://github.com/${result.nameWithOwner}`.toLowerCase() !== label.toLowerCase())
+        throw Error('Repository changed');
+    } catch {
+      throw new Conflict(
+        'Verify native GitHub sign-in and access to this intended private repository with your setup agent, then retry the same saved connection.',
+      );
+    }
   }
   private busy(binding: Binding, ownRequest?: string) {
+    const projects = new Set(
+      this.runtime.store
+        .projects()
+        .filter((project) => project.root === binding.cwd)
+        .map((project) => project.id),
+    );
+    if (binding.projectId) projects.add(binding.projectId);
     const starting = this.starting.get(binding.cwd);
     if (starting && starting.requestId !== ownRequest) {
       const run = this.connector.context(starting.requestId)?.runId;
@@ -74,9 +164,20 @@ export class GroupHostNativeGit {
         .agents()
         .some(
           (agent) =>
-            agent.projectId === binding.projectId &&
+            projects.has(agent.projectId) &&
             (['queued', 'running', 'waiting'].includes(agent.status) ||
               this.runtime.externalControl?.has(agent.id)),
+        )
+    )
+      return true;
+    if (
+      this.runtime.localJobs
+        ?.all()
+        .some(
+          (job) =>
+            job.projectId &&
+            projects.has(job.projectId) &&
+            ['queued', 'running', 'paused'].includes(job.status),
         )
     )
       return true;
@@ -85,7 +186,7 @@ export class GroupHostNativeGit {
       .some(
         (run) =>
           ['queued', 'running'].includes(run.status) &&
-          this.runtime.store.agent(run.agentId).projectId === binding.projectId,
+          projects.has(this.runtime.store.agent(run.agentId).projectId),
       );
   }
   private async optional(cwd: string, args: string[]) {
@@ -127,14 +228,14 @@ export class GroupHostNativeGit {
       );
     const retained = this.host.db
       .prepare('SELECT origin FROM gng_repositories WHERE handle=?')
-      .get(binding.anchor.sessionId);
+      .get(this.scopeKey(binding));
     if (retained && retained.origin !== origin)
       throw new Conflict(
         'The repository remote changed. Ask your setup agent to reconcile it before syncing.',
       );
     this.host.db
       .prepare('INSERT OR IGNORE INTO gng_repositories VALUES (?,?)')
-      .run(binding.anchor.sessionId, origin);
+      .run(this.scopeKey(binding), origin);
     return {
       cwd,
       origin,
@@ -155,7 +256,7 @@ export class GroupHostNativeGit {
     if (!oid.test(head)) throw new Conflict('A valid shared commit is required.');
     this.host.db
       .prepare('INSERT OR IGNORE INTO gng_baselines VALUES (?,?,?)')
-      .run(binding.anchor.sessionId, origin, head);
+      .run(this.scopeKey(binding), origin, head);
   }
   private async ancestor(cwd: string, older: string, newer: string) {
     try {
@@ -193,7 +294,7 @@ export class GroupHostNativeGit {
     const baselines = new Set(
       this.host.db
         .prepare('SELECT oid FROM gng_baselines WHERE handle=?')
-        .all(binding.anchor.sessionId)
+        .all(this.scopeKey(binding))
         .map((row) => String(row.oid)),
     );
     const rows = this.runtime.store.db
@@ -224,6 +325,8 @@ export class GroupHostNativeGit {
   }
   /** Scan every newly published checkpoint, including files deleted by a later commit. */
   private async shareable(cwd: string, base: string, head: string) {
+    const allowProjectData = groupProjectDataAllowed(cwd, this.runtime.dataDir);
+    const scanned = new Set<string>();
     const commits = (await git(cwd, ['rev-list', '--max-count=129', `${base}..${head}`]))
       .split('\n')
       .filter(Boolean);
@@ -249,7 +352,7 @@ export class GroupHostNativeGit {
       for (const name of names) {
         if (++count > 1000)
           throw new Conflict('This publication exceeds the shared file review limit.');
-        if (groupNativePrivatePath(name))
+        if (groupNativePrivatePath(name, allowProjectData))
           throw new Conflict(
             'Publication stopped at a likely private or runtime file. Inspect the shared task locally.',
           );
@@ -257,13 +360,59 @@ export class GroupHostNativeGit {
         if (!type) continue; // Deleted in this checkpoint.
         if (type !== 'blob')
           throw new Conflict('Publication needs inspection of non-file content.');
-        const size = Number(await git(cwd, ['cat-file', '-s', `${commit}:${name}`]));
+        const blob = await git(cwd, ['rev-parse', '--verify', `${commit}:${name}`]);
+        if (scanned.has(blob)) continue;
+        const size = Number(await git(cwd, ['cat-file', '-s', blob]));
         bytes += size;
-        if (size > 4 * 1024 * 1024 || bytes > 32 * 1024 * 1024)
-          throw new Conflict('Publication exceeds the shared content review limit.');
-        if (secret.test(await git(cwd, ['show', `${commit}:${name}`])))
-          throw new Conflict('Publication stopped at a likely credential. No credential was sent.');
+        if (bytes > GROUP_NATIVE_GIT_FILE_LIMITS.scanBytes)
+          throw new Conflict(
+            'This sync exceeds 512 MiB of changed files. No files were sent; ask your setup agent to review smaller checkpoints.',
+          );
+        await assertGroupGitBlob(cwd, blob, size);
+        scanned.add(blob);
       }
+    }
+  }
+  private workBranch(context: GroupContext, requestId: string) {
+    const member = createHash('sha256')
+      .update(`${context.memberId}:${context.installationId}`)
+      .digest('hex')
+      .slice(0, 12);
+    return `swa/member-${member}/work-${requestId}`;
+  }
+  private async completedWorkBranch(binding: Binding, branch: string) {
+    const prefix = this.workBranch(binding.context, '');
+    if (!branch.startsWith(prefix)) return false;
+    const id = z.uuid().safeParse(branch.slice(prefix.length));
+    if (!id.success) return false;
+    if (!this.connector.completionPending || this.connector.completionPending(id.data))
+      return false;
+    const request = this.connector.context(id.data);
+    if (
+      !request ||
+      request.intent !== 'work' ||
+      !request.runId ||
+      request.cwd !== binding.cwd ||
+      request.projectId !== binding.projectId ||
+      request.agentId !== binding.agentId ||
+      request.enrollmentHandle !== binding.enrollmentHandle ||
+      request.anchor.sessionId !== binding.anchor.sessionId ||
+      this.scopeKey(request) !== this.scopeKey(binding)
+    )
+      return false;
+    try {
+      const run = this.runtime.store.run(request.runId);
+      if (run.agentId !== request.agentId || run.key !== id.data || run.status !== 'completed')
+        return false;
+      const snapshot = await this.connector.inspect({ requestId: id.data });
+      return (
+        !this.connector.completionPending(id.data) &&
+        snapshot.requestId === id.data &&
+        snapshot.state === 'completed' &&
+        snapshot.result?.context.sessionId === request.context.sessionId
+      );
+    } catch {
+      return false; // Missing or uncertain exact completion never grants a checkout change.
     }
   }
   async beforeWork(context: GroupContext, requestId: string) {
@@ -279,11 +428,7 @@ export class GroupHostNativeGit {
         );
       await scope.revalidate();
       let head = await this.optional(repo.cwd, ['rev-parse', '--verify', 'HEAD']);
-      const member = createHash('sha256')
-        .update(`${context.memberId}:${context.installationId}`)
-        .digest('hex')
-        .slice(0, 12);
-      const branch = `swa/member-${member}/work-${requestId}`;
+      const branch = this.workBranch(context, requestId);
       const current = await git(repo.cwd, ['symbolic-ref', '--short', 'HEAD']);
       if (current === branch) {
         this.starting.set(repo.cwd, { requestId, until: Date.now() + 30_000 });
@@ -337,7 +482,12 @@ export class GroupHostNativeGit {
       );
     });
   }
-  private async synchronize(binding: Binding, revalidate: () => Promise<void>) {
+  private async synchronize(
+    binding: Binding,
+    revalidate: () => Promise<void>,
+    handle: string,
+    operationKey?: string,
+  ) {
     return this.lock(binding.cwd, async () => {
       const repo = await this.repository(binding);
       if (!repo)
@@ -349,7 +499,7 @@ export class GroupHostNativeGit {
       if (this.busy(binding) || (await git(repo.cwd, ['status', '--porcelain'])))
         return 'Fetched shared commits. Active or uncommitted work was preserved; sync again when it is settled.';
       let head = await this.optional(repo.cwd, ['rev-parse', '--verify', 'HEAD']);
-      const branch = await this.optional(repo.cwd, ['symbolic-ref', '--short', 'HEAD']);
+      let branch = await this.optional(repo.cwd, ['symbolic-ref', '--short', 'HEAD']);
       if (!head && remoteHead && branch === main) {
         await revalidate();
         if (this.busy(binding) || (await git(repo.cwd, ['status', '--porcelain'])))
@@ -359,6 +509,50 @@ export class GroupHostNativeGit {
       }
       if (!head || !branch)
         return 'The shared repository is empty. Start explicit Work to prepare its empty baseline and separate work branch.';
+      if (
+        branch !== main &&
+        remoteHead &&
+        (await this.completedWorkBranch(binding, branch)) &&
+        (await this.ancestor(repo.cwd, head, remoteHead))
+      ) {
+        const pending = () =>
+          this.host.db
+            .prepare(
+              "SELECT 1 FROM gng_operations WHERE json_extract(input,'$.handle')=? AND result IS NULL AND key<>? LIMIT 1",
+            )
+            .get(handle, operationKey ?? '');
+        if (pending())
+          return 'Fetched shared commits. An original shared-file operation is unresolved; its work branch and files remain in place.';
+        const localDefault = await this.optional(repo.cwd, [
+          'rev-parse',
+          '--verify',
+          `refs/heads/${main}`,
+        ]);
+        if (localDefault && !(await this.ancestor(repo.cwd, localDefault, remoteHead)))
+          return 'Fetched shared commits. The local default branch has unpublished or divergent history; files and branches remain in place.';
+        await revalidate();
+        if (
+          !(await this.completedWorkBranch(binding, branch)) ||
+          this.busy(binding) ||
+          pending() ||
+          (await git(repo.cwd, ['status', '--porcelain'])) ||
+          (await git(repo.cwd, ['rev-parse', 'HEAD'])) !== head ||
+          (await git(repo.cwd, ['symbolic-ref', '--short', 'HEAD'])) !== branch ||
+          (await this.optional(repo.cwd, ['rev-parse', '--verify', `refs/heads/${main}`])) !==
+            localDefault
+        )
+          return 'Shared work changed before returning to the default branch; its files and original branch were preserved.';
+        // The completed branch is already fully in the shared default. Keep its
+        // exact ref and request history; only the idle checkout resumes receiving.
+        await git(
+          repo.cwd,
+          localDefault
+            ? ['checkout', '--no-overwrite-ignore', main]
+            : ['checkout', '--no-overwrite-ignore', '--no-track', '-b', main, remoteHead],
+        );
+        branch = main;
+        head = await git(repo.cwd, ['rev-parse', 'HEAD']);
+      }
       if (
         branch === main &&
         remoteHead &&
@@ -412,7 +606,7 @@ export class GroupHostNativeGit {
     binding: Binding,
     preview: GroupNativeGitView['preview'] = null,
   ): Promise<GroupNativeGitView> {
-    const settings = this.settings(handle),
+    const settings = this.settings(handle, binding),
       repo = await this.repository(binding);
     return groupNativeGitViewSchema.parse({
       available: !!repo,
@@ -422,13 +616,16 @@ export class GroupHostNativeGit {
         ? (await this.optional(binding.cwd, ['symbolic-ref', '--short', 'HEAD'])) || null
         : null,
       ...settings,
+      connected: this.connected(handle, binding),
       dirty: !!repo && !!(await git(binding.cwd, ['status', '--porcelain'])),
       busy: this.busy(binding),
       message:
         this.notices.get(handle) ??
         (repo
-          ? 'Shared repository connected. Sync is off until you enable it. Only reviewed, applied checkpoints are published.'
-          : 'Ask your setup agent to clone the shared repository into this group workspace. Existing files stay local.'),
+          ? settings.autoSync
+            ? 'Shared files sync is on. Only reviewed, applied checkpoints are published.'
+            : 'Shared files sync is paused or awaits connection verification. Existing files stay local.'
+          : 'Use your setup agent to connect this chosen folder to the intended private GitHub repository. Existing files stay in place.'),
       localEdits: await this.localEdits(binding),
       tasks: this.runtime.store
         .tasks()
@@ -446,6 +643,9 @@ export class GroupHostNativeGit {
   /** Owner-only metadata from server-selected group/task workspaces. Returns no
    * file contents and never stages/publishes pending edits. */
   private async localEdits(binding: Binding): Promise<GroupNativeGitView['localEdits']> {
+    // Task names are relative to this selected project, even when their worktrees
+    // live under private app storage. The external project proof owns this allowance.
+    const allowProjectData = groupProjectDataAllowed(binding.cwd, this.runtime.dataDir);
     const tasks = this.runtime.store
       .tasks()
       .filter((t) => t.projectId === binding.projectId && t.worktree)
@@ -494,7 +694,7 @@ export class GroupHostNativeGit {
           changed++;
           if (/[RC]/u.test(status)) i++;
           if (
-            groupNativePrivatePath(path) ||
+            groupNativePrivatePath(path, allowProjectData) ||
             path.length > 512 ||
             path.startsWith('/') ||
             path.split('/').includes('..') ||
@@ -533,12 +733,15 @@ export class GroupHostNativeGit {
     const scope = await this.host.authenticatedContext({ handle: input.handle });
     if (scope.context.visibility !== 'shared')
       throw new Conflict('Shared files belong to the shared group conversation.');
-    let binding: Binding;
+    let binding: Binding | null;
     try {
-      binding = this.connector.resolveLocalContext(scope.context, scope.enrollmentHandle);
+      binding = this.connector.workspaceScope
+        ? this.connector.workspaceScope(scope.context, scope.enrollmentHandle)
+        : this.connector.resolveLocalContext(scope.context, scope.enrollmentHandle);
+      if (!binding) throw new Conflict('Choose this group’s shared folder first.');
     } catch {
       if (input.action !== 'status')
-        throw new Conflict('Enable agents on this computer before changing shared Git setup.');
+        throw new Conflict('Choose an accessible shared folder before connecting its Git setup.');
       return groupNativeGitViewSchema.parse({
         available: false,
         repository: null,
@@ -549,16 +752,26 @@ export class GroupHostNativeGit {
         busy: false,
         tasks: [],
         preview: null,
-        message: 'Enable agents on this computer to open its shared workspace setup.',
+        message: 'Choose a shared folder; GitHub and agent access can be connected afterward.',
       });
     }
     let preview: GroupNativeGitView['preview'] = null;
     if ('key' in input) {
-      const exact = JSON.stringify(input),
+      const exact = JSON.stringify({
+          ...input,
+          ...(binding.workspaceChoiceKey ? { workspaceChoiceKey: binding.workspaceChoiceKey } : {}),
+        }),
         old = this.host.db
           .prepare('SELECT input,result FROM gng_operations WHERE key=?')
           .get(input.key);
-      if (old && old.input !== exact) throw new Conflict('Retry the exact saved Git operation.');
+      if (old && old.input !== exact) {
+        const { workspaceChoiceKey: _, ...oldInput } = JSON.parse(String(old.input)) as Record<
+          string,
+          unknown
+        >;
+        if (!old.result || JSON.stringify(oldInput) !== JSON.stringify(input))
+          throw new Conflict('Retry the exact saved Git operation in its original shared folder.');
+      }
       if (old?.result) return groupNativeGitViewSchema.parse(JSON.parse(String(old.result)));
       if (!old) {
         if (Number(this.host.db.prepare('SELECT count(*) n FROM gng_operations').get()!.n) >= 4096)
@@ -566,10 +779,48 @@ export class GroupHostNativeGit {
         this.host.db.prepare('INSERT INTO gng_operations VALUES (?,?,NULL)').run(input.key, exact);
       }
     }
+    if (input.action === 'connect') {
+      await scope.revalidate();
+      const repository = await this.repository(binding);
+      if (!repository)
+        throw new Conflict(
+          'Use your setup agent to connect the chosen folder to its intended private GitHub repository first.',
+        );
+      if (this.verifyPrivateAccess)
+        await this.verifyPrivateAccess(repository.cwd, repository.origin);
+      else await this.privateAccess(repository.cwd, repository.origin);
+      await git(repository.cwd, ['ls-remote', '--symref', 'origin', 'HEAD']);
+      await scope.revalidate();
+      const current = this.connector.workspaceScope
+        ? this.connector.workspaceScope(scope.context, scope.enrollmentHandle)
+        : binding;
+      if (
+        !current ||
+        current.cwd !== binding.cwd ||
+        this.scopeKey(current) !== this.scopeKey(binding) ||
+        (await this.repository(current))?.origin !== repository.origin
+      )
+        throw new Conflict(
+          'Shared folder or repository changed during verification. Refresh and verify the selected connection.',
+        );
+      this.host.db
+        .prepare('INSERT OR IGNORE INTO gng_connections VALUES (?,?,?,?)')
+        .run(input.handle, this.scopeKey(binding), repository.origin, input.key);
+      this.notices.set(
+        input.handle,
+        this.settings(input.handle, binding).autoSync
+          ? 'Private repository access verified. Automatic sync is on; unfinished and unreviewed changes stay local.'
+          : 'Private repository access verified. Your saved automatic sync Off choice was preserved.',
+      );
+    }
     if (input.action === 'configure') {
       await scope.revalidate();
       if (input.autoSync && !(await this.repository(binding)))
         throw new Conflict('Connect the intended shared repository before enabling sync.');
+      if (input.autoSync && binding.workspaceChoiceKey && !this.connected(input.handle, binding))
+        throw new Conflict(
+          'Verify the intended private repository connection before enabling sync.',
+        );
       this.host.db
         .prepare('INSERT OR IGNORE INTO gng_settings VALUES (?,?,?,?)')
         .run(
@@ -586,8 +837,13 @@ export class GroupHostNativeGit {
       );
     }
     if (input.action === 'sync')
-      this.notices.set(input.handle, await this.synchronize(binding, scope.revalidate));
+      this.notices.set(
+        input.handle,
+        await this.synchronize(binding, scope.revalidate, input.handle, input.key),
+      );
     if (input.action === 'preview' || input.action === 'apply') {
+      if (!binding.projectId)
+        throw new Conflict('No shared agent work has been created in this chosen folder yet.');
       const task = this.runtime.store.task(input.taskId);
       if (task.projectId !== binding.projectId)
         throw new Conflict('This task belongs to a different workspace.');
@@ -677,18 +933,22 @@ export class GroupHostNativeGit {
   }
   private async pass() {
     if (this.closing) return;
-    const handles = this.host.db.prepare('SELECT DISTINCT handle FROM gng_settings').all();
+    const handles = this.host.db
+      .prepare('SELECT handle FROM gng_settings UNION SELECT handle FROM gng_connections')
+      .all();
     for (const row of handles) {
       if (this.closing) return;
       const handle = String(row.handle);
       if (!this.host.localVisible(handle)) continue;
-      if (!this.settings(handle).autoSync || Date.now() - (this.last.get(handle) ?? 0) < 60_000)
-        continue;
+      if (Date.now() - (this.last.get(handle) ?? 0) < 60_000) continue;
       this.last.set(handle, Date.now());
       try {
         const scope = await this.host.authenticatedContext({ handle });
-        const binding = this.connector.resolveLocalContext(scope.context, scope.enrollmentHandle);
-        this.notices.set(handle, await this.synchronize(binding, scope.revalidate));
+        const binding = this.connector.workspaceScope
+          ? this.connector.workspaceScope(scope.context, scope.enrollmentHandle)
+          : this.connector.resolveLocalContext(scope.context, scope.enrollmentHandle);
+        if (!binding || !this.settings(handle, binding).autoSync) continue;
+        this.notices.set(handle, await this.synchronize(binding, scope.revalidate, handle));
       } catch (error) {
         this.notices.set(
           handle,

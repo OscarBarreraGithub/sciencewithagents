@@ -61,3 +61,12 @@
 .group-report-row small {
   color: var(--muted, #6f736d);
 }
+.group-report-message button {
+  min-height: 44px;
+}
+.group-report-message pre {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

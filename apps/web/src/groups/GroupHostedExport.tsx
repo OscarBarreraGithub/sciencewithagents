@@ -34,7 +34,7 @@ export function GroupHostedExport({ handle }: { handle: string }) {
     );
   return (
     <details className="group-host-members">
-      <summary>Private hosted backup</summary>
+      <summary>Creator backup of shared group data</summary>
       <p>
         Save and verify the hosted group’s shared data, membership and receipts privately on this
         creator computer. Choose a quiet window: new group changes interrupt the export.
@@ -84,7 +84,7 @@ export function GroupHostedExport({ handle }: { handle: string }) {
             ? 'Keep held archive and export a fresh snapshot'
             : retained?.receipt
               ? 'Export another snapshot'
-              : 'Export hosted data'}
+              : 'Save private shared-data backup'}
       </button>
       {message && <p role="status">{message}</p>}
     </details>

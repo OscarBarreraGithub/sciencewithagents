@@ -145,6 +145,17 @@
   max-height: none;
   overflow: visible;
 }
+.group-host-controls .group-host-members,
+.group-host-controls .group-host-members[open],
+.group-host-controls .group-native-owner {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.group-host-controls .group-host-members > summary,
+.group-host-controls .group-native-owner > summary {
+  min-height: 44px;
+  padding-block: 10px;
+}
 .group-host-controls .group-git-panel {
   margin: 8px 12px;
 }
@@ -425,4 +436,58 @@
   .home-shell:has(.group-host-workspace) > .home-header {
     display: none;
   }
+}
+
+/* Selected paths and setup text remain readable inside the ordinary phone dialog. */
+.group-work-folder code {
+  overflow-wrap: anywhere;
+}
+.group-work-folder pre {
+  max-height: 24rem;
+  white-space: pre-wrap;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+}
+.group-work-folder button,
+.groups-removed-list button {
+  min-height: 44px;
+}
+.groups-removed-list {
+  padding: 12px;
+  font-size: 1rem;
+}
+.groups-removed-list summary {
+  min-height: 44px;
+  cursor: pointer;
+}
+.groups-removed-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-block: 8px;
+  border-top: 1px solid var(--line);
+}
+.groups-removed-row > strong {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.group-contribution-control {
+  padding: 4px 12px;
+}
+.group-mode-button {
+  min-height: 44px;
+  font-size: var(--text-caption);
+}
+.group-host-workspace .groups-actions.group-contribution-control {
+  flex: 0 0 auto;
+}
+.group-local-receipt-storage {
+  padding-block: 8px;
+}
+.group-local-receipt-storage p {
+  margin-block: 6px;
 }

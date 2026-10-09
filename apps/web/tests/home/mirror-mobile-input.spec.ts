@@ -99,6 +99,20 @@ for (const provider of ['codex', 'claude'] as const)
       ).toBeVisible();
       await expect(page.locator('.mirror-activity-group > summary')).toContainText('700 actions');
       await expect(page.locator('.mirror-activity')).toHaveCount(0);
+      const support = page.locator('.mirror-native-support summary');
+      await expect(support).toContainText('Native questions: confirmation unavailable');
+      await expect(support).toBeInViewport();
+      expect((await support.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      if (info.project.name === 'landscape') {
+        const compatibility = (await support.boundingBox())!;
+        const history = (await page
+          .getByRole('button', { name: 'Your prompts', exact: true })
+          .boundingBox())!;
+        expect(
+          Math.min(compatibility.y + compatibility.height, history.y + history.height) -
+            Math.max(compatibility.y, history.y),
+        ).toBeGreaterThanOrEqual(44);
+      }
       await expect(page.locator('.mirror-message').first()).toBeInViewport();
       await expect(page.getByLabel(`Message ${name}`)).toBeInViewport();
       await info.attach('shared-chat-reading-space', {

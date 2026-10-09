@@ -6,6 +6,7 @@ const commit = z.string().regex(/^[a-f0-9]{40,64}$/);
 export const groupNativeGitRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ ...selected, action: z.literal('status') }),
   z.strictObject({ ...selected, action: z.literal('sync'), key: z.uuid() }),
+  z.strictObject({ ...selected, action: z.literal('connect'), key: z.uuid() }),
   z.strictObject({
     ...selected,
     action: z.literal('configure'),
@@ -34,6 +35,7 @@ export const groupNativeGitViewSchema = z.strictObject({
   branch: z.string().max(255).nullable(),
   githubUsername: z.string().max(39),
   autoSync: z.boolean(),
+  connected: z.boolean().optional(),
   dirty: z.boolean(),
   busy: z.boolean(),
   message: z.string().max(1000),

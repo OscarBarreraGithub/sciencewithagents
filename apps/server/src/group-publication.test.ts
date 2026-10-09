@@ -35,6 +35,7 @@ import {
   PublicationReceiverFixture,
   PublicationLoopbackFixture,
 } from './group-publication-receiver.fixture.js';
+import { GROUP_PUBLICATION_RECEIPT_SLOT_BYTES } from './group-publication-storage.js';
 
 let directory: string, eventsPath: string, journalPath: string, receiverPath: string;
 let repo: GroupEventRepository, controller: GroupPublicationController;
@@ -44,6 +45,7 @@ let shared: GroupContext, privateContext: GroupContext, otherContext: GroupConte
 let localAccess: GroupAccess, grant: PublicationAccess;
 let binding: PublicationBinding, liveBinding: PublicationBinding;
 let now: number;
+let physicalLimitBytes = LIMITS.journalBytes;
 const context = (person: typeof member, visibility: 'shared' | 'private') =>
   repo.createContext({
     groupId: person.groupId,
@@ -95,7 +97,13 @@ const scheduling: PublicationScheduling = {
 };
 const authority = () => ({ access: localAccess, binding: liveBinding });
 const open = (transport: PublicationTransport = http) => {
-  controller = new GroupPublicationController(journalPath, repo, transport, scheduling);
+  controller = new GroupPublicationController(
+    journalPath,
+    repo,
+    transport,
+    scheduling,
+    physicalLimitBytes,
+  );
   grant = controller.trustedHostRegister(binding, authority);
 };
 const enqueue = (eventId: string) => controller.enqueue(grant, [eventId]).operations[0];
@@ -134,6 +142,9 @@ const journalRows = () => {
 const legacyJournal = (version: 1 | 2) => {
   const db = new DatabaseSync(journalPath);
   try {
+    db.exec(`DROP TRIGGER gp_operations_storage_insert; DROP TRIGGER gp_operations_storage_update;
+      DROP TRIGGER gp_receipt_slots_storage_insert; DROP TABLE gp_receipt_slots;
+      DROP TABLE gp_partition_storage; DROP TABLE gp_storage;`);
     db.exec(`DROP TRIGGER gp_identity_immutable; DROP TRIGGER gp_header_immutable;
       DROP TRIGGER gp_complete_immutable; DROP INDEX gp_event_identity`);
     for (const raw of db.prepare('SELECT * FROM gp_operations WHERE compact=1').iterate()) {
@@ -234,6 +245,7 @@ const crash = (
     });
   });
 beforeEach(async () => {
+  physicalLimitBytes = LIMITS.journalBytes;
   expect(process.versions.node.split('.')[0]).toBe('24');
   const root = resolve(process.env.GROUP_PUBLICATION_TEST_TMPDIR ?? 'data/group-publication-tests');
   mkdirSync(root, { recursive: true });
@@ -907,7 +919,9 @@ it('turns over >300 actual completions with compact identities, restarts and con
     pageBytes: size.page_size,
   });
   expect(statSync(journalPath).size).toBe(pages.page_count * size.page_size);
-  expect(statSync(journalPath).size).toBeLessThan(2 * 1024 * 1024);
+  expect(statSync(journalPath).size).toBeLessThan(
+    2 * 1024 * 1024 + rows.length * GROUP_PUBLICATION_RECEIPT_SLOT_BYTES,
+  );
   db.close();
 }, 30_000);
 
@@ -1622,12 +1636,22 @@ it.each(['before-completion', 'after-completion'] as const)(
     open();
     expect(enqueue(event.eventId)).toBe(operation);
     if (mode === 'before-completion') {
-      expect(await controller.step(grant, operation)).toEqual({ state: 'busy' });
-      advance(LIMITS.leaseMs);
+      // The exact acknowledgment was committed to its allocated slot before
+      // this later state/compaction transaction. No lease wait or RPC is needed.
+      expect(await controller.step(grant, operation)).toEqual({ state: 'complete' });
     }
     await complete(operation);
     expect(receiver.trace.filter((item) => item.kind !== 'receipt')).toHaveLength(effects);
-    const receipt = JSON.parse(journalRows()[0].receipt_json!) as PublicationReceipt;
+    const saved = journalRows()[0].receipt_json;
+    const db = new DatabaseSync(journalPath, { readOnly: true });
+    const slot = Buffer.from(
+      db.prepare('SELECT body FROM gp_receipt_slots WHERE operation_id=?').get(operation)!
+        .body as Uint8Array,
+    );
+    db.close();
+    const receipt = JSON.parse(
+      saved ?? slot.subarray(4, 4 + slot.readUInt32BE(0)).toString('utf8'),
+    ) as PublicationReceipt;
     expect(receipt).toMatchObject({
       state: 'committed',
       eventId: event.eventId,
@@ -1699,6 +1723,9 @@ it.each(['receipt', 'header', 'state'] as const)(
 );
 
 it('preserves IDs and receipts under real 64 MiB SQLite pressure and resumes using freed pages', async () => {
+  controller.close();
+  physicalLimitBytes = 64 * 1024 ** 2;
+  open();
   const event = append();
   const operation = enqueue(event.eventId);
   await complete(operation);
@@ -1706,7 +1733,7 @@ it('preserves IDs and receipts under real 64 MiB SQLite pressure and resumes usi
   const pending = append();
   const db = new DatabaseSync(journalPath);
   const pageSize = (db.prepare('PRAGMA page_size').get() as { page_size: number }).page_size;
-  db.prepare(`PRAGMA max_page_count=${Math.floor(LIMITS.journalBytes / pageSize)}`).get();
+  db.prepare(`PRAGMA max_page_count=${Math.floor(physicalLimitBytes / pageSize)}`).get();
   db.exec('CREATE TABLE pressure (id INTEGER PRIMARY KEY, bytes BLOB NOT NULL)');
   const fill = db.prepare('INSERT INTO pressure(bytes) VALUES (zeroblob(?))');
   for (const bytes of [1024 * 1024, pageSize]) {
@@ -1721,7 +1748,7 @@ it('preserves IDs and receipts under real 64 MiB SQLite pressure and resumes usi
   }
   const pages = (db.prepare('PRAGMA page_count').get() as { page_count: number }).page_count;
   console.info('physical pressure', { pages, pageSize, bytes: statSync(journalPath).size });
-  expect(pages * pageSize).toBe(LIMITS.journalBytes);
+  expect(pages * pageSize).toBe(physicalLimitBytes);
   const batch = Array.from({ length: 16 }, () => append());
   expect(() =>
     controller.enqueue(
@@ -1743,7 +1770,117 @@ it('preserves IDs and receipts under real 64 MiB SQLite pressure and resumes usi
   expect(statSync(journalPath).size).toBeLessThanOrEqual(LIMITS.journalBytes);
 });
 
-it('bounds the global compact lifetime across epochs while retaining completed lookup at capacity', async () => {
+it('a constant-size preallocated receipt survives the physical fence and failed final-state write without replay after restart', async () => {
+  controller.close();
+  physicalLimitBytes = 4 * 1024 ** 2;
+  let effectCount = 0,
+    finalPages = 0;
+  open({
+    receipt: (key, signal) => http.receipt(key, signal),
+    async effect(packet, signal) {
+      effectCount++;
+      const reply = await http.effect(packet, signal);
+      if (packet.kind === 'commit') {
+        const db = new DatabaseSync(journalPath);
+        try {
+          db.prepare(`PRAGMA max_page_count=${physicalLimitBytes / 4096}`).get();
+          db.exec(`CREATE TABLE owned_pressure(id INTEGER PRIMARY KEY,body BLOB);
+            CREATE TRIGGER owned_completion_fault BEFORE UPDATE ON gp_operations WHEN NEW.state='complete' BEGIN SELECT RAISE(ABORT,'held final state'); END;`);
+          const fill = db.prepare('INSERT INTO owned_pressure(body) VALUES(zeroblob(?))');
+          for (const bytes of [65536, 4096])
+            for (;;) {
+              try {
+                fill.run(bytes);
+              } catch (error) {
+                expect(String(error)).toContain('full');
+                break;
+              }
+            }
+          finalPages = Number(db.prepare('PRAGMA page_count').get()!.page_count);
+          expect(finalPages * 4096).toBe(physicalLimitBytes);
+        } finally {
+          db.close();
+        }
+      }
+      return reply;
+    },
+  });
+  const event = append(shared, 'Exact retained acknowledgment at a real fence.'),
+    operation = enqueue(event.eventId);
+  await complete(operation);
+  expect(effectCount).toBe(3);
+  const db = new DatabaseSync(journalPath, { readOnly: true });
+  const row = db
+    .prepare('SELECT state,receipt_json FROM gp_operations WHERE operation_id=?')
+    .get(operation)!;
+  expect(row.state).toBe('pending');
+  expect(row.receipt_json).toBeNull();
+  expect(
+    db
+      .prepare('SELECT committed,length(body) bytes FROM gp_receipt_slots WHERE operation_id=?')
+      .get(operation),
+  ).toEqual({ committed: 1, bytes: 8192 });
+  expect(Number(db.prepare('PRAGMA page_count').get()!.page_count)).toBe(finalPages);
+  db.close();
+  controller.close();
+  open({
+    receipt: async () => {
+      throw Error('No receipt query after exact saved acknowledgment');
+    },
+    effect: async () => {
+      effectCount++;
+      throw Error('No replay');
+    },
+  });
+  expect(controller.inspect(grant, operation)).toMatchObject({
+    state: 'complete',
+    uncertain: false,
+    nextAttemptAt: 0,
+  });
+  expect(await controller.step(grant, operation)).toEqual({ state: 'complete' });
+  expect(effectCount).toBe(3);
+  expect(enqueue(event.eventId)).toBe(operation);
+});
+
+it('a full migrated legacy journal permits original receipt reads but refuses effect handoff without a newly allocated acknowledgment slot', async () => {
+  const event = append(),
+    operation = enqueue(event.eventId);
+  controller.close();
+  legacyJournal(2);
+  let reads = 0,
+    effects = 0;
+  const transport: PublicationTransport = {
+    async receipt(key) {
+      reads++;
+      return { kind: 'receipt', receipt: { ...key, state: 'absent' } };
+    },
+    async effect() {
+      effects++;
+      throw Error('Missing reserve must prevent handoff');
+    },
+  };
+  open(transport);
+  const db = new DatabaseSync(journalPath);
+  db.prepare('UPDATE gp_storage SET bytes=?').run(LIMITS.journalBytes);
+  db.close();
+  expect(await controller.step(grant, operation)).toEqual({ state: 'capacity' });
+  expect(reads).toBe(1);
+  expect(effects).toBe(0);
+  expect(journalRows()[0]).toMatchObject({
+    operation_id: operation,
+    event_id: event.eventId,
+    intent: 0,
+    receipt_json: null,
+  });
+  controller.close();
+  advance(LIMITS.leaseMs);
+  open(transport);
+  expect(await controller.step(grant, operation)).toEqual({ state: 'capacity' });
+  expect(reads).toBe(2);
+  expect(effects).toBe(0);
+});
+
+it('admits completed history beyond2048 across epochs and preserves exact lookup at its byte fence', async () => {
   controller.close();
   let sequence = 0;
   open({
@@ -1763,10 +1900,7 @@ it('bounds the global compact lifetime across epochs while retaining completed l
       throw new Error('Unexpected effect at receipt-only fixture');
     },
   });
-  const capacity = Math.floor(
-    (LIMITS.journalBytes - LIMITS.partitions * LIMITS.lifetimeOperations * LIMITS.headerBytes) /
-      8192,
-  );
+  const capacity = 2049;
   let firstEvent = '',
     firstOperation = '';
   for (let i = 0; i < capacity; i++) {
@@ -1779,8 +1913,11 @@ it('bounds the global compact lifetime across epochs while retaining completed l
     expect(await controller.step(grant, operation)).toEqual({ state: 'complete' });
   }
   const before = journalRows();
-  expect(capacity).toBe(2048);
+  expect(controller.storage().bytes).toBeLessThan(LIMITS.journalBytes);
   expect(enqueue(firstEvent)).toBe(firstOperation);
+  const fence = new DatabaseSync(journalPath);
+  fence.prepare('UPDATE gp_storage SET bytes=?').run(LIMITS.journalBytes);
+  fence.close();
   const next = append();
   expect(() => enqueue(next.eventId)).toThrow('capacity');
   liveBinding = { ...binding, epoch: randomUUID() };

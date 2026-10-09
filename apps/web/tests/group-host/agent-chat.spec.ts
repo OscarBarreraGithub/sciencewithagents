@@ -88,7 +88,7 @@ async function chat(page: Page) {
 }
 async function manager(page: Page) {
   await expect(page.locator('.groups-workspace')).toBeVisible();
-  await page.getByRole('tab', { name: 'Group manager', exact: true }).click();
+  await page.getByRole('tab', { name: 'My group agent', exact: true }).click();
 }
 async function capture(page: Page, label: string) {
   await page.screenshot({
@@ -98,13 +98,27 @@ async function capture(page: Page, label: string) {
     await page.evaluate(() => innerWidth + 2),
   );
 }
-test('Group manager keeps exact agent retries across human-tab switches, shared drafts and owner access', async ({
+test('My group agent keeps exact agent retries across human-tab switches, shared drafts and owner access', async ({
   page,
 }) => {
+  // Controlled native changes notify the existing authenticated stream; this
+  // fixture must not depend on the former one-second idle polling schedule.
+  await page.addInitScript(() => {
+    const view = window as typeof window & { nativeChatStreams: EventSource[] };
+    view.nativeChatStreams = [];
+    const Native = window.EventSource;
+    window.EventSource = class extends Native {
+      constructor(url: string | URL, options?: EventSourceInit) {
+        super(url, options);
+        if (new URL(String(url), location.href).pathname === '/api/events')
+          view.nativeChatStreams.push(this);
+      }
+    };
+  });
   await enter(page);
   await create(page, 'Compact River');
   await chat(page);
-  await expect(page.getByRole('tab')).toHaveText(['Group chat', 'Group manager']);
+  await expect(page.getByRole('tab')).toHaveText(['Group chat', 'My group agent']);
   await expect(page.getByRole('tab', { name: 'Group chat', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -116,22 +130,24 @@ test('Group manager keeps exact agent retries across human-tab switches, shared 
   const controls = page.locator('.group-host-controls');
   await expect(controls).toHaveJSProperty('open', false);
   await expect(page.locator('.group-host-controls')).toBeHidden();
-  await expect(page.getByRole('tab', { name: 'Group manager', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'My group agent', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  await expect(page.getByText('Local agent access', { exact: true })).toBeHidden();
+  await expect(page.getByText('My agent on this computer', { exact: true })).toBeHidden();
   await expect(page.getByRole('combobox', { name: 'Agent request', exact: true })).toHaveValue(
     'ask',
   );
   await capture(page, 'compact-default');
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
-  for (const text of ['Invite people', 'Shared feed agent', 'Local agent access'])
+  for (const text of ['Invite people', 'My agent on this computer', 'Advanced'])
     await expect(page.getByText(text, { exact: true })).toBeVisible();
-  await expect(page.getByText('Shared Git workspace', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Shared work and actions', { exact: true })).toBeVisible();
-  await expect(page.getByText('Shared reports', { exact: true })).toBeVisible();
-  await page.getByText('Local agent access', { exact: true }).click();
+  await expect(page.getByText('Summary computer for older activity', { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText('Review proposed shared actions', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Browse earlier shared reports', { exact: true })).toHaveCount(0);
+  await page.getByText('My agent on this computer', { exact: true }).click();
   const owner = page.locator('.group-native-owner');
   await expect(owner).toContainText('existing sign-in and native tools');
   await expect(owner).toContainText('agents retain normal access to this computer');
@@ -142,7 +158,7 @@ test('Group manager keeps exact agent retries across human-tab switches, shared 
   await expect(owner).toContainText('Local agent access enabled');
   await expect(page.getByRole('button', { name: 'Enable agents on this computer' })).toHaveCount(0);
   await capture(page, 'local-agent-access');
-  await page.getByText('Local agent access', { exact: true }).click();
+  await page.getByText('My agent on this computer', { exact: true }).click();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   const posts: Array<{ path: string; body: Record<string, unknown> }> = [];
   const ownerPosts: Array<Record<string, unknown>> = [];
@@ -158,7 +174,7 @@ test('Group manager keeps exact agent retries across human-tab switches, shared 
     )
       ownerPosts.push(request.postDataJSON());
   });
-  const input = page.getByPlaceholder('Message your group manager…');
+  const input = page.getByPlaceholder('Message my group agent…');
   await input.scrollIntoViewIfNeeded();
   await expect(input).toBeInViewport();
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeInViewport();
@@ -214,6 +230,30 @@ test('Group manager keeps exact agent retries across human-tab switches, shared 
     }
     await route.fulfill({ response, json: value });
   });
+  const selected = await page.request.post(`${connection.origin}/api/groups/open`, {
+    headers: { Origin: connection.origin },
+    data: { handle: new URL(page.url()).hash.split('/').at(-1) },
+  });
+  const current = await selected.json();
+  const notify = () =>
+    page.evaluate((identity) => {
+      const view = window as typeof window & { nativeChatStreams: EventSource[] };
+      for (const stream of view.nativeChatStreams)
+        stream.dispatchEvent(
+          new MessageEvent('group', {
+            data: JSON.stringify({
+              groupId: identity.groupId,
+              memberId: identity.memberId,
+              installationId: identity.installationId,
+              connected: true,
+              changed: true,
+            }),
+          }),
+        );
+    }, current.shared.context);
+  await notify();
+  await expect.poll(() => completedReads).toBeGreaterThanOrEqual(1);
+  await notify();
   const replyBubble = page
     .locator('.conversation .message.assistant .markdown')
     .filter({ hasText: reply });
@@ -299,22 +339,33 @@ test('Group manager keeps exact agent retries across human-tab switches, shared 
   await input.fill('Retained manager draft');
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: 'Cancel saved request', exact: true }),
+    page.getByRole('button', { name: 'Cancel this request', exact: true }),
   ).toBeVisible();
   const savedRequest = ownerPosts.findLast(
     (body) => body.action === 'status' && body.handle === posts[0]!.body.handle && body.requestId,
   );
   expect(savedRequest?.requestId).toEqual(expect.any(String));
-  await page.getByRole('button', { name: 'Cancel saved request', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Cancel saved request', exact: true })).toHaveCount(
-    0,
-  );
-  await expect(page.locator('.group-native-owner')).toContainText('Local agent access enabled');
-  expect(ownerPosts.at(-1)).toMatchObject({
-    action: 'reject',
-    handle: posts[0]!.body.handle,
-    requestId: savedRequest!.requestId,
+  const requestBeforeCancel = await owner
+    .locator('p')
+    .filter({ hasText: /^Request:/ })
+    .innerText();
+  const savedRequestOwner = page.locator('.group-native-owner').filter({
+    has: page.getByText(requestBeforeCancel, { exact: true }),
   });
+  await page.getByRole('button', { name: 'Cancel this request', exact: true }).click();
+  // Fresh reads may offer the other saved request; cancellation targets only
+  // the original shown before the click and never consumes that other request.
+  await expect(
+    savedRequestOwner.getByRole('button', { name: 'Cancel this request', exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator('.group-native-owner')).toContainText('Local agent access enabled');
+  expect(ownerPosts.filter((body) => body.action === 'reject')).toEqual([
+    expect.objectContaining({
+      action: 'reject',
+      handle: posts[0]!.body.handle,
+      requestId: savedRequest!.requestId,
+    }),
+  ]);
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(input).toHaveValue('Retained manager draft');
   expect(new Set(posts.map((post) => post.body.handle)).size).toBe(1);
@@ -333,18 +384,18 @@ test('first local request waits for owner enable and continues the same saved re
     if (request.method() === 'POST' && /\/groups\/(request-agent|native-owner)$/.test(path))
       posts.push({ path, body: request.postDataJSON() });
   });
-  await page.getByPlaceholder('Message your group manager…').fill('Saved before local access');
+  await page.getByPlaceholder('Message my group agent…').fill('Saved before local access');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.locator('.group-host-controls')).toHaveJSProperty('open', true);
   await expect(page.getByRole('button', { name: 'Enable agents on this computer' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Continue saved request' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Continue this request' })).toHaveCount(0);
   const pending = posts.findLast(
     ({ body }) => body.action === 'status' && typeof body.requestId === 'string',
   )!;
   expect(pending.body.requestId).toEqual(expect.any(String));
   await page.getByRole('button', { name: 'Enable agents on this computer' }).click();
-  await page.getByRole('button', { name: 'Continue saved request' }).click();
-  await expect(page.getByRole('button', { name: 'Continue saved request' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Continue this request' }).click();
+  await expect(page.getByRole('button', { name: 'Continue this request' })).toHaveCount(0);
   expect(posts.findLast(({ body }) => body.action === 'continue')!.body).toMatchObject({
     handle: pending.body.handle,
     requestId: pending.body.requestId,

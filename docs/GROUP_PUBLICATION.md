@@ -8,8 +8,8 @@ disposable tests, never production adapters or proof of deployed synchronization
 
 Completed deliveries release their active header slots through transactional compaction,
 while retaining permanent identity and receipts.
-The journal still has a finite 2,048-identity lifetime and a 64 MiB physical ceiling; this is
-bounded turnover, not indefinite collaboration or a completed collaboration product.
+Retained history now uses byte admission within a finite 1 GiB local journal ceiling,
+with acknowledgment space allocated before effects. It has no 2,048-identity lifetime stop.
 Credential/endpoint changes and exhausted journals require explicit reconciliation;
 normal integration does not remove these storage and identity fences.
 Epoch rotation cannot extend the journal's lifetime or republish an old event.
@@ -66,13 +66,16 @@ transaction and by a unique SQLite index. An event retained in another epoch (in
 uncertain or exhausted events) returns only `identity_changed`; no new ID is exposed and no row
 is added. A mixed batch rolls back completely, including earlier newly inserted references.
 
-Enqueue is a single `BEGIN IMMEDIATE` transaction for the whole batch. Completion and its
-validated receipt are one transaction with `synchronous=FULL`. Event append and outbox
+Enqueue is a single `BEGIN IMMEDIATE` transaction for the whole batch. A validated committed
+receipt is saved with `synchronous=FULL` before later scheduling/compaction. Event append and outbox
 enqueue are separate transactions: a host must retain the append result and enqueue/retry
 its authorized reference; this module does not scan history to repair an interrupted handoff.
 Immutable identity rows and receipts are never deleted to make room for a new operation.
-Only a validated committed receipt permits compaction. Completion, exact receipt retention and
-replacement of the full header with an empty active-header field commit together. The retained
+Only a validated committed receipt permits compaction. Enqueue allocates a fixed 8 KiB SQLite
+receipt slot under the original operation ID. Retention changes only the constant-size body
+and its 0/1 committed bit, requiring no new row/index/overflow-page allocation. If later
+completion-state persistence fails, the exact binding/payload/event receipt proves completion
+on inspection or restart without another transport query or effect. The retained
 row keeps the event UUID, delivery operation UUID, canonical payload hash, SHA-256 of the exact
 canonical header, exact canonical source reference (`sessionId`, provider, `nativeSessionId`,
 `messageId`), immutable partition/full binding, receipt and all diagnostic/recovery counters.
@@ -179,25 +182,23 @@ authenticated old-binding reconciliation is required before production recovery 
 
 ## Quotas and recovery states
 
-| Limit                     | Bound                                                              |
-| ------------------------- | ------------------------------------------------------------------ |
-| One journal               | One group/enrollment; at most eight epochs                         |
-| Active headers            | 128 unfinished per epoch, including exhausted/quarantined rows     |
-| Retained identities       | 2,048 lifetime journal-wide, across all epochs/states              |
-| Pending / enqueue         | 64 pending per epoch; 16 refs per enqueue                          |
-| Header / packet / receipt | 48 KiB / 100,000 bytes / 4 KiB of canonical JSON                   |
-| Original                  | Repository limits: 1 MiB, 64 chunks, 16 KiB per chunk              |
-| Journal main database     | 64 MiB, enforced with SQLite `max_page_count` on every open        |
-| Effect budget             | 96 per operation; receipt-only checks cost zero                    |
-| Diagnostic steps          | Saturate at 2,147,483,647; failure/backoff counter saturates at 96 |
-| Timing                    | 250 ms after progress; failure backoff 1–60 seconds; no busy loop  |
+| Limit                     | Bound                                                               |
+| ------------------------- | ------------------------------------------------------------------- |
+| One journal               | One group/enrollment; at most eight epochs                          |
+| Active headers            | 128 unfinished per epoch, including exhausted/quarantined rows      |
+| Retained identities       | Byte admission across all epochs/states; originals and IDs retained |
+| Pending / enqueue         | 64 pending per epoch; 16 refs per enqueue                           |
+| Header / packet / receipt | 48 KiB / 100,000 bytes / 4 KiB of canonical JSON                    |
+| Original                  | Repository limits: 1 MiB, 64 chunks, 16 KiB per chunk               |
+| Journal main database     | 1 GiB, enforced with SQLite `max_page_count` on every open          |
+| Effect budget             | 96 per operation; receipt-only checks cost zero                     |
+| Diagnostic steps          | Saturate at 2,147,483,647; failure/backoff counter saturates at 96  |
+| Timing                    | 250 ms after progress; failure backoff 1–60 seconds; no busy loop   |
 
-The history bound reserves the existing maximum active-header budget of 48 MiB
-(8 × 128 × 48 KiB), leaving 16 MiB for compact identities. Budgeting 8 KiB per identity
-(escaped source reference, up to 4 KiB receipt, UUIDs/hashes, counters and SQLite row/index
-and page overhead) derives floor(16 MiB / 8 KiB) = **2,048 identities**. This journal-wide
-count includes unfinished rows and reserves their future compact slot at enqueue. Completed
-rows release active-header capacity, never their identity slot. Re-enqueue of a retained ID
+An additive, once-backfilled counter charges canonical header/source/receipt bytes, 4 KiB
+row overhead and each fixed acknowledgment slot plus its row overhead. Inserts and updates
+maintain constant-time byte and per-partition active/pending counters. Completed
+rows release active-header capacity, never their identity or receipt slot. Re-enqueue of a retained ID
 still succeeds at logical capacity; a new ID fails `capacity`. Unfinished/quarantined history
 can fill the 128 active slots even if fewer than 64 pending rows remain. Epoch changes never
 reset either history or journal-wide capacity.
@@ -206,13 +207,15 @@ The overhead allowance is not a proof of worst-case physical fit. The hard SQLit
 can reject writes earlier with `storage`; neither error permits dropping history or allocating
 a replacement ID. Compaction releases overflow/free pages for reuse without VACUUM, a second
 copy or shrinking the physical file. DELETE-mode rollback journals can transiently require
-additional disk space, bounded by the main database size; reserve another 64 MiB plus filesystem
+additional disk space, bounded by the main database size; allow another 1 GiB plus filesystem
 overhead. The append-only event repository's original storage and remote receipt/staging
 lifetime are separate. No automatic retirement, unlimited history, receipt-only lifetime
 extension or epoch workaround is supplied. Endpoint, remote group or credential-grant changes
 still block an existing immutable partition, including new enqueues. SQLite/OS failures do
 not imply delivery, and an interrupted completion can only recover the same ID through its
-bound committed receipt.
+bound committed receipt. Old pending journals allocate acknowledgment slots additively before
+another effect. A full old journal can still read its original remote receipt, but cannot
+handoff a new effect without that reserve. Slots do not reserve OS disk space or hosted quotas.
 
 Statuses are fixed small enums. Authorized inspection adds only this operation's diagnostic
 `attempts`, spent `budgetAttempts`, due time and uncertain-intent flag. Failed authorization returns no ID, count, timing or
@@ -261,7 +264,9 @@ pressure table fills the main file to 64 MiB, verifies atomic enqueue failure an
 IDs/receipts across restart, then releases only artificial pressure pages to resume delivery.
 A separate large-header check observes freed overflow pages reused by the next enqueue in the
 same file; SQLite may first grow the file while updating an active row. A trusted receipt-only
-fixture fills all 2,048 identity slots and checks cross-epoch capacity without resetting history.
+fixture retains more than 2,048 completed identities and checks cross-epoch byte admission
+without resetting history. A real smaller physical-fence fixture verifies constant-size
+acknowledgment retention despite a forced final-state failure, then restarts without replay.
 Lost begin,
 partial-chunk and commit acknowledgements are followed by more than 110 unavailable/failed
 receipt checks across actual process restarts, preserving the effect budget before same-ID

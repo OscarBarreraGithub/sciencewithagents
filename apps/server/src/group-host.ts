@@ -13,6 +13,11 @@ import {
 } from '@dock/shared/dist/group-native-activity.js';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  initializeGroupLocalReceiptCapacity,
+  admitGroupLocalReceipt,
+  groupLocalReceiptCapacity,
+} from './group-local-receipt-capacity.js';
 import { join } from 'node:path';
 import { z } from 'zod';
 import {
@@ -105,6 +110,7 @@ import {
 import type { GroupScope } from '@dock/shared';
 import type { GroupPromotionDecision } from '@dock/shared/dist/group-promotion.js';
 import { memberFeedInputSchema, type MemberFeedInput } from './group-member-feed.js';
+import { GroupHostUpdates } from './group-host-updates.js';
 
 const slotSchema = z.strictObject({
   handle: z.uuid(),
@@ -218,6 +224,7 @@ export class GroupHost {
   readonly native: GroupNativeConnector;
   readonly nativeJournal: GroupHostNativeJournal;
   readonly promotion: GroupFeaturePromotion;
+  readonly updates = new GroupHostUpdates();
   /** Internal local producer hook; no browser or shared feed read installs work. */
   memberFeedOriginal?: (input: MemberFeedInput) => void;
   private controllers = new Map<
@@ -229,6 +236,7 @@ export class GroupHost {
     }
   >();
   private locks = new Map<string, Promise<unknown>>();
+  private reads = new Map<string, Promise<unknown>>();
   private nativeReadOffsets = new Map<string, number>();
   constructor(
     root: string,
@@ -253,12 +261,16 @@ export class GroupHost {
       CREATE TABLE IF NOT EXISTS gh_groups(handle TEXT PRIMARY KEY, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS gh_operations(key TEXT PRIMARY KEY,input TEXT NOT NULL,body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS gh_local_visibility(handle TEXT NOT NULL,revision INTEGER NOT NULL,hidden INTEGER NOT NULL,key TEXT UNIQUE NOT NULL,PRIMARY KEY(handle,revision));
+      CREATE TABLE IF NOT EXISTS gh_local_mode(handle TEXT NOT NULL,revision INTEGER NOT NULL,mode TEXT NOT NULL,key TEXT UNIQUE NOT NULL,PRIMARY KEY(handle,revision));
+      CREATE TRIGGER IF NOT EXISTS gh_local_mode_immutable BEFORE UPDATE ON gh_local_mode BEGIN SELECT RAISE(ABORT,'retained local mode'); END;
+      CREATE TRIGGER IF NOT EXISTS gh_local_mode_retain BEFORE DELETE ON gh_local_mode BEGIN SELECT RAISE(ABORT,'retained local mode'); END;
       CREATE TRIGGER IF NOT EXISTS gh_local_visibility_immutable BEFORE UPDATE ON gh_local_visibility BEGIN SELECT RAISE(ABORT,'retained local visibility'); END;
       CREATE TRIGGER IF NOT EXISTS gh_local_visibility_retain BEFORE DELETE ON gh_local_visibility BEGIN SELECT RAISE(ABORT,'retained local visibility'); END;
       CREATE TABLE IF NOT EXISTS gh_sends(handle TEXT NOT NULL,key TEXT NOT NULL,input TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(handle,key));
       CREATE TABLE IF NOT EXISTS gh_drafts(handle TEXT PRIMARY KEY,text TEXT NOT NULL,revision INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS gh_draft_receipts(handle TEXT NOT NULL,key TEXT NOT NULL,input TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(handle,key));
       CREATE TABLE IF NOT EXISTS gh_pending(handle TEXT NOT NULL,request_id TEXT NOT NULL,identity TEXT NOT NULL,PRIMARY KEY(handle,request_id));`);
+    initializeGroupLocalReceiptCapacity(this.db);
     this.db
       .exec(`CREATE TABLE IF NOT EXISTS gh_coordination_receipts(key TEXT PRIMARY KEY,context_session_id TEXT NOT NULL,event_id TEXT NOT NULL,delivery_operation TEXT NOT NULL);
       CREATE TRIGGER IF NOT EXISTS gh_coordination_receipts_no_update BEFORE UPDATE ON gh_coordination_receipts BEGIN SELECT RAISE(ABORT,'immutable'); END;
@@ -279,6 +291,7 @@ export class GroupHost {
   private readonly betaConfiguration: ReturnType<typeof betaGroupServiceConfiguration> | null;
   private readonly explicitBetaDefault: boolean;
   async close() {
+    this.updates.close();
     await this.promotion.close();
     await this.native.close?.();
     for (const { controller } of this.controllers.values()) controller.close();
@@ -305,6 +318,37 @@ export class GroupHost {
       return await next;
     } finally {
       if (this.locks.get(key) === next) this.locks.delete(key);
+    }
+  }
+  /** Share only a currently in-flight exact browser reading. The retained service,
+   * credential and context are part of the key; results never survive settlement
+   * and effect/revalidation ports always perform their own fresh admission. */
+  private async concurrentRead<T>(
+    kind: 'open' | 'chat' | 'feed',
+    input: { handle: string },
+    read: () => Promise<T>,
+  ): Promise<T> {
+    const retained = this.records().find(
+      (value) =>
+        value.handle === input.handle ||
+        value.shared?.handle === input.handle ||
+        value.private?.handle === input.handle,
+    );
+    if (!retained) throw new Missing('Saved group context unavailable. Reopen the group.');
+    const key = createHash('sha256')
+      .update(publicationCanonical([kind, input, retained, this.configured()]))
+      .digest('hex');
+    const prior = this.reads.get(key);
+    if (prior) return prior as Promise<T>;
+    // An authenticated caller can request different cursors; bound the in-flight
+    // index without converting capacity into stale cached authorization.
+    if (this.reads.size >= 128) return read();
+    const next = read();
+    this.reads.set(key, next);
+    try {
+      return await next;
+    } finally {
+      if (this.reads.get(key) === next) this.reads.delete(key);
     }
   }
   configuration(): GroupServiceConfiguration | null {
@@ -365,9 +409,16 @@ export class GroupHost {
         'SELECT revision,hidden FROM gh_local_visibility WHERE handle=? ORDER BY revision DESC LIMIT 1',
       )
       .get(handle);
+    const mode = this.db
+      .prepare(
+        'SELECT revision,mode FROM gh_local_mode WHERE handle=? ORDER BY revision DESC LIMIT 1',
+      )
+      .get(handle);
     return host.groupHostLocalStateSchema.parse({
       revision: row ? Number(row.revision) : 0,
       hidden: row?.hidden === 1,
+      mode: mode?.mode ?? 'contribute',
+      modeRevision: mode ? Number(mode.revision) : 0,
     });
   }
   /** Local visibility is separate from membership and saved native authority. */
@@ -382,7 +433,7 @@ export class GroupHost {
   localVisibility(raw: unknown): host.GroupHostSummary {
     const input = host.groupHostLocalVisibilitySchema.parse(raw);
     const value = this.localRecord(input.handle);
-    return host.groupHostSummarySchema.parse(
+    const summary = host.groupHostSummarySchema.parse(
       this.intent(input.key, { kind: 'local-visibility', ...input }, () => {
         const previous = this.localState(value.handle);
         if (input.revision !== previous.revision)
@@ -393,6 +444,57 @@ export class GroupHost {
         return this.summary(value);
       }),
     );
+    // A retained earlier remove receipt must not close a later restored group.
+    if (this.localState(value.handle).hidden) this.updates.unwatch(value.identity);
+    return summary;
+  }
+  /** Contribution preference does not alter enrollment, enablement or native settings. */
+  localContributing(handle: string) {
+    try {
+      return this.localState(this.localRecord(handle).handle).mode === 'contribute';
+    } catch (error) {
+      if (error instanceof Missing) return false;
+      throw error;
+    }
+  }
+  private requireContribution(handle: string) {
+    if (!this.localContributing(handle))
+      throw new GroupHostError(
+        409,
+        'GROUP_LOCAL_READ_ONLY',
+        'This group is Read-only on this computer. Choose Contribute to send or start group work. Reading and file sync remain available; running work may finish.',
+      );
+  }
+  localMode(raw: unknown): host.GroupHostSummary {
+    const input = host.groupHostLocalModeSchema.parse(raw),
+      value = this.localRecord(input.handle);
+    const before = this.localState(value.handle);
+    const receipt = host.groupHostSummarySchema.parse(
+      this.intent(input.key, { kind: 'local-mode', ...input }, () => {
+        const previous = this.localState(value.handle);
+        if (input.revision !== previous.modeRevision)
+          throw new Conflict('Local group mode changed. Refresh Groups before trying again.');
+        this.db
+          .prepare('INSERT INTO gh_local_mode VALUES (?,?,?,?)')
+          .run(value.handle, previous.modeRevision + 1, input.mode, input.key);
+        return this.summary(value);
+      }),
+    );
+    const current = this.localState(value.handle);
+    if (current.modeRevision !== before.modeRevision && current.mode === 'contribute')
+      this.native.contributionModeChanged?.();
+    return receipt;
+  }
+  /** Local setup does not contact the service or grant native/model access. */
+  localSharedContext(handle: string) {
+    const value = this.localRecord(handle);
+    if (!value.shared)
+      throw new Conflict('Finish saving this group enrollment before attaching its shared folder.');
+    return {
+      handle: value.shared.handle,
+      context: value.shared.context,
+      enrollmentHandle: value.handle,
+    };
   }
   private async bounded(response: Response, limit: number) {
     if (
@@ -636,7 +738,40 @@ export class GroupHost {
         'GROUP_PENDING',
         'The group service has not activated this enrollment. Retry or ask your setup agent to update the creator’s group service.',
       );
+    this.observeUpdates(value);
     return value;
+  }
+  private observeUpdates(value: Record) {
+    if (!this.localVisible(value.handle)) return;
+    this.updates.watch(value.identity, () => {
+      if (!this.localVisible(value.handle)) throw new Conflict('Group removed from this app.');
+      const current = this.record(value.handle),
+        config = this.configured(),
+        headers = this.serviceHeaders(current, false, config);
+      const url = new URL(
+        `${config.endpoint.replace(/\/$/, '')}/v1/groups/${current.identity.groupId}/updates`,
+      );
+      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+      return {
+        url: url.href,
+        headers: {
+          Authorization: `Bearer ${current.credential}`,
+          ...headers,
+        },
+      };
+    });
+  }
+  /** Registered native source proof only; remote handshake independently checks
+   * current enrollment. This subscription cannot install or authorize work. */
+  observeNativeUpdates(context: GroupContext) {
+    this.retainedActionContext(context);
+    const value = this.records().find(
+      (record) =>
+        record.identity.groupId === context.groupId &&
+        record.identity.memberId === context.memberId &&
+        record.identity.installationId === context.installationId,
+    )!;
+    this.observeUpdates(value);
   }
   private summary(value: Record): host.GroupHostSummary {
     return host.groupHostSummarySchema.parse({
@@ -680,7 +815,12 @@ export class GroupHost {
       removed: this.records()
         .filter((v) => this.localState(v.handle).hidden)
         .map((v) => this.summary(v)),
-      service: { configured, message, setupCodeRequired },
+      service: {
+        configured,
+        message,
+        setupCodeRequired,
+        localReceiptStorage: groupLocalReceiptCapacity(this.db),
+      },
       native: await this.nativeAvailability(),
     });
   }
@@ -695,12 +835,18 @@ export class GroupHost {
           );
         return JSON.parse(String(prior.body)) as unknown;
       }
-      if (Number(this.db.prepare('SELECT count(*) n FROM gh_operations').get()!.n) >= 2048)
-        throw new Conflict('Groups operation history is full. Existing receipts are retained.');
       const value = make();
-      this.db
-        .prepare('INSERT INTO gh_operations VALUES (?,?,?)')
-        .run(key, exact, JSON.stringify(value));
+      const body = JSON.stringify(value);
+      const localKind =
+        typeof input === 'object' && input !== null && 'kind' in input ? input.kind : undefined;
+      admitGroupLocalReceipt(
+        this.db,
+        'gh_operations',
+        exact,
+        body,
+        key.startsWith('revoke:') || localKind === 'local-visibility' || localKind === 'local-mode',
+      );
+      this.db.prepare('INSERT INTO gh_operations VALUES (?,?,?)').run(key, exact, body);
       return value;
     });
   }
@@ -1007,6 +1153,10 @@ export class GroupHost {
     return { handle: slot.handle, context: slot.context, agent: this.agent(slot) };
   }
   async open(raw: unknown) {
+    const input = host.groupHostSelectSchema.parse(raw);
+    return this.concurrentRead('open', input, () => this.readOpen(input));
+  }
+  private async readOpen(raw: unknown) {
     const { handle } = host.groupHostSelectSchema.parse(raw);
     const value = await this.active(handle);
     const roster = await this.membership(
@@ -1148,9 +1298,59 @@ export class GroupHost {
     const value = await this.active(enrollmentHandle);
     return this.actionContext(value.shared!.handle);
   }
+  /** Background evidence is an immutable shared reading, not an execution port.
+   * The service itself freshly checks active membership and its revoke/write
+   * fence in this single RPC. Dispatch retains the ordinary admission ports. */
+  async readNativeActionEvidence(
+    raw: GroupContext,
+    input: Extract<GroupActionCommand, { kind: 'evidence' }>,
+  ) {
+    const context = groupContextSchema.parse(raw);
+    this.retainedActionContext(context);
+    const value = this.records().find(
+      (record) =>
+        record.identity.groupId === context.groupId &&
+        record.identity.memberId === context.memberId &&
+        record.identity.installationId === context.installationId,
+    )!;
+    const command = groupActionCommandSchema.parse(input);
+    if (command.kind !== 'evidence') throw new Conflict('Read-only evidence required.');
+    const config = this.configured(),
+      binding = publicationCanonical(value),
+      headers = this.serviceHeaders(value, false, config);
+    const response = await this.http(
+      `${config.endpoint.replace(/\/$/, '')}/v1/groups/${value.identity.groupId}/actions`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${value.credential}`,
+          ...headers,
+        },
+        body: JSON.stringify(command),
+        redirect: 'error',
+        credentials: 'omit',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    const result = groupActionResultSchema.parse(await this.bounded(response, 1_000_000));
+    this.retainedActionContext(context);
+    const current = this.record(value.handle),
+      currentConfig = this.configured();
+    this.serviceHeaders(current, false, currentConfig);
+    if (
+      publicationCanonical(current) !== binding ||
+      publicationCanonical(currentConfig) !== publicationCanonical(config)
+    )
+      throw new Conflict('Original evidence binding changed.');
+    return result;
+  }
   /** Called only by the authenticated owner/paired-device HTTP confirmation
    * handler, never included in the native coordination command port. */
   async confirmAction(handle: string, raw: Extract<GroupActionCommand, { kind: 'confirm' }>) {
+    this.requireContribution(handle);
     const command = groupActionCommandSchema.parse(raw);
     if (command.kind !== 'confirm') throw new Conflict('Exact confirmation required.');
     const feature = await this.authenticatedContext({ handle });
@@ -1158,6 +1358,7 @@ export class GroupHost {
       throw new Conflict('Confirm from the shared group.');
     await feature.revalidate();
     const { value } = await this.resolve(handle);
+    this.requireContribution(handle);
     const result = await this.actionProofTransport(value, 'confirm', command);
     await feature.revalidate();
     return result;
@@ -1470,6 +1671,7 @@ export class GroupHost {
   }
   async configurePromotion(raw: unknown) {
     const input = host.groupHostSelectSchema.extend({ key: z.uuid() }).parse(raw);
+    this.requireContribution(input.handle);
     const { value, slot } = await this.resolve(input.handle);
     if (slot.context.visibility !== 'shared')
       throw new Conflict('Select the shared group to configure its writer.');
@@ -1479,6 +1681,7 @@ export class GroupHost {
         'GROUP_CREATOR_REQUIRED',
         'Only the group creator can select its feed writer.',
       );
+    this.requireContribution(input.handle);
     try {
       return await this.promotion.enable(value.handle, input.key);
     } catch {
@@ -1977,6 +2180,12 @@ export class GroupHost {
   async send(raw: unknown) {
     const input = host.groupHostSendSchema.parse(raw);
     return this.lock(`send:${input.handle}:${input.key}`, async () => {
+      if (
+        !this.db
+          .prepare('SELECT 1 FROM gh_sends WHERE handle=? AND key=?')
+          .get(input.handle, input.key)
+      )
+        this.requireContribution(input.handle);
       const { value, slot } = await this.resolve(input.handle);
       const send = z
         .strictObject({
@@ -2001,13 +2210,7 @@ export class GroupHost {
                 throw new Conflict('Send retry content changed. Retry the original message.');
               return JSON.parse(String(prior.body));
             }
-            if (
-              Number(
-                this.db.prepare('SELECT count(*) n FROM gh_sends WHERE handle=?').get(input.handle)!
-                  .n,
-              ) >= 2048
-            )
-              throw new Conflict('Context send history is full. Existing receipts remain.');
+            this.requireContribution(input.handle);
             const result = {
               messageId: randomUUID(),
               operationId: randomUUID(),
@@ -2017,9 +2220,11 @@ export class GroupHost {
               deliveryOperation: null,
               createdAt: new Date().toISOString(),
             };
+            const body = JSON.stringify(result);
+            admitGroupLocalReceipt(this.db, 'gh_sends', exact, body);
             this.db
               .prepare('INSERT INTO gh_sends VALUES (?,?,?,?)')
-              .run(input.handle, input.key, exact, JSON.stringify(result));
+              .run(input.handle, input.key, exact, body);
             return result;
           }),
         );
@@ -2148,17 +2353,9 @@ export class GroupHost {
       const base = this.draft(input.handle);
       if (base.revision !== input.revision)
         throw new Conflict('Draft changed in another view. Choose which version to keep.');
-      if (
-        Number(
-          this.db
-            .prepare('SELECT count(*) n FROM gh_draft_receipts WHERE handle=?')
-            .get(input.handle)!.n,
-        ) >= 4096
-      )
-        throw new Conflict(
-          'Draft receipt history full. Copy your draft; existing versions remain.',
-        );
       const value = { text: input.text, revision: base.revision + 1 };
+      const body = JSON.stringify(value);
+      admitGroupLocalReceipt(this.db, 'gh_draft_receipts', exact, body);
       this.db
         .prepare(
           'INSERT INTO gh_drafts VALUES (?,?,?) ON CONFLICT(handle) DO UPDATE SET text=excluded.text,revision=excluded.revision',
@@ -2166,11 +2363,15 @@ export class GroupHost {
         .run(input.handle, value.text, value.revision);
       this.db
         .prepare('INSERT INTO gh_draft_receipts VALUES (?,?,?,?)')
-        .run(input.handle, input.key, exact, JSON.stringify(value));
+        .run(input.handle, input.key, exact, body);
       return value;
     });
   }
   async chat(raw: unknown) {
+    const input = host.groupHostSelectSchema.parse(raw);
+    return this.concurrentRead('chat', input, () => this.readChat(input));
+  }
+  private async readChat(raw: unknown) {
     const { handle } = host.groupHostSelectSchema.parse(raw);
     const { value, slot } = await this.resolve(handle);
     const pendingNative = this.nativeJournal
@@ -2297,6 +2498,10 @@ export class GroupHost {
     });
   }
   async feed(raw: unknown) {
+    const input = host.groupHostFeedSchema.parse(raw);
+    return this.concurrentRead('feed', input, () => this.readFeed(input));
+  }
+  private async readFeed(raw: unknown) {
     const { handle, query } = host.groupHostFeedSchema.parse(raw);
     const { value, slot } = await this.resolve(handle);
     if (slot.context.visibility !== 'shared')
@@ -2842,13 +3047,28 @@ export class GroupHost {
   async requestAgent(raw: unknown) {
     const input = host.groupHostAgentRequestSchema.parse(raw);
     return this.lock(`native:${input.handle}:${input.key}`, async () => {
+      const saved = this.nativeJournal.get(input.handle, input.key);
+      if (!saved) this.requireContribution(input.handle);
       const { value, slot } = await this.resolve(input.handle);
       const prior = this.nativeJournal.get(input.handle, input.key);
+      if (prior && !this.localContributing(input.handle)) {
+        if (prior.request.text !== input.text || prior.request.intent !== input.intent)
+          throw new Conflict('Retry the exact saved agent request.');
+        // A prepared host receipt has no handoff to inspect yet. Other receipts
+        // may observe their exact native outcome without starting a new turn.
+        return this.nativeReceipt(
+          value,
+          prior.receipt.state === 'prepared'
+            ? prior
+            : await this.advanceNative(value, prior, false),
+        );
+      }
       if (!prior) {
         const available = await this.nativeAvailability();
         if (!available.available || available.productionReady !== true)
           throw new GroupHostError(503, 'GROUP_NATIVE_SETUP_REQUIRED', available.message);
       }
+      this.requireContribution(input.handle);
       let record = this.nativeJournal.prepare(input.handle, {
         key: input.key,
         text: input.text,

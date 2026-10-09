@@ -113,9 +113,14 @@ function Workspace(props: GroupsWorkspaceProps) {
             aria-controls="groups-chat-panel"
             onClick={() => select('manager')}
           >
-            Group manager
+            My group agent
           </button>
         </div>
+        {props.contributionControl && (
+          <div className="groups-actions group-contribution-control">
+            {props.contributionControl}
+          </div>
+        )}
       </div>
       <div className="groups-columns">
         <section

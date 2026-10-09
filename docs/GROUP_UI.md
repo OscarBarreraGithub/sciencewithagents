@@ -1,5 +1,31 @@
 # Groups presentation and synthetic preview
 
+The normal app has **Group chat** and **My group agent** tabs. The latter uses the current
+member’s own provider account and allowance. **Setup** offers readable creator, member and
+shared-file choices; phone pairing remains optional. **Manage** keeps invitations and local
+agent access visible; **Advanced** holds repository review, shared proposals, older report
+lookup and creator backups. Advanced content loads once on first opening and stays mounted
+when collapsed. Exact pending/error request controls describe the specific request.
+
+Validated shared report notifications show **Open report** and a collapsed exact original.
+Completed own replies expose their report offer only through the exact retained result/source
+identity. Opening a report uses the existing group-scoped reader and current membership;
+malformed or unrelated originals retain the ordinary message renderer. No personal Library
+or filesystem-path fallback is added. The synthetic preview below remains a separate
+limited presentation; current checks and remaining acceptance are in [Status](STATUS.md#groups).
+
+**Setup → Shared files** first saves a chosen work folder, then offers its scoped setup prompt.
+After creating or joining, **Manage → Work folder** attaches that saved selection explicitly
+and verifies the intended private repository. New verified connections start automatic sync;
+an existing saved pause is preserved. One repository controller retains exact pending changes
+across the ordinary connection controls and Advanced review. **Remove from this app** hides
+the local list entry while preserving membership, work, history and drafts; **Removed groups**
+offers restore and exact interrupted-change recovery. The visible contribution selector reflects
+the host’s saved Read-only/Contribute mode; drafts stay editable and new sends follow that
+admission setting. Advanced displays optional
+last-reported local receipt usage, separate from cloud or physical disk storage. Folder and
+visibility controls make no model call.
+
 The reusable presentation components have a synthetic preview alongside the normal
 **Home → Groups** integration. Preview data does not exercise native execution, authenticated
 hosting or publication. Use [Group workflow](GROUP_WORKFLOW.md) for the real entry.

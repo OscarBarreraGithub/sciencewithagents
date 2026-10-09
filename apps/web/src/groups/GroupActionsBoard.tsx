@@ -187,7 +187,7 @@ export function GroupActionsBoard({
             </p>
           ))}
           {board.works.length === 0 && (
-            <p>No shared tasks yet. Your group manager can register an owned task here.</p>
+            <p>No shared tasks yet. My group agent can register an owned task here.</p>
           )}
           <label>
             Shared instruction
@@ -252,7 +252,7 @@ export function GroupActionsBoard({
                 </h3>
                 <p>
                   {candidate.origin.kind === 'autonomous'
-                    ? 'Your group manager'
+                    ? 'My group agent'
                     : candidate.actor.displayName}{' '}
                   proposed this at{' '}
                   <time dateTime={candidate.at}>{new Date(candidate.at).toLocaleString()}</time>.

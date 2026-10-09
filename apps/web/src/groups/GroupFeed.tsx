@@ -7,14 +7,18 @@ import {
   type GroupEvent,
   type GroupFeedEntry,
   type GroupFeedCursor,
+  type GroupUpdateIdentity,
 } from '@dock/shared';
 import { DisplayName } from './DisplayName';
 import type { GroupRead, GroupsWorkspaceProps } from './types';
+import { startGroupPolling } from './group-polling';
+import { groupPollingUpdates } from './group-updates';
 
 type Props = Pick<GroupsWorkspaceProps, 'group' | 'members' | 'loadPage' | 'loadOriginal'> & {
   onRevoked: (message: string) => void;
   refreshable?: boolean;
   active?: boolean;
+  updates?: GroupUpdateIdentity;
 };
 const failure = (reason: unknown): GroupRead<never> => ({
   kind: 'error',
@@ -93,6 +97,7 @@ export function GroupFeed({
   onRevoked,
   refreshable = false,
   active = true,
+  updates,
 }: Props) {
   const [{ entries, windowed }, setFeed] = useState<{
     entries: GroupFeedEntry[];
@@ -225,6 +230,7 @@ export function GroupFeed({
           });
         }
         setReading({ kind: 'ready', value: null });
+        return page.entries.length > 0;
       } catch (reason) {
         if (!read.signal.aborted && readGeneration === generation.current)
           setReading(failure(reason));
@@ -232,19 +238,23 @@ export function GroupFeed({
         if (controller === read) controller = undefined;
       }
     };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 5000);
-    window.addEventListener('focus', refresh);
-    window.addEventListener('online', refresh);
-    document.addEventListener('visibilitychange', refresh);
+    const stop = startGroupPolling(refresh, {
+      updates: updates ? groupPollingUpdates(updates) : undefined,
+    });
     return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('online', refresh);
-      document.removeEventListener('visibilitychange', refresh);
+      stop();
       controller?.abort();
     };
-  }, [refreshable, active, request, group.id, loadPage, onRevoked]);
+  }, [
+    refreshable,
+    active,
+    request,
+    group.id,
+    updates?.memberId,
+    updates?.installationId,
+    loadPage,
+    onRevoked,
+  ]);
   const shown = latestGroupFeedEntries(entries).filter(
     (entry) => !filter || entry.category === filter,
   );

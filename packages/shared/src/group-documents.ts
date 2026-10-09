@@ -88,7 +88,7 @@ export const groupDocumentOfferFailureCodeSchema = z.enum([
 export const groupDocumentOfferFailureMessages = Object.freeze({
   GROUP_DOCUMENT_CAPTURE_PENDING: 'Report capture is still finishing. Retry this same saved reply.',
   GROUP_DOCUMENT_CAPTURE_UNAVAILABLE:
-    'This reply has no captured report. Ask your setup agent to check Python 3 and the linked report’s local dependencies. After repair, explicitly request new Work from Group manager, linking the matching PDF and LaTeX files. The original reply is preserved; retrying it cannot capture later files.',
+    'This reply has no captured report. Ask your setup agent to check Python 3 and the linked report’s local dependencies. After repair, explicitly request new Work from My group agent, linking the matching PDF and LaTeX files. The original reply is preserved; retrying it cannot capture later files.',
   GROUP_DOCUMENT_OFFER_RETRY:
     'Report status could not be checked. Reconnect, confirm your group access and retry this same saved reply.',
 });

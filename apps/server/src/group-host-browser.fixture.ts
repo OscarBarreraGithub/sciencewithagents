@@ -302,10 +302,19 @@ try {
       for await (const line of input) {
         const command = JSON.parse(line) as {
           id: string;
-          kind: 'pass' | 'inspect';
+          kind: 'pass' | 'inspect' | 'feature';
+          handle?: string;
+          text?: string;
           loseCommit?: boolean;
         };
-        if (command.kind === 'pass') {
+        if (command.kind === 'feature') {
+          await primaryHost!.publishFeatureEvent(
+            command.handle!,
+            command.id,
+            command.text!,
+            'Shared report notification fixture',
+          );
+        } else if (command.kind === 'pass') {
           if (command.loseCommit) loseCommit = true;
           primaryHost!.promotion.start(synthesis);
           await primaryHost!.promotion.pass();

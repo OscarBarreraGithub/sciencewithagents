@@ -165,17 +165,33 @@ export default {
           return reply({ ok: false, error: 'hosting_disabled' });
       }
     }
+    const credential = membershipCapabilitySchema.safeParse(
+      /^Bearer ([a-f0-9]{64})$/.exec(request.headers.get('Authorization') ?? '')?.[1],
+    );
+    const updatesRoute = /^\/v1\/groups\/([a-f0-9-]+)\/updates$/.exec(url.pathname);
+    if (updatesRoute) {
+      const id = groupIdSchema.safeParse(updatesRoute[1]);
+      if (
+        !credential.success ||
+        !id.success ||
+        !betaGroupMatches(beta, id.data) ||
+        request.method !== 'GET' ||
+        url.search !== '' ||
+        url.hash !== '' ||
+        request.headers.get('Upgrade')?.toLowerCase() !== 'websocket' ||
+        request.headers.has('Origin') ||
+        request.headers.has('X-Group-Setup')
+      )
+        return reply({ ok: false, error: 'denied' });
+      return env.GROUPS.getByName(id.data).fetch(request);
+    }
     if (
       request.method !== 'POST' ||
       url.search !== '' ||
       url.hash !== '' ||
       request.headers.get('Content-Type') !== 'application/json'
-    ) {
+    )
       return reply({ ok: false, error: 'invalid' });
-    }
-    const credential = membershipCapabilitySchema.safeParse(
-      /^Bearer ([a-f0-9]{64})$/.exec(request.headers.get('Authorization') ?? '')?.[1],
-    );
     if (!credential.success) return reply({ ok: false, error: 'denied' });
     const exportRoute = /^\/v1\/groups\/([a-f0-9-]+)\/export$/.exec(url.pathname);
     if (exportRoute) {

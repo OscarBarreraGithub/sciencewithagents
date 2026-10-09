@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   groupNativeGitRequestSchema,
   groupNativeGitViewSchema,
@@ -7,14 +8,21 @@ import {
 } from '@dock/shared/dist/group-native-git.js';
 import { api, apiScope, ApiError, connectionLost } from '../api';
 import './group-git-panel.css';
+import { groupGitHubSetupPromptForFolder } from './GroupSetupPrompt';
 
 /** The owner supplies saved handles and exact commits, never a filesystem path. */
 export function GroupNativeGitPanel({
   handle,
   request,
+  connectionTarget,
+  advancedTarget,
+  refreshKey = 0,
 }: {
   handle: string;
   request?: (input: GroupNativeGitRequest) => Promise<unknown>;
+  connectionTarget?: HTMLDivElement | null;
+  advancedTarget?: HTMLDivElement | null;
+  refreshKey?: number;
 }) {
   const [view, setView] = useState<GroupNativeGitView | null>(null);
   const [username, setUsername] = useState('');
@@ -24,11 +32,18 @@ export function GroupNativeGitPanel({
   const [pending, setPending] = useState<GroupNativeGitRequest | null>(null);
   const generation = useRef(0);
   const inFlight = useRef(false);
+  const refreshVersion = useRef(refreshKey);
+  refreshVersion.current = refreshKey;
+  const queuedStatus = useRef(false);
   const storageKey = `swa:${apiScope()}:group-native-git:${handle}`;
 
   async function control(input: GroupNativeGitRequest) {
-    if (inFlight.current) return;
+    if (inFlight.current) {
+      if (input.action === 'status') queuedStatus.current = true;
+      return;
+    }
     const current = generation.current;
+    const revision = refreshVersion.current;
     const changed = 'key' in input;
     inFlight.current = true;
     setBusy(true);
@@ -42,12 +57,29 @@ export function GroupNativeGitPanel({
         await (request ? request(input) : api('/groups/native-git', input)),
       );
       if (generation.current !== current) return;
-      setView(result);
-      setUsername(result.githubUsername);
-      setAutoSync(result.autoSync);
+      if (revision === refreshVersion.current) {
+        setView(input.action === 'connect' ? null : result);
+        if (input.action !== 'connect') {
+          setUsername(result.githubUsername);
+          setAutoSync(result.autoSync);
+        }
+      } else queuedStatus.current = true;
       if (changed) {
         sessionStorage.removeItem(storageKey);
         setPending(null);
+      }
+      if (input.action === 'connect') {
+        const currentView = groupNativeGitViewSchema.parse(
+          await (request
+            ? request({ action: 'status', handle })
+            : api('/groups/native-git', { action: 'status', handle })),
+        );
+        if (generation.current !== current) return;
+        if (revision === refreshVersion.current) {
+          setView(currentView);
+          setUsername(currentView.githubUsername);
+          setAutoSync(currentView.autoSync);
+        } else queuedStatus.current = true;
       }
     } catch (reason) {
       if (generation.current !== current) return;
@@ -70,12 +102,17 @@ export function GroupNativeGitPanel({
       if (generation.current === current) {
         inFlight.current = false;
         setBusy(false);
+        if (queuedStatus.current) {
+          queuedStatus.current = false;
+          void control({ action: 'status', handle });
+        }
       }
     }
   }
   useEffect(() => {
     generation.current++;
     inFlight.current = false;
+    queuedStatus.current = false;
     setView(null);
     setUsername('');
     setAutoSync(false);
@@ -97,10 +134,16 @@ export function GroupNativeGitPanel({
     };
   }, [handle]);
 
+  useEffect(() => {
+    if (refreshKey) {
+      setView(null);
+      void control({ action: 'status', handle });
+    }
+  }, [refreshKey]);
   const mutable = !busy && !pending;
   const preview = view?.preview;
-  const setupPrompt = `Set up native Groups shared files following docs/GROUP_NATIVE_GIT.md.\nThe server selected this shared workspace: ${view?.workspacePath ?? '(enable agents first)'}.\nCurrent GitHub repository: ${view?.repository ?? '(ask me which intended repository to connect)'}.\nUse my own GitHub sign-in and ask for my GitHub username; leave unknown collaborators blank. Preserve existing files, branches, remotes, active work and credentials. Do not upload an existing private folder or a private conversation workspace. Never copy credentials, assume collaborator identities, or invite anyone without their exact usernames and my instruction. Explain and finish the in-app sync setup after verifying repository access.`;
-  return (
+  const setupPrompt = `${groupGitHubSetupPromptForFolder(view?.workspacePath ?? '(choose the intended work folder first)', false)}\nCurrent GitHub repository: ${JSON.stringify(view?.repository ?? '(ask me which intended private repository to connect)')}.`;
+  const advanced = (
     <section className="group-git-panel" aria-label="Shared GitHub workspace">
       <h3>Shared files on GitHub</h3>
       <p>
@@ -314,4 +357,77 @@ export function GroupNativeGitPanel({
       )}
     </section>
   );
+  const connection = (
+    <section className="group-git-panel" aria-label="Shared repository connection">
+      <h3>Connect the shared repository</h3>
+      <p>
+        After your setup agent prepares this folder’s private repository, verify access using your
+        own native GitHub account. Connecting makes no model call.
+      </p>
+      {view?.connected === true ? (
+        <p role="status">Repository verified. Automatic sync: {view.autoSync ? 'On' : 'Paused'}.</p>
+      ) : (
+        <p role="status">{view?.message ?? 'Reading repository status…'}</p>
+      )}
+      {view?.connected === undefined && view && (
+        <p>
+          This host has not reported a verified connection. Update it before relying on the new
+          connection workflow.
+        </p>
+      )}
+      <div className="group-git-buttons">
+        {view?.connected !== true && (
+          <button
+            className="secondary"
+            type="button"
+            disabled={!mutable || !view?.available}
+            onClick={() => void control({ action: 'connect', handle, key: crypto.randomUUID() })}
+          >
+            Connect shared repository
+          </button>
+        )}
+        {(error || !view || pending || !view.available || view.connected !== true) && (
+          <button
+            className="secondary"
+            type="button"
+            disabled={busy}
+            onClick={() => void control({ action: 'status', handle })}
+          >
+            Check repository
+          </button>
+        )}
+        {pending?.action === 'connect' && (
+          <button
+            className="secondary"
+            type="button"
+            disabled={busy}
+            onClick={() => void control(pending)}
+          >
+            Retry saved connection
+          </button>
+        )}
+      </div>
+      {pending && pending.action !== 'connect' && (
+        <p>
+          A saved repository change is unresolved. Review it in Advanced → Git sync and reviewed
+          changes before connecting again.
+        </p>
+      )}
+      {error && <p role="alert">{error}</p>}
+      {view?.connected && (
+        <p>
+          Only reviewed, applied commits sync. Advanced → Git sync and reviewed changes lets you
+          pause or inspect sync; an existing saved pause is preserved.
+        </p>
+      )}
+    </section>
+  );
+  if (connectionTarget !== undefined || advancedTarget !== undefined)
+    return (
+      <>
+        {connectionTarget && createPortal(connection, connectionTarget)}
+        {advancedTarget && createPortal(advanced, advancedTarget)}
+      </>
+    );
+  return advanced;
 }

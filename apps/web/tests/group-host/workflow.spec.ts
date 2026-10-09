@@ -111,7 +111,7 @@ async function chat(page: Page) {
 }
 async function manager(page: Page) {
   await expect(page.locator('.groups-workspace')).toBeVisible();
-  await page.getByRole('tab', { name: 'Group manager', exact: true }).click();
+  await page.getByRole('tab', { name: 'My group agent', exact: true }).click();
 }
 async function savedGroup(page: Page, host: HostConnection = connection) {
   const handle = new URL(page.url()).hash.split('/').at(-1)!;
@@ -176,7 +176,7 @@ test('Chats filters groups, opens legacy routes and preserves shared drafts plus
     }
   });
   await chat(page);
-  await expect(page.getByRole('tab')).toHaveText(['Group chat', 'Group manager']);
+  await expect(page.getByRole('tab')).toHaveText(['Group chat', 'My group agent']);
   await expect(page.getByRole('combobox', { name: 'Send to', exact: true })).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: 'Agent request', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Private to you', exact: true })).toHaveCount(0);
@@ -188,11 +188,9 @@ test('Chats filters groups, opens legacy routes and preserves shared drafts plus
   await input.fill('SHARED-UNSENT-DRAFT');
   await manager(page);
   await expect(page.getByRole('combobox', { name: 'Agent request' })).toHaveValue('ask');
-  await expect(page.getByPlaceholder('Message your group manager…')).toHaveValue(
-    'SHARED-UNSENT-DRAFT',
-  );
+  await expect(page.getByPlaceholder('Message my group agent…')).toHaveValue('SHARED-UNSENT-DRAFT');
   await page.getByRole('combobox', { name: 'Agent request' }).selectOption('work');
-  await expect(page.getByPlaceholder('Message your group manager…')).toBeEnabled();
+  await expect(page.getByPlaceholder('Message my group agent…')).toBeEnabled();
   await chat(page);
   await page.reload();
   await expect(input).toHaveValue('SHARED-UNSENT-DRAFT');
@@ -620,7 +618,7 @@ test('invitation joins a second host, shares exact human bubbles and retries the
     ).toBe(true);
     await member.reload();
     await chat(member);
-    await expect(member.getByRole('tab')).toHaveText(['Group chat', 'Group manager']);
+    await expect(member.getByRole('tab')).toHaveText(['Group chat', 'My group agent']);
     await expect(member.getByRole('combobox', { name: 'Send to', exact: true })).toHaveCount(0);
     const original =
       'SECOND-HOST-SHARED-EXACT\n' +
@@ -731,7 +729,7 @@ test('Group chat receives other members as normal bubbles without a writer, relo
     await context.close();
   }
 });
-test('150% text keeps Group chat and Group manager conversations and composers reachable', async ({
+test('150% text keeps Group chat and My group agent conversations and composers reachable', async ({
   page,
 }) => {
   await enter(page);
@@ -751,7 +749,7 @@ test('150% text keeps Group chat and Group manager conversations and composers r
   await transcript.locator('.message').last().scrollIntoViewIfNeeded();
   await capture(page, 'large-group-chat');
   await manager(page);
-  const input = page.getByPlaceholder('Message your group manager…');
+  const input = page.getByPlaceholder('Message my group agent…');
   await input.fill('LARGE-MANAGER-DRAFT');
   await input.scrollIntoViewIfNeeded();
   await expect(input).toBeVisible();

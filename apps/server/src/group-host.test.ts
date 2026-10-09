@@ -9,6 +9,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  realpathSync,
 } from 'node:fs';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -52,9 +53,25 @@ import {
 import { publicationCanonical } from './group-publication-protocol.js';
 import { GroupPublicationController, type PublicationAccess } from './group-publication.js';
 import { proxyPath } from './hosts.js';
+import { Hosts, registerHostRoutes } from './hosts.js';
+import Fastify from 'fastify';
+import websocket from '@fastify/websocket';
+import {
+  createGroupHostNativeConnector,
+  type GroupHostNativeRuntime,
+} from './group-native-host-runtime.js';
+import { GroupHostNativeGit } from './group-host-native-git.js';
+import { git, ensureWorktree, checkpointWorktree } from './workspaces.js';
+import { prepareRunDelivery, markRunHandoff } from './run-recovery.js';
+import type { FolderPicker } from './folder-picker.js';
 import { verifyHostedArchive } from './group-hosted-archive.js';
 import { groupExportArchiveSchema } from '@dock/shared/dist/group-hosted-export.js';
 import { groupActionResultSchema } from '@dock/shared/dist/group-actions.js';
+import {
+  GROUP_LOCAL_RECEIPT_BYTES,
+  GROUP_LOCAL_RECEIPT_CONTROL_BYTES,
+  groupLocalReceiptCapacity,
+} from './group-local-receipt-capacity.js';
 import type { GroupPromotionSynthesis, GroupPromotionSynthesisResult } from './group-promotion.js';
 import {
   groupEventIdSchema,
@@ -150,6 +167,8 @@ async function installation(
     nativeFactory?: GroupNativeConnectorFactory;
     service?: ActiveGroupServiceConfiguration;
     documents?: ConstructorParameters<typeof GroupFeatureDocuments>[1];
+    localNative?: boolean;
+    folderPicker?: FolderPicker;
   } = {},
 ) {
   const directory = existing ?? mkdtempSync(join(root, 'installation-'));
@@ -160,11 +179,17 @@ async function installation(
     launches++;
     throw new Error('Native launch prohibited in host checks');
   });
+  if (options.localNative) {
+    modelFixture(store);
+    vi.spyOn(runtime, 'kick').mockImplementation(() => {});
+  }
   const host = new GroupHost(directory, {
     betaProfile: null,
     http: options.http,
     native: options.native,
-    nativeFactory: options.nativeFactory,
+    nativeFactory:
+      options.nativeFactory ??
+      (options.localNative ? (ports) => createGroupHostNativeConnector(runtime, ports) : undefined),
   });
   if (options.configured !== false && !existing)
     writeFileSync(
@@ -189,6 +214,7 @@ async function installation(
     groupHost: host,
     localAccess: access,
     ownsRuntime: false,
+    folderPicker: options.folderPicker,
   });
   let closed = false;
   const close = async () => {
@@ -233,7 +259,7 @@ async function installation(
       },
     });
   };
-  return { directory, host, app, post, get, close, access, appPort, runtime, store };
+  return { directory, host, app, post, get, close, access, auth, appPort, runtime, store };
 }
 // Controlled semantic output only; these host journeys launch no provider.
 function controlledFeedSynthesis(): GroupPromotionSynthesis {
@@ -277,6 +303,424 @@ async function create(f: Awaited<ReturnType<typeof installation>>, name = 'River
   expect(response.statusCode, response.body).toBe(200);
   return { input, open: groupHostOpenSchema.parse(response.json()) };
 }
+
+it('local byte admission preserves real send/draft retries beyond old row limits and refuses a new key before local effects', async () => {
+  const f = await installation();
+  const { open } = await create(f);
+  const handle = open.private.handle;
+  f.host.db.exec('BEGIN IMMEDIATE');
+  try {
+    const insertSend = f.host.db.prepare('INSERT INTO gh_sends VALUES(?,?,?,?)');
+    for (let i = 0; i < 2048; i++) insertSend.run(handle, randomUUID(), '{}', '{}');
+    const insertDraft = f.host.db.prepare('INSERT INTO gh_draft_receipts VALUES(?,?,?,?)');
+    for (let i = 0; i < 4096; i++) insertDraft.run(handle, randomUUID(), '{}', '{}');
+    f.host.db.exec('COMMIT');
+  } catch (error) {
+    f.host.db.exec('ROLLBACK');
+    throw error;
+  }
+  const send = { handle, key: randomUUID(), text: 'Retain this exact private original.' };
+  const draft = { handle, key: randomUUID(), revision: 0, text: 'Unsent draft stays here.' };
+  const sent = await f.post('send', send),
+    saved = await f.post('draft', draft);
+  expect(sent.statusCode, sent.body).toBe(200);
+  expect(saved.statusCode, saved.body).toBe(200);
+  f.host.db.exec('BEGIN IMMEDIATE');
+  try {
+    const insert = f.host.db.prepare('INSERT INTO gh_sends VALUES(?,?,?,?)');
+    while (
+      groupLocalReceiptCapacity(f.host.db).bytes + 2 + 8192 + 4096 <=
+      GROUP_LOCAL_RECEIPT_BYTES - GROUP_LOCAL_RECEIPT_CONTROL_BYTES
+    )
+      insert.run('capacity-fixture', randomUUID(), '{}', '{}');
+    f.host.db.exec('COMMIT');
+  } catch (error) {
+    f.host.db.exec('ROLLBACK');
+    throw error;
+  }
+  const before = groupLocalReceiptCapacity(f.host.db);
+  expect((await f.post('send', send)).json()).toEqual(sent.json());
+  expect((await f.post('draft', draft)).json()).toEqual(saved.json());
+  const refusedKey = randomUUID();
+  const refused = await f.post('send', { ...send, key: refusedKey, text: 'Not delivered.' });
+  expect(refused.statusCode, refused.body).toBe(409);
+  expect(refused.json().error).toContain('no new request was delivered');
+  expect(f.host.db.prepare('SELECT 1 FROM gh_sends WHERE key=?').get(refusedKey)).toBeUndefined();
+  expect(
+    f.host.db.prepare('SELECT text,revision FROM gh_drafts WHERE handle=?').get(handle),
+  ).toEqual(saved.json());
+  expect(groupLocalReceiptCapacity(f.host.db)).toEqual(before);
+  const removed = await f.post('local-visibility', {
+    handle: open.group.handle,
+    key: randomUUID(),
+    revision: 0,
+    hidden: true,
+  });
+  expect(removed.statusCode, removed.body).toBe(200);
+  expect(removed.json().local.hidden).toBe(true);
+  const restored = await f.post('local-visibility', {
+    handle: open.group.handle,
+    key: randomUUID(),
+    revision: 1,
+    hidden: false,
+  });
+  expect(restored.statusCode, restored.body).toBe(200);
+  expect(restored.json().local.hidden).toBe(false);
+}, 30000);
+
+it('paired chosen-folder setup works before agents and synchronizes actual reviewed files in both directions without a provider turn', async () => {
+  const files = mkdtempSync(join(root, 'shared-files-'));
+  const remote = join(files, 'remote.git'),
+    selected = join(files, 'chosen'),
+    other = join(files, 'other');
+  await git(files, ['init', '--bare', '--initial-branch=main', remote]);
+  await git(files, ['clone', remote, selected]);
+  await git(selected, ['config', 'user.name', 'Fixture']);
+  await git(selected, ['config', 'user.email', 'fixture@example.invalid']);
+  writeFileSync(join(selected, 'baseline.txt'), 'Retain the existing chosen project.\n');
+  await git(selected, ['add', 'baseline.txt']);
+  await git(selected, ['commit', '-m', 'Existing owner repository']);
+  await git(selected, ['push', 'origin', 'HEAD:refs/heads/main']);
+  const picker = vi.fn<FolderPicker>(async () => selected);
+  const f = await installation(undefined, { localNative: true, folderPicker: picker });
+  const connector = f.host.native as GroupHostNativeRuntime;
+  connector.revalidate(async (context) => {
+    await (await f.host.nativeFeatureContext(context)).revalidate();
+  });
+  connector.contributions((enrollment) => f.host.localContributing(enrollment));
+  let releaseCapture!: () => void, captureStarted!: () => void;
+  const heldCapture = new Promise<void>((resolve) => {
+    releaseCapture = resolve;
+  });
+  const startedCapture = new Promise<void>((resolve) => {
+    captureStarted = resolve;
+  });
+  connector.completed(async () => {
+    captureStarted();
+    await heldCapture;
+  });
+  closers.push(async () => releaseCapture());
+  const verify = vi.fn(async () => {});
+  const nativeGit = new GroupHostNativeGit(f.host, f.runtime, connector, true, verify);
+  connector.beforeTurn((context, requestId) => nativeGit.beforeWork(context, requestId));
+  closers.push(() => nativeGit.close());
+  await f.app.listen({ host: '127.0.0.1', port: f.appPort });
+  const hostId = (
+    await f.app.inject({ url: '/api/host-info', headers: { host: `127.0.0.1:${f.appPort}` } })
+  ).json().hostId as string;
+  const pairedId = randomUUID();
+  const paired = new Hosts(
+    join(files, 'paired'),
+    async () => ({ port: f.appPort, alive: () => true, async close() {} }),
+    [
+      {
+        id: pairedId,
+        label: 'Owned folder fixture',
+        accountLabel: 'Fixture',
+        expectedHostId: hostId,
+        sshAlias: 'fixture-owned',
+        remotePort: f.appPort,
+        credential: f.access.configuration.host,
+      },
+    ],
+  );
+  closers.push(() => paired.close());
+  const gateway = Fastify();
+  await gateway.register(websocket);
+  registerHostRoutes(gateway, paired);
+  closers.push(() => gateway.close());
+  const post = (path: string, payload: unknown) =>
+    gateway.inject({
+      method: 'POST',
+      url: `/api/hosts/${pairedId}/proxy/${path}`,
+      payload: payload as Record<string, unknown>,
+    });
+  const selectionKey = randomUUID();
+  const chosen = await post('projects/connect-folder', { key: selectionKey, selectOnly: true });
+  expect(chosen.statusCode, chosen.body).toBe(200);
+  expect(chosen.json()).toMatchObject({
+    project: null,
+    selection: { key: selectionKey, workspacePath: realpathSync(selected) },
+  });
+  expect(f.store.agents()).toEqual([]);
+  expect(f.store.runs()).toEqual([]);
+  const created = await post('groups/create', {
+    key: randomUUID(),
+    projectName: 'Chosen folder journey',
+    displayName: 'Owner fixture',
+  });
+  expect(created.statusCode, created.body).toBe(200);
+  const open = groupHostOpenSchema.parse(created.json()),
+    handle = open.shared.handle;
+  const attach = { action: 'select', handle, key: randomUUID(), revision: 0, selectionKey };
+  const attached = await post('groups/workspace', attach);
+  expect(attached.statusCode, attached.body).toBe(200);
+  expect(attached.json()).toMatchObject({
+    revision: 1,
+    available: true,
+    workspacePath: realpathSync(selected),
+  });
+  expect((await post('groups/workspace', attach)).json()).toEqual(attached.json());
+  expect(
+    (
+      await post('groups/workspace', {
+        ...attach,
+        key: randomUUID(),
+        revision: 1,
+        path: '/arbitrary',
+      })
+    ).statusCode,
+  ).toBe(400);
+  expect(
+    (await post('groups/native-git', { action: 'status', handle, command: 'anything' })).statusCode,
+  ).toBe(400);
+  expect((await post('groups/native-git/run', { command: 'anything' })).statusCode).toBe(404);
+  const initial = await post('groups/native-git', { action: 'status', handle });
+  expect(initial.json()).toMatchObject({
+    autoSync: false,
+    connected: false,
+    workspacePath: realpathSync(selected),
+  });
+  const connection = { action: 'connect', handle, key: randomUUID() };
+  const connected = await post('groups/native-git', connection);
+  expect(connected.statusCode, connected.body).toBe(200);
+  expect(connected.json()).toMatchObject({ connected: true, autoSync: true });
+  expect((await post('groups/native-git', connection)).json()).toEqual(connected.json());
+  expect(verify).toHaveBeenCalledTimes(1);
+  expect(f.store.agents()).toEqual([]);
+  const readOnly = { handle, key: randomUUID(), revision: 0, mode: 'read-only' };
+  expect((await post('groups/local-mode', readOnly)).json()).toMatchObject({
+    local: { mode: 'read-only', modeRevision: 1 },
+  });
+  expect(
+    (
+      await post('groups/local-mode', {
+        ...readOnly,
+        key: randomUUID(),
+        revision: 1,
+        path: '/arbitrary',
+      })
+    ).statusCode,
+  ).toBe(400);
+  expect(
+    (
+      await post('groups/request-agent', {
+        handle,
+        key: randomUUID(),
+        intent: 'ask',
+        text: 'New model question',
+      })
+    ).statusCode,
+  ).toBe(409);
+  expect(
+    (await post('groups/send', { handle, key: randomUUID(), text: 'New human post' })).statusCode,
+  ).toBe(409);
+  expect(
+    (
+      await post('groups/draft', {
+        handle,
+        key: randomUUID(),
+        revision: 0,
+        text: 'Retain this local draft.',
+      })
+    ).json(),
+  ).toMatchObject({ text: 'Retain this local draft.', revision: 1 });
+  await git(files, ['clone', remote, other]);
+  await git(other, ['config', 'user.name', 'Other member']);
+  await git(other, ['config', 'user.email', 'other@example.invalid']);
+  writeFileSync(join(other, 'incoming.txt'), 'Other member’s shared result.\n');
+  await git(other, ['add', 'incoming.txt']);
+  await git(other, ['commit', '-m', 'Incoming shared files']);
+  await git(other, ['push', 'origin', 'HEAD:refs/heads/main']);
+  const pulled = await post('groups/native-git', { action: 'sync', handle, key: randomUUID() });
+  expect(pulled.statusCode, pulled.body).toBe(200);
+  expect(readFileSync(join(selected, 'incoming.txt'), 'utf8')).toContain('Other member');
+  expect(f.store.runs()).toEqual([]);
+  expect(
+    (
+      await post('groups/local-mode', {
+        handle,
+        key: randomUUID(),
+        revision: 1,
+        mode: 'contribute',
+      })
+    ).statusCode,
+  ).toBe(200);
+  expect(f.store.agents()).toEqual([]);
+  expect(
+    (await post('groups/native-owner', { action: 'prepare', handle, key: randomUUID() }))
+      .statusCode,
+  ).toBe(200);
+  const workInput = {
+    handle,
+    key: randomUUID(),
+    intent: 'work' as const,
+    text: 'Create one reviewed shared result.',
+  };
+  const request = await post('groups/request-agent', workInput);
+  expect(request.statusCode, request.body).toBe(200);
+  const requestId = request.json().requestId as string;
+  const binding = connector.context(requestId)!;
+  expect(binding.cwd).toBe(realpathSync(selected));
+  expect(f.store.agent(binding.agentId).cwd).toBe(realpathSync(selected));
+  expect(
+    (await post('groups/local-mode', { handle, key: randomUUID(), revision: 2, mode: 'read-only' }))
+      .statusCode,
+  ).toBe(200);
+  const held = await post('groups/request-agent', workInput);
+  expect(held.statusCode, held.body).toBe(200);
+  expect(held.json()).toMatchObject({ requestId, state: 'queued' });
+  expect(connector.context(requestId)!.runId).toBe(binding.runId);
+  expect(f.store.runs()).toHaveLength(1);
+  expect(
+    (
+      await post('groups/local-mode', {
+        handle,
+        key: randomUUID(),
+        revision: 3,
+        mode: 'contribute',
+      })
+    ).statusCode,
+  ).toBe(200);
+  const workBranch = await git(selected, ['branch', '--show-current']);
+  expect(workBranch).toMatch(new RegExp(`^swa/member-[a-f0-9]{12}/work-${requestId}$`));
+  // Simulate a provider's exact durable final outcome; the fixture never calls a provider.
+  const runId = binding.runId!;
+  f.store.updateRun(runId, { status: 'running' });
+  prepareRunDelivery(f.store, f.store.run(runId));
+  markRunHandoff(f.store, f.store.run(runId));
+  f.store.entry({
+    id: `${randomUUID()}-final`,
+    agentId: binding.agentId,
+    runId,
+    kind: 'assistant',
+    title: 'Response',
+    text: 'Exact fixture Work completed.',
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+    phase: 'final',
+  });
+  f.store.updateRun(runId, { status: 'completed' });
+  f.store.updateAgent(binding.agentId, { status: 'idle', turnId: null });
+  expect(await connector.inspect({ requestId })).toMatchObject({
+    state: 'completed',
+    result: { text: 'Exact fixture Work completed.' },
+  });
+  await startedCapture;
+  expect(connector.completionPending(requestId)).toBe(true);
+  const task = f.store.addTask(binding.projectId, {
+    title: 'Reviewed result',
+    goal: 'Share files',
+    acceptance: 'One file',
+    parentId: null,
+  });
+  const taskPath = await ensureWorktree(f.store, task, f.directory);
+  writeFileSync(join(taskPath, 'outgoing.txt'), 'Independently reviewed outgoing result.\n');
+  const source = await checkpointWorktree(f.store, task.id);
+  const reviewer = f.store.addAgent({
+    projectId: binding.projectId,
+    parentId: task.managerId,
+    taskId: task.id,
+    role: 'reviewer',
+    name: 'Independent fixture reviewer',
+    cwd: taskPath,
+  });
+  f.store.updateTask(task.id, {
+    status: 'done',
+    reviewedCommit: source,
+    reviewAgentId: reviewer.id,
+    review: 'Exact checkpoint approved in fixture',
+  });
+  const preview = await post('groups/native-git', { action: 'preview', handle, taskId: task.id });
+  expect(preview.statusCode, preview.body).toBe(200);
+  const applied = await post('groups/native-git', {
+    action: 'apply',
+    handle,
+    key: randomUUID(),
+    taskId: task.id,
+    source: preview.json().preview.source,
+    target: preview.json().preview.target,
+  });
+  expect(applied.statusCode, applied.body).toBe(200);
+  const publishedHead = await git(selected, ['rev-parse', 'HEAD']);
+  const pushed = await post('groups/native-git', { action: 'sync', handle, key: randomUUID() });
+  expect(pushed.statusCode, pushed.body).toBe(200);
+  await git(other, ['pull', '--ff-only']);
+  expect(readFileSync(join(other, 'outgoing.txt'), 'utf8')).toContain('Independently reviewed');
+  expect(readFileSync(join(selected, 'baseline.txt'), 'utf8')).toContain('existing chosen project');
+  expect(await git(selected, ['rev-parse', workBranch])).toBe(publishedHead);
+  writeFileSync(join(other, 'after-work.txt'), 'Received after completed Work while Read-only.\n');
+  await git(other, ['add', 'after-work.txt']);
+  await git(other, ['commit', '-m', 'Later shared member change']);
+  await git(other, ['push', 'origin', 'HEAD:refs/heads/main']);
+  const receivedHead = await git(other, ['rev-parse', 'HEAD']);
+  expect(
+    (await post('groups/local-mode', { handle, key: randomUUID(), revision: 4, mode: 'read-only' }))
+      .statusCode,
+  ).toBe(200);
+  expect(
+    (await post('groups/native-git', { action: 'sync', handle, key: randomUUID() })).statusCode,
+  ).toBe(200);
+  expect(await git(selected, ['branch', '--show-current'])).toBe(workBranch);
+  expect(await git(selected, ['rev-parse', 'HEAD'])).toBe(publishedHead);
+  expect(await git(selected, ['ls-files', '--', 'after-work.txt'])).toBe('');
+  releaseCapture();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(connector.completionPending(requestId)).toBe(false);
+  expect(
+    (await post('groups/native-git', { action: 'sync', handle, key: randomUUID() })).statusCode,
+  ).toBe(200);
+  expect(await git(selected, ['branch', '--show-current'])).toBe('main');
+  expect(await git(selected, ['rev-parse', 'HEAD'])).toBe(receivedHead);
+  expect(readFileSync(join(selected, 'after-work.txt'), 'utf8')).toContain('while Read-only');
+  expect(await git(selected, ['rev-parse', workBranch])).toBe(publishedHead);
+  expect(await git(selected, ['ls-remote', 'origin', `refs/heads/${workBranch}`])).toContain(
+    publishedHead,
+  );
+  expect(connector.context(requestId)!.runId).toBe(runId);
+  expect(f.store.runs()).toHaveLength(1);
+  expect(f.store.runs()[0].status).toBe('completed');
+  const pendingKey = randomUUID();
+  f.host.db.prepare('INSERT INTO gng_operations VALUES(?,?,NULL)').run(
+    pendingKey,
+    JSON.stringify({
+      action: 'sync',
+      handle,
+      key: pendingKey,
+      workspaceChoiceKey: binding.workspaceChoiceKey,
+    }),
+  );
+  const switched = await post('groups/workspace', { ...attach, key: randomUUID(), revision: 1 });
+  expect(switched.statusCode, switched.body).toBe(409);
+  expect(switched.json().error).toContain('pending shared-file operation');
+  expect((await post('groups/workspace', { action: 'status', handle })).json().revision).toBe(1);
+  expect((await post('groups/workspace', attach)).json()).toEqual(attached.json());
+  const originalFolder = `${selected}-original`;
+  renameSync(selected, originalFolder);
+  mkdirSync(selected);
+  const retained = await post('groups/workspace', attach);
+  expect(retained.statusCode, retained.body).toBe(200);
+  expect(retained.json()).toMatchObject({
+    revision: 1,
+    selectionKey,
+    workspacePath: realpathSync(selected),
+    available: false,
+  });
+  expect(
+    (await post('groups/workspace', { ...attach, selectionKey: randomUUID() })).statusCode,
+  ).toBe(409);
+  const nativeDb = new DatabaseSync(join(f.host.directory, 'host-native.sqlite'), {
+    readOnly: true,
+  });
+  try {
+    expect(Number(nativeDb.prepare('SELECT count(*) n FROM hnr_workspaces').get()!.n)).toBe(1);
+  } finally {
+    nativeDb.close();
+  }
+  expect(readFileSync(join(originalFolder, 'baseline.txt'), 'utf8')).toContain(
+    'existing chosen project',
+  );
+}, 30000);
 /** Pre-direct-delivery producer fixture. Its original IDs and pending receipt
  * model an installation saved by the previous host, not a new normal send. */
 async function legacyHuman(
@@ -3062,3 +3506,370 @@ it('native activity delivers exact producer originals once through hosted receip
     await memberFeed.close();
   }
 }, 30000);
+
+it('concurrent identical Groups readings share only their exact in-flight authority and query', async () => {
+  let watching = false;
+  const kinds: string[] = [];
+  let gate: Promise<void> | undefined;
+  let release!: () => void, entered!: () => void;
+  const http: typeof fetch = async (...args) => {
+    const command = JSON.parse(String(args[1]?.body)) as { kind: string };
+    if (watching) {
+      kinds.push(command.kind);
+      if (command.kind === 'status' && gate) {
+        entered();
+        await gate;
+      }
+    }
+    return fetch(...args);
+  };
+  const f = await installation(undefined, { http });
+  const { open } = await create(f, 'Concurrent read budget');
+  watching = true;
+  const shared = { handle: open.shared.handle };
+  const feed = { ...shared, query: { visibility: 'shared', after: 0, limit: 1, cursor: null } };
+  for (const [name, input, expected] of [
+    ['open', { handle: open.group.handle }, ['status', 'roster']],
+    ['chat', shared, ['status']],
+    ['feed', feed, ['status', 'feed']],
+  ] as const) {
+    kinds.length = 0;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = f.post(name, input),
+      second = f.post(name, input);
+    await started;
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(kinds).toEqual(['status']);
+    release();
+    gate = undefined;
+    const results = await Promise.all([first, second]);
+    expect(results.map((result) => result.statusCode)).toEqual([200, 200]);
+    expect(results[0].json()).toEqual(results[1].json());
+    expect(kinds).toEqual(expected);
+    await f.post(name, input);
+    expect(kinds).toEqual([...expected, ...expected]);
+  }
+  kinds.length = 0;
+  const differentQueries = await Promise.all([
+    f.post('feed', feed),
+    f.post('feed', { ...feed, query: { ...feed.query, limit: 2 } }),
+  ]);
+  expect(differentQueries.map((result) => result.statusCode)).toEqual([200, 200]);
+  expect(kinds.filter((kind) => kind === 'status')).toHaveLength(2);
+  expect(kinds.filter((kind) => kind === 'feed')).toHaveLength(2);
+  kinds.length = 0;
+  await Promise.all([f.post('chat', shared), f.post('chat', { handle: open.private.handle })]);
+  expect(kinds).toEqual(['status', 'status']);
+  kinds.length = 0;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const reading = f.post('chat', shared);
+  await started;
+  const effect = f.post('draft', {
+    ...shared,
+    key: randomUUID(),
+    revision: 0,
+    text: 'An effect needs its own fresh authority.',
+  });
+  await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  expect(kinds).toEqual(['status', 'status']);
+  release();
+  gate = undefined;
+  expect((await Promise.all([reading, effect])).map((result) => result.statusCode)).toEqual([
+    200, 200,
+  ]);
+});
+
+it('settled coalesced readings never authorize later effects or conceal enrollment revocation', async () => {
+  const a = await installation(),
+    b = await installation();
+  const { open } = await create(a, 'Fresh effect authority');
+  const member = await joinMember(a, b, open.group.handle);
+  const reading = { handle: member.open.shared.handle };
+  expect(
+    (await Promise.all([b.post('chat', reading), b.post('chat', reading)])).map(
+      (r) => r.statusCode,
+    ),
+  ).toEqual([200, 200]);
+  expect(
+    (
+      await a.post('revoke', {
+        handle: open.group.handle,
+        key: randomUUID(),
+        requestId: member.open.member.installationId,
+      })
+    ).statusCode,
+  ).toBe(200);
+  expect(
+    (await b.post('send', { ...reading, key: randomUUID(), text: 'Must not send after revoke' }))
+      .statusCode,
+  ).toBe(403);
+  expect((await b.post('chat', reading)).statusCode).toBe(403);
+  expect(
+    (
+      await b.post('feed', {
+        ...reading,
+        query: { visibility: 'shared', after: 0, limit: 1, cursor: null },
+      })
+    ).statusCode,
+  ).toBe(403);
+  expect(b.host.db.prepare('SELECT count(*) AS n FROM gh_sends').get()?.n).toBe(0);
+});
+
+it('native Group notifications share one protected socket and fan out ephemeral authenticated SSE hints', async () => {
+  const f = await installation(),
+    { open } = await create(f, 'Notification fanout');
+  await expect.poll(() => f.host.updates.connected(open.member)).toBe(true);
+  const first: unknown[] = [],
+    second: unknown[] = [];
+  const off1 = f.host.updates.subscribe((value) => first.push(value)),
+    off2 = f.host.updates.subscribe((value) => second.push(value));
+  await f.app.listen({ host: '127.0.0.1', port: f.appPort });
+  const controller = new AbortController();
+  const response = await fetch(`http://127.0.0.1:${f.appPort}/api/events`, {
+    headers: { Authorization: f.auth('GET', '/api/events') },
+    signal: controller.signal,
+  });
+  const reader = response.body!.getReader();
+  let text = '';
+  const until = async (condition: () => boolean) => {
+    while (!condition()) {
+      const next = await reader.read();
+      if (next.done) throw new Error('Stream ended');
+      text += new TextDecoder().decode(next.value);
+    }
+  };
+  try {
+    await until(() => text.includes('event: group'));
+    expect(text).toContain('"connected":true');
+    expect(text).not.toContain('Bearer');
+    const count = f.host.updates['channels'].size;
+    expect(count).toBe(1);
+    const events = f.store.head;
+    await f.host.open({ handle: open.group.handle });
+    await f.host.chat({ handle: open.shared.handle });
+    expect(f.host.updates['channels'].size).toBe(1);
+    const before = first.length;
+    await f.post('invite', { handle: open.group.handle, key: randomUUID() });
+    await expect.poll(() => first.length).toBeGreaterThan(before);
+    expect(first).toEqual(second);
+    expect(f.store.head).toBe(events);
+    await until(() => text.includes('"changed":true'));
+    expect(text).not.toContain('event: change\n');
+  } finally {
+    controller.abort();
+    await reader.cancel().catch(() => {});
+    off1();
+    off2();
+  }
+});
+
+it('background native Group evidence reads use one fresh service read and notification-aware idle cadence', async () => {
+  const commands: string[] = [];
+  let watching = false;
+  const http: typeof fetch = async (...args) => {
+    if (watching) commands.push((JSON.parse(String(args[1]?.body)) as { kind: string }).kind);
+    return fetch(...args);
+  };
+  const f = await installation(undefined, { http }),
+    { open } = await create(f, 'Evidence idle budget');
+  const { sessionId: _owner, ...scope } = open.shared.context;
+  const context = f.host.events.createContext({
+    ...scope,
+    provider: 'codex',
+    nativeSessionId: randomUUID(),
+  });
+  const managerId = randomUUID();
+  let effects = 0;
+  const coordination = new GroupFeatureCoordination(f.runtime, f.host, {
+    identity: () => ({ managerId, agentId: managerId, requestId: randomUUID() }),
+    inspect: () => null,
+    delegate: async () => {
+      effects++;
+      throw new Error('No effect authorized by a hint');
+    },
+  });
+  closers.push(() => coordination.close());
+  coordination.tools(context);
+  await expect.poll(() => f.host.updates.connected(context)).toBe(true);
+  watching = true;
+  for (let i = 0; i < 100; i++) await coordination.pass(false);
+  expect(commands).toEqual(['evidence']);
+  expect(effects).toBe(0);
+  expect(f.store.runs()).toHaveLength(0);
+  // Explicit reconciliation remains fresh even inside the idle interval.
+  await coordination.pass();
+  expect(commands).toEqual(['evidence', 'evidence']);
+  await expect(
+    f.host.readNativeActionEvidence(context, {
+      kind: 'instruction',
+      operationId: randomUUID(),
+      text: 'Not a read',
+    } as never),
+  ).rejects.toThrow('Read-only evidence');
+  expect(effects).toBe(0);
+});
+
+it('native Group evidence and socket retries preserve their saved service binding before dispatch and after a held read', async () => {
+  let count = 0,
+    held = false,
+    started!: () => void,
+    release!: () => void;
+  const begins = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const http: typeof fetch = async (...args) => {
+    if (held) {
+      count++;
+      const result = await fetch(...args);
+      started();
+      await gate;
+      return result;
+    }
+    return fetch(...args);
+  };
+  const f = await installation(undefined, { http }),
+    { open } = await create(f, 'Saved notification service');
+  const { sessionId: _owner, ...scope } = open.shared.context;
+  const context = f.host.events.createContext({
+    ...scope,
+    provider: 'codex',
+    nativeSessionId: randomUUID(),
+  });
+  await expect.poll(() => f.host.updates.connected(context)).toBe(true);
+  held = true;
+  const reading = f.host.readNativeActionEvidence(context, {
+    kind: 'evidence',
+    after: 0,
+    limit: 1,
+  });
+  await begins;
+  const path = join(f.host.directory, 'service.json');
+  const saved = JSON.parse(readFileSync(path, 'utf8')) as { endpoint: string; endpointId: string };
+  writeFileSync(path, JSON.stringify({ ...saved, endpointId: randomUUID() }));
+  release();
+  await expect(reading).rejects.toMatchObject({ code: 'GROUP_SERVICE_CHANGED' });
+  await expect(
+    f.host.readNativeActionEvidence(context, { kind: 'evidence', after: 0, limit: 1 }),
+  ).rejects.toMatchObject({ code: 'GROUP_SERVICE_CHANGED' });
+  expect(count).toBe(1);
+  const channel = [...f.host.updates['channels'].values()][0];
+  channel.peer!.terminate();
+  await expect.poll(() => channel.peer).toBeUndefined();
+  f.host.updates['open'](channel);
+  expect(channel.peer).toBeUndefined();
+  expect(channel.connected).toBe(false);
+  expect(count).toBe(1);
+});
+
+it('removing a watched Group disposes its native socket immediately; reads stay unwatched until an explicit restore', async () => {
+  const f = await installation(),
+    { open } = await create(f, 'Remove native notifications');
+  await expect.poll(() => f.host.updates.connected(open.shared.context)).toBe(true);
+  const updates: unknown[] = [];
+  const unsubscribe = f.host.updates.subscribe((update) => updates.push(update));
+  closers.push(async () => unsubscribe());
+  const channel = [...f.host.updates['channels'].values()][0];
+  const remove = { handle: open.group.handle, key: randomUUID(), revision: 0, hidden: true };
+  const hidden = await f.post('local-visibility', remove);
+  expect(hidden.statusCode, hidden.body).toBe(200);
+  expect(f.host.updates.connected(open.shared.context)).toBe(false);
+  expect(f.host.updates['channels'].size).toBe(0);
+  expect(channel.peer).toBeUndefined();
+  expect(channel.heartbeat).toBeUndefined();
+  expect(channel.retry).toBeUndefined();
+  expect(channel.debounce).toBeUndefined();
+  expect(updates.at(-1)).toMatchObject({ connected: false, changed: false });
+  f.host.updates['open'](channel);
+  expect((await f.post('open', { handle: open.group.handle })).statusCode).toBe(200);
+  expect(f.host.updates['channels'].size).toBe(0);
+  const restored = await f.post('local-visibility', {
+    handle: open.group.handle,
+    key: randomUUID(),
+    revision: 1,
+    hidden: false,
+  });
+  expect(restored.statusCode, restored.body).toBe(200);
+  expect(f.host.updates['channels'].size).toBe(0);
+  expect((await f.post('open', { handle: open.group.handle })).statusCode).toBe(200);
+  await expect.poll(() => f.host.updates.connected(open.shared.context)).toBe(true);
+  expect((await f.post('local-visibility', remove)).json()).toEqual(hidden.json());
+  expect(f.host.updates.connected(open.shared.context)).toBe(true);
+  expect(f.host.updates['channels'].size).toBe(1);
+  expect(f.store.runs()).toHaveLength(0);
+});
+
+it('native evidence continuation drains bounded pages before idle cadence and leaves other owners fair turns', async () => {
+  const f = await installation(),
+    { open } = await create(f, 'Bounded evidence continuation');
+  for (let i = 0; i < 27; i++)
+    expect(
+      (
+        await f.post('actions', {
+          handle: open.shared.handle,
+          command: {
+            kind: 'instruction',
+            operationId: randomUUID(),
+            text: `Explicit fixture instruction ${i}`,
+          },
+        })
+      ).json(),
+    ).toMatchObject({ ok: true });
+  const { sessionId: _owner, ...scope } = open.shared.context;
+  const contexts = Array.from({ length: 3 }, () =>
+    f.host.events.createContext({ ...scope, provider: 'codex', nativeSessionId: randomUUID() }),
+  );
+  const managers = contexts.map(() => randomUUID());
+  let effects = 0;
+  const coordination = new GroupFeatureCoordination(f.runtime, f.host, {
+    identity: (context) => {
+      const managerId =
+        managers[contexts.findIndex((value) => value.sessionId === context.sessionId)];
+      return { managerId, agentId: managerId, requestId: randomUUID() };
+    },
+    inspect: () => null,
+    delegate: async () => {
+      effects++;
+      throw new Error('Instruction evidence grants no effect');
+    },
+  });
+  closers.push(() => coordination.close());
+  contexts.forEach((context) => coordination.tools(context));
+  await expect.poll(() => f.host.updates.connected(contexts[0])).toBe(true);
+  const read = vi.spyOn(f.host, 'readNativeActionEvidence');
+  for (let i = 0; i < 6; i++) await coordination.pass(false);
+  expect(read.mock.calls.map(([, command]) => command.after)).toEqual([0, 25, 0, 25, 0, 25]);
+  expect(read.mock.calls.map(([context]) => context.sessionId)).toEqual(
+    contexts.flatMap((context) => [context.sessionId, context.sessionId]),
+  );
+  expect(
+    f.host.db
+      .prepare('SELECT cursor FROM gh_coordination_owners ORDER BY rowid')
+      .all()
+      .map((row) => row.cursor),
+  ).toEqual([27, 27, 27]);
+  for (let i = 0; i < 3; i++) await coordination.pass(false);
+  expect(read).toHaveBeenCalledTimes(6);
+  const ordinaryPositions = new Set<number>();
+  for (let i = 0; i < 10; i++) {
+    coordination['dirty'].add(managers[0]);
+    await coordination.pass(false);
+    ordinaryPositions.add(coordination['position']);
+  }
+  expect(ordinaryPositions).toEqual(new Set([1, 2, 3]));
+  expect(effects).toBe(0);
+  expect(f.store.runs()).toHaveLength(0);
+  read.mockRestore();
+});

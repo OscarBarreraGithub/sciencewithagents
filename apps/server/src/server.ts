@@ -910,6 +910,7 @@ export async function createServer(
         (!!options.localAccess &&
           browserOrigins.has(remoteOrigin ?? `http://${request.headers.host}`) &&
           options.localAccess.browser(request.headers.cookie)),
+      folders,
     );
   }
   if (options.groupFixture) {
@@ -2055,6 +2056,19 @@ export async function createServer(
         pumping = false;
       }
     };
+    // Same authenticated/paired-host stream, without appending ephemeral cloud
+    // invalidations to the local event ledger. A missed hint reconciles by read.
+    const stopGroups = options.groupHost?.updates.subscribe((update) => {
+      if (
+        !reply.raw.destroyed &&
+        !reply.raw.writableEnded &&
+        !blocked &&
+        !reply.raw.write(`event: group\ndata: ${JSON.stringify(update)}\n\n`)
+      ) {
+        blocked = true;
+        reply.raw.once('drain', drained);
+      }
+    });
     store.on('event', schedule);
     schedule();
     const heartbeat = setInterval(() => {
@@ -2074,6 +2088,7 @@ export async function createServer(
       if (scheduled) clearImmediate(scheduled);
       reply.raw.off('drain', drained);
       stopWatching();
+      stopGroups?.();
       store.off('event', schedule);
     });
   });

@@ -779,8 +779,8 @@ export class Pulsar {
     });
   }
   /**
-   * Cluster ledger only: the remote runtime durably proved this admitted grant was never
-   * consumed. No spend exists to retain, so the open reservation is removed, not settled.
+   * The caller durably proved this admitted input was never consumed. No spend exists
+   * to retain, so the open reservation is removed, not settled.
    */
   discardUnconsumed(runId: string) {
     if (this.lease(runId)?.finishedAt)

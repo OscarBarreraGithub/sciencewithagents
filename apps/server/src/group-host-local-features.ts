@@ -44,7 +44,7 @@ export function attachGroupHostLocalFeatures(
   });
   host.promotion.start(synthesis);
   const memberFeed = new GroupMemberFeed(runtime, host.directory, connector, {
-    allowed: (enrollment) => host.localVisible(enrollment),
+    allowed: (enrollment) => host.localVisible(enrollment) && host.localContributing(enrollment),
     source: (input) => host.memberFeedSource(input),
     publish: (input, decision, operationId) => host.publishMemberFeed(input, decision, operationId),
   });

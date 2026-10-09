@@ -116,6 +116,8 @@ test('native Groups management saves a blank GitHub username and retries its exa
     page.getByRole('heading', { name: 'Shared files on GitHub', exact: true }),
   ).toBeHidden();
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await page.locator('.group-host-controls').getByText('Advanced', { exact: true }).click();
+  await page.getByText('Git sync and reviewed changes', { exact: true }).click();
   const panel = page.getByRole('region', { name: 'Shared GitHub workspace', exact: true });
   await expect(panel).toHaveCount(1);
   await expect(
@@ -148,6 +150,8 @@ test('native Groups management saves a blank GitHub username and retries its exa
     page.getByRole('heading', { name: 'Native files River', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await page.locator('.group-host-controls').getByText('Advanced', { exact: true }).click();
+  await page.getByText('Git sync and reviewed changes', { exact: true }).click();
   await expect(panel).toHaveCount(1);
   await expect(username).toHaveValue('');
   await expect(automaticSync).toBeChecked();
@@ -241,16 +245,23 @@ test('creator can retry a changed hosted snapshot and see a verified private arc
     page.getByRole('heading', { name: 'Private archive River', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
-  const summary = page.locator('summary').filter({ hasText: 'Private hosted backup' });
+  await page.locator('.group-host-controls').getByText('Advanced', { exact: true }).click();
+  const summary = page
+    .locator('summary')
+    .filter({ hasText: 'Creator backup of shared group data' });
   await expect(summary).toHaveCount(1);
   await summary.click();
-  const exportButton = page.getByRole('button', { name: 'Export hosted data', exact: true });
+  const exportButton = page.getByRole('button', {
+    name: 'Save private shared-data backup',
+    exact: true,
+  });
   await exportButton.click();
   await expect(
     page.getByRole('status').filter({ hasText: 'The group changed during export' }),
   ).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await page.locator('.group-host-controls').getByText('Advanced', { exact: true }).click();
   await expect(summary).toHaveCount(1);
   await summary.click();
   await expect(
@@ -261,6 +272,7 @@ test('creator can retry a changed hosted snapshot and see a verified private arc
   await expect(exportButton).toBeEnabled();
   await page.reload();
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await page.locator('.group-host-controls').getByText('Advanced', { exact: true }).click();
   await expect(summary).toHaveCount(1);
   await summary.click();
   await exportButton.click();
@@ -271,6 +283,7 @@ test('creator can retry a changed hosted snapshot and see a verified private arc
   expect(new Set(keys).size).toBe(1);
   await page.reload();
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await page.locator('.group-host-controls').getByText('Advanced', { exact: true }).click();
   await expect(summary).toHaveCount(1);
   await summary.click();
   await expect(

@@ -10,7 +10,7 @@ need no Cloudflare account to join. Tailscale is not part of Groups setup.
 
 1. Follow [Groups workflow](GROUP_WORKFLOW.md) to create or join a group by invitation and
    verify membership. Keep the selected worker computer awake and running the app.
-2. Open **Group manager**. Enable agents on this computer when prompted.
+2. Open **My group agent**. Enable agents on this computer when prompted.
    This authorizes native access like an ordinary project agent; it starts no model turn.
 3. Send **Ask** for a read-only question, or explicitly choose **Work** for work on this
    computer. A saved request waiting for enablement keeps its original text and identity;
@@ -21,13 +21,13 @@ need no Cloudflare account to join. Tailscale is not part of Groups setup.
 
 ## What is shared
 
-**Group chat** contains everyone's shared messages. **Group manager** directs your own
+**Group chat** contains everyone's shared messages. **My group agent** directs your own
 agent in the shared context; its shared replies can appear in the group feed. Previously
 saved private sessions remain separate and are not exposed by the current two-tab view.
 Private asides, drafts and personal conversation history are not automatically sent to
 the group. Other members’ messages can inform a reply but cannot authorize local work.
 
-The Group manager can query authenticated shared originals and typed evidence while
+My group agent can query authenticated shared originals and typed evidence while
 answering an Ask. Queries retain exact pages across retries and restart. Its offline
 evidence position advances only after all pages of an offline query have been read; this
 position is separate from older private-aside receipts. A new query refreshes at most 16
@@ -46,10 +46,10 @@ branches, task worktrees and independently reviewed integration. Optional sync p
 reviewed applied commits and fast-forwards clean checkouts; it does not publish private
 history or unfinished files.
 
-For reports, ask Group manager with **Work** to create a PDF and matching LaTeX source in its
-group workspace and link both in the final reply. **Open report** offers only exact captured
+For reports, ask My group agent with **Work** to create a PDF and matching LaTeX source in its
+group workspace and link both in the final reply. **Open report from this reply** offers only exact captured
 files; select the PDF and check its source/supporting files. Explicit sharing makes that copy
-available under **Manage → Shared reports**. Source-only reports support Reading; the server
+available under **Manage → Advanced → Browse earlier shared reports**. Source-only reports support Reading; the server
 does not compile remote TeX on your host. Capture requires Python 3; existing Reading conversion
 tools remain necessary. See [scoped reports](GROUP_DOCUMENTS.md). The older isolated adapters
 remain separate. See

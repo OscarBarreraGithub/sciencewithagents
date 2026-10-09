@@ -18,6 +18,7 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 - [Recovery copies](RECOVERY_COPIES.md) and [private source backups](SOURCE_BACKUPS.md)
 - [Private Groups archive and staged recovery](GROUP_RECOVERY.md)
 - [Creator-hosted Groups backup and recovery policy](GROUP_HOSTED_RECOVERY.md)
+- [What Groups stores, syncs and charges to model allowance](GROUP_DATA.md)
 
 ## Technical references
 

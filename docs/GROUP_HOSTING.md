@@ -49,6 +49,8 @@ on that service. Concurrent membership across different creators' service endpoi
 not supported; changing the mapping leaves older receipts intact but refuses their use
 until their original mapping is restored. The helper preserves an existing mapping
 rather than silently disconnecting those groups.
+The helper refuses fresh preparation if a mapping or a prepared deployment already exists.
+An exact matching activation or invitation reuses the saved file without rewriting it.
 
 From the installation checkout, use the pinned project tools:
 
@@ -101,8 +103,29 @@ while visible and refreshes when you return to the tab or reconnect. Once config
 the setup prompt collapses automatically; existing form entries are kept. Choose **New project**, supply display
 and project names, and continue. No operator setup code is needed. If configuration exists,
 activation refuses to overwrite it. A reinstall/update must retain the same endpoint ID,
-capabilities and service origin. Keep the prepared files for future updates; redeploy their
-config, preserving the existing Durable Object migration and storage.
+capabilities and service origin. Keep the prepared files for future updates.
+
+### Update an existing creator service
+
+Use the current reviewed checkout and the creator's saved private deployment bundle.
+Follow the [hosted recovery procedure](GROUP_HOSTED_RECOVERY.md) for its backup and first-update
+requirements. Verify the original account is still Workers Free. Do not run `prepare` again.
+A saved configuration can contain an absolute source path from an old checkout; prepare a
+candidate that keeps the same Worker, account, bindings, migrations and capability hashes:
+
+```sh
+node scripts/group-cloudflare-setup.mjs upgrade /absolute/app-data \
+  /absolute/prepared/wrangler.json --verified-workers-free
+```
+
+This local-only command validates the saved bundle against the active creator mapping and
+prints a new private `wrangler-upgrade-UUID.json` path. Its only configuration change is
+`main`, pointing at this checkout's Groups Worker source. Original files and credentials
+remain intact. Check the exact reviewed source revision and compare the candidate before
+using it for the dry-run and deployment commands above. Updating this account requires its
+owner's authorization; an app update on a member's computer does not deploy the creator's
+Worker. A failed check or deployment keeps the saved mapping; reconcile it rather than
+creating a replacement service. Verify hosted data immediately after an approved first update.
 
 The service includes a public `/join` invitation handoff page. It displays joining
 instructions and a copy control; it grants no app or group access and makes no membership
@@ -154,6 +177,9 @@ node scripts/group-cloudflare-setup.mjs join /absolute/member-app-data \
 This validates the descriptor and writes a join-only private configuration; it makes no
 network request. The person verifies the service belongs to the intended creator. Arbitrary
 browser invitations cannot choose a host, trigger a fetch or override an existing mapping.
+If every service-descriptor field matches an existing mapping, the helper reuses it, including
+on the creator's own installation. Existing creator authority stays private and unchanged.
+Any mismatch refuses before writing; multiple different service mappings remain unsupported.
 The setup agent is the explicit trusted configuration boundary. Remove the temporary
 invitation file after handoff. If setup took longer than 7 days, obtain a fresh invitation
 from the same creator; the saved service mapping stays valid.
@@ -167,7 +193,7 @@ reconcile the current mapping and retained groups explicitly rather than replaci
 ### Verify completion and recovery
 
 Verify a human message from each installation appears at the other, and each original opens.
-Choose the creator's computer as shared feed writer. Verify local agent access separately
+The optional legacy feed writer is not required for chat or file sync. Verify local agent access separately
 using each person's own provider sign-in; model calls require their ordinary instruction.
 Reload/reconnect and confirm membership and saved messages persist. A lost acknowledgement
 uses **Recover an interrupted request** / the original request identity; never create another group
@@ -244,6 +270,28 @@ respects member/normal-write limits, and is audited once. The invitation deadlin
 strand an already accepted request. Revoked enrollments and grants are never revived.
 
 ## Receipts, revocation and bounds
+
+### Change notifications
+
+The fixed `GET /v1/groups/{uuid}/updates` WebSocket is for the protected native
+host, using the existing hosting approval and active installation credential in
+headers. Browser origins, query credentials and incoming application commands are
+refused. Hibernating sockets retain only the group, installation and credential hash;
+outgoing frames contain a group UUID and a change hint, never messages or reports.
+Each host shares one connection per enrollment through its existing authenticated
+app event stream. A hint triggers a fresh authorized read; it grants no execution
+authority. Commit notifications check retained revocation markers and close revoked
+sockets. Lost hints, restarts and older services use periodic reconciliation and the
+disconnected fallback described in [Groups workflow](GROUP_WORKFLOW.md).
+
+Source-derived idle estimates for one visible browser and one registered native
+group owner are 1,728 service reads per day with notifications, or 576 over eight
+hours, before startup, focus, producer writes, originals and explicit actions. Hidden
+browser views stop reading. These estimates and local fixtures establish neither
+deployment acceptance nor a reservation of the creator's Free quota. See Cloudflare's
+[hibernating WebSocket guidance](https://developers.cloudflare.com/durable-objects/best-practices/websockets/).
+
+### Durable receipt bounds
 
 Crypto is asynchronous before the transaction. The synchronous transaction then checks
 current group routing, authorization and revocation before reading a receipt. A fresh

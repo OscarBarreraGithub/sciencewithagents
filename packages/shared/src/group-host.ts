@@ -16,11 +16,18 @@ export const groupHostSelectSchema = z.strictObject({ handle: z.uuid() });
 export const groupHostLocalStateSchema = z.strictObject({
   hidden: z.boolean(),
   revision: z.number().int().nonnegative().safe(),
+  mode: z.enum(['read-only', 'contribute']).default('contribute'),
+  modeRevision: z.number().int().nonnegative().safe().default(0),
 });
 export const groupHostLocalVisibilitySchema = groupHostSelectSchema.extend({
   key: z.uuid(),
   revision: z.number().int().nonnegative().safe(),
   hidden: z.boolean(),
+});
+export const groupHostLocalModeSchema = groupHostSelectSchema.extend({
+  key: z.uuid(),
+  revision: z.number().int().nonnegative().safe(),
+  mode: z.enum(['read-only', 'contribute']),
 });
 const text = z
   .string()
@@ -82,6 +89,13 @@ export const groupHostListSchema = z.strictObject({
     configured: z.boolean(),
     message: z.string().max(1000),
     setupCodeRequired: z.boolean().optional(),
+    localReceiptStorage: z
+      .strictObject({
+        bytes: z.number().int().nonnegative().safe(),
+        limitBytes: z.number().int().positive().safe(),
+        full: z.boolean(),
+      })
+      .optional(),
   }),
   native: groupHostNativeStatusSchema,
 });

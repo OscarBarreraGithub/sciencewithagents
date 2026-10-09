@@ -774,3 +774,36 @@ dialog .mirror-delivery-confirm input {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* A collapsed compatibility notice shares the history toolbar on short touch screens.
+   Actual requests and expanded details retain their own row and full controls. */
+.mirror-reading-controls {
+  display: contents;
+}
+@media (max-height: 500px) and (pointer: coarse) {
+  .mirror-reading-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .mirror-reading-controls > .mirror-native-requests {
+    flex: 1 1 0;
+    min-width: 0;
+    border-bottom: 0;
+  }
+  .mirror-reading-controls
+    > .mirror-native-requests:has(
+      .mirror-native-summary,
+      .mirror-native-receipts,
+      .mirror-native-support[open]
+    ) {
+    flex-basis: 100%;
+  }
+  .mirror-reading-controls > .mirror-history {
+    flex: 0 1 auto;
+    min-width: 0;
+    border-bottom: 0;
+  }
+}

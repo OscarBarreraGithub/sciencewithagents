@@ -33,8 +33,8 @@ test('native scoped report controls exclude personal Library and host-path link 
     'https://example.com/research',
   );
   await expect(page.getByRole('link', { name: 'Scoped report', exact: true })).toBeVisible();
-  await page.getByText('Shared reports', { exact: true }).click();
-  await page.getByRole('button', { name: 'Load shared reports' }).click();
+  await page.getByText('Browse earlier shared reports', { exact: true }).click();
+  await page.getByRole('button', { name: 'Find shared reports' }).click();
   await expect(page.getByRole('button', { name: 'Exact shared report' })).toBeVisible();
   expect(forbidden).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

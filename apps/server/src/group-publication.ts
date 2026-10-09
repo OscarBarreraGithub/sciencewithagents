@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { GROUP_LIMITS, groupSourceSchema } from '@dock/shared';
 import { GroupEventRepository, type GroupAccess } from './group-events.js';
+import { GroupPublicationStorage } from './group-publication-storage.js';
 import {
   PUBLICATION_LIMITS as LIMITS,
   publicationBindingSchema,
@@ -111,13 +112,9 @@ const fail = (state: PublicationState): never => {
 };
 const safeCode = (error: unknown): PublicationState =>
   error instanceof GroupPublicationError ? error.code : 'storage';
-// Reserve the old eight-partition active header budget, then budget 8 KiB per
-// retained identity (escaped source, receipt, counters and index/page overhead).
-// This is a logical bound, not a guarantee of physical fit: SQLite may fill earlier.
+// Active/pending work stays bounded. Retained history uses byte admission and
+// acknowledgment slots allocated before effect handoff, rather than a row lifetime.
 const ACTIVE_OPERATIONS = LIMITS.lifetimeOperations;
-const HISTORY_OPERATIONS = Math.floor(
-  (LIMITS.journalBytes - LIMITS.partitions * ACTIVE_OPERATIONS * LIMITS.headerBytes) / 8192,
-);
 const compactHeader = (header: string) => publicationHash(header);
 const SQL = `
 CREATE TABLE IF NOT EXISTS gp_schema (singleton INTEGER PRIMARY KEY CHECK(singleton=1),version INTEGER NOT NULL);
@@ -167,12 +164,16 @@ CREATE TRIGGER IF NOT EXISTS gp_owner_no_delete BEFORE DELETE ON gp_owner
  */
 export class GroupPublicationController {
   readonly #db: DatabaseSync;
+  readonly #storage: GroupPublicationStorage;
   readonly #registrations = new WeakMap<PublicationAccess, Registration>();
   constructor(
     path: string,
     readonly repository: GroupEventRepository,
     readonly transport: PublicationTransport,
     readonly scheduling: PublicationScheduling = nativeScheduling,
+    /** Internal fixture seam for a real physical-fence check. The host always
+     * uses the ordinary limit; no browser input chooses this allocation. */
+    physicalLimitBytes = LIMITS.journalBytes,
   ) {
     let opened: DatabaseSync | undefined;
     try {
@@ -183,7 +184,13 @@ export class GroupPublicationController {
       );
       const pageSize = (this.#db.prepare('PRAGMA page_size').get() as { page_size: number })
         .page_size;
-      const maxPages = Math.floor(LIMITS.journalBytes / pageSize);
+      if (
+        !Number.isSafeInteger(physicalLimitBytes) ||
+        physicalLimitBytes < 65536 ||
+        physicalLimitBytes > LIMITS.journalBytes
+      )
+        fail('storage');
+      const maxPages = Math.floor(physicalLimitBytes / pageSize);
       const actualLimit = this.#db.prepare(`PRAGMA max_page_count=${maxPages}`).get() as {
         max_page_count: number;
       };
@@ -241,6 +248,16 @@ export class GroupPublicationController {
         }
         this.#validateHistory();
       });
+      this.#storage = this.#transaction(() => new GroupPublicationStorage(this.#db));
+      for (const raw of this.#db
+        .prepare(
+          `SELECT o.*,p.binding_json FROM gp_operations o
+        JOIN gp_partitions p USING(partition_id) JOIN gp_receipt_slots s USING(operation_id) WHERE s.committed=1`,
+        )
+        .iterate()) {
+        const row = raw as Row & { binding_json: string };
+        this.#retainedReceipt(publicationBindingSchema.parse(JSON.parse(row.binding_json)), row);
+      }
     } catch {
       opened?.close();
       throw new GroupPublicationError('storage');
@@ -321,7 +338,6 @@ export class GroupPublicationController {
       )
         fail('storage');
       events.add(row.event_id);
-      if (events.size > HISTORY_OPERATIONS) fail('storage');
       const source = groupSourceSchema.parse(JSON.parse(row.source_json));
       if (publicationCanonical(source) !== row.source_json) fail('storage');
       if (row.compact) {
@@ -545,20 +561,15 @@ export class GroupPublicationController {
               fail('integrity');
             return prior.operation_id;
           }
-          const counts = this.#db
-            .prepare(
-              `SELECT SUM(CASE WHEN state!='complete' THEN 1 ELSE 0 END) AS total,
-            SUM(CASE WHEN state NOT IN ('complete','exhausted','collision','protocol','integrity') THEN 1 ELSE 0 END) AS pending
-            FROM gp_operations WHERE partition_id=?`,
-            )
-            .get(registration.partition) as { total: number; pending: number | null };
-          if (
-            counts.total >= ACTIVE_OPERATIONS ||
-            (this.#db.prepare('SELECT COUNT(*) AS n FROM gp_operations').get() as { n: number })
-              .n >= HISTORY_OPERATIONS ||
-            (counts.pending ?? 0) >= LIMITS.pendingOperations
-          )
+          const counts = this.#storage.counts(registration.partition);
+          if (counts.active >= ACTIVE_OPERATIONS || counts.pending >= LIMITS.pendingOperations)
             fail('capacity');
+          const source = publicationCanonical(record.event.scope.source);
+          try {
+            this.#storage.admit(header, source);
+          } catch {
+            fail('capacity');
+          }
           this.#db
             .prepare(
               `INSERT INTO gp_operations(operation_id,partition_id,event_id,header_json,payload_hash,header_hash,source_json,state)
@@ -571,8 +582,9 @@ export class GroupPublicationController {
               header,
               envelope.header.payloadHash,
               compactHeader(header),
-              publicationCanonical(record.event.scope.source),
+              source,
             );
+          this.#storage.ensure(envelope.header.operationId);
           return envelope.header.operationId;
         });
         return { operations };
@@ -596,24 +608,35 @@ export class GroupPublicationController {
       if (!z.uuid().safeParse(operationId).success) return { state: 'invalid' };
       this.#partition(registration);
       const row = this.#db
-        .prepare(
-          'SELECT state,attempts,budget,next_at,intent FROM gp_operations WHERE partition_id=? AND operation_id=?',
-        )
-        .get(registration.partition, operationId) as
-        | Pick<Row, 'state' | 'attempts' | 'budget' | 'next_at' | 'intent'>
-        | undefined;
+        .prepare('SELECT * FROM gp_operations WHERE partition_id=? AND operation_id=?')
+        .get(registration.partition, operationId) as Row | undefined;
+      const retained = row && this.#retainedReceipt(registration.binding, row);
       return row
         ? {
-            state: row.state,
+            state: retained ? 'complete' : row.state,
             attempts: row.attempts,
             budgetAttempts: row.budget,
-            nextAttemptAt: row.next_at,
-            uncertain: row.intent === 1,
+            nextAttemptAt: retained ? 0 : row.next_at,
+            uncertain: retained ? false : row.intent === 1,
           }
         : { state: 'idle' };
     } catch (error) {
       return { state: safeCode(error) };
     }
+  }
+  storage() {
+    return this.#storage.usage();
+  }
+  #retainedReceipt(binding: PublicationBinding, row: Row) {
+    const receipt = this.#storage.committed(row.operation_id);
+    if (
+      receipt &&
+      (receipt.eventId !== row.event_id ||
+        receipt.payloadHash !== row.payload_hash ||
+        publicationCanonical(receipt.binding) !== publicationCanonical(binding))
+    )
+      fail('storage');
+    return receipt;
   }
   #acquire(
     registration: Registration,
@@ -631,6 +654,7 @@ export class GroupPublicationController {
           : this.#db
               .prepare(
                 `SELECT * FROM gp_operations WHERE partition_id=? AND state NOT IN ('complete','collision','protocol','integrity')
+                AND NOT EXISTS(SELECT 1 FROM gp_receipt_slots s WHERE s.operation_id=gp_operations.operation_id AND s.committed=1)
                 AND next_at<=? AND (lease_owner IS NULL OR lease_until<=?)
                 ORDER BY next_at,operation_id LIMIT 1`,
               )
@@ -652,6 +676,7 @@ export class GroupPublicationController {
             : 'waiting';
       }
       if (terminal.has(row.state)) return row.state;
+      if (this.#retainedReceipt(registration.binding, row)) return 'complete';
       if (row.lease_owner !== null && row.lease_until > now) return 'busy';
       if (row.next_at > now) return 'waiting';
       this.#db
@@ -695,26 +720,39 @@ export class GroupPublicationController {
       ? LIMITS.progressMs
       : Math.min(LIMITS.maxBackoffMs, LIMITS.backoffMs * 2 ** Math.min(failures - 1, 6));
     const finalState = !terminal.has(state) && exhausted ? 'exhausted' : state;
-    // Receipt retention and completion are a single FULL-synchronous SQLite transaction.
-    this.#transaction(() => {
-      const result = this.#db
-        .prepare(
-          `UPDATE gp_operations SET state=?,budget=?,failures=?,next_at=?,intent=?,
+    // Persist the exact acknowledgment into space allocated before effect handoff.
+    // Scheduling/compaction may fail at the physical fence; the retained slot
+    // then proves completion on inspect/restart without a new effect or allocation.
+    if (receipt)
+      this.#transaction(() => {
+        this.#owned(registration, row);
+        this.#storage.ensure(row.operation_id);
+        this.#storage.retain(receipt);
+      });
+    try {
+      this.#transaction(() => {
+        const result = this.#db
+          .prepare(
+            `UPDATE gp_operations SET state=?,budget=?,failures=?,next_at=?,intent=?,
         lease_owner=NULL,lease_until=0,receipt_json=?${finalState === 'complete' ? ",header_json='',compact=1" : ''} WHERE operation_id=? AND lease_owner=? AND lease_until>?`,
-        )
-        .run(
-          finalState,
-          row.budget,
-          failures,
-          terminal.has(finalState) ? 0 : this.#now() + delay,
-          uncertain ? 1 : 0,
-          receipt ? publicationCanonical(receipt) : null,
-          row.operation_id,
-          row.lease_owner,
-          this.#now(),
-        );
-      if (result.changes !== 1) fail('busy');
-    });
+          )
+          .run(
+            finalState,
+            row.budget,
+            failures,
+            terminal.has(finalState) ? 0 : this.#now() + delay,
+            uncertain ? 1 : 0,
+            receipt ? publicationCanonical(receipt) : null,
+            row.operation_id,
+            row.lease_owner,
+            this.#now(),
+          );
+        if (result.changes !== 1) fail('busy');
+      });
+    } catch (error) {
+      if (this.#retainedReceipt(registration.binding, row)) return 'complete';
+      throw error;
+    }
     return finalState;
   }
   async #remote<T>(work: (signal: AbortSignal) => Promise<T>): Promise<T> {
@@ -836,6 +874,13 @@ export class GroupPublicationController {
       else effect = { kind: 'commit', key };
       effect = publicationEffectSchema.parse(effect);
       this.#owned(registration, row);
+      // Old accepted rows may still query their original receipt. They acquire
+      // the fixed slot before another effect; lack of space holds effect handoff.
+      try {
+        this.#transaction(() => this.#storage.ensure(row!.operation_id));
+      } catch {
+        return fail('capacity');
+      }
       // Commit effect intent before handing any bytes to the transport.
       // Every newly attempted effect gets its own slot, including retries after an
       // authoritative absent/staged receipt. Receipt-only work never spends a slot.

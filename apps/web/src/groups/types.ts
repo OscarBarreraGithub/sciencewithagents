@@ -21,6 +21,7 @@ export type GroupsLandingProps = {
   onSetup?: () => void;
   setupRequired?: boolean;
   joinReceipt?: ReactNode;
+  removedGroups?: ReactNode;
   initialInvitation?: string;
   invitationRevision?: number;
   setupCodeRequired?: boolean;
@@ -46,6 +47,7 @@ export type GroupChatSlot = {
   content: ReactNode | ((mode: GroupChatMode) => ReactNode);
 };
 export type GroupsWorkspaceProps = {
+  contributionControl?: ReactNode;
   onInvite?: () => void;
   onManage?: () => void;
   chatTitle?: string;

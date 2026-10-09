@@ -5,8 +5,11 @@ import {
   latestGroupFeedEntries,
   type GroupFeedCursor,
   type GroupFeedEntry,
+  type GroupUpdateIdentity,
 } from '@dock/shared';
 import type { GroupRead, GroupsWorkspaceProps } from './types';
+import { startGroupPolling } from './group-polling';
+import { groupPollingUpdates } from './group-updates';
 
 export type GroupMessageReader = Pick<
   GroupsWorkspaceProps,
@@ -15,7 +18,12 @@ export type GroupMessageReader = Pick<
 export type SharedGroupMessage = { event: GroupFeedEntry; text: string };
 
 /** Read the shared service's exact originals. No agent turn or private handle is used. */
-export function useGroupMessages(groupId: string, active: boolean, reader?: GroupMessageReader) {
+export function useGroupMessages(
+  groupId: string,
+  active: boolean,
+  reader?: GroupMessageReader,
+  identity?: GroupUpdateIdentity,
+) {
   const [messages, setMessages] = useState<SharedGroupMessage[]>([]);
   const [error, setError] = useState('');
   const [revoked, setRevoked] = useState(false);
@@ -68,6 +76,7 @@ export function useGroupMessages(groupId: string, active: boolean, reader?: Grou
     const read = async () => {
       if (reading || document.hidden || !alive) return;
       reading = true;
+      let changed = false;
       try {
         let page = await pageAt(position.current, null);
         if (!alive || controller.signal.aborted) return;
@@ -79,6 +88,7 @@ export function useGroupMessages(groupId: string, active: boolean, reader?: Grou
           page = await pageAt(position.current, null);
         }
         for (let pages = 0; pages < 25; pages++) {
+          changed ||= page.entries.length > 0;
           const originals = await Promise.all(
             page.entries.map(async (event) => {
               const prior = cache.current.get(event.eventId);
@@ -122,6 +132,7 @@ export function useGroupMessages(groupId: string, active: boolean, reader?: Grou
           page = await pageAt(0, page.continuation);
         }
         if (alive) setError('');
+        return changed;
       } catch (reason) {
         if (alive && !controller.signal.aborted)
           setError(
@@ -131,20 +142,22 @@ export function useGroupMessages(groupId: string, active: boolean, reader?: Grou
         reading = false;
       }
     };
-    void read();
-    const timer = window.setInterval(() => void read(), 5000);
-    const refresh = () => void read();
-    window.addEventListener('focus', refresh);
-    window.addEventListener('online', refresh);
-    document.addEventListener('visibilitychange', refresh);
+    const stop = startGroupPolling(read, {
+      updates: identity ? groupPollingUpdates(identity) : undefined,
+    });
     return () => {
       alive = false;
       controller.abort();
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('online', refresh);
-      document.removeEventListener('visibilitychange', refresh);
+      stop();
     };
-  }, [active, groupId, loadPage, loadOriginal, attempt]);
+  }, [
+    active,
+    groupId,
+    identity?.memberId,
+    identity?.installationId,
+    loadPage,
+    loadOriginal,
+    attempt,
+  ]);
   return { messages, error, revoked, windowed, retry: () => setAttempt((value) => value + 1) };
 }

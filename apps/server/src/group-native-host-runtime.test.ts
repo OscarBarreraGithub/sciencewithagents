@@ -1,5 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  readFileSync,
+  renameSync,
+  realpathSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -12,6 +21,7 @@ import { createGroupHostNativeConnector } from './group-native-host-runtime.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { createProductionGroupHost } from './group-host-bootstrap.js';
 import { privateGroupFile } from './group-host-storage.js';
+import { prepareRunDelivery, markRunHandoff, recordRunFailure } from './run-recovery.js';
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
@@ -188,6 +198,429 @@ it('local removal holds exact queued background helpers across restart without c
   visible = true;
   await f.runtime.groupHostNativeAdmission!(helper.id, run.id);
   expect(f.runtime.groupHostBackgroundReason!(helper.id, run.id)).toBeNull();
+});
+
+it('Read-only holds exact original group queue IDs before model discovery, including inherited helpers, across restart', async () => {
+  const f = fixture(),
+    input = f.input(f.shared, 'work');
+  await f.control(f.scope(f.shared), 'prepare');
+  await f.connector.submit(input);
+  const binding = f.connector.context(input.requestId)!,
+    run = f.store.run(binding.runId!);
+  const helper = f.store.addAgent({
+    projectId: binding.projectId,
+    parentId: null,
+    taskId: null,
+    name: 'Original summary helper',
+    role: 'researcher',
+    provider: binding.provider,
+    cwd: binding.cwd,
+  });
+  f.store.updateAgent(helper.id, { permission: 'read-only' });
+  const helperKey = randomUUID(),
+    helperRun = f.store.enqueue(helper.id, helperKey, 'Saved group source', 'delegation');
+  f.connector.registerHelper(
+    helper.id,
+    binding.context,
+    input.enrollmentHandle,
+    helperRun.id,
+    helperKey,
+  );
+  let allowed = false;
+  f.connector.contributions(() => allowed);
+  expect(f.runtime.groupHostBackgroundReason!(binding.agentId, run.id)).toContain('Read-only');
+  expect(f.runtime.groupHostBackgroundReason!(helper.id, helperRun.id)).toContain('Read-only');
+  expect(f.runtime.pulsar.decision(run, new Set()).reason).toContain('Read-only');
+  const prepare = vi.spyOn(f.runtime.modelPolicy, 'prepare');
+  await (f.runtime as unknown as { drain(): Promise<void> }).drain();
+  expect(prepare).not.toHaveBeenCalled();
+  expect(f.store.run(run.id).status).toBe('queued');
+  await f.restart();
+  f.connector.contributions(() => allowed);
+  expect(f.connector.context(input.requestId)!.runId).toBe(run.id);
+  expect(f.runtime.groupHostBackgroundReason!(binding.agentId, run.id)).toContain('Read-only');
+  allowed = true;
+  expect(f.runtime.groupHostBackgroundReason!(binding.agentId, run.id)).toBeNull();
+  expect(f.store.runs()).toHaveLength(2);
+  expect(f.store.run(helperRun.id)).toMatchObject({ status: 'queued', key: helperKey });
+  expect(f.store.run(run.id).key).toBe(input.requestId);
+});
+
+it.each(['codex', 'claude'] as const)(
+  'Read-only changes during final %s preparation preserve the never-dispatched original queue identity',
+  async (provider) => {
+    const f = fixture();
+    const policy = f.store.getSetting('model-policy') as { providers: { manager: string } };
+    policy.providers.manager = provider;
+    f.store.setSetting('model-policy', policy);
+    await f.control(f.scope(f.shared), 'prepare');
+    const input = f.input(f.shared, 'work');
+    await f.connector.submit(input);
+    const binding = f.connector.context(input.requestId)!,
+      run = f.store.run(binding.runId!);
+    let allowed = true;
+    f.connector.contributions(() => allowed);
+    const request = vi.fn(async () => ({ turn: { id: randomUUID(), status: 'inProgress' } }));
+    vi.spyOn(f.runtime.quark, 'sync').mockImplementation(() => {});
+    vi.spyOn(f.runtime.quark, 'managerLeaseReason').mockReturnValue(null);
+    f.store.setSetting('pulsar:policy', { enabled: false });
+    expect(f.runtime.pulsar.reserve(run, new Set(), true)).toBe(true);
+    f.runtime.quark.begin(run);
+    if (provider === 'codex') {
+      vi.spyOn(f.runtime, 'attach').mockImplementation(async () => {
+        allowed = false;
+        return { client: { request } as never, threadId: 'retained-thread' };
+      });
+    } else {
+      const managed = f.runtime.claude as unknown as {
+        callbacks: { beforeSubmit(agentId: string, runId: string): void };
+      };
+      vi.spyOn(f.runtime.claude, 'prepare').mockResolvedValue({
+        submit: async () => {
+          allowed = false;
+          managed.callbacks.beforeSubmit(binding.agentId, run.id);
+          await request();
+        },
+      } as never);
+    }
+    const runtime = f.runtime as unknown as {
+      startRun(value: typeof run): Promise<void>;
+      failRun(value: typeof run, error: unknown): Promise<void>;
+    };
+    await runtime.startRun(run).catch((error) => runtime.failRun(run, error));
+    expect(request).not.toHaveBeenCalled();
+    expect(f.store.run(run.id)).toMatchObject({
+      status: 'queued',
+      key: input.requestId,
+      turnId: null,
+    });
+    expect(f.store.runs()).toHaveLength(1);
+    expect(f.store.agent(binding.agentId).turnId).toBeNull();
+    expect(
+      (f.store.getSetting(`run:delivery:${run.id}`) as { handoffAt: null }).handoffAt,
+    ).toBeNull();
+    expect(
+      Number(
+        f.store.db.prepare('SELECT count(*) n FROM pulsar_leases WHERE run_id=?').get(run.id)!.n,
+      ),
+    ).toBe(0);
+    expect(
+      Number(f.store.db.prepare('SELECT count(*) n FROM quark_runs WHERE run_id=?').get(run.id)!.n),
+    ).toBe(0);
+  },
+);
+
+it('Read-only holds a pristine queued input without inventing a delivery or admission record', async () => {
+  const f = fixture();
+  await f.control(f.scope(f.shared), 'prepare');
+  const input = f.input(f.shared, 'work');
+  await f.connector.submit(input);
+  const binding = f.connector.context(input.requestId)!,
+    run = f.store.run(binding.runId!);
+  f.connector.contributions(() => false);
+  const runtime = f.runtime as unknown as {
+    startRun(value: typeof run): Promise<void>;
+    failRun(value: typeof run, error: unknown): Promise<void>;
+  };
+  const discard = vi.spyOn(f.runtime.quark, 'discardUnconsumed');
+  await runtime.startRun(run).catch((error) => runtime.failRun(run, error));
+  expect(discard).not.toHaveBeenCalled();
+  expect(f.store.run(run.id)).toMatchObject({ status: 'queued', key: input.requestId });
+  expect(f.store.getSetting(`run:delivery:${run.id}`)).toBeNull();
+});
+
+it.each(['handoff', 'fork', 'failure', 'missing-proof'] as const)(
+  'Read-only never discards a queued input with retained %s admission evidence',
+  async (boundary) => {
+    const f = fixture();
+    await f.control(f.scope(f.shared), 'prepare');
+    const input = f.input(f.shared, 'work');
+    await f.connector.submit(input);
+    const binding = f.connector.context(input.requestId)!,
+      run = f.store.run(binding.runId!);
+    f.store.setSetting('pulsar:policy', { enabled: false });
+    expect(f.runtime.pulsar.reserve(run, new Set(), true)).toBe(true);
+    f.runtime.quark.begin(run);
+    if (boundary !== 'missing-proof') {
+      f.store.updateRun(run.id, { status: 'running' });
+      prepareRunDelivery(f.store, f.store.run(run.id));
+      if (boundary === 'failure')
+        recordRunFailure(f.store, f.store.run(run.id), new Error('Saved uncertainty'));
+      else markRunHandoff(f.store, f.store.run(run.id), boundary === 'fork' ? 'fork' : 'input');
+      f.store.updateRun(run.id, { status: 'queued' });
+    }
+    const saved = f.store.getSetting(`run:delivery:${run.id}`) as {
+      handoffAt: string | null;
+      forkAt: string | null;
+    } | null;
+    const accounting = String(
+      f.store.db.prepare('SELECT body FROM quark_runs WHERE run_id=?').get(run.id)!.body,
+    );
+    const lease = String(
+      f.store.db.prepare('SELECT body FROM pulsar_leases WHERE run_id=?').get(run.id)!.body,
+    );
+    let allowed = false;
+    f.connector.contributions(() => allowed);
+    const discard = vi.spyOn(f.runtime.quark, 'discardUnconsumed');
+    const runtime = f.runtime as unknown as {
+      startRun(value: typeof run): Promise<void>;
+      failRun(value: typeof run, error: unknown): Promise<void>;
+    };
+    await runtime.startRun(f.store.run(run.id)).catch((error) => runtime.failRun(run, error));
+    expect(discard).not.toHaveBeenCalled();
+    expect(
+      String(f.store.db.prepare('SELECT body FROM quark_runs WHERE run_id=?').get(run.id)!.body),
+    ).toBe(accounting);
+    expect(
+      String(f.store.db.prepare('SELECT body FROM pulsar_leases WHERE run_id=?').get(run.id)!.body),
+    ).toBe(lease);
+    expect(f.store.run(run.id)).toMatchObject({ status: 'failed', key: input.requestId });
+    const retained = f.store.getSetting(`run:delivery:${run.id}`) as typeof saved;
+    expect(retained?.handoffAt).toBe(saved?.handoffAt);
+    expect(retained?.forkAt).toBe(saved?.forkAt);
+    // Switching modes cannot replay the failed original.
+    allowed = true;
+    f.connector.contributionModeChanged!();
+    expect(f.store.runs()).toHaveLength(1);
+    expect(f.store.run(run.id).status).toBe('failed');
+  },
+);
+
+it('Read-only retains observed admission evidence for explicit recovery instead of fabricating unused spend or replaying', async () => {
+  const f = fixture();
+  await f.control(f.scope(f.shared), 'prepare');
+  const input = f.input(f.shared, 'work');
+  await f.connector.submit(input);
+  const binding = f.connector.context(input.requestId)!,
+    run = f.store.run(binding.runId!);
+  let allowed = true;
+  f.connector.contributions(() => allowed);
+  vi.spyOn(f.runtime.quark, 'sync').mockImplementation(() => {});
+  vi.spyOn(f.runtime.quark, 'managerLeaseReason').mockReturnValue(null);
+  f.store.setSetting('pulsar:policy', { enabled: false });
+  expect(f.runtime.pulsar.reserve(run, new Set(), true)).toBe(true);
+  f.runtime.quark.begin(run);
+  const row = f.store.db.prepare('SELECT body FROM quark_runs WHERE run_id=?').get(run.id)!;
+  const saved = JSON.parse(String(row.body));
+  const observed = {
+    ...saved,
+    observedAt: new Date().toISOString(),
+    tokens: { ...saved.tokens, inputTokens: 17 },
+    basis: 'partial',
+  };
+  f.store.db
+    .prepare('UPDATE quark_runs SET body=? WHERE run_id=?')
+    .run(JSON.stringify(observed), run.id);
+  const request = vi.fn(async () => ({ turn: { id: randomUUID() } }));
+  vi.spyOn(f.runtime, 'attach').mockImplementation(async () => {
+    allowed = false;
+    return { client: { request } as never, threadId: 'retained-thread' };
+  });
+  const runtime = f.runtime as unknown as {
+    startRun(value: typeof run): Promise<void>;
+    failRun(value: typeof run, error: unknown): Promise<void>;
+  };
+  await runtime.startRun(run).catch((error) => runtime.failRun(run, error));
+  expect(request).not.toHaveBeenCalled();
+  expect(f.store.run(run.id)).toMatchObject({
+    status: 'failed',
+    key: input.requestId,
+    turnId: null,
+  });
+  expect(
+    JSON.parse(
+      String(f.store.db.prepare('SELECT body FROM quark_runs WHERE run_id=?').get(run.id)!.body),
+    ),
+  ).toEqual(observed);
+  expect(
+    Number(
+      f.store.db.prepare('SELECT count(*) n FROM pulsar_leases WHERE run_id=?').get(run.id)!.n,
+    ),
+  ).toBe(1);
+  expect(f.store.getSetting(`run:delivery:${run.id}`)).toMatchObject({
+    handoffAt: null,
+    failure: { retry: false },
+  });
+  allowed = true;
+  f.connector.contributionModeChanged!();
+  expect(f.store.runs()).toHaveLength(1);
+  expect(f.store.run(run.id).status).toBe('failed');
+});
+
+it('Read-only keeps already-dispatched native authority and truthful completion without replaying failed or uncertain turns', async () => {
+  const f = fixture();
+  await f.control(f.scope(f.shared), 'prepare');
+  const input = f.input(f.shared, 'work');
+  await f.connector.submit(input);
+  const binding = f.connector.context(input.requestId)!,
+    run = f.store.run(binding.runId!);
+  f.store.updateRun(run.id, { status: 'running' });
+  prepareRunDelivery(f.store, f.store.run(run.id));
+  markRunHandoff(f.store, f.store.run(run.id));
+  f.connector.contributions(() => false);
+  expect(f.runtime.groupHostBackgroundReason!(binding.agentId, run.id)).toBeNull();
+  await expect(
+    f.runtime.groupHostNativeAdmission!(binding.agentId, run.id),
+  ).resolves.toBeUndefined();
+  f.store.entry({
+    id: `${randomUUID()}-final`,
+    agentId: binding.agentId,
+    runId: run.id,
+    kind: 'assistant',
+    title: 'Response',
+    text: 'Completed while Read-only.',
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+    phase: 'final',
+  });
+  f.store.updateRun(run.id, { status: 'completed' });
+  expect(f.store.run(run.id).status).toBe('completed');
+  expect(await f.connector.inspect({ requestId: input.requestId })).toMatchObject({
+    state: 'completed',
+    result: { text: 'Completed while Read-only.' },
+  });
+  const later = f.store.enqueue(binding.agentId, randomUUID(), 'Retained uncertain turn');
+  f.store.updateRun(later.id, { status: 'failed' });
+  f.connector.contributionModeChanged!();
+  expect(f.store.run(later.id).status).toBe('failed');
+  expect(f.store.runs()).toHaveLength(2);
+});
+function chosenFolder() {
+  const root = mkdtempSync(join(tmpdir(), 'group-chosen-work-'));
+  cleanup.push(async () => rmSync(root, { recursive: true, force: true }));
+  const canonical = realpathSync(root);
+  const stat = statSync(canonical);
+  writeFileSync(join(root, 'existing.txt'), 'Retain this existing folder.');
+  return { key: randomUUID(), root: canonical, identity: `${stat.dev}:${stat.ino}` };
+}
+it.each(['native', 'exact'] as const)(
+  'binds selected folders to fresh native work while retaining the old %s choice and exact requests',
+  async (modelSelection) => {
+    const f = fixture(),
+      input = f.input(f.shared, 'work'),
+      first = chosenFolder(),
+      second = chosenFolder();
+    const change = { key: randomUUID(), revision: 0, selection: first };
+    const receipt = f.connector.workspace(f.shared, input.enrollmentHandle, change);
+    expect(receipt).toMatchObject({
+      selectionKey: first.key,
+      workspacePath: first.root,
+      revision: 1,
+      available: true,
+    });
+    expect(f.store.projects()).toHaveLength(0);
+    expect(f.store.agents()).toHaveLength(0);
+    expect(f.connector.workspaceScope(f.shared, input.enrollmentHandle)).toMatchObject({
+      cwd: first.root,
+      projectId: null,
+    });
+    await f.restart();
+    expect(f.connector.workspace(f.shared, input.enrollmentHandle, change)).toEqual(receipt);
+    await f.control(f.scope(f.shared), 'prepare');
+    const old = f.connector.resolveLocalContext(f.shared, input.enrollmentHandle);
+    expect(old.cwd).toBe(first.root);
+    f.store.updateAgent(old.agentId, {
+      modelSelection,
+      model: 'saved-explicit',
+      effort: 'high',
+      threadId: 'original-native-thread',
+    });
+    await f.connector.submit(input);
+    const run = f.store.runs().find((item) => item.key === input.requestId)!;
+    expect(() =>
+      f.connector.workspace(f.shared, input.enrollmentHandle, {
+        key: randomUUID(),
+        revision: 1,
+        selection: second,
+      }),
+    ).toThrow(/queued|pending/);
+    f.store.entry({
+      id: 'provider:fixture/turn-final',
+      agentId: old.agentId,
+      runId: run.id,
+      kind: 'assistant',
+      title: 'Final',
+      text: 'Original work complete.',
+      status: 'complete',
+      createdAt: new Date().toISOString(),
+    });
+    f.store.updateRun(run.id, { status: 'completed' });
+    f.store.updateAgent(old.agentId, { status: 'idle', turnId: null });
+    await f.connector.inspect({ requestId: input.requestId });
+    const oldAgent = f.store.agent(old.agentId);
+    f.connector.workspace(f.shared, input.enrollmentHandle, {
+      key: randomUUID(),
+      revision: 1,
+      selection: second,
+    });
+    const fresh = f.connector.resolveLocalContext(f.shared, input.enrollmentHandle);
+    expect(fresh.cwd).toBe(second.root);
+    expect(fresh.agentId).not.toBe(old.agentId);
+    expect(fresh.context.sessionId).not.toBe(old.context.sessionId);
+    expect(f.store.agent(fresh.agentId)).toMatchObject({
+      modelSelection,
+      model: 'saved-explicit',
+      threadId: null,
+    });
+    expect(f.store.agent(old.agentId)).toEqual(oldAgent);
+    expect(f.connector.context(input.requestId)).toMatchObject({
+      cwd: first.root,
+      agentId: old.agentId,
+      runId: run.id,
+    });
+    expect(f.connector.resolveLocalContext(old.context, input.enrollmentHandle)).toEqual(old);
+    expect(await f.connector.submit(input)).toMatchObject({
+      state: 'completed',
+      result: { text: 'Original work complete.' },
+    });
+    expect(f.store.runs()).toHaveLength(1);
+    const next = f.input(f.shared, 'work');
+    await f.connector.submit(next);
+    expect(f.connector.context(next.requestId)).toMatchObject({
+      cwd: second.root,
+      agentId: fresh.agentId,
+    });
+    expect(readFileSync(join(first.root, 'existing.txt'), 'utf8')).toBe(
+      'Retain this existing folder.',
+    );
+    expect(readFileSync(join(second.root, 'existing.txt'), 'utf8')).toBe(
+      'Retain this existing folder.',
+    );
+  },
+);
+it('refuses folder changes for unresolved handoffs and changed selected identities without rebinding queued work', async () => {
+  const f = fixture(),
+    input = f.input(f.shared, 'work'),
+    first = chosenFolder();
+  f.connector.workspace(f.shared, input.enrollmentHandle, {
+    key: randomUUID(),
+    revision: 0,
+    selection: first,
+  });
+  await f.connector.submit(input); // Retained unstarted native handoff, not enabled.
+  expect(() =>
+    f.connector.workspace(f.shared, input.enrollmentHandle, {
+      key: randomUUID(),
+      revision: 1,
+      selection: chosenFolder(),
+    }),
+  ).toThrow('pending group request');
+  await f.control(f.scope(f.shared), 'prepare');
+  await f.control(f.scope(f.shared), 'continue', input);
+  const run = f.store.runs().find((item) => item.key === input.requestId)!;
+  const oldRoot = `${first.root}-original`;
+  renameSync(first.root, oldRoot);
+  mkdirSync(first.root);
+  cleanup.push(async () => rmSync(oldRoot, { recursive: true, force: true }));
+  await expect(f.runtime.groupHostNativeAdmission!(run.agentId, run.id)).rejects.toThrow(
+    'chosen group folder changed',
+  );
+  expect(f.store.run(run.id).status).toBe('queued');
+  expect(f.connector.workspace(f.shared, input.enrollmentHandle)).toMatchObject({
+    available: false,
+    workspacePath: first.root,
+  });
+  expect(readFileSync(join(oldRoot, 'existing.txt'), 'utf8')).toBe('Retain this existing folder.');
 });
 it('retains an unstarted request across enable/restart and enqueues exact UUID once', async () => {
   const f = fixture(),

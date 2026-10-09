@@ -544,7 +544,7 @@ export class Quark {
     });
     return tokens;
   }
-  /** Cluster ledger only: a durably proven never-consumed remote grant leaves no evidence. */
+  /** A durably proven never-consumed admission leaves no spend evidence to retain. */
   discardUnconsumed(runId: string) {
     const row = this.store.db.prepare('SELECT body FROM quark_runs WHERE run_id=?').get(runId);
     if (row && quarkRunSchema.parse(JSON.parse(String(row.body))).observedAt)

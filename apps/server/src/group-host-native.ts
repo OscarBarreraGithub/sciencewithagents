@@ -47,6 +47,8 @@ export type GroupNativeSnapshot = z.infer<typeof groupNativeSnapshotSchema>;
  * Existing/uncertain requests are inspected, never resubmitted as tools.
  * Shared sources must be exact native journal aliases in this events repository. */
 export interface GroupNativeConnector {
+  /** Wake already authorized queued work after an explicit local mode change. */
+  contributionModeChanged?(): void;
   owner?: GroupNativeOwnerPort;
   availability():
     | z.input<typeof groupHostNativeStatusSchema>

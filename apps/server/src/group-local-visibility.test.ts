@@ -13,6 +13,7 @@ import { LocalAccess, prepareLocalAccess } from './local-access.js';
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
+  vi.restoreAllMocks();
 });
 function fixture(creator = true) {
   const directory = mkdtempSync(join(tmpdir(), 'group-local-visibility-'));
@@ -73,7 +74,12 @@ it.each([true, false])(
       key = randomUUID();
     const input = { handle: f.value.handle, key, revision: 0, hidden: true };
     const removed = f.host.localVisibility(input);
-    expect(removed.local).toEqual({ hidden: true, revision: 1 });
+    expect(removed.local).toEqual({
+      hidden: true,
+      revision: 1,
+      mode: 'contribute',
+      modeRevision: 0,
+    });
     expect(await f.host.list()).toMatchObject({ groups: [], removed: [removed] });
     expect(f.host.localVisible(f.value.shared.handle)).toBe(false);
     expect(f.host.localVisible(f.value.private.handle)).toBe(false);
@@ -89,7 +95,12 @@ it.each([true, false])(
       revision: 1,
       hidden: false,
     });
-    expect(restored.local).toEqual({ hidden: false, revision: 2 });
+    expect(restored.local).toEqual({
+      hidden: false,
+      revision: 2,
+      mode: 'contribute',
+      modeRevision: 0,
+    });
     expect(await f.host.list()).toMatchObject({ groups: [restored], removed: [] });
     // A delayed remove replay returns its old receipt without hiding a restored group.
     expect(f.host.localVisibility(input)).toEqual(removed);
@@ -121,6 +132,16 @@ it('requires owner authentication and accepts only typed saved local handles', a
       .statusCode,
   ).toBe(401);
   expect(f.host.localVisible(f.value.handle)).toBe(true);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/groups/local-mode',
+        payload: { handle: f.value.handle, key: randomUUID(), revision: 0, mode: 'read-only' },
+      })
+    ).statusCode,
+  ).toBe(401);
+  expect(f.host.localContributing(f.value.handle)).toBe(true);
   const result = await app.inject({
     method: 'POST',
     url: '/api/groups/local-visibility',
@@ -134,6 +155,86 @@ it('requires owner authentication and accepts only typed saved local handles', a
   );
   expect(() => f.host.localVisibility({ ...body, path: '/not-accepted' })).toThrow();
   expect(proxyPath('POST', '/groups/local-visibility')).toBe('/api/groups/local-visibility');
+  expect(f.http).not.toHaveBeenCalled();
+});
+
+it('retains independent Read-only revisions and exact delayed retries offline without changing enrollment or native enablement', async () => {
+  const f = fixture(),
+    input = {
+      handle: f.value.shared.handle,
+      key: randomUUID(),
+      revision: 0,
+      mode: 'read-only' as const,
+    };
+  expect(f.host.localContributing(f.value.handle)).toBe(true);
+  const paused = f.host.localMode(input);
+  expect(paused.local).toEqual({ hidden: false, revision: 0, mode: 'read-only', modeRevision: 1 });
+  expect(f.host.localVisible(f.value.handle)).toBe(true);
+  expect(f.host.localContributing(f.value.private.handle)).toBe(false);
+  await f.restart();
+  expect(f.host.localMode(input)).toEqual(paused);
+  expect(() => f.host.localMode({ ...input, mode: 'contribute' })).toThrow('Request changed');
+  expect(() => f.host.localMode({ ...input, key: randomUUID() })).toThrow('mode changed');
+  const contribute = f.host.localMode({
+    ...input,
+    key: randomUUID(),
+    revision: 1,
+    mode: 'contribute',
+  });
+  expect(contribute.local?.modeRevision).toBe(2);
+  expect(f.host.localMode(input)).toEqual(paused);
+  expect(f.host.localContributing(f.value.handle)).toBe(true);
+  expect(
+    String(
+      f.host.db.prepare('SELECT body FROM gh_groups WHERE handle=?').get(f.value.handle)!.body,
+    ),
+  ).toBe(f.original);
+  expect(() => f.host.db.prepare('DELETE FROM gh_local_mode').run()).toThrow('retained local mode');
+  expect(f.http).not.toHaveBeenCalled();
+});
+
+it('Read-only denies fresh sends, Ask/Work and confirmation before service or native discovery while retaining drafts and reads', async () => {
+  const f = fixture();
+  f.host.localMode({ handle: f.value.handle, key: randomUUID(), revision: 0, mode: 'read-only' });
+  const availability = vi.spyOn(f.host.native, 'availability');
+  for (const intent of ['ask', 'work'] as const)
+    await expect(
+      f.host.requestAgent({
+        handle: f.value.shared.handle,
+        key: randomUUID(),
+        text: 'New contribution',
+        intent,
+      }),
+    ).rejects.toMatchObject({ code: 'GROUP_LOCAL_READ_ONLY' });
+  await expect(
+    f.host.send({ handle: f.value.shared.handle, key: randomUUID(), text: 'New human message' }),
+  ).rejects.toMatchObject({ code: 'GROUP_LOCAL_READ_ONLY' });
+  await expect(f.host.confirmAction(f.value.shared.handle, {} as never)).rejects.toMatchObject({
+    code: 'GROUP_LOCAL_READ_ONLY',
+  });
+  expect(availability).not.toHaveBeenCalled();
+  expect(f.http).not.toHaveBeenCalled();
+  expect(Number(f.host.db.prepare('SELECT count(*) n FROM gh_sends').get()!.n)).toBe(0);
+  expect((await f.host.list()).groups[0].local?.mode).toBe('read-only');
+});
+
+it('Read-only chosen during a fresh send authority check prevents retaining or publishing that new contribution', async () => {
+  const f = fixture();
+  const owner = f.host as unknown as {
+    resolve(handle: string): Promise<{ value: typeof f.value; slot: typeof f.value.shared }>;
+  };
+  vi.spyOn(owner, 'resolve').mockImplementation(async () => {
+    f.host.localMode({ handle: f.value.handle, key: randomUUID(), revision: 0, mode: 'read-only' });
+    return { value: f.value, slot: f.value.shared };
+  });
+  await expect(
+    f.host.send({
+      handle: f.value.shared.handle,
+      key: randomUUID(),
+      text: 'Do not publish after mode changes.',
+    }),
+  ).rejects.toMatchObject({ code: 'GROUP_LOCAL_READ_ONLY' });
+  expect(Number(f.host.db.prepare('SELECT count(*) n FROM gh_sends').get()!.n)).toBe(0);
   expect(f.http).not.toHaveBeenCalled();
 });
 
@@ -190,6 +291,28 @@ it('forwards local remove and restore through the authenticated paired-host tran
       })
     ).json(),
   ).toMatchObject({ local: { hidden: false, revision: 2 } });
+  const modePath = `/api/hosts/${config.id}/proxy/groups/local-mode`;
+  const mode = { handle: f.value.handle, key: randomUUID(), revision: 0, mode: 'read-only' };
+  const paused = await gateway.inject({ method: 'POST', url: modePath, payload: mode });
+  expect(paused.statusCode).toBe(200);
+  expect(paused.json()).toMatchObject({
+    local: { hidden: false, revision: 2, mode: 'read-only', modeRevision: 1 },
+  });
+  expect((await gateway.inject({ method: 'POST', url: modePath, payload: mode })).json()).toEqual(
+    paused.json(),
+  );
+  // This standalone route fixture has no createServer Zod error mapper.
+  expect(
+    (
+      await gateway.inject({
+        method: 'POST',
+        url: modePath,
+        payload: { ...mode, key: randomUUID(), revision: 1, command: 'not accepted' },
+      })
+    ).statusCode,
+  ).toBe(500);
+  expect(f.host.localContributing(f.value.handle)).toBe(false);
+  expect(proxyPath('POST', '/groups/local-mode/run')).toBeNull();
   for (const invalid of [
     '/groups/local-visibility/run',
     '/groups/local-visibility?path=/tmp',

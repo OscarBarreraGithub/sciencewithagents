@@ -8,6 +8,7 @@ import {
   writeFileSync,
   existsSync,
   renameSync,
+  realpathSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -18,7 +19,7 @@ import { createServer } from './server.js';
 import { DemoProvider } from './demo.js';
 import { tmpdir } from 'node:os';
 import { git } from './workspaces.js';
-import type { FolderPicker } from './folder-picker.js';
+import { FolderConnections, type FolderPicker } from './folder-picker.js';
 
 let root: string, projectRoot: string, store: Store, app: FastifyInstance;
 const picker = vi.fn<FolderPicker>();
@@ -96,6 +97,39 @@ it('cancellation does not create a project or stop another user journey', async 
   expect(store.projects()).toHaveLength(0);
   expect(store.events()).toHaveLength(0);
   expect((await post()).json().project.name).toBe('My project');
+});
+
+it('shared selection trusts only retained folder identities outside private app storage and its ancestors', async () => {
+  const folders = new FolderConnections(store, join(root, 'runtime'), picker);
+  const key = randomUUID();
+  await folders.connect(key, undefined, true);
+  expect(folders.sharedSelection(key)).toMatchObject({ key, root: realpathSync(projectRoot) });
+  expect(() => folders.sharedSelection(randomUUID())).toThrow('Choose the shared folder');
+  await expect(folders.connect(randomUUID(), undefined, true, projectRoot)).rejects.toThrow();
+  expect(store.projects()).toEqual([]);
+  const parentKey = randomUUID();
+  await git(root, ['init', '--template=', '--initial-branch=main']);
+  await git(root, [
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@localhost',
+    '-c',
+    'commit.gpgsign=false',
+    'commit',
+    '--allow-empty',
+    '-m',
+    'Ancestor fixture',
+  ]);
+  picker.mockResolvedValue(root);
+  await folders.connect(parentKey, undefined, true);
+  expect(() => folders.sharedSelection(parentKey)).toThrow('private storage');
+  const renamed = `${projectRoot}-original`;
+  renameSync(projectRoot, renamed);
+  mkdirSync(projectRoot);
+  expect(() => folders.sharedSelection(key)).toThrow('changed or is unavailable');
+  expect(store.projects()).toEqual([]);
+  expect(store.runs()).toEqual([]);
 });
 
 it('Spawn starts a fresh manager in a previously connected folder, with durable retries and separate settings', async () => {
@@ -244,9 +278,14 @@ it.each([false, true])(
     expect(selected.statusCode).toBe(200);
     expect(selected.json()).toEqual({
       project: null,
-      selection: { key, name: needsTracking ? 'Untracked notes' : 'My project', needsTracking },
+      selection: {
+        key,
+        name: needsTracking ? 'Untracked notes' : 'My project',
+        needsTracking,
+        workspacePath: realpathSync(folder),
+      },
     });
-    expect(selected.body).not.toContain(folder);
+    expect(selected.json().selection.workspacePath).toBe(realpathSync(folder));
     expect(store.projects()).toEqual([]);
     expect(store.agents()).toEqual([]);
     if (needsTracking) expect(existsSync(join(folder, '.git'))).toBe(false);

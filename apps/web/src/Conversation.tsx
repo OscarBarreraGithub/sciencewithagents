@@ -314,6 +314,7 @@ export function Conversation({
   personal = false,
   intro,
   formatEntry,
+  renderMessageContent,
   channel,
   promptNavigation = true,
   recovery = true,
@@ -326,6 +327,8 @@ export function Conversation({
   personal?: boolean;
   intro?: { title: string; description: string; note: string };
   formatEntry?: (entry: Entry) => Entry;
+  /** Scoped presentation may add report controls while retaining the exact original. */
+  renderMessageContent?: (entry: Entry) => ReactNode;
   /** Earlier pages come from the same server channel as `detail`. */
   channel?: AgentDetailChannel;
   /** Custom group feeds do not use the retained agent history route. */
@@ -710,7 +713,9 @@ export function Conversation({
                     <time>{time(entry.createdAt)}</time>
                   </div>
                   <div className="markdown">
-                    <ChatMarkdown entry={entry}>{entry.text}</ChatMarkdown>
+                    {renderMessageContent?.(entry) ?? (
+                      <ChatMarkdown entry={entry}>{entry.text}</ChatMarkdown>
+                    )}
                   </div>
                   {entry.status === 'streaming' && <span className="stream-caret" />}
                 </div>

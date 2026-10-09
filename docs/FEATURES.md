@@ -37,24 +37,24 @@ An omitted list item is checked against its exact saved record before deciding i
 allowance; the app must remain running. See [local access](LOCAL_ACCESS.md#run-your-own-commands).
 
 Groups appears under **Chats → Groups** in the same list/detail frame as other chats.
-**Group chat** shows the shared conversation; **Group manager** directs your agent's shared
+**Group chat** shows the shared conversation; **My group agent** directs your agent's shared
 work. Create/join, setup, invitations and management use compact dialogs. Existing private
 histories remain saved and private; they are not shown or republished in these shared tabs.
 
-**Manage → Shared work and actions** connects proposals to the original task owner's native
+**Manage → Advanced → Review proposed shared actions** connects proposals to the original task owner's native
 Work, task worktree, independent review and exact apply. Saved actions retain their request
 and execution identities through retries; an incoming message cannot authorize another
 computer. Native Ask stays read-only. [Shared files](GROUP_NATIVE_GIT.md) also shows bounded
 unfinished-file status without staging or publishing those files. Optional sync shares only
 reviewed applied commits, using each member's own GitHub access.
 
-The Group manager can query shared evidence and exact originals in bounded pages, including
+My group agent can query shared evidence and exact originals in bounded pages, including
 incremental and offline questions. Missing responsibility or causal facts remain unknown;
 reading a header is separate from reading the original. See [evidence queries](GROUP_CATCHUP.md).
 
 Native Work can offer exact captured LaTeX/PDF files and literal dependencies for explicit
-selection, Reading and group publication. **Manage → Shared reports** loads selected shared
-copies. PDF creation is an ordinary owner-authorized native Work task; the document server
+selection, Reading and group publication. **Manage → Advanced → Browse earlier shared reports** loads selected shared
+copies; new notifications offer **Open report** in Group chat, with the exact original retained. PDF creation is an ordinary owner-authorized native Work task; the document server
 never runs untrusted TeX through a host compiler. See [report scope and limits](GROUP_DOCUMENTS.md).
 
 Enabled local native access also batches that member's new confirmed shared originals

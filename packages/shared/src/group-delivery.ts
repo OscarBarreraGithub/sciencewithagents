@@ -28,7 +28,7 @@ export const PUBLICATION_LIMITS = {
   partitions: 8,
   lifetimeOperations: 128,
   pendingOperations: 64,
-  journalBytes: 67_108_864,
+  journalBytes: 1024 ** 3,
   attempts: 96,
   leaseMs: 30_000,
   timeoutMs: 5_000,

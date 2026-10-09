@@ -170,8 +170,32 @@ export class FolderConnections {
   selection(key: string) {
     const saved = this.store.getSetting(`project-folder:${key}`) as Selection | null;
     return saved
-      ? { key, name: basename(saved.root), needsTracking: !!saved.needsTracking }
+      ? {
+          key,
+          name: basename(saved.root),
+          needsTracking: !!saved.needsTracking,
+          workspacePath: saved.root,
+        }
       : undefined;
+  }
+  /** Owner-selected identity for shared work; never accepts a client path. */
+  sharedSelection(key: string): { key: string; root: string; identity: string } {
+    id.parse(key);
+    const saved = this.store.getSetting(`project-folder:${key}`) as Selection | null;
+    if (!saved) throw new Conflict('Choose the shared folder before attaching it to this group.');
+    this.assertSelection(saved);
+    const root = realpathSync(saved.root),
+      data = realpathSync(this.dataDir);
+    if (
+      root !== saved.root ||
+      root === data ||
+      root.startsWith(`${data}/`) ||
+      data.startsWith(`${root}/`)
+    )
+      throw new Conflict(
+        'Choose a shared folder outside the app’s private storage and its parent folders.',
+      );
+    return { key, root, identity: saved.identity! };
   }
   tracking(key: string) {
     const saved = this.store.getSetting(`project-folder:${key}`) as Selection | null;

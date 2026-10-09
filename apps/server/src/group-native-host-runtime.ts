@@ -6,7 +6,7 @@ import {
 import { createGroupHostCoordination } from './group-coordination-runtime-host.js';
 import type { GroupCoordinationNativePort } from './group-coordination-runtime.js';
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
@@ -25,6 +25,11 @@ import {
 import { privateGroupFile, protectGroupSidecars } from './group-host-storage.js';
 import { publicationCanonical } from './group-publication-protocol.js';
 import { Conflict, type PrivateRun } from './store.js';
+import { runDeliveryUnstarted } from './run-recovery.js';
+import {
+  groupWorkspaceViewSchema,
+  type GroupWorkspaceView,
+} from '@dock/shared/dist/group-workspace.js';
 
 const bindingSchema = z.strictObject({
   anchor: groupContextSchema,
@@ -34,8 +39,24 @@ const bindingSchema = z.strictObject({
   agentId: z.uuid(),
   provider: z.enum(['codex', 'claude']),
   cwd: z.string(),
+  workspaceChoiceKey: z.uuid().optional(),
 });
 type Binding = z.infer<typeof bindingSchema>;
+const workspaceChoiceSchema = z.strictObject({
+  key: z.uuid(),
+  revision: z.number().int().positive().safe(),
+  selection: z.strictObject({
+    key: z.uuid(),
+    root: z.string().max(4096),
+    identity: z.string().max(100),
+  }),
+});
+type WorkspaceChoice = z.infer<typeof workspaceChoiceSchema>;
+export type GroupHostNativeWorkspace = Omit<Binding, 'projectId' | 'agentId' | 'provider'> & {
+  projectId: string | null;
+  agentId: string | null;
+  provider: 'codex' | 'claude' | null;
+};
 type SavedRequest = { request_id: string; binding_key: string; input: string; prompt: string };
 const hash = (v: string) => createHash('sha256').update(v).digest('hex');
 const notice =
@@ -49,11 +70,31 @@ export type GroupHostNativeCompletion = {
 export interface GroupHostNativeRuntime extends GroupNativeConnector {
   readonly executionMode: 'host';
   completed(callback: (completion: GroupHostNativeCompletion) => Promise<void>): void;
+  /** Observational file-capture fence for an exact completed request. */
+  completionPending(requestId: string): boolean;
   readonly coordination: GroupCoordinationNativePort;
   beforeTurn(callback: (context: GroupContext, requestId: string) => Promise<void>): void;
   revalidate(callback: (context: GroupContext) => Promise<void>): void;
   evidence(callback: (context: GroupContext) => Promise<string>): void;
   backgroundVisible(callback: (enrollmentHandle: string) => boolean): void;
+  contributions(callback: (enrollmentHandle: string) => boolean): void;
+  workspace(
+    context: GroupContext,
+    enrollment: string,
+    change?:
+      | {
+          key: string;
+          revision: number;
+          selection: WorkspaceChoice['selection'];
+        }
+      | {
+          key: string;
+          revision: number;
+          selectionKey: string;
+          resolveSelection(): WorkspaceChoice['selection'];
+        },
+  ): GroupWorkspaceView;
+  workspaceScope(context: GroupContext, enrollment: string): GroupHostNativeWorkspace | null;
   resolveLocalContext(context: GroupContext, enrollmentHandle: string): Binding;
   registerHelper(
     agentId: string,
@@ -80,7 +121,16 @@ export function createGroupHostNativeConnector(
     CREATE TABLE IF NOT EXISTS hnr_requests(request_id TEXT PRIMARY KEY,binding_key TEXT NOT NULL,input TEXT NOT NULL,prompt TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS hnr_results(request_id TEXT PRIMARY KEY,body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS hnr_controls(key TEXT PRIMARY KEY,input TEXT NOT NULL);
-    ${['hnr_enabled', 'hnr_bindings', 'hnr_inputs', 'hnr_requests', 'hnr_results', 'hnr_controls']
+    CREATE TABLE IF NOT EXISTS hnr_workspaces(anchor_key TEXT NOT NULL,key TEXT PRIMARY KEY,input TEXT NOT NULL,body TEXT NOT NULL,revision INTEGER NOT NULL,UNIQUE(anchor_key,revision));
+    ${[
+      'hnr_enabled',
+      'hnr_bindings',
+      'hnr_inputs',
+      'hnr_requests',
+      'hnr_results',
+      'hnr_controls',
+      'hnr_workspaces',
+    ]
       .flatMap((t) => [
         `CREATE TRIGGER IF NOT EXISTS ${t}_immutable BEFORE UPDATE ON ${t} BEGIN SELECT RAISE(ABORT,'retained native receipt'); END;`,
         `CREATE TRIGGER IF NOT EXISTS ${t}_retain BEFORE DELETE ON ${t} BEGIN SELECT RAISE(ABORT,'retained native receipt'); END;`,
@@ -93,6 +143,7 @@ export function createGroupHostNativeConnector(
   const completions = new Map<string, Promise<unknown>>();
   let readEvidence: ((context: GroupContext) => Promise<string>) | undefined;
   let backgroundVisible: ((enrollmentHandle: string) => boolean) | undefined;
+  let contributions: ((enrollmentHandle: string) => boolean) | undefined;
   for (const table of ['group_member_feed_batches', 'group_local_synthesis']) {
     if (
       runtime.store.db
@@ -104,6 +155,22 @@ export function createGroupHostNativeConnector(
       );
   }
   const backgroundReason = (agentId: string, runId: string): string | null => {
+    const modeMarker = z
+      .object({ enrollmentHandle: z.uuid() })
+      .safeParse(runtime.store.getSetting(`group:host-native-agent:${agentId}`));
+    const run = runtime.store.run(runId);
+    // Already dispatched or uncertain running work is never stopped by a local preference.
+    const unstarted =
+      run.agentId === agentId &&
+      (run.status === 'queued' ||
+        (run.status === 'running' && runDeliveryUnstarted(runtime.store, runId)));
+    if (
+      modeMarker.success &&
+      contributions &&
+      !contributions(modeMarker.data.enrollmentHandle) &&
+      unstarted
+    )
+      return 'Group is Read-only on this computer; its unstarted native turn remains queued.';
     if (!backgroundVisible) return null;
     // Saved batch/synthesis identity also covers helpers queued before this update.
     const background = ['group_member_feed_batches', 'group_local_synthesis'].some((table) => {
@@ -119,7 +186,7 @@ export function createGroupHostNativeConnector(
         )
         .get(agentId, runId);
     });
-    if (!background) return null;
+    if (!background || !unstarted) return null;
     const marker = z
       .object({ enrollmentHandle: z.uuid() })
       .safeParse(runtime.store.getSetting(`group:host-native-agent:${agentId}`));
@@ -145,8 +212,71 @@ export function createGroupHostNativeConnector(
       },
       causalRefs: [],
     });
-  const keyFor = (anchor: GroupContext, enrollment: string) =>
-    hash(publicationCanonical({ anchor, enrollment }));
+  const keyFor = (anchor: GroupContext, enrollment: string, workspaceChoiceKey?: string) =>
+    hash(
+      publicationCanonical({
+        anchor,
+        enrollment,
+        ...(workspaceChoiceKey ? { workspaceChoiceKey } : {}),
+      }),
+    );
+  const choiceFor = (anchor: GroupContext, enrollment: string): WorkspaceChoice | null => {
+    const row = db
+      .prepare('SELECT body FROM hnr_workspaces WHERE anchor_key=? ORDER BY revision DESC LIMIT 1')
+      .get(keyFor(anchor, enrollment));
+    return row ? workspaceChoiceSchema.parse(JSON.parse(String(row.body))) : null;
+  };
+  const assertFolder = (selection: WorkspaceChoice['selection']) => {
+    try {
+      const stat = lstatSync(selection.root);
+      if (
+        !stat.isDirectory() ||
+        stat.isSymbolicLink() ||
+        realpathSync(selection.root) !== selection.root ||
+        `${stat.dev}:${stat.ino}` !== selection.identity
+      )
+        throw Error('Changed');
+    } catch {
+      throw new Conflict(
+        'The chosen group folder changed or is unavailable. Its saved work was preserved; choose it again.',
+      );
+    }
+  };
+  const assertBindingFolder = (binding: Binding) => {
+    if (!binding.workspaceChoiceKey) return;
+    const row = db
+      .prepare('SELECT body FROM hnr_workspaces WHERE key=?')
+      .get(binding.workspaceChoiceKey);
+    if (!row) throw new Conflict('Original group folder receipt unavailable.');
+    const choice = workspaceChoiceSchema.parse(JSON.parse(String(row.body)));
+    if (choice.selection.root !== binding.cwd)
+      throw new Conflict('Original group folder binding changed.');
+    assertFolder(choice.selection);
+  };
+  const findBinding = (
+    context: GroupContext,
+    enrollment: string,
+    choice?: WorkspaceChoice | null,
+  ) => {
+    const row =
+      context.provider === 'owner'
+        ? db
+            .prepare('SELECT body FROM hnr_bindings WHERE binding_key=?')
+            .get(keyFor(context, enrollment, choice?.key))
+        : db
+            .prepare(
+              "SELECT body FROM hnr_bindings WHERE json_extract(body,'$.context.sessionId')=? AND json_extract(body,'$.enrollmentHandle')=?",
+            )
+            .get(context.sessionId, enrollment);
+    if (!row) return null;
+    const binding = bindingSchema.parse(JSON.parse(String(row.body)));
+    if (
+      publicationCanonical(context) !== publicationCanonical(binding.anchor) &&
+      publicationCanonical(context) !== publicationCanonical(binding.context)
+    )
+      throw new Conflict('Exact host-native context required.');
+    return binding;
+  };
   const register = (binding: Binding) => {
     const agent = runtime.store.agent(binding.agentId);
     if (
@@ -167,30 +297,25 @@ export function createGroupHostNativeConnector(
     const anchor = groupContextSchema.parse(raw);
     z.uuid().parse(enrollmentHandle);
     trust(anchor);
-    let saved = db
-      .prepare('SELECT body FROM hnr_bindings WHERE binding_key=?')
-      .get(keyFor(anchor, enrollmentHandle));
-    if (!saved && anchor.provider !== 'owner')
-      saved = db
-        .prepare(
-          "SELECT body FROM hnr_bindings WHERE json_extract(body,'$.context.sessionId')=? AND json_extract(body,'$.enrollmentHandle')=?",
-        )
-        .get(anchor.sessionId, enrollmentHandle);
+    const choice = anchor.provider === 'owner' ? choiceFor(anchor, enrollmentHandle) : null;
+    const saved = findBinding(anchor, enrollmentHandle, choice);
     if (saved) {
-      const binding = bindingSchema.parse(JSON.parse(String(saved.body)));
-      if (
-        publicationCanonical(anchor) !== publicationCanonical(binding.anchor) &&
-        publicationCanonical(anchor) !== publicationCanonical(binding.context)
-      )
-        throw new Conflict('Exact host-native context required.');
-      register(binding);
-      return binding;
+      assertBindingFolder(saved);
+      register(saved);
+      return saved;
     }
     if (anchor.provider !== 'owner')
       throw new Conflict('A fresh owner context is required; no context migration.');
-    const provider = runtime.store.defaultProvider('manager');
-    const cwd = join(directory, 'host-workspaces', randomUUID());
-    mkdirSync(cwd, { recursive: true, mode: 0o700 });
+    if (choice) assertFolder(choice.selection);
+    const earlier = db
+      .prepare(
+        "SELECT body FROM hnr_bindings WHERE json_extract(body,'$.enrollmentHandle')=? AND json_extract(body,'$.anchor.sessionId')=? ORDER BY rowid DESC LIMIT 1",
+      )
+      .get(enrollmentHandle, anchor.sessionId);
+    const previous = earlier ? bindingSchema.parse(JSON.parse(String(earlier.body))) : null;
+    const provider = previous?.provider ?? runtime.store.defaultProvider('manager');
+    const cwd = choice?.selection.root ?? join(directory, 'host-workspaces', randomUUID());
+    if (!choice) mkdirSync(cwd, { recursive: true, mode: 0o700 });
     const project = runtime.store.register(
       cwd,
       anchor.visibility === 'shared' ? 'Group shared work' : 'Group private work',
@@ -205,6 +330,18 @@ export function createGroupHostNativeConnector(
       name: anchor.visibility === 'shared' ? 'Group agent' : 'Private group agent',
       permission: 'read-only',
       toolPolicy: 'native',
+      ...(previous &&
+      ['exact', 'native'].includes(runtime.store.agent(previous.agentId).modelSelection ?? '')
+        ? (() => {
+            const old = runtime.store.agent(previous.agentId);
+            return {
+              model: old.model,
+              effort: old.effort,
+              modelSelection: old.modelSelection,
+              assignment: old.assignment,
+            };
+          })()
+        : {}),
     });
     const context = events.createContext({
       groupId: anchor.groupId,
@@ -222,9 +359,10 @@ export function createGroupHostNativeConnector(
       agentId: agent.id,
       provider,
       cwd,
+      ...(choice ? { workspaceChoiceKey: choice.key } : {}),
     });
     db.prepare('INSERT INTO hnr_bindings VALUES (?,?)').run(
-      keyFor(anchor, enrollmentHandle),
+      keyFor(anchor, enrollmentHandle, choice?.key),
       JSON.stringify(binding),
     );
     register(binding);
@@ -477,7 +615,7 @@ export function createGroupHostNativeConnector(
       );
     db.prepare('INSERT INTO hnr_requests VALUES (?,?,?,?)').run(
       input.requestId,
-      keyFor(input.context, input.enrollmentHandle),
+      keyFor(binding.anchor, input.enrollmentHandle, binding.workspaceChoiceKey),
       exact,
       prompt,
     );
@@ -598,6 +736,102 @@ export function createGroupHostNativeConnector(
     },
     close() {},
   };
+  const sharedAnchor = (raw: GroupContext, enrollment: string) => {
+    const anchor = groupContextSchema.parse(raw);
+    z.uuid().parse(enrollment);
+    if (anchor.provider !== 'owner' || anchor.visibility !== 'shared')
+      throw new Conflict('The saved shared owner context is required for folder setup.');
+    trust(anchor);
+    return anchor;
+  };
+  const folderView = (
+    anchor: GroupContext,
+    enrollment: string,
+    choice: WorkspaceChoice | null,
+  ): GroupWorkspaceView => {
+    const binding = findBinding(anchor, enrollment, choice);
+    let available = !!(choice || binding);
+    try {
+      if (choice) assertFolder(choice.selection);
+    } catch {
+      available = false;
+    }
+    return groupWorkspaceViewSchema.parse({
+      revision: choice?.revision ?? 0,
+      selectionKey: choice?.selection.key ?? null,
+      workspacePath: choice?.selection.root ?? binding?.cwd ?? null,
+      available,
+      message:
+        !available && choice
+          ? 'The chosen folder changed or is unavailable. Saved work remains in its original binding.'
+          : choice
+            ? 'Shared work uses this chosen folder. Selecting it does not enable agents or publish files.'
+            : binding
+              ? 'Existing group work retains its original folder. Choose another only after saved work settles.'
+              : 'Choose an existing shared folder; GitHub and agent access can be connected afterward.',
+    });
+  };
+  const switchIdle = (anchor: GroupContext, enrollment: string, selectedRoot: string) => {
+    const bindings = db
+      .prepare(
+        "SELECT body FROM hnr_bindings WHERE json_extract(body,'$.enrollmentHandle')=? AND json_extract(body,'$.anchor.sessionId')=?",
+      )
+      .all(enrollment, anchor.sessionId)
+      .map((row) => bindingSchema.parse(JSON.parse(String(row.body))));
+    const projects = new Set(bindings.map((binding) => binding.projectId));
+    for (const project of runtime.store.projects())
+      if (project.root === selectedRoot) projects.add(project.id);
+    if (
+      runtime.store
+        .agents()
+        .some(
+          (agent) =>
+            projects.has(agent.projectId) &&
+            (['running', 'waiting', 'queued'].includes(agent.status) ||
+              agent.turnId ||
+              runtime.externalControl.has(agent.id)),
+        ) ||
+      runtime.store
+        .runs()
+        .some(
+          (run) =>
+            ['queued', 'running'].includes(run.status) &&
+            projects.has(runtime.store.agent(run.agentId).projectId),
+        ) ||
+      runtime.localJobs
+        .all()
+        .some(
+          (job) =>
+            job.projectId &&
+            projects.has(job.projectId) &&
+            ['queued', 'running', 'paused'].includes(job.status),
+        )
+    )
+      throw new Conflict(
+        'Finish or explicitly stop this group’s queued, running and child work before changing folders.',
+      );
+    const unresolved = db
+      .prepare(
+        "SELECT request_id FROM (SELECT request_id,input FROM hnr_inputs UNION ALL SELECT request_id,input FROM hnr_requests) p WHERE json_extract(input,'$.enrollmentHandle')=? AND json_extract(input,'$.context.visibility')='shared' AND NOT EXISTS(SELECT 1 FROM hnr_results r WHERE r.request_id=p.request_id) LIMIT 1",
+      )
+      .get(enrollment);
+    if (
+      unresolved ||
+      [...pending.keys(), ...completions.keys()].some((id) => {
+        const row = db
+          .prepare(
+            'SELECT input FROM hnr_inputs WHERE request_id=? UNION ALL SELECT input FROM hnr_requests WHERE request_id=? LIMIT 1',
+          )
+          .get(id, id);
+        if (!row) return false;
+        const input = groupNativeRequestSchema.parse(JSON.parse(String(row.input)));
+        return input.enrollmentHandle === enrollment && input.context.visibility === 'shared';
+      })
+    )
+      throw new Conflict(
+        'Inspect or settle the original pending group request before changing folders.',
+      );
+  };
   const connector: GroupHostNativeRuntime = {
     executionMode: 'host',
     coordination: createGroupHostCoordination(runtime, (context) => {
@@ -615,6 +849,9 @@ export function createGroupHostNativeConnector(
       if (completed) throw new Conflict('Native completion owner already registered.');
       completed = callback;
     },
+    completionPending(requestId) {
+      return completions.has(requestId);
+    },
     beforeTurn(callback) {
       if (beforeTurn) throw new Conflict('Pre-turn owner already registered.');
       beforeTurn = callback;
@@ -630,6 +867,98 @@ export function createGroupHostNativeConnector(
     backgroundVisible(callback) {
       if (backgroundVisible) throw new Conflict('Local group visibility owner already registered.');
       backgroundVisible = callback;
+    },
+    contributions(callback) {
+      if (contributions) throw new Conflict('Local group contribution owner already registered.');
+      contributions = callback;
+    },
+    contributionModeChanged() {
+      runtime.kick();
+    },
+    workspace(raw, enrollment, change) {
+      const anchor = sharedAnchor(raw, enrollment);
+      if (!change) return folderView(anchor, enrollment, choiceFor(anchor, enrollment));
+      z.uuid().parse(change.key);
+      z.number().int().nonnegative().safe().parse(change.revision);
+      if ('selectionKey' in change) z.uuid().parse(change.selectionKey);
+      const prior = db.prepare('SELECT input,body FROM hnr_workspaces WHERE key=?').get(change.key);
+      if (prior) {
+        const saved = workspaceChoiceSchema.parse(JSON.parse(String(prior.body)));
+        const selection =
+          'selection' in change
+            ? workspaceChoiceSchema.shape.selection.parse(change.selection)
+            : saved.selection;
+        const exact = publicationCanonical({
+          anchor,
+          enrollment,
+          key: change.key,
+          revision: change.revision,
+          selection,
+        });
+        if (
+          ('selectionKey' in change && change.selectionKey !== saved.selection.key) ||
+          prior.input !== exact
+        )
+          throw new Conflict('Retry the exact saved group folder selection.');
+        return folderView(anchor, enrollment, saved);
+      }
+      const current = choiceFor(anchor, enrollment);
+      if ((current?.revision ?? 0) !== change.revision)
+        throw new Conflict('The shared folder selection changed. Refresh before choosing again.');
+      const selection = workspaceChoiceSchema.shape.selection.parse(
+        'selection' in change ? change.selection : change.resolveSelection(),
+      );
+      if ('selectionKey' in change && selection.key !== change.selectionKey)
+        throw new Conflict('Saved folder selection changed. Choose it again.');
+      const exact = publicationCanonical({
+        anchor,
+        enrollment,
+        key: change.key,
+        revision: change.revision,
+        selection,
+      });
+      assertFolder(selection);
+      switchIdle(anchor, enrollment, selection.root);
+      if (Number(db.prepare('SELECT count(*) n FROM hnr_workspaces').get()!.n) >= 2048)
+        throw new Conflict(
+          'Retained group folder-selection history is full; files and original bindings remain preserved.',
+        );
+      const choice = workspaceChoiceSchema.parse({
+        key: change.key,
+        revision: change.revision + 1,
+        selection,
+      });
+      db.prepare('INSERT INTO hnr_workspaces VALUES (?,?,?,?,?)').run(
+        keyFor(anchor, enrollment),
+        change.key,
+        exact,
+        JSON.stringify(choice),
+        choice.revision,
+      );
+      return folderView(anchor, enrollment, choice);
+    },
+    workspaceScope(context, enrollment) {
+      groupContextSchema.parse(context);
+      z.uuid().parse(enrollment);
+      trust(context);
+      const choice = context.provider === 'owner' ? choiceFor(context, enrollment) : null;
+      const binding = findBinding(context, enrollment, choice);
+      if (binding) {
+        assertBindingFolder(binding);
+        return binding;
+      }
+      if (!choice || context.provider !== 'owner' || context.visibility !== 'shared') return null;
+      assertFolder(choice.selection);
+      return {
+        anchor: context,
+        context,
+        enrollmentHandle: enrollment,
+        cwd: choice.selection.root,
+        workspaceChoiceKey: choice.key,
+        projectId: null,
+        agentId: null,
+        provider: null,
+      };
     },
     resolveLocalContext(context, enrollment) {
       if (!enabled(enrollment)) throw new Conflict('Enable group agents on this computer first.');
@@ -781,7 +1110,7 @@ export function createGroupHostNativeConnector(
     throw new Conflict('Host-native admission owner already registered.');
   const admission = async (agentId: string, runId: string) => {
     const paused = backgroundReason(agentId, runId);
-    if (paused) throw new Conflict(paused);
+    if (paused) throw new Conflict(paused, 'GROUP_LOCAL_MODE_HOLD');
     const marker = z
       .object({
         context: groupContextSchema,
@@ -801,6 +1130,9 @@ export function createGroupHostNativeConnector(
       throw new Conflict('Host-native authority changed.');
     trust(marker.anchor);
     trust(marker.context);
+    const binding = findBinding(marker.context, marker.enrollmentHandle);
+    if (!binding) throw new Conflict('Original group native binding unavailable.');
+    assertBindingFolder(binding);
     if (!revalidate) throw new Conflict('Current group membership verifier unavailable.');
     await revalidate(marker.context);
     // A new app-managed input cannot overtake a completion's immutable capture.
@@ -808,8 +1140,9 @@ export function createGroupHostNativeConnector(
     if (closing || runtime.store.getSetting(groupHostStopKey(turn.requestId)))
       throw new Conflict('Saved group request was stopped.');
     trust(marker.context);
+    assertBindingFolder(binding);
     const currentPause = backgroundReason(agentId, runId);
-    if (currentPause) throw new Conflict(currentPause);
+    if (currentPause) throw new Conflict(currentPause, 'GROUP_LOCAL_MODE_HOLD');
   };
   runtime.groupHostNativeAdmission = admission;
   runtime.groupHostBackgroundReason = backgroundReason;

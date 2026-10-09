@@ -201,10 +201,9 @@ export function GroupDocumentGrant({
       {offer.files.some((file) => file.kind === 'tex') &&
         !offer.files.some((file) => file.kind === 'pdf') && (
           <p>
-            Need a PDF? Ask your Group manager with Work to create it in the group workspace and
-            link both the PDF and matching LaTeX source in its final reply. Open that new reply,
-            select the PDF and check its source and supporting files. Reading can open this source
-            now.
+            Need a PDF? Ask My group agent with Work to create it in the group workspace and link
+            both the PDF and matching LaTeX source in its final reply. Open that new reply, select
+            the PDF and check its source and supporting files. Reading can open this source now.
           </p>
         )}
       {offer.files
@@ -376,7 +375,7 @@ function GroupReportPublish({
       sessionStorage.removeItem(storage);
       setHref(link.href);
       setNotice(
-        'Shared the selected immutable report and supporting files. Other members can open it under Shared reports.',
+        'Shared the selected report and supporting files. Members can open its notification in Group chat; Advanced also keeps the report list.',
       );
     } catch (error) {
       setNotice(`${(error as Error).message} Retry uses the same saved publication.`);

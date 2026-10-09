@@ -52,6 +52,8 @@ import {
   groupExportEnvelopeSchema,
   type GroupExportResult,
 } from '@dock/shared/dist/group-hosted-export.js';
+import { z } from 'zod';
+import { groupUpdateSchema, GROUP_UPDATE_LIMITS } from '@dock/shared/dist/group-updates.js';
 
 type Enrollment = {
   position: number;
@@ -65,6 +67,11 @@ type Enrollment = {
 };
 type Invite = { invite_id: string; issuer_id: string; expires_at: number; state: string };
 type Metadata = { group_id: string; operations: number; day: number; day_mutations: number };
+const updateAttachmentSchema = z.strictObject({
+  groupId: z.uuid(),
+  installationId: z.uuid(),
+  credentialHash: z.string().regex(/^[a-f0-9]{64}$/),
+});
 class Rejection extends Error {
   constructor(readonly code: MembershipFailure) {
     super(code);
@@ -85,6 +92,119 @@ export class GroupMembership extends DurableObject<Env> {
       ctx.storage.sql.exec(SCHEMA).toArray();
     });
     this.deliveryStorage = new DeliveryStorage(ctx.storage);
+  }
+  /** The fixed Worker route is the only HTTP upgrade. No browser-facing token
+   * or incoming application command is accepted on this hibernating socket. */
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const group = z
+      .uuid()
+      .safeParse(/^\/v1\/groups\/([a-f0-9-]+)\/updates$/.exec(url.pathname)?.[1]);
+    const credential = /^Bearer ([a-f0-9]{64})$/.exec(
+      request.headers.get('Authorization') ?? '',
+    )?.[1];
+    if (
+      !hostingEnvironment(this.env) ||
+      !group.success ||
+      !credential ||
+      request.method !== 'GET' ||
+      url.search ||
+      url.hash ||
+      request.headers.has('Origin') ||
+      request.headers.has('X-Group-Setup') ||
+      request.headers.get('Upgrade')?.toLowerCase() !== 'websocket' ||
+      !this.ctx.id.equals(this.env.GROUPS.idFromName(group.data))
+    )
+      return new Response('Unavailable', { status: 403 });
+    try {
+      const hash = await capabilityHash(group.data, 'installation', credential);
+      if (
+        this.rows<Enrollment>('SELECT * FROM enrollments WHERE credential_hash=?', hash)[0]
+          ?.state !== 'active'
+      )
+        return new Response('Unavailable', { status: 403 });
+      this.deliveryStorage.recover();
+      const actor = this.ctx.storage.transactionSync(() => {
+        const meta = this.rows<Metadata>('SELECT * FROM metadata WHERE singleton=1')[0];
+        const actor = this.rows<Enrollment>(
+          'SELECT * FROM enrollments WHERE credential_hash=?',
+          hash,
+        )[0];
+        if (meta?.group_id !== group.data || actor?.state !== 'active') reject('denied');
+        this.deliveryStorage.probe();
+        return actor;
+      });
+      const sockets = this.ctx.getWebSockets();
+      const own = sockets.filter((socket) => {
+        const saved = updateAttachmentSchema.safeParse(socket.deserializeAttachment());
+        return saved.success && saved.data.credentialHash === hash;
+      });
+      if (
+        own.length >= GROUP_UPDATE_LIMITS.perEnrollment ||
+        sockets.length >= GROUP_UPDATE_LIMITS.connections
+      )
+        return new Response('Connection limit', { status: 429 });
+      const pair = new WebSocketPair(),
+        [client, server] = Object.values(pair);
+      server.serializeAttachment(
+        updateAttachmentSchema.parse({
+          groupId: group.data,
+          installationId: actor.installation_id,
+          credentialHash: hash,
+        }),
+      );
+      this.ctx.acceptWebSocket(server);
+      server.send(
+        JSON.stringify(
+          groupUpdateSchema.parse({ version: 1, groupId: group.data, kind: 'connected' }),
+        ),
+      );
+      return new Response(null, { status: 101, webSocket: client });
+    } catch (error) {
+      return new Response('Unavailable', {
+        status: error instanceof Rejection && error.code === 'denied' ? 403 : 503,
+      });
+    }
+  }
+  webSocketMessage(socket: WebSocket) {
+    socket.close(1008, 'No application commands');
+  }
+  webSocketClose(socket: WebSocket) {
+    socket.close(1000, 'Closed');
+  }
+  webSocketError(socket: WebSocket) {
+    socket.close(1011, 'Unavailable');
+  }
+  private invalidate() {
+    // Only post-commit invalidations. No timers/alarms, event ledger or content.
+    // Recheck durable enrollment/revoke markers before every outgoing hint.
+    try {
+      const unsafe =
+        this.rows<{ blocked: number }>('SELECT blocked FROM delivery_control WHERE singleton=1')[0]
+          ?.blocked ||
+        this.rows("SELECT target_id FROM delivery_revocations WHERE state='open' LIMIT 1").length;
+      for (const socket of this.ctx.getWebSockets()) {
+        const saved = updateAttachmentSchema.safeParse(socket.deserializeAttachment());
+        const actor = saved.success
+          ? this.rows<Enrollment>(
+              'SELECT * FROM enrollments WHERE credential_hash=?',
+              saved.data.credentialHash,
+            )[0]
+          : undefined;
+        if (
+          unsafe ||
+          !saved.success ||
+          actor?.state !== 'active' ||
+          actor.installation_id !== saved.data.installationId
+        ) {
+          socket.close(4003, 'Enrollment unavailable');
+          continue;
+        }
+        socket.send(JSON.stringify({ version: 1, groupId: saved.data.groupId, kind: 'changed' }));
+      }
+    } catch {
+      for (const socket of this.ctx.getWebSockets()) socket.close(1011, 'Unavailable');
+    }
   }
   /** Existing setup capability AND exact initialized enrollment. This is not a
    * membership role change, and joining credentials cannot inspect secret hashes. */
@@ -188,7 +308,16 @@ export class GroupMembership extends DurableObject<Env> {
     } catch {
       return { ok: false, error: 'unavailable' };
     }
-    return this.deliveryStorage.execute(input, this.ctx, this.env);
+    const result = await this.deliveryStorage.execute(input, this.ctx, this.env);
+    if (
+      result.ok &&
+      input.command.kind === 'effect' &&
+      input.command.packet.kind === 'commit' &&
+      result.value.kind === 'receipt' &&
+      result.value.receipt.state === 'committed'
+    )
+      this.invalidate();
+    return result;
   }
 
   async documents(input: unknown): Promise<DocumentTransportResult> {
@@ -225,6 +354,15 @@ export class GroupMembership extends DurableObject<Env> {
       });
       const result = await this.documentsService.execute(input);
       await this.ctx.storage.sync();
+      if (
+        result.ok &&
+        'command' in input &&
+        input.command &&
+        typeof input.command === 'object' &&
+        'kind' in input.command &&
+        ['commit', 'revoke'].includes(String(input.command.kind))
+      )
+        this.invalidate();
       return result;
     } catch (error) {
       return {
@@ -272,6 +410,13 @@ export class GroupMembership extends DurableObject<Env> {
       });
       const result = await this.promotionService.execute(input);
       await this.ctx.storage.sync();
+      if (
+        result.ok &&
+        result.value.kind === 'receipt' &&
+        result.value.acquired &&
+        result.value.receipt.publicationOperationId !== null
+      )
+        this.invalidate();
       return result;
     } catch (error) {
       return {
@@ -360,6 +505,11 @@ export class GroupMembership extends DurableObject<Env> {
             ? await this.actionsService.reconcile(parsed.data)
             : await this.actionsService.execute(parsed.data);
       await this.ctx.storage.sync();
+      if (
+        result.ok &&
+        (mode !== 'command' || ('command' in parsed.data && 'operationId' in parsed.data.command))
+      )
+        this.invalidate();
       return result;
     } catch (error) {
       return {
@@ -738,9 +888,11 @@ export class GroupMembership extends DurableObject<Env> {
         return { ok: true as const, value: response };
       });
       await this.ctx.storage.sync();
+      if (result.ok && 'operationId' in command) this.invalidate();
       return result;
     } catch (error) {
       if (!(error instanceof Rejection)) await this.deliveryStorage.failClosed(failedRevoke);
+      if (failedRevoke) this.invalidate();
       return { ok: false, error: error instanceof Rejection ? error.code : 'unavailable' };
     }
   }

@@ -1,5 +1,8 @@
 import { createPortal } from 'react-dom';
 import { GroupDocumentOfferButton, GroupDocumentCaptureNotice } from './GroupDocumentLink';
+import { groupReportNotification } from '@dock/shared/dist/group-report-notification.js';
+import { GroupReportMessage } from './GroupReportMessage';
+import { ChatMarkdown } from '../ChatMarkdown';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   groupHostErrorSchema as groupErrorSchema,
@@ -19,6 +22,8 @@ import type { Entry } from '@dock/shared';
 import type { GroupChatMode } from './types';
 import { useGroupMessages, type GroupMessageReader } from './useGroupMessages';
 import { displayNameText } from './DisplayName';
+import { startGroupPolling } from './group-polling';
+import { groupPollingUpdates } from './group-updates';
 export type { GroupChatMode } from './types';
 export type GroupChatClient = (path: string, body: unknown) => Promise<unknown>;
 const errorText = (value: unknown) =>
@@ -313,6 +318,7 @@ export function GroupChat({
   nativeControlsTarget,
   onAuthorizationRequired,
   executionMode,
+  readOnly = false,
   mode,
   sharedFeed,
 }: {
@@ -322,11 +328,14 @@ export function GroupChat({
   nativeControlsTarget?: HTMLDivElement | null;
   onAuthorizationRequired?: () => void;
   executionMode?: 'host' | 'isolated';
+  readOnly?: boolean;
   mode?: GroupChatMode;
   sharedFeed?: GroupMessageReader;
 }) {
   const fixture = location.pathname === '/group-fixture';
   const signature = useRef('');
+  const currentHandle = useRef(slot.handle);
+  currentHandle.current = slot.handle;
   const [chat, setChat] = useState<GroupHostChat | null>(null);
   const pendingAuthorization = chat?.nativeRequests?.find(
     (receipt) => receipt.state === 'pending-consent',
@@ -343,11 +352,22 @@ export function GroupChat({
   const sendTarget = mode === 'group' ? 'message' : mode === 'manager' ? 'agent' : selectedTarget;
   const [agentIntent, setAgentIntent] = useState<'ask' | 'work'>('ask');
   const container = useRef<HTMLDivElement>(null);
+  const refreshChat = useRef<(() => void) | null>(null);
   const groupMessages = useGroupMessages(
     slot.context.groupId,
     mode === 'group' && slot.context.visibility === 'shared',
     sharedFeed,
+    slot.context,
   );
+  const working = Boolean(
+    chat?.nativeRequests?.some((receipt) => ['queued', 'running'].includes(receipt.state)) ||
+      chat?.deliveries?.some((receipt) =>
+        ['pending', 'waiting', 'busy', 'source_registration_pending'].includes(receipt.state),
+      ),
+  );
+  useEffect(() => {
+    if (working) refreshChat.current?.();
+  }, [working]);
   useEffect(() => {
     let intent: 'ask' | 'work' = 'ask';
     try {
@@ -377,23 +397,34 @@ export function GroupChat({
   }, [model]);
   useEffect(() => {
     let alive = true;
-    let active = false;
     const read = async () => {
-      if (active) return;
-      active = true;
       try {
         const value = groupHostChatSchema.parse(await request('chat', { handle: slot.handle }));
         if (!alive) return;
         const nextSignature = value.detail.entries
           .map((e) => `${e.id}:${e.status}:${e.text.length}`)
           .join(',');
-        if (signature.current !== nextSignature) {
+        const changed = signature.current !== nextSignature;
+        if (changed) {
           signature.current = nextSignature;
           onChanged();
         }
         setChat(value);
         setError('');
         model.initialize(value.draft);
+        return {
+          changed,
+          pending: Boolean(
+            value.nativeRequests?.some((receipt) =>
+              ['queued', 'running'].includes(receipt.state),
+            ) ||
+              value.deliveries?.some((receipt) =>
+                ['pending', 'waiting', 'busy', 'source_registration_pending'].includes(
+                  receipt.state,
+                ),
+              ),
+          ),
+        };
       } catch (reason) {
         if (alive) {
           setError(errorText(reason));
@@ -402,22 +433,14 @@ export function GroupChat({
             setChat(null);
           }
         }
-      } finally {
-        active = false;
       }
     };
-    void read();
-    const interval = setInterval(() => void read(), 1000);
-    const refresh = () => {
-      if (document.visibilityState === 'visible') void read();
-    };
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', refresh);
+    const stop = startGroupPolling(read, { updates: groupPollingUpdates(slot.context) });
+    refreshChat.current = stop.refresh;
     return () => {
       alive = false;
-      clearInterval(interval);
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', refresh);
+      stop();
+      if (refreshChat.current === stop.refresh) refreshChat.current = null;
     };
   }, [slot.handle, model, onChanged]);
   useLayoutEffect(() => {
@@ -514,10 +537,10 @@ export function GroupChat({
           <summary>Technical details</summary>
           <p>{receipt.message}</p>
         </details>
-        {receipt.documentCaptureState && (
+        {receipt.documentCaptureState && !reportReplies.has(receipt.requestId) && (
           <GroupDocumentCaptureNotice state={receipt.documentCaptureState} />
         )}
-        {receipt.documentAvailable && (
+        {receipt.documentAvailable && !reportReplies.has(receipt.requestId) && (
           <GroupDocumentOfferButton
             handle={slot.handle}
             requestKey={receipt.key}
@@ -541,7 +564,14 @@ export function GroupChat({
   };
   const latestReceipt = chat?.nativeRequests?.at(-1);
   const currentReceipt = latestReceipt?.state === 'completed' ? undefined : latestReceipt;
-  const ownerReceipt = chat?.nativeRequests?.find((receipt) => receipt.state !== 'completed');
+  const ownerReceipt =
+    chat?.nativeRequests?.find((receipt) =>
+      ['queued', 'pending-consent', 'running'].includes(receipt.state),
+    ) ??
+    chat?.nativeRequests
+      ?.slice()
+      .reverse()
+      .find((receipt) => ['unknown', 'blocked'].includes(receipt.state));
   const pendingDeliveries =
     chat?.deliveries?.filter((d) => !['complete', 'private'].includes(d.state)) ?? [];
   const deliveryProblem = pendingDeliveries.find(
@@ -558,19 +588,41 @@ export function GroupChat({
         receipt.documentCaptureState ||
         !['complete', 'private'].includes(receipt.delivery),
     ) ?? [];
+  const ownerControlRequestId =
+    pendingAuthorization ?? (executionMode === 'host' ? ownerReceipt?.requestId : undefined);
+  const ownerControlReceipt = chat?.nativeRequests?.find(
+    (receipt) => receipt.requestId === ownerControlRequestId,
+  );
   const nativeOwner =
     !fixture && !refused ? (
       <GroupNativeOwner
         key={slot.handle}
         handle={slot.handle}
-        requestId={
-          pendingAuthorization ??
-          (executionMode === 'host' ? (ownerReceipt?.requestId ?? undefined) : undefined)
-        }
+        requestId={ownerControlRequestId}
         executionMode={executionMode}
         requestPendingConsent={Boolean(pendingAuthorization)}
+        requestState={ownerControlReceipt?.state}
+        requestText={ownerControlReceipt?.text}
         request={request}
-        onChanged={onChanged}
+        onChanged={() => {
+          const handle = slot.handle;
+          onChanged();
+          // Owner controls change this exact saved request. Do not wait for the
+          // idle timer or reuse its former pending-consent projection.
+          void request('chat', { handle })
+            .then(groupHostChatSchema.parse)
+            .then((value) => {
+              if (currentHandle.current === handle) setChat(value);
+            })
+            .catch((reason: unknown) => {
+              if (currentHandle.current !== handle) return;
+              setError(errorText(reason));
+              if (reason instanceof ApiError && reason.status === 403) {
+                setRefused(true);
+                setChat(null);
+              }
+            });
+        }}
       />
     ) : null;
   const publishedOwnMessages = new Set(
@@ -633,6 +685,39 @@ export function GroupChat({
             entries: chat.detail.entries.filter((entry) => entry.title !== 'Human message'),
           }
         : chat?.detail;
+  const reportReplies = new Set<string>();
+  const replyReceipts = new Map<string, NonNullable<GroupHostChat['nativeRequests']>[number]>();
+  for (const receipt of chat?.nativeRequests ?? []) {
+    if (!receipt.documentAvailable && !receipt.documentCaptureState) continue;
+    if (
+      receipt.resultId &&
+      conversationDetail?.entries.some((entry) => entry.id === receipt.resultId)
+    ) {
+      replyReceipts.set(receipt.resultId, receipt);
+      reportReplies.add(receipt.requestId);
+    }
+    for (const { event } of groupMessages.messages) {
+      const scope = event.origin?.scope ?? event.scope;
+      if (
+        receipt.source &&
+        scope.memberId === slot.context.memberId &&
+        scope.installationId === slot.context.installationId &&
+        scope.source.sessionId === receipt.source.sessionId &&
+        scope.source.nativeSessionId === receipt.source.nativeSessionId &&
+        scope.source.provider === receipt.source.provider &&
+        scope.source.messageId === receipt.source.messageId
+      ) {
+        replyReceipts.set(event.eventId, receipt);
+        reportReplies.add(receipt.requestId);
+      }
+    }
+  }
+  const reportMessages = new Map<string, NonNullable<ReturnType<typeof groupReportNotification>>>(
+    groupMessages.messages.flatMap(({ event, text }) => {
+      const notification = event.category === 'Decision' ? groupReportNotification(text) : null;
+      return notification ? [[event.eventId, notification] as const] : [];
+    }),
+  );
   return (
     <div
       className={`group-chat flow-chat-main ${mode === 'group' ? 'group-shared-chat' : ''} ${fixture ? 'group-fixture-chat' : ''}`}
@@ -647,7 +732,7 @@ export function GroupChat({
           intro={
             mode
               ? {
-                  title: mode === 'group' ? 'Group chat' : 'Group manager',
+                  title: mode === 'group' ? 'Group chat' : 'My group agent',
                   description:
                     mode === 'group'
                       ? 'Send a message to start the conversation with your group.'
@@ -662,6 +747,28 @@ export function GroupChat({
           // This bounded view has no older-page route. The notice below
           // reports the host flag; suppress Conversation's native paging action.
           detail={{ ...conversationDetail, hasMore: false }}
+          renderMessageContent={(entry) => {
+            const notification = reportMessages.get(entry.id);
+            if (notification)
+              return <GroupReportMessage notification={notification} original={entry.text} />;
+            const receipt = replyReceipts.get(entry.id);
+            if (!receipt) return undefined;
+            return (
+              <>
+                <ChatMarkdown entry={entry}>{entry.text}</ChatMarkdown>
+                {receipt.documentCaptureState && (
+                  <GroupDocumentCaptureNotice state={receipt.documentCaptureState} />
+                )}
+                {receipt.documentAvailable && (
+                  <GroupDocumentOfferButton
+                    handle={slot.handle}
+                    requestKey={receipt.key}
+                    request={request}
+                  />
+                )}
+              </>
+            );
+          }}
           approvals={[]}
           act={async (action) => {
             try {
@@ -754,7 +861,7 @@ export function GroupChat({
                   <select
                     aria-label="Send to"
                     value={sendTarget}
-                    disabled={deliveryBusy}
+                    disabled={deliveryBusy || readOnly}
                     onChange={(event) =>
                       setSendTarget(event.target.value === 'message' ? 'message' : 'agent')
                     }
@@ -771,7 +878,7 @@ export function GroupChat({
                   <select
                     aria-label="Agent request"
                     value={agentIntent}
-                    disabled={deliveryBusy}
+                    disabled={deliveryBusy || readOnly}
                     onChange={(event) =>
                       setAgentIntent(event.target.value === 'work' ? 'work' : 'ask')
                     }
@@ -788,7 +895,7 @@ export function GroupChat({
         maxLength={24_000}
         agent={chat?.detail.agent ?? slot.agent}
         workspace={null}
-        disabled={!view.ready || refused || groupMessages.revoked}
+        disabled={!view.ready || refused || groupMessages.revoked || readOnly}
         draftOverride={draft}
         specialized={!fixture}
         attachments={fixture}
@@ -845,7 +952,7 @@ export function GroupChat({
         onHelp={() =>
           setError(
             mode
-              ? 'Group chat sends a message to everyone. Group manager sends a request to your own agent; shared work appears in Group chat.'
+              ? 'Group chat sends a message to everyone. My group agent uses your account and allowance; its requests and replies are shared with the group.'
               : 'Human messages are saved separately from native execution. Your private conversation is excluded from the shared feed.',
           )
         }
@@ -853,7 +960,7 @@ export function GroupChat({
           mode === 'group'
             ? 'Message the group…'
             : mode === 'manager'
-              ? 'Message your group manager…'
+              ? 'Message my group agent…'
               : slot.context.visibility === 'private'
                 ? fixture
                   ? 'Message private test session…'

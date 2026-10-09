@@ -74,6 +74,26 @@
   font-size: 1rem;
   margin: 20px 0 8px;
 }
+.group-setup-goals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+.group-setup-goals button {
+  flex: 1 1 8rem;
+  min-height: 44px;
+}
+.group-setup-goals button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash, #e8eafd);
+}
+.group-setup-checklist h3 {
+  font-size: 1rem;
+}
+.group-setup-checklist li {
+  margin-block: 10px;
+}
 .group-setup-choice .setup-prompt {
   font-size: 1rem;
 }

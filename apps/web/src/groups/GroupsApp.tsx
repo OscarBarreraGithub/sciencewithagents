@@ -1,5 +1,10 @@
+import { DisplayName } from './DisplayName';
 import { GroupReports } from './GroupReports';
 import { GroupHostedExport } from './GroupHostedExport';
+import { GroupWorkFolder } from './GroupWorkFolder';
+import { GroupLocalVisibility } from './GroupLocalVisibility';
+import { GroupContributionMode } from './GroupContributionMode';
+import { GroupLocalReceiptStorage } from './GroupLocalReceiptStorage';
 import { GroupSetupPrompt } from './GroupSetupPrompt';
 import { GroupJoinReceipt } from './GroupJoinReceipt';
 import { GroupGitPanel } from './GroupGitPanel';
@@ -24,6 +29,8 @@ import {
 } from './group-invitation';
 import type { GroupRead } from './types';
 import './group-host.css';
+import { GROUP_POLLING, startGroupPolling } from './group-polling';
+import { groupPollingUpdates, observeGroupUpdates } from './group-updates';
 const request = (path: string, body?: unknown, signal?: AbortSignal) =>
   api(path === 'groups' ? '/groups' : `/groups/${path}`, body, signal);
 const message = (reason: unknown) =>
@@ -66,6 +73,7 @@ function GroupConversation({
   onAuthorizationRequired,
   sharedHandle,
   executionMode,
+  readOnly,
   mode,
   sharedFeed,
 }: {
@@ -75,6 +83,7 @@ function GroupConversation({
   onAuthorizationRequired: () => void;
   sharedHandle: string;
   executionMode?: 'host' | 'isolated';
+  readOnly?: boolean;
   mode: GroupChatMode;
   sharedFeed: Pick<import('./types').GroupsWorkspaceProps, 'loadPage' | 'loadOriginal' | 'members'>;
 }) {
@@ -85,6 +94,7 @@ function GroupConversation({
         mode={mode}
         sharedFeed={sharedFeed}
         executionMode={executionMode}
+        readOnly={readOnly}
         request={request}
         onChanged={onChanged}
         nativeControlsTarget={nativeControlsTarget}
@@ -104,6 +114,7 @@ export function GroupsApp({
   query?: string;
 }) {
   const [setupOpen, setSetupOpen] = useState(false);
+  useEffect(observeGroupUpdates, []);
   const [invitation, setInvitation] = useState(initialGroupInvitation);
   const [invitationRevision, setInvitationRevision] = useState(groupInvitationRevision);
   useEffect(() => {
@@ -116,7 +127,12 @@ export function GroupsApp({
     return () => window.removeEventListener('hashchange', update);
   }, []);
   const [list, setList] = useState<contracts.GroupHostSummary[] | null>(null);
+  const [removed, setRemoved] = useState<contracts.GroupHostSummary[]>([]);
   const [service, setService] = useState('Loading Groups configuration…');
+  const [localReceiptStorage, setLocalReceiptStorage] =
+    useState<
+      ReturnType<typeof contracts.groupHostListSchema.parse>['service']['localReceiptStorage']
+    >();
   const [serviceConfigured, setServiceConfigured] = useState<boolean | null>(null);
   const [setupCodeRequired, setSetupCodeRequired] = useState(false);
   const [newSetupCodeAllowed, setNewSetupCodeAllowed] = useState(false);
@@ -142,6 +158,11 @@ export function GroupsApp({
   const [membershipError, setMembershipError] = useState('');
   const [busy, setBusy] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(false);
+  const [advancedLoaded, setAdvancedLoaded] = useState(false);
+  const [gitLoaded, setGitLoaded] = useState(false);
+  const [gitRevision, setGitRevision] = useState(0);
+  const [gitConnectionTarget, setGitConnectionTarget] = useState<HTMLDivElement | null>(null);
+  const [gitAdvancedTarget, setGitAdvancedTarget] = useState<HTMLDivElement | null>(null);
   const [nativeControlsTarget, setNativeControlsTarget] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     const dialog = controlsDialog.current;
@@ -151,8 +172,9 @@ export function GroupsApp({
   }, [controlsOpen, selected?.group.handle]);
   const authorizationRequired = useCallback(() => setControlsOpen(true), []);
   const changed = useCallback(() => setFeedRevision((n) => n + 1), []);
-  const load = useCallback(async () => {
-    if (!active.current || listRead.current) return;
+  const load = useCallback(async (force = false) => {
+    if (!active.current || (listRead.current && !force)) return;
+    if (force) listRead.current?.abort();
     const controller = new AbortController();
     listRead.current = controller;
     try {
@@ -161,7 +183,9 @@ export function GroupsApp({
       );
       if (controller.signal.aborted) return;
       setList(value.groups);
+      setRemoved(value.removed ?? []);
       setService(value.service.message);
+      setLocalReceiptStorage(value.service.localReceiptStorage);
       setServiceConfigured(value.service.configured);
       setSetupCodeRequired(value.service.setupCodeRequired ?? false);
       setNative(
@@ -170,8 +194,10 @@ export function GroupsApp({
           : value.native.message,
       );
       setListError('');
+      return value;
     } catch (reason) {
       if (!controller.signal.aborted) setListError(message(reason));
+      if (force) throw reason;
     } finally {
       if (listRead.current === controller) listRead.current = null;
     }
@@ -185,6 +211,12 @@ export function GroupsApp({
       listRead.current = null;
     };
   }, [load]);
+  const refreshLocalList = async () => {
+    const value = await load(true);
+    if (!value)
+      throw new Error('The current Groups list could not be read. Check the saved change.');
+    return value;
+  };
   const handle = route.startsWith('chats/groups') ? route.split('/')[2] : route.split('/')[1];
   useEffect(() => {
     if (handle) return;
@@ -208,6 +240,9 @@ export function GroupsApp({
     let alive = true;
     setSelected(null);
     setControlsOpen(false);
+    setAdvancedLoaded(false);
+    setGitLoaded(false);
+    setGitRevision(0);
     setInvite('');
     setInviteCopy('idle');
     setError('');
@@ -224,6 +259,8 @@ export function GroupsApp({
     };
   }, [handle]);
   // Keep joined members current without launching a model or remounting chats.
+  const localGroup =
+    list?.find((group) => group.handle === selected?.group.handle) ?? selected?.group;
   const creatorHandle = selected?.feedWriter?.canSelect ? selected.group.handle : undefined;
   const membershipHandle = selected?.group.handle;
   useEffect(() => {
@@ -246,16 +283,14 @@ export function GroupsApp({
         if (controller === read) controller = undefined;
       }
     };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 10000);
-    window.addEventListener('focus', refresh);
-    window.addEventListener('online', refresh);
-    document.addEventListener('visibilitychange', refresh);
+    const stop = startGroupPolling(refresh, {
+      idleMs: GROUP_POLLING.rosterMs,
+      activeMs: GROUP_POLLING.rosterMs,
+      immediate: false,
+      updates: selected ? groupPollingUpdates(selected.member) : undefined,
+    });
     return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('online', refresh);
-      document.removeEventListener('visibilitychange', refresh);
+      stop();
       controller?.abort();
     };
   }, [membershipHandle]);
@@ -344,6 +379,22 @@ export function GroupsApp({
                   setError('');
                 }
               : undefined
+          }
+          removedGroups={
+            removed.length > 0 && (
+              <details className="groups-removed-list">
+                <summary>Removed groups ({removed.length})</summary>
+                <p>Hidden only on this computer. Membership, messages and work are retained.</p>
+                {removed.map((group) => (
+                  <div key={group.handle} className="groups-removed-row">
+                    <strong>
+                      <DisplayName value={group.name} />
+                    </strong>
+                    <GroupLocalVisibility group={group} restore refresh={refreshLocalList} />
+                  </div>
+                ))}
+              </details>
+            )
           }
           groups={
             list
@@ -605,75 +656,142 @@ export function GroupsApp({
                     ))}
                 </details>
                 {selected.native.executionMode === 'host' && (
+                  <GroupWorkFolder
+                    key={`work-folder:${selected.shared.handle}`}
+                    handle={selected.shared.handle}
+                    onOpen={() => setGitLoaded(true)}
+                    onBound={() => {
+                      setGitLoaded(true);
+                      setGitRevision((value) => value + 1);
+                    }}
+                    connection={<div ref={setGitConnectionTarget} />}
+                  />
+                )}
+                {selected.native.executionMode === 'host' && (gitLoaded || advancedLoaded) && (
                   <GroupNativeGitPanel
                     key={`native-git:${selected.shared.handle}`}
                     handle={selected.shared.handle}
+                    connectionTarget={gitConnectionTarget}
+                    advancedTarget={gitAdvancedTarget}
+                    refreshKey={gitRevision}
                   />
                 )}
-                <details className="group-host-members group-host-actions">
-                  <summary>Shared work and actions</summary>
-                  <GroupActionsBoard
-                    key={`actions:${selected.shared.handle}`}
-                    handle={selected.shared.handle}
-                    actor={selected.member}
-                  />
-                </details>
-                {selected.native.executionMode !== 'host' && (
-                  <>
-                    <GroupGitPanel
-                      key={`git:${selected.shared.handle}`}
-                      handle={selected.shared.handle}
-                    />
-                  </>
-                )}
-                <GroupReports
-                  key={`reports:${selected.shared.handle}`}
-                  handle={selected.shared.handle}
-                />
-                {creatorHandle && (
-                  <GroupHostedExport
-                    key={`hosted-export:${creatorHandle}`}
-                    handle={creatorHandle}
-                  />
-                )}
-                <details className="group-host-members">
-                  <summary>Shared feed agent</summary>
-                  <p>
-                    Messages appear without a summary agent. This optional agent condenses older
-                    shared sources; pending summaries resume when its computer reconnects.
-                  </p>
-                  <p role="status">{selected.feedWriter?.message}</p>
-                  {selected.feedWriter?.canSelect && (
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        void act(async () => {
-                          const operation = pending(`feed-writer:${selected.group.handle}`, {});
-                          await request('feed-writer', {
-                            handle: selected.shared.handle,
-                            key: operation.key,
-                          });
-                          operation.clear();
-                          setFeedWriterNotice(
-                            'This computer is the shared feed writer. Summaries wait while its agent is unavailable.',
-                          );
-                          setSelected(
-                            contracts.groupHostOpenSchema.parse(
-                              await request('open', { handle: selected.group.handle }),
-                            ),
-                          );
-                        })
-                      }
-                    >
-                      Use this computer for the shared feed
-                    </button>
-                  )}
-                  {feedWriterNotice && <p role="status">{feedWriterNotice}</p>}
-                </details>
                 <div ref={setNativeControlsTarget} />
+                <GroupLocalVisibility
+                  key={`local-visibility:${selected.group.handle}`}
+                  group={localGroup ?? selected.group}
+                  refresh={refreshLocalList}
+                  onSettled={(current) => {
+                    if (current.removed?.some((group) => group.handle === selected.group.handle)) {
+                      setControlsOpen(false);
+                      location.hash = '#/chats/groups';
+                    }
+                  }}
+                />
+                <details
+                  className="group-host-members group-host-advanced"
+                  onToggle={(event) => {
+                    if (event.currentTarget.open) setAdvancedLoaded(true);
+                  }}
+                >
+                  <summary>Advanced</summary>
+                  <p>
+                    Review shared action proposals, inspect repository details or make a private
+                    backup. Ordinary messages and report reading do not need these controls.
+                  </p>
+                  {advancedLoaded && (
+                    <>
+                      {localReceiptStorage && (
+                        <GroupLocalReceiptStorage storage={localReceiptStorage} />
+                      )}
+                      {selected.native.executionMode === 'host' && (
+                        <details className="group-host-members">
+                          <summary>Git sync and reviewed changes</summary>
+                          <div ref={setGitAdvancedTarget} />
+                        </details>
+                      )}
+                      <details className="group-host-members group-host-actions">
+                        <summary>Review proposed shared actions</summary>
+                        <p>
+                          Your agent’s saved proposals are listed here. Review the exact instruction
+                          before confirming work on its owner’s computer.
+                        </p>
+                        <GroupActionsBoard
+                          key={`actions:${selected.shared.handle}`}
+                          handle={selected.shared.handle}
+                          actor={selected.member}
+                        />
+                      </details>
+                      {selected.native.executionMode !== 'host' && (
+                        <>
+                          <GroupGitPanel
+                            key={`git:${selected.shared.handle}`}
+                            handle={selected.shared.handle}
+                          />
+                        </>
+                      )}
+                      <GroupReports
+                        key={`reports:${selected.shared.handle}`}
+                        handle={selected.shared.handle}
+                      />
+                      {creatorHandle && (
+                        <GroupHostedExport
+                          key={`hosted-export:${creatorHandle}`}
+                          handle={creatorHandle}
+                        />
+                      )}
+                      <details className="group-host-members">
+                        <summary>Summary computer for older activity</summary>
+                        <p>
+                          Shared messages and reports arrive without this setting. This optional
+                          older workflow summarizes retained activity on the selected computer and
+                          uses that person’s provider allowance. It is separate from per-member
+                          message summaries.
+                        </p>
+                        <p role="status">{selected.feedWriter?.message}</p>
+                        {selected.feedWriter?.canSelect && (
+                          <button
+                            disabled={busy}
+                            onClick={() =>
+                              void act(async () => {
+                                const operation = pending(
+                                  `feed-writer:${selected.group.handle}`,
+                                  {},
+                                );
+                                await request('feed-writer', {
+                                  handle: selected.shared.handle,
+                                  key: operation.key,
+                                });
+                                operation.clear();
+                                setFeedWriterNotice(
+                                  'This computer is the shared feed writer. Summaries wait while its agent is unavailable.',
+                                );
+                                setSelected(
+                                  contracts.groupHostOpenSchema.parse(
+                                    await request('open', { handle: selected.group.handle }),
+                                  ),
+                                );
+                              })
+                            }
+                          >
+                            Use my agent to summarize older activity
+                          </button>
+                        )}
+                        {feedWriterNotice && <p role="status">{feedWriterNotice}</p>}
+                      </details>
+                    </>
+                  )}
+                </details>
               </dialog>
               <div className="group-host-workspace">
                 <GroupsWorkspace
+                  contributionControl={
+                    <GroupContributionMode
+                      key={`local-mode:${selected.group.handle}`}
+                      group={localGroup ?? selected.group}
+                      refresh={refreshLocalList}
+                    />
+                  }
                   onManage={() => setControlsOpen(true)}
                   onInvite={
                     creatorHandle
@@ -705,6 +823,7 @@ export function GroupsApp({
                         mode={mode}
                         sharedFeed={{ loadPage, loadOriginal, members: selected.members }}
                         slot={selected.shared}
+                        readOnly={localGroup?.local?.mode === 'read-only'}
                         executionMode={selected.native.executionMode}
                         sharedHandle={selected.shared.handle}
                         onChanged={changed}
@@ -735,7 +854,7 @@ export function GroupsApp({
         >
           {error && <p role="alert">{error}</p>}
           {joinNotice && <p role="status">{joinNotice}</p>}
-          <GroupSetupPrompt initiallyOpen />
+          <GroupSetupPrompt folderSetup={<GroupWorkFolder />} />
           {hasPendingSetup() && (
             <details className="group-host-recovery">
               <summary>Recover an interrupted request</summary>

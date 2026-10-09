@@ -56,6 +56,11 @@ function attempt(store: Store, runId: string) {
   const value = attemptSchema.safeParse(store.getSetting(attemptKey(runId)));
   return value.success ? value.data : null;
 }
+/** Exact durable pre-handoff proof; a missing/failed/uncertain attempt is not permission to replay. */
+export function runDeliveryUnstarted(store: Store, runId: string) {
+  const saved = attempt(store, runId);
+  return !!saved && !saved.handoffAt && !saved.forkAt && !saved.failure;
+}
 /** No transport intent is inferred from a missing provider turn ID. */
 export function prepareRunDelivery(store: Store, run: PrivateRun) {
   store.setSetting(attemptKey(run.id), {

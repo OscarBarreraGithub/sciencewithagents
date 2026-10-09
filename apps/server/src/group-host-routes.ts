@@ -10,11 +10,15 @@ import { registerGroupActionsRoutes } from './group-actions-routes.js';
 import { registerGroupFeatureReading } from './group-features-reading.js';
 import { groupHostNativeGit } from './group-host-native-git.js';
 import { groupHostActivity } from './group-native-activity.js';
+import { groupWorkspaceInputSchema } from '@dock/shared/dist/group-workspace.js';
+import type { FolderConnections } from './folder-picker.js';
+import type { GroupHostNativeRuntime } from './group-native-host-runtime.js';
 /** Registration deliberately requires an auth predicate even on loopback. */
 export function registerGroupHostRoutes(
   app: FastifyInstance,
   host: GroupHost,
   authenticated: (request: FastifyRequest) => boolean,
+  folders?: FolderConnections,
 ) {
   const documents = groupFeatureDocuments(host);
   if (documents) {
@@ -53,7 +57,35 @@ export function registerGroupHostRoutes(
   };
   app.get('/api/groups', { onRequest: guard }, async () => host.list());
   const actions = {
+    workspace: (raw: unknown) => {
+      const input = groupWorkspaceInputSchema.parse(raw);
+      const native = host.native as Partial<GroupHostNativeRuntime>;
+      if (!native.workspace)
+        throw new GroupHostError(
+          503,
+          'GROUP_WORKSPACE_UNAVAILABLE',
+          'Shared folder setup is unavailable on this computer.',
+        );
+      const scope = host.localSharedContext(input.handle);
+      if (input.action === 'status') return native.workspace(scope.context, scope.enrollmentHandle);
+      return native.workspace(scope.context, scope.enrollmentHandle, {
+        key: input.key,
+        revision: input.revision,
+        selectionKey: input.selectionKey,
+        resolveSelection: () => {
+          if (!folders)
+            throw new GroupHostError(
+              503,
+              'GROUP_FOLDER_CHOOSER_UNAVAILABLE',
+              'Open the folder chooser on this computer.',
+            );
+          groupHostNativeGit(host)?.assertWorkspaceIdle(scope.handle);
+          return folders.sharedSelection(input.selectionKey);
+        },
+      });
+    },
     'local-visibility': (v: unknown) => host.localVisibility(v),
+    'local-mode': (v: unknown) => host.localMode(v),
     resume: (v: unknown) => host.resume(v),
     create: (v: unknown) => host.create(v),
     join: (v: unknown) => host.join(v),

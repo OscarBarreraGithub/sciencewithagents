@@ -8,6 +8,7 @@ import { OwnerTerminal } from '../OwnerTerminal';
 import { apiScope } from '../api';
 import type { GroupChatClient } from './GroupChat';
 import './group-native-owner.css';
+import type { GroupHostChat } from '@dock/shared/dist/group-host.js';
 
 /** This panel sends opaque saved handles only; host setup never accepts browser paths or commands. */
 export function GroupNativeOwner({
@@ -17,6 +18,8 @@ export function GroupNativeOwner({
   onChanged,
   executionMode,
   requestPendingConsent,
+  requestState,
+  requestText,
 }: {
   handle: string;
   requestId?: string;
@@ -24,6 +27,8 @@ export function GroupNativeOwner({
   onChanged: () => void;
   executionMode?: 'host' | 'isolated';
   requestPendingConsent?: boolean;
+  requestState?: NonNullable<GroupHostChat['nativeRequests']>[number]['state'];
+  requestText?: string;
 }) {
   const [status, setStatus] = useState<GroupNativeOwnerStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -85,33 +90,59 @@ export function GroupNativeOwner({
   if (hostMode)
     return (
       <details className="group-native-owner" open={Boolean(requestId)}>
-        <summary>{requestId ? 'Saved agent request' : 'Local agent access'}</summary>
+        <summary>{requestId ? 'This agent request' : 'My agent on this computer'}</summary>
         <p role="status">{status?.message ?? 'Checking local agent access…'}</p>
         <p>
           Uses this computer’s existing sign-in and native tools. Shared and private chats keep
           separate histories; agents retain normal access to this computer. Private content is not
           automatically shared.
         </p>
+        {requestId && requestText && (
+          <p>
+            <strong>Request:</strong> {requestText.slice(0, 240)}
+          </p>
+        )}
+        {requestPendingConsent && (
+          <p>
+            Enable access, then continue this exact saved request. Ask and Work use your provider
+            allowance.
+          </p>
+        )}
         <div className="group-native-owner-actions">
-          <button disabled={busy} onClick={() => void control('status')}>
-            Check agent status
-          </button>
+          {(error || !status || requestState === 'unknown' || requestState === 'blocked') && (
+            <button disabled={busy} onClick={() => void control('status')}>
+              {requestId ? 'Check this request' : 'Refresh agent access'}
+            </button>
+          )}
           {status && !status.hostEnabled && (
             <button disabled={busy} onClick={() => void control('prepare')}>
               Enable agents on this computer
             </button>
           )}
-          {requestId && requestPendingConsent && status?.hostEnabled && (
-            <button disabled={busy} onClick={() => void control('continue')}>
-              Continue saved request
-            </button>
-          )}
-          {requestId && status && !['stopped', 'rejected', 'verified'].includes(status.state) && (
-            <button disabled={busy} onClick={() => void control('reject')}>
-              Cancel saved request
-            </button>
-          )}
+          {requestId &&
+            requestPendingConsent &&
+            status?.hostEnabled &&
+            status.state !== 'pending' && (
+              <button disabled={busy} onClick={() => void control('continue')}>
+                Continue this request
+              </button>
+            )}
+          {requestId &&
+            requestState &&
+            requestState !== 'completed' &&
+            status &&
+            !['stopped', 'rejected', 'verified'].includes(status.state) && (
+              <button disabled={busy} onClick={() => void control('reject')}>
+                Cancel this request
+              </button>
+            )}
         </div>
+        {requestId && (
+          <p>
+            Cancellation targets this local request. It does not withdraw shared messages or undo
+            completed changes.
+          </p>
+        )}
         {error && <p role="alert">{error}</p>}
       </details>
     );

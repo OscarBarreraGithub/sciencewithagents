@@ -15,12 +15,14 @@ uses fake providers and is not a substitute for this setup.
    computer from your phone or laptop, complete [owner pairing](PHONE_WORKFLOW.md) and select
    that computer first. Pairing gives owner access to that installation; a group invitation
    gives group membership instead.
-2. In **Chats → Groups**, open **Group setup (?)**. The creator copies **Cloudflare
+2. In **Chats → Groups**, open **Setup** and choose creating, joining or shared files. The creator copies **Cloudflare
    setup prompt** into their external Codex or Claude setup agent. It deploys Groups in
    the creator's **own Cloudflare Workers Free account**, following the concrete
    [hosting runbook](GROUP_HOSTING.md). Human steps are sign-in, account/Free confirmation
    and the chosen HTTPS address. Fresh installations use no maintainer service or beta
-   operator code. Existing saved Groups settings and memberships are preserved.
+   operator code. The setup agent first inspects saved hosting and pending bundles.
+   An existing creator uses the preserved upgrade candidate; a matching member mapping
+   is reused. Phone access is optional. Existing Groups settings and memberships are preserved.
 3. **New group** and **Join group** stay visible beside the list. Setup instructions open
    separately and the list detects completed configuration automatically. Choose **New group**,
    enter project and display names, then **Create group**. In the group header, choose **Invite people → Create invitation → Copy invitation**
@@ -41,7 +43,7 @@ uses fake providers and is not a substitute for this setup.
 5. Group agents use the native agent installed on each person's own computer, with its
    existing provider sign-in, tools, skills, hooks and permissions. No Docker, Linux guest
    or separate provider account is required for local execution. Read **Manage →
-   Local agent access**, then choose **Enable agents on this computer** once for your group
+   My agent on this computer**, then choose **Enable agents on this computer** once for your group
    membership. This makes no model call. The provider checks its existing sign-in when a
    request starts; use ordinary provider sign-in if needed. See [native owner
    setup](GROUP_NATIVE_OWNER_SETUP.md) for the supported setup and retained isolated mode.
@@ -55,7 +57,7 @@ from an already open group. The app removes the invitation from the address imme
 its secret stays in memory until the authenticated join request receives it.
 
 A lost network reply does not require creating another group or sending another join
-request. Open **Group setup (?) → Recover an interrupted request** on the original installation; it reconciles the saved
+request. Open **Setup → Recover an interrupted request** on the original installation; it reconciles the saved
 request and identity after reload or restart. If the service is unavailable, leave the
 request saved and retry when it returns. Do not change the service mapping to evade a pending
 request. A setup agent must reconcile changed endpoints or installation identities explicitly.
@@ -73,7 +75,7 @@ Each group has two tabs:
 
 - **Group chat** shows everyone's shared messages as ordinary chat bubbles. Sending here posts
   a human message without invoking a model.
-- **Group manager** shows your agent's shared working conversation. **Ask** requests a read-only
+- **My group agent** shows your agent's shared working conversation. **Ask** requests a read-only
   reply; **Work** authorizes shared work. Other members' incoming messages do not authorize
   work on your computer.
 
@@ -92,6 +94,13 @@ conversation. The invitation shows its actual expiry date.
 Human-message Send retains what you send before delivery. **Retry delivery** uses the
 same saved message after a lost reply; it does not create another message. Group chat reads the verified retained originals. Delivery status is separate from local saving.
 Shared originals use the durable delivery queue independently of optional summaries.
+Read-only refresh pauses while the page is hidden and checks immediately when you return.
+Updated group services send small change notifications through each member's protected
+computer connection. Visible chats refresh on a notification and reconcile every five
+minutes; unfinished local deliveries still check every five seconds. An older or disconnected
+service falls back to minute idle checks, brief five-second active checks and five-minute
+roster checks. Notifications carry no chat text and never authorize work. These reductions
+do not establish that a busy group fits its creator's daily Free allowance.
 A summary, provider limit or offline summary computer cannot hold up a saved chat reply.
 After native access is enabled on a member's computer, its new already-shared messages
 and replies receive background summaries and labels using that provider's saved **Bulk**
@@ -105,11 +114,20 @@ The older selected-writer workflow remains separate for retained activity; selec
 does not take over these per-member summaries. Long originals and full summary storage
 remain original-only. See [summary limits](GROUP_PROMOTION.md#per-member-local-feed-summaries).
 
-**Manage** collects invitations, Shared files, Shared work and actions, Shared reports,
-the optional feed writer and local agent access. The shared board includes your manager’s
-saved proposals; review and confirm them there, including a competing override. Work stays
-on its original owner’s computer and account. Saved agent receipts are collapsed separately;
-a request needing authorization opens its existing controls.
+The visible **Contribute / Read-only** selector controls this computer’s saved participation.
+Read-only keeps drafts, messages, reports and model-free Git sync available while blocking new
+contributions and unstarted group model handoffs. Already running work may finish. Returning
+to Contribute may release previously authorized queued work using your allowance; it does not
+enable agents or replay uncertain turns. Interrupted changes keep an exact explicit retry.
+See [local settings](GROUP_LOCAL_SETTINGS.md).
+
+**Manage** keeps invitations and **My agent on this computer** easy to reach. **Advanced**
+contains **Git sync and reviewed changes**, **Review proposed shared actions**,
+**Browse earlier shared reports**, creator backups and the retained older summary-computer
+workflow. Advanced tools load on first opening and stay mounted when collapsed, preserving
+unfinished fields. Review an exact shared proposal there, including a competing override;
+work stays on its original owner’s computer and account. Saved agent receipts remain under
+**Message details**. A request needing authorization opens its exact contextual controls.
 
 Work records the exact shared instruction before native handoff. Questions, private
 conversations and incoming group messages do not grant work authority. Cancellation and
@@ -117,8 +135,8 @@ retries stay bound to the original local request; they do not borrow a personal 
 or silently create a new instruction.
 
 If a saved request needs local access enabled, its controls open automatically. Enable
-access, then choose **Continue saved request** to authorize that exact request. **Cancel
-saved request** targets the saved local request. A lost reply or restart retains its
+access, then choose **Continue this request** to authorize that exact request.
+**Cancel this request** targets the saved local request. A lost reply or restart retains its
 identity; recovery inspects it instead of replaying tools. Agent availability does not
 mean provider sign-in has been verified, and a provider failure leaves the request saved.
 
@@ -128,19 +146,31 @@ account access. Existing isolated contexts remain separate and retain their own 
 and acceptance controls; switching modes does not import their history or rebind a saved
 request. Native shared actions use ordinary task worktrees, independent review and exact
 integration previews. Native Work captures offered report files before the workspace can
-change again. Choose their explicit grants before reading or publishing them; **Manage →
-Shared reports** lists the selected shared copies. Native Ask and Work retain the agent's
+change again. Choose **Open report from this reply** on the exact completed reply, then
+select the offered files and grants before reading or publishing. Shared report notifications
+have an **Open report** button in Group chat and retain their exact original notification.
+**Manage → Advanced → Browse earlier shared reports** lists older selected shared copies.
+Every open still checks current group authorization. Native Ask and Work retain the agent's
 ordinary tools within their requested mode. Older isolated records and adapters remain
 separate. See [shared actions](GROUP_ACTIONS.md) and [reports](GROUP_DOCUMENTS.md).
 
 ## Shared files and Git
 
-GitHub is optional for messaging. For shared code/files, open **Manage group → Shared
-files** and copy the scoped setup prompt into your setup agent. It identifies this group’s
-shared folder and helps connect the intended repository. Each person supplies their GitHub
-username and signs in to their own account; unknown usernames stay blank. Repository access
-is separate from group membership. After setup, enable **Automatic sync** for reviewed,
-applied commits and clean checkouts. See [shared files and branches](GROUP_NATIVE_GIT.md).
+GitHub is optional for messaging. For shared code/files, open **Setup → Shared files →
+Choose work folder**. The app saves the selected folder and offers **Copy folder setup prompt**
+for your own setup agent. After creating or joining, open **Manage → Work folder** and choose
+**Use this folder for this group**. Selecting a folder or connecting Git makes no model call;
+asking the setup agent uses its own account and allowance.
+
+The setup prompt inspects intended files and preserves existing Git history and remotes.
+Each person supplies their own GitHub account; unknown usernames stay blank. Repository
+access is separate from group membership. Choose **Connect shared repository** once setup is
+ready. If setup changes outside this page, use **Check repository** before connecting.
+A newly verified connection defaults to automatic sync for reviewed, applied commits
+and clean checkouts; a previously saved pause stays paused. **Manage → Advanced → Git sync
+and reviewed changes** offers pause/resume and exact review controls. Uncertain replies retain
+an exact saved retry through reload; checking status does not resend a change.
+See [shared files and branches](GROUP_NATIVE_GIT.md).
 
 Private conversations, drafts, files and native history are not automatically published to
 the shared feed. Previously saved private conversations and catch-up records stay private;
@@ -150,9 +180,14 @@ require choosing a version rather than silently replacing your text.
 Shared files also shows bounded unfinished-file status for the group folder and its task
 worktrees without staging or publishing those edits. The older protected Git adapter retains
 its separate records. Creating a group alone does not select or create a remote repository:
-connect the intended shared folder and collaborators with the setup agent before enabling
-sync. Private conversation history and credentials stay outside Git.
+connect the intended shared folder and collaborators with the setup agent before verifying
+the connection. Private conversation history and credentials stay outside Git.
 [Status](STATUS.md#groups) records the current scope.
+
+**Manage → Remove from this app** hides this computer’s entry without leaving the group or
+deleting shared data. **Removed groups** on the Groups list restores it with its saved history,
+work and drafts. A lost acknowledgement offers **Review saved list change**, a read-only
+**Check current setting**, and an exact **Retry saved change**. See [local settings](GROUP_LOCAL_SETTINGS.md).
 
 ## Setup-agent boundary and limits
 

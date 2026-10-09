@@ -30,6 +30,10 @@ export class GroupFeatureCoordination {
   private pending?: Promise<void>;
   private closing = false;
   private position = 0;
+  private evidenceReads = new Map<string, number>();
+  private dirty = new Set<string>();
+  private preferDirty = true;
+  private stopUpdates?: () => void;
   private readonly unregister: () => void;
   readonly tools: (context: GroupContext) => ClaudeHostTool[];
   constructor(
@@ -152,27 +156,48 @@ export class GroupFeatureCoordination {
   }
   start() {
     if (this.timer || this.closing) return;
+    this.stopUpdates = this.host.updates.subscribe((update) => {
+      if (!update.changed) return;
+      const rows = this.host.db
+        .prepare(
+          `SELECT manager_id FROM gh_coordination_owners WHERE json_extract(context_json,'$.groupId')=?
+        AND json_extract(context_json,'$.memberId')=? AND json_extract(context_json,'$.installationId')=?`,
+        )
+        .all(update.groupId, update.memberId, update.installationId);
+      for (const row of rows) this.dirty.add(String(row.manager_id));
+      if (rows.length) void this.pass(false);
+    });
     this.timer = setInterval(() => {
-      void this.pass();
+      void this.pass(false);
     }, 20_000);
     this.timer.unref();
   }
-  pass(): Promise<void> {
+  pass(forceRead = true): Promise<void> {
     if (this.closing) return Promise.resolve();
     if (this.pending) return this.pending;
-    this.pending = this.runPass()
+    this.pending = this.runPass(forceRead)
       .catch(() => {})
       .finally(() => {
         this.pending = undefined;
       });
     return this.pending;
   }
-  private async runPass() {
-    let row = this.host.db
-      .prepare(
-        'SELECT rowid AS position,manager_id,context_json,cursor,action_cursor FROM gh_coordination_owners WHERE rowid>? ORDER BY rowid LIMIT 1',
-      )
-      .get(this.position);
+  private async runPass(forceRead: boolean) {
+    const urgent = this.preferDirty
+      ? (this.dirty.values().next().value as string | undefined)
+      : undefined;
+    this.preferDirty = !urgent;
+    let row = urgent
+      ? this.host.db
+          .prepare(
+            'SELECT rowid AS position,manager_id,context_json,cursor,action_cursor FROM gh_coordination_owners WHERE manager_id=?',
+          )
+          .get(urgent)
+      : this.host.db
+          .prepare(
+            'SELECT rowid AS position,manager_id,context_json,cursor,action_cursor FROM gh_coordination_owners WHERE rowid>? ORDER BY rowid LIMIT 1',
+          )
+          .get(this.position);
     if (!row) {
       this.position = 0;
       row = this.host.db
@@ -182,17 +207,27 @@ export class GroupFeatureCoordination {
         .get();
     }
     if (!row) return;
-    this.position = Number(row.position);
+    if (!urgent) this.position = Number(row.position);
+    const dirty = this.dirty.delete(String(row.manager_id));
     const context = groupContextSchema.parse(JSON.parse(String(row.context_json)));
     let records: import('@dock/shared/dist/group-actions.js').GroupActionEvidence[] = [];
     try {
-      const ports = await this.ports(context);
-      const result = await ports.command({
-        kind: 'evidence',
-        after: Number(row.cursor),
-        limit: 25,
-      });
-      if (result.ok && result.value.kind === 'evidence') records = result.value.records;
+      this.host.observeNativeUpdates(context);
+      const now = Date.now(),
+        interval = this.host.updates.connected(context) ? 300_000 : 60_000;
+      const last = this.evidenceReads.get(String(row.manager_id));
+      if (forceRead || dirty || last === undefined || now - last >= interval) {
+        this.evidenceReads.set(String(row.manager_id), now);
+        const result = await this.host.readNativeActionEvidence(context, {
+          kind: 'evidence',
+          after: Number(row.cursor),
+          limit: 25,
+        });
+        if (result.ok && result.value.kind === 'evidence') {
+          records = result.value.records;
+          if (result.value.continuation !== null) this.dirty.add(String(row.manager_id));
+        }
+      }
     } catch {
       // Revoked/offline membership blocks new effects and shared reads, while
       // locally retained original-owner receipts still get their finite pass.
@@ -255,6 +290,7 @@ export class GroupFeatureCoordination {
   async close() {
     this.closing = true;
     if (this.timer) clearInterval(this.timer);
+    this.stopUpdates?.();
     await this.pending;
     this.unregister();
     owners.delete(this.host);

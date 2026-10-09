@@ -1494,3 +1494,143 @@ describe('thin typed HTTP and fail-closed activation', () => {
     expect(direct.status).toBe(503);
   });
 });
+
+async function nativeUpdates(a: Awaited<ReturnType<typeof create>>, credential = a.credential) {
+  const response = await worker.fetch(
+    new Request(`http://127.0.0.1/v1/groups/${a.groupId}/updates`, {
+      headers: { Authorization: `Bearer ${credential}`, Upgrade: 'websocket' },
+    }),
+    env,
+  );
+  if (response.status !== 101 || !response.webSocket)
+    throw new Error(`Upgrade refused: ${response.status}`);
+  const socket = response.webSocket,
+    messages: string[] = [];
+  let closeCode: number | undefined;
+  socket.addEventListener('message', (event) => {
+    messages.push(String(event.data));
+  });
+  socket.addEventListener('close', (event) => {
+    closeCode = event.code;
+  });
+  socket.accept();
+  await expect.poll(() => messages.length).toBe(1);
+  return { socket, messages, code: () => closeCode };
+}
+
+it('native Group updates authenticate the fixed upgrade, bound connections, and reject incoming commands', async () => {
+  const a = await create(),
+    path = `http://127.0.0.1/v1/groups/${a.groupId}/updates`;
+  const before = await snapshot(a.stub);
+  for (const request of [
+    new Request(path, { headers: { Authorization: `Bearer ${secret()}`, Upgrade: 'websocket' } }),
+    new Request(path, {
+      headers: {
+        Authorization: `Bearer ${a.credential}`,
+        Upgrade: 'websocket',
+        Origin: 'https://browser.invalid',
+      },
+    }),
+    new Request(`${path}?credential=ignored`, {
+      headers: { Authorization: `Bearer ${a.credential}`, Upgrade: 'websocket' },
+    }),
+    new Request(path, { headers: { Authorization: `Bearer ${a.credential}` } }),
+  ])
+    expect((await worker.fetch(request, env)).status).toBe(403);
+  const first = await nativeUpdates(a),
+    second = await nativeUpdates(a);
+  try {
+    expect(JSON.parse(first.messages[0])).toEqual({
+      version: 1,
+      groupId: a.groupId,
+      kind: 'connected',
+    });
+    expect(first.messages.join('')).not.toContain(a.credential);
+    expect(first.messages.join('')).not.toContain(a.alice.installationId);
+    expect(
+      (
+        await worker.fetch(
+          new Request(path, {
+            headers: { Authorization: `Bearer ${a.credential}`, Upgrade: 'websocket' },
+          }),
+          env,
+        )
+      ).status,
+    ).toBe(429);
+    first.socket.send(JSON.stringify({ kind: 'approve', arbitraryMethod: 'must-not-execute' }));
+    await expect.poll(first.code).toBe(1008);
+    expect(await snapshot(a.stub)).toEqual(before);
+  } finally {
+    first.socket.close();
+    second.socket.close();
+  }
+});
+
+it('native Group updates survive DO eviction, invalidate only after commit, and close revoked enrollment before hints', async () => {
+  const a = await create(),
+    inviteSecret = secret(),
+    credential = secret();
+  expect(
+    (
+      await call(a.groupId, a.credential, {
+        kind: 'invite',
+        operationId: operationId(),
+        inviteSecret,
+        ttlSeconds: 3600,
+      })
+    ).ok,
+  ).toBe(true);
+  const bob = identity(
+    await call(a.groupId, credential, {
+      kind: 'join',
+      operationId: operationId(),
+      inviteSecret,
+      confirmation: secret(),
+      displayName: 'Bob',
+    }),
+  );
+  const own = await nativeUpdates(a),
+    member = await nativeUpdates(a, credential);
+  try {
+    await evictDurableObject(a.stub);
+    const instruction = {
+      kind: 'instruction',
+      operationId: operationId(),
+      text: 'This text must never appear on an invalidation socket.',
+    };
+    expect(
+      (await a.stub.actions({ groupId: a.groupId, credential: a.credential, command: instruction }))
+        .ok,
+    ).toBe(true);
+    await expect.poll(() => own.messages.length).toBe(2);
+    await expect.poll(() => member.messages.length).toBe(2);
+    expect(own.messages[1]).toBe(
+      JSON.stringify({ version: 1, groupId: a.groupId, kind: 'changed' }),
+    );
+    expect(own.messages.join('')).not.toContain(instruction.text);
+    await call(a.groupId, a.credential, { kind: 'status' });
+    expect(own.messages).toHaveLength(2);
+    expect(
+      (
+        await call(a.groupId, a.credential, {
+          kind: 'revoke',
+          operationId: operationId(),
+          installationId: bob.installationId,
+        })
+      ).ok,
+    ).toBe(true);
+    await expect.poll(member.code).toBe(4003);
+    await expect.poll(() => own.messages.length).toBe(3);
+    expect(member.messages).toHaveLength(2);
+    const refused = await worker.fetch(
+      new Request(`http://127.0.0.1/v1/groups/${a.groupId}/updates`, {
+        headers: { Authorization: `Bearer ${credential}`, Upgrade: 'websocket' },
+      }),
+      env,
+    );
+    expect(refused.status).toBe(403);
+  } finally {
+    own.socket.close();
+    member.socket.close();
+  }
+});

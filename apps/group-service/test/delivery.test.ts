@@ -123,6 +123,108 @@ afterEach(async () => {
   await reset();
   Object.assign(env, { HOSTING_MODE: 'disabled', GROUP_SETUP_HASH: '' });
 });
+
+it('native notifications wake newly retained summary completion but not renewal or replayed completion', async () => {
+  const f = await fixture();
+  const response = await f.stub.fetch(
+    new Request(`http://127.0.0.1/v1/groups/${f.groupId}/updates`, {
+      headers: { Authorization: `Bearer ${f.credential}`, Upgrade: 'websocket' },
+    }),
+  );
+  expect(response.status).toBe(101);
+  const socket = response.webSocket!;
+  const messages: string[] = [];
+  socket.addEventListener('message', (event) => {
+    messages.push(String(event.data));
+  });
+  socket.accept();
+  try {
+    await expect.poll(() => messages.length).toBe(1);
+    const event = await f.event('Exact summary original');
+    const projected = await f.event('Exact summary original');
+    const sourceId = await runInDurableObject(
+      f.stub,
+      (_instance, state) =>
+        state.storage.sql
+          .exec<{
+            source_id: string;
+          }>(
+            'SELECT source_id FROM delivery_messages WHERE message_id=?',
+            event.header.event.scope.source.messageId,
+          )
+          .one().source_id,
+    );
+    const source = groupPromotionSourceSchema.parse({
+      key: { groupId: f.groupId, sourceId, version: '1' },
+      writerId: f.identity.installationId,
+      scope: event.header.event.scope,
+      projectionScope: projected.header.event.scope,
+      kind: 'human',
+      activity: 'substantive',
+      contentMode: 'shared-content',
+      original: { kind: 'inline', text: 'Exact summary original' },
+      evidenceRefs: [],
+      correction: null,
+      decision: null,
+      synthesisAuthorized: false,
+    });
+    const promote = (command: unknown) =>
+      f.stub.promote({ groupId: f.groupId, credential: f.credential, command });
+    expect(await promote({ kind: 'register', source })).toMatchObject({ ok: true });
+    expect(await promote({ kind: 'designate', writerId: f.identity.installationId })).toMatchObject(
+      { ok: true },
+    );
+    const adoption = await promote({ kind: 'adopt', source });
+    if (!adoption.ok || adoption.value.kind !== 'registered') throw new Error('Expected adoption');
+    const identity = adoption.value.identity;
+    const reserved = await promote({ kind: 'command', command: { kind: 'reserve', identity } });
+    if (!reserved.ok || reserved.value.kind !== 'receipt') throw new Error('Expected reserve');
+    for (const command of [
+      {
+        kind: 'decide',
+        identity,
+        decision: { category: 'Finding', sentences: ['Retained summary.'], evidenceRefs: [] },
+      },
+      { kind: 'bindEvent', identity, eventId: projected.header.event.eventId },
+    ])
+      expect(await promote({ kind: 'command', command })).toMatchObject({ ok: true });
+    expect(messages).toHaveLength(1);
+    const summary = publicationEnvelope(f.binding, projected.header.operationId, {
+      event: groupEventSchema.parse({
+        ...projected.header.event,
+        operationId: reserved.value.receipt.operationId,
+        entityId: reserved.value.receipt.entityId,
+        condensedText: 'Retained summary.',
+      }),
+      original: 'Exact summary original',
+    });
+    expect(await f.publish(summary)).toMatchObject({
+      ok: true,
+      value: { receipt: { state: 'committed' } },
+    });
+    await expect.poll(() => messages.length).toBe(2);
+    const command = {
+      kind: 'published',
+      identity,
+      eventId: projected.header.event.eventId,
+      publicationOperationId: projected.header.operationId,
+    };
+    expect(await promote({ kind: 'command', command })).toMatchObject({
+      ok: true,
+      value: { kind: 'receipt', acquired: true },
+    });
+    await expect.poll(() => messages.length).toBe(3);
+    expect(await promote({ kind: 'renew' })).toMatchObject({ ok: true });
+    expect(await promote({ kind: 'command', command })).toMatchObject({
+      ok: true,
+      value: { acquired: false },
+    });
+    expect(messages).toHaveLength(3);
+    expect(messages.join('')).not.toContain('Exact summary original');
+  } finally {
+    socket.close();
+  }
+});
 it.each(['original', 'summary'] as const)(
   'allows only the first committed %s for a legacy chat source across concurrent staged deliveries and eviction',
   async (first) => {

@@ -200,6 +200,10 @@ A session before its first turn may not expose history. Simultaneous native/phon
 join a reply; this is not an exclusive input lease. Closing the observer leaves native work
 running. These sessions are not converted into QUARK-managed workers.
 
+On short touch screens, a collapsed native-question compatibility notice shares the
+**Your prompts** toolbar so the transcript and composer retain reading space. Actual pending
+requests, answer receipts and opened compatibility details keep their own full-width row.
+
 ## Observed native questions
 
 Companion **0.2.16** observes incoming requests on the existing Codex dispatcher for the

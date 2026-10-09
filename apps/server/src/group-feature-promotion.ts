@@ -12,6 +12,11 @@ import { GroupPromotionEvidenceIndex } from './group-promotion-evidence.js';
 import { publicationCanonical } from './group-publication-protocol.js';
 import { privateGroupFile, protectGroupSidecars } from './group-host-storage.js';
 import type { GroupHost } from './group-host.js';
+import {
+  initializeGroupLocalReceiptCapacity,
+  admitGroupLocalReceipt,
+} from './group-local-receipt-capacity.js';
+import { Conflict } from './store.js';
 
 const quietHuman = /^(?:thanks?|thank you|ok(?:ay)?|got it|noted|ack(?:nowledged)?|👍)[.!\s]*$/iu;
 /** One normal-host delivery lifecycle, not one timer/model turn per source.
@@ -35,6 +40,7 @@ export class GroupFeaturePromotion {
       CREATE TRIGGER IF NOT EXISTS gh_promotion_projections_no_update BEFORE UPDATE ON gh_promotion_projections BEGIN SELECT RAISE(ABORT,'immutable projection'); END;
       CREATE TRIGGER IF NOT EXISTS gh_promotion_projections_no_delete BEFORE DELETE ON gh_promotion_projections BEGIN SELECT RAISE(ABORT,'retained projection'); END;
     `);
+    initializeGroupLocalReceiptCapacity(host.db);
     const path = join(host.directory, 'promotion-evidence.sqlite');
     privateGroupFile(path);
     this.index = new GroupPromotionEvidenceIndex(path, host.events);
@@ -64,8 +70,13 @@ export class GroupFeaturePromotion {
       .get(request.identity.key.sourceId, request.identity.key.version);
     if (!row || String(row.source_json) !== publicationCanonical(request.source))
       throw new Error('Exact retained writer projection required.');
-    if (!this.host.localVisible(String(row.enrollment_handle)))
-      throw new Error('Removed locally; optional summaries are paused.');
+    if (
+      !this.host.localVisible(String(row.enrollment_handle)) ||
+      !this.host.localContributing(String(row.enrollment_handle))
+    )
+      throw new Error(
+        'Local contributions are paused; optional summaries wait for Contribute and a visible group.',
+      );
     const port = await this.host.promotionContext(String(row.enrollment_handle));
     if (
       port.context.visibility !== 'shared' ||
@@ -97,6 +108,8 @@ export class GroupFeaturePromotion {
     )
       throw new Error('Exact authoritative synthesis receipt required.');
     await port.revalidate();
+    if (!this.host.localContributing(String(row.enrollment_handle)))
+      throw new Error('Read-only; optional summaries are paused.');
     return {
       context: port.context,
       enrollmentHandle: String(row.enrollment_handle),
@@ -138,8 +151,13 @@ export class GroupFeaturePromotion {
     if (old && (old.enrollment_handle !== input.enrollmentHandle || old.source_json !== exact))
       throw new Error('Producer receipt changed.');
     if (!old) {
-      const count = this.host.db.prepare('SELECT count(*) n FROM gh_promotion_inputs').get()!;
-      if (Number(count.n) >= 512) return 'full: original retained; shared source capacity reached';
+      try {
+        admitGroupLocalReceipt(this.host.db, 'gh_promotion_inputs', exact, 'pending');
+      } catch (error) {
+        if (error instanceof Conflict)
+          return 'full: original retained; local summary receipt storage is full';
+        throw error;
+      }
       this.host.db
         .prepare(
           'INSERT INTO gh_promotion_inputs(receipt_id,enrollment_handle,source_json,state) VALUES(?,?,?,?)',
@@ -293,7 +311,11 @@ export class GroupFeaturePromotion {
     for (const row of pending) {
       if (this.closed) return;
       this.inputCursor = Number(row.rowid);
-      if (!this.host.localVisible(String(row.enrollment_handle))) continue;
+      if (
+        !this.host.localVisible(String(row.enrollment_handle)) ||
+        !this.host.localContributing(String(row.enrollment_handle))
+      )
+        continue;
       await this.status(String(row.receipt_id));
     }
     const writers = this.host.db
@@ -305,7 +327,7 @@ export class GroupFeaturePromotion {
       const writer = writers[this.writerCursor++ % writers.length]!;
       if (this.closed) return;
       const handle = String(writer.enrollment_handle);
-      if (!this.host.localVisible(handle)) continue;
+      if (!this.host.localVisible(handle) || !this.host.localContributing(handle)) continue;
       let stage = 'writer enrollment';
       try {
         const port = await this.host.promotionContext(handle);

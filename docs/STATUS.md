@@ -66,6 +66,13 @@ Shared-chat source delivery recovery now distinguishes missing from recorded unc
 receipts. Explicit same-message retry is available only after a missing-receipt read;
 recorded uncertainty stays held, and definite refusals keep edited drafts without a pending
 loop. Provider-free fixtures do not establish live editor or physical-phone acceptance.
+A 2026-10-09 local layout regression check reproduced all three published landscape
+failures: both busy shared-provider views hid the first saved message, and synthetic keyboard
+contraction was only 74 pixels. Sharing the collapsed compatibility notice with the history
+toolbar resolved the original assertions. Eighteen focused cases covered both providers,
+fresh native questions, older/native-only requests and keyboard reading anchors at desktop
+and emulated phone sizes. This is local source verification; public CI and actual devices
+remain separate acceptance.
 Compatible shared Codex connections also expose native goal creation, status, accounting,
 pause, resume and clearing in the app. Existing budgets and native conversation identities
 are preserved. An older companion needs a safe update/reload; the app does not interrupt
@@ -246,7 +253,7 @@ and emulated-browser checks cover these changes; see [verification](VERIFICATION
 
 **Current v1 implementation:** Groups uses ordinary host-native agents with the
 existing Codex/Claude sign-in. The shared journey lives under **Chats → Groups**, with
-**Group chat** for everyone’s messages and **Group manager** for the owner’s agent. Previously
+**Group chat** for everyone’s messages and **My group agent** for the owner’s agent. Previously
 saved private sessions, requests and drafts retain their separate publication boundaries. The owner enables native access on their
 computer; incoming group messages do not authorize local work. Ask is read-only and Work
 explicitly authorizes native writing. This is not an operating-system sandbox. Docker and
@@ -332,6 +339,39 @@ credential copying is used. See [Groups workflow](GROUP_WORKFLOW.md),
 **Help → Report an issue** opens a public GitHub issue draft for user review and submission.
 It sends only the entered report and the screen name; private chats/logs are not attached.
 The separate **Report a bug** flow remains a private local report.
+
+## Local Groups folder preparation evidence
+
+SWA-GROUPS-NORMAL-UI-20261009 first interface checkpoint covered first setup/copy/reload,
+exact own report receipts and terminal capture guidance, scoped-report revocation,
+lazy Advanced mount/draft retention and owner enable/continue at desktop and emulated
+412×915, 360×800 and 915×412. These are provider-free source/fixture checks, not installed
+user or physical-phone acceptance.
+
+SWA-GROUPS-LOCAL-SETUP-UI-20261009 covered pre-service folder choice/scoped prompts,
+exact folder/binding/repository retries after lost replies and reload, discarded stale folder
+status, preserved explicit sync pause, one Git controller, and actual local remove/restore
+with retained drafts. Eight normal-host browser cases and four first-setup cases passed across
+desktop and the three emulated sizes. Git/folder browser responses are controlled UI fixtures;
+local visibility uses the actual protected host endpoint. No provider or real GitHub call,
+installed-app activation or physical-device acceptance is established. Contribution mode
+uses separately reviewed server admission and the normal selector; checks are recorded below.
+
+SWA-GROUPS-FOLDER-20261009 source fixtures covered authenticated paired-host folder selection,
+actual native Work cwd, an owned local Git remote in both file directions, and a disposable
+local Groups service with zero provider launches. Completed selection retries remain valid
+while later Git work is pending or the folder is unavailable, and cannot append a new revision.
+These are local source checks, not real GitHub/Cloudflare account acceptance or live activation.
+
+SWA-GROUPS-CONTRIBUTION-UI-20261009 added the normal saved Read-only/Contribute selector,
+exact interrupted-change retry and read-only current-setting check. Browser fixtures used
+the protected host to verify server refusals, retained drafts through reload, and old receipt
+acknowledgement followed by the later current mode. Advanced shows optional logical local
+receipt admission usage, with absent metadata and near/full-budget cases and no new read loop.
+All 96 normal-host browser checks passed on desktop and the three emulated sizes; shared,
+server and web builds passed. Existing chat, Git and backup fixtures follow current labels,
+lazy Advanced access and exact scoped notification/cancellation behavior. Provider calls,
+installed-app activation, physical devices and real joint-user acceptance were not exercised.
 
 ## Intentionally deferred
 

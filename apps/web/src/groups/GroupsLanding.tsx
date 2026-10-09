@@ -18,6 +18,7 @@ export function GroupsLanding({
   setupCodeRequired = false,
   onNewSetupCode,
   joinReceipt,
+  removedGroups,
   selectedId,
   query = '',
   onSetup,
@@ -98,12 +99,12 @@ export function GroupsLanding({
         </button>
         {onSetup && (
           <button
-            className="chat-icon-button"
+            className="flow-button"
             aria-label="Group setup"
             title="Group setup"
             onClick={onSetup}
           >
-            ?
+            Setup
           </button>
         )}
       </div>
@@ -155,6 +156,7 @@ export function GroupsLanding({
               ) && <p className="chat-list-empty">No groups match your search.</p>}
           </>
         )}
+        {removedGroups}
       </nav>
       {mode && (
         <Modal

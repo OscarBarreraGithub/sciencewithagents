@@ -58,13 +58,13 @@ export function GroupReports({ handle }: { handle: string }) {
   };
   return (
     <details className="group-host-members group-reports">
-      <summary>Shared reports</summary>
+      <summary>Browse earlier shared reports</summary>
       <p>
-        Reports appear here only after their owner explicitly shares selected files. Reading and PDF
-        downloads remain in this group.
+        Open a report from its message in Group chat. This list also finds older shared copies. Only
+        files explicitly shared by their owner are available; reading stays in this group.
       </p>
       <button disabled={busy} onClick={() => void load()}>
-        Load shared reports
+        Find shared reports
       </button>
       {entries.map((entry) => (
         <div key={entry.key.publicationId} className="group-report-row">

@@ -194,9 +194,11 @@ explicitly. Provider sign-in belongs to this person, never the maintainer or ano
 
 Enable requested group agents through [native owner setup](GROUP_NATIVE_OWNER_SETUP.md).
 They use the normal host runtime and this person’s existing provider sign-in. Explain the
-**Group chat** / **Group manager** distinction and normal native computer access; conversation
-separation is not a filesystem sandbox. Do not require Docker, Linux or a duplicate provider
-sign-in. A missing or expired native sign-in must remain visible. Phone access, VS Code
+**Group chat** shows everyone’s shared messages. **My group agent** belongs to this member
+and uses their own provider account and allowance; its shared requests and results are visible
+to the group. Other members’ agents run on their own computers. Explain ordinary native
+computer access: conversation separation is not a filesystem sandbox. Do not require Docker,
+Linux or a duplicate provider sign-in. A missing or expired native sign-in must remain visible. Phone access, VS Code
 sharing and Git are optional and do not block desktop human group messages.
 
 ### First project and manager handoff
