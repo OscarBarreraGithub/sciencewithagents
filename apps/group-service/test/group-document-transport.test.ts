@@ -17,6 +17,7 @@ import { creationGroupId, setupHash } from '../src/crypto.js';
 import worker from '../src/index.js';
 import {
   fillNormalFeatureFence,
+  physicalPressureCase,
   pressureMembers,
   revokeIntoProtectedEnvelope,
 } from './capacity-pressure.js';
@@ -194,61 +195,67 @@ afterEach(async () => {
   Object.assign(env, { HOSTING_MODE: 'disabled', GROUP_SETUP_HASH: '' });
 });
 
-it('retains accepted report completion and authorized originals when other members revoke into the protected envelope', async () => {
-  const f = await fixture(),
-    members = await pressureMembers(f.membership),
-    originalKey = await f.make(f.credential).publish(f.manifest, f.files),
-    manifest = sharedDocumentManifestSchema.parse({ ...f.manifest, publicationId: uuid() }),
-    key = documentPublicationKey(manifest);
-  expect(await f.call({ kind: 'begin', key, binding: f.binding, manifest })).toMatchObject({
-    ok: true,
-  });
-  await fillNormalFeatureFence(f.stub);
-  const pressure = await revokeIntoProtectedEnvelope(f.stub, f.membership, members);
-  const next = sharedDocumentManifestSchema.parse({ ...manifest, publicationId: uuid() });
-  expect(
-    await f.call({
-      kind: 'begin',
-      key: documentPublicationKey(next),
-      binding: f.binding,
-      manifest: next,
-    }),
-  ).toEqual({ ok: false, error: 'limit' });
-  await evictDurableObject(f.stub);
-  expect(await f.call({ kind: 'receipt', key })).toMatchObject({
-    ok: true,
-    value: { receipt: { state: 'staged' } },
-  });
-  const reader = f.make(f.b.token);
-  expect(await reader.read(originalKey, f.sourceId)).toEqual(f.bytes);
-  expect(await reader.read(originalKey, f.pdfId)).toEqual(f.pdf);
-  for (const [fileId, bytes] of f.files)
-    for (let index = 0; index * L.chunkBytes < bytes.length; index++) {
-      expect(
-        await f.call({
-          kind: 'chunk',
-          key,
-          fileId,
-          index,
-          base64: Buffer.from(
-            bytes.slice(index * L.chunkBytes, (index + 1) * L.chunkBytes),
-          ).toString('base64'),
-        }),
-      ).toMatchObject({ ok: true });
-    }
-  const committed = await f.call({ kind: 'commit', key });
-  expect(committed).toMatchObject({ ok: true, value: { receipt: { state: 'committed' } } });
-  await evictDurableObject(f.stub);
-  expect(await f.call({ kind: 'commit', key })).toEqual(committed);
-  expect(await f.call({ kind: 'manifest', key }, pressure.revoked.credential)).toEqual({
-    ok: false,
-    error: 'denied',
-  });
-  expect(await f.call({ kind: 'manifest', key }, f.pending.token)).toEqual({
-    ok: false,
-    error: 'denied',
-  });
-});
+physicalPressureCase(
+  'retains accepted report completion and authorized originals when other members revoke into the protected envelope',
+  async () => {
+    const f = await fixture(),
+      members = await pressureMembers(f.membership),
+      originalKey = await f.make(f.credential).publish(f.manifest, f.files),
+      manifest = sharedDocumentManifestSchema.parse({ ...f.manifest, publicationId: uuid() }),
+      key = documentPublicationKey(manifest);
+    expect(await f.call({ kind: 'begin', key, binding: f.binding, manifest })).toMatchObject({
+      ok: true,
+    });
+    await fillNormalFeatureFence(f.stub);
+    return { f, members, originalKey, manifest, key };
+  },
+  async ({ f, members, originalKey, manifest, key }) => {
+    const pressure = await revokeIntoProtectedEnvelope(f.stub, f.membership, members);
+    const next = sharedDocumentManifestSchema.parse({ ...manifest, publicationId: uuid() });
+    expect(
+      await f.call({
+        kind: 'begin',
+        key: documentPublicationKey(next),
+        binding: f.binding,
+        manifest: next,
+      }),
+    ).toEqual({ ok: false, error: 'limit' });
+    await evictDurableObject(f.stub);
+    expect(await f.call({ kind: 'receipt', key })).toMatchObject({
+      ok: true,
+      value: { receipt: { state: 'staged' } },
+    });
+    const reader = f.make(f.b.token);
+    expect(await reader.read(originalKey, f.sourceId)).toEqual(f.bytes);
+    expect(await reader.read(originalKey, f.pdfId)).toEqual(f.pdf);
+    for (const [fileId, bytes] of f.files)
+      for (let index = 0; index * L.chunkBytes < bytes.length; index++) {
+        expect(
+          await f.call({
+            kind: 'chunk',
+            key,
+            fileId,
+            index,
+            base64: Buffer.from(
+              bytes.slice(index * L.chunkBytes, (index + 1) * L.chunkBytes),
+            ).toString('base64'),
+          }),
+        ).toMatchObject({ ok: true });
+      }
+    const committed = await f.call({ kind: 'commit', key });
+    expect(committed).toMatchObject({ ok: true, value: { receipt: { state: 'committed' } } });
+    await evictDurableObject(f.stub);
+    expect(await f.call({ kind: 'commit', key })).toEqual(committed);
+    expect(await f.call({ kind: 'manifest', key }, pressure.revoked.credential)).toEqual({
+      ok: false,
+      error: 'denied',
+    });
+    expect(await f.call({ kind: 'manifest', key }, f.pending.token)).toEqual({
+      ok: false,
+      error: 'denied',
+    });
+  },
+);
 it('two authenticated hosts retain exact source/PDF through lost ACK and eviction; download only on demand; revoke immediately', async () => {
   const f = await fixture();
   let lose = true,

@@ -18,6 +18,7 @@ import { creationGroupId, setupHash } from '../src/crypto.js';
 import { groupPromotionSourceSchema } from '@dock/shared/dist/group-promotion.js';
 import {
   fillNormalFeatureFence,
+  physicalPressureCase,
   pressureMembers,
   revokeIntoProtectedEnvelope,
 } from './capacity-pressure.js';
@@ -753,88 +754,94 @@ it('admits small histories beyond old operation/source counts and denies cross-c
   expect(await f.call(sourceCommand)).toEqual(original);
 });
 
-it('keeps revocation admissible at combined physical event and membership capacity', async () => {
-  const f = await fixture();
-  const inviteSecret = secret(),
-    credential = secret(),
-    confirmation = secret();
-  await f.membership({ kind: 'invite', operationId: uuid(), inviteSecret, ttlSeconds: 900 });
-  const joined = await f.membership(
-    { kind: 'join', operationId: uuid(), inviteSecret, confirmation, displayName: 'Bob' },
-    credential,
-  );
-  if (!joined.ok || joined.value.kind !== 'identity') throw new Error('join');
-  const bob = joined.value.identity;
-  await f.membership({
-    kind: 'approve',
-    operationId: uuid(),
-    installationId: bob.installationId,
-    confirmation,
-  });
-  const e = await f.event();
-  const C = (await import('../src/capacity.js')).MEMBERSHIP_CAPACITY;
-  await runInDurableObject(f.stub, (_instance, state) => {
-    // Seed quota/history occupancy as in the approved membership pressure fixture.
-    // The database bytes themselves are actual local SQLite pages, not an estimated size.
-    state.storage.sql.exec('CREATE TABLE combined_pressure(x BLOB)').toArray();
-    while (state.storage.sql.databaseSize < C.normalDatabaseBytes + L.databaseBytes)
-      state.storage.sql.exec('INSERT INTO combined_pressure VALUES(zeroblob(131072))').toArray();
-    state.storage.sql
-      .exec('UPDATE delivery_control SET allocated=?,logical=?', L.databaseBytes, L.logicalBytes)
-      .toArray();
-    state.storage.sql
-      .exec(
-        'UPDATE metadata SET operations=?,day=?,day_mutations=?',
-        C.normalOperations,
-        Math.floor(Date.now() / 86400000),
-        500,
-      )
-      .toArray();
-    expect(C.pointerMapPages).toBe(198);
-    expect(C.reservedDatabaseBytes + L.databaseBytes).toBeLessThan(1_000_000_000);
-  });
-  expect(await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } })).toEqual({
-    ok: false,
-    error: 'limit',
-  });
-  expect(
+physicalPressureCase(
+  'keeps revocation admissible at combined physical event and membership capacity',
+  async () => {
+    const f = await fixture();
+    const inviteSecret = secret(),
+      credential = secret(),
+      confirmation = secret();
+    await f.membership({ kind: 'invite', operationId: uuid(), inviteSecret, ttlSeconds: 900 });
+    const joined = await f.membership(
+      { kind: 'join', operationId: uuid(), inviteSecret, confirmation, displayName: 'Bob' },
+      credential,
+    );
+    if (!joined.ok || joined.value.kind !== 'identity') throw new Error('join');
+    const bob = joined.value.identity;
     await f.membership({
-      kind: 'invite',
+      kind: 'approve',
       operationId: uuid(),
-      inviteSecret: secret(),
-      ttlSeconds: 10,
-    }),
-  ).toEqual({ ok: false, error: 'limit' });
-  const revoke = { kind: 'revoke', operationId: uuid(), installationId: bob.installationId };
-  await runInDurableObject(f.stub, (_i, state) =>
-    state.storage.sql
-      .exec(
-        "CREATE TRIGGER pressure_fault BEFORE INSERT ON receipts BEGIN SELECT RAISE(ABORT,'fault'); END",
-      )
-      .toArray(),
-  );
-  expect(await f.membership(revoke)).toEqual({ ok: false, error: 'unavailable' });
-  await evictDurableObject(f.stub);
-  expect(await f.call({ kind: 'feed', after: 0, limit: 1, cursor: null })).toEqual({
-    ok: false,
-    error: 'unavailable',
-  });
-  await runInDurableObject(f.stub, (_i, state) => {
-    expect(
+      installationId: bob.installationId,
+      confirmation,
+    });
+    const e = await f.event();
+    const C = (await import('../src/capacity.js')).MEMBERSHIP_CAPACITY;
+    await runInDurableObject(f.stub, (_instance, state) => {
+      // Seed quota/history occupancy as in the approved membership pressure fixture.
+      // The database bytes themselves are actual local SQLite pages, not an estimated size.
+      state.storage.sql.exec('CREATE TABLE combined_pressure(x BLOB)').toArray();
+      while (state.storage.sql.databaseSize < C.normalDatabaseBytes + L.databaseBytes)
+        state.storage.sql.exec('INSERT INTO combined_pressure VALUES(zeroblob(131072))').toArray();
       state.storage.sql
-        .exec('SELECT state FROM delivery_revocations WHERE target_id=?', bob.installationId)
-        .one().state,
-    ).toBe('open');
-    state.storage.sql.exec('DROP TRIGGER pressure_fault').toArray();
-  });
-  expect((await f.membership(revoke)).ok).toBe(true);
-  await evictDurableObject(f.stub);
-  expect(await f.call({ kind: 'feed', after: 0, limit: 1, cursor: null }, credential)).toEqual({
-    ok: false,
-    error: 'denied',
-  });
-  expect((await f.call({ kind: 'feed', after: 0, limit: 1, cursor: null })).ok).toBe(true);
-});
+        .exec('UPDATE delivery_control SET allocated=?,logical=?', L.databaseBytes, L.logicalBytes)
+        .toArray();
+      state.storage.sql
+        .exec(
+          'UPDATE metadata SET operations=?,day=?,day_mutations=?',
+          C.normalOperations,
+          Math.floor(Date.now() / 86400000),
+          500,
+        )
+        .toArray();
+      expect(C.pointerMapPages).toBe(198);
+      expect(C.reservedDatabaseBytes + L.databaseBytes).toBeLessThan(1_000_000_000);
+    });
+    return { f, e, bob, credential };
+  },
+  async ({ f, e, bob, credential }) => {
+    expect(await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } })).toEqual({
+      ok: false,
+      error: 'limit',
+    });
+    expect(
+      await f.membership({
+        kind: 'invite',
+        operationId: uuid(),
+        inviteSecret: secret(),
+        ttlSeconds: 10,
+      }),
+    ).toEqual({ ok: false, error: 'limit' });
+    const revoke = { kind: 'revoke', operationId: uuid(), installationId: bob.installationId };
+    await runInDurableObject(f.stub, (_i, state) =>
+      state.storage.sql
+        .exec(
+          "CREATE TRIGGER pressure_fault BEFORE INSERT ON receipts BEGIN SELECT RAISE(ABORT,'fault'); END",
+        )
+        .toArray(),
+    );
+    expect(await f.membership(revoke)).toEqual({ ok: false, error: 'unavailable' });
+    await evictDurableObject(f.stub);
+    expect(await f.call({ kind: 'feed', after: 0, limit: 1, cursor: null })).toEqual({
+      ok: false,
+      error: 'unavailable',
+    });
+    await runInDurableObject(f.stub, (_i, state) => {
+      expect(
+        state.storage.sql
+          .exec('SELECT state FROM delivery_revocations WHERE target_id=?', bob.installationId)
+          .one().state,
+      ).toBe('open');
+      state.storage.sql.exec('DROP TRIGGER pressure_fault').toArray();
+    });
+    expect((await f.membership(revoke)).ok).toBe(true);
+    await evictDurableObject(f.stub);
+    expect(await f.call({ kind: 'feed', after: 0, limit: 1, cursor: null }, credential)).toEqual({
+      ok: false,
+      error: 'denied',
+    });
+    expect((await f.call({ kind: 'feed', after: 0, limit: 1, cursor: null })).ok).toBe(true);
+  },
+);
 
 it('registers exact stable contexts with many messages; conflicts and spoofed local authors never lock the group', async () => {
   const f = await fixture();
@@ -1298,105 +1305,119 @@ it('new admissions cannot spend another original, report or action future alloca
   });
 });
 
-it('completes an accepted original after unrelated member revocations grow into the protected membership envelope', async () => {
-  const f = await fixture(),
-    members = await pressureMembers(f.membership),
-    e = await f.event('Accepted exact original after revocation', 2),
-    next = await f.event('New admission'),
-    key = keyOf(e.header);
-  const promote = (command: unknown, credential = f.credential) =>
-    f.stub.promote({ groupId: f.groupId, credential, command });
-  expect(await promote({ kind: 'designate', writerId: f.identity.installationId })).toMatchObject({
-    ok: true,
-  });
-  const sourceId = await runInDurableObject(
-    f.stub,
-    (_, state) =>
-      state.storage.sql
-        .exec<{
-          source_id: string;
-        }>(
-          'SELECT source_id FROM delivery_messages WHERE message_id=?',
-          e.header.event.scope.source.messageId,
-        )
-        .one().source_id,
-  );
-  const source = groupPromotionSourceSchema.parse({
-    key: { groupId: f.groupId, sourceId, version: '1' },
-    writerId: f.identity.installationId,
-    scope: e.header.event.scope,
-    projectionScope: e.header.event.scope,
-    kind: 'human',
-    activity: 'substantive',
-    contentMode: 'shared-content',
-    original: { kind: 'inline', text: e.chunks.map((c) => c.text).join('') },
-    evidenceRefs: [],
-    correction: null,
-    decision: null,
-    synthesisAuthorized: false,
-  });
-  expect(await promote({ kind: 'register', source })).toMatchObject({ ok: true });
-  const adopted = await promote({ kind: 'adopt', source });
-  if (!adopted.ok || adopted.value.kind !== 'registered') throw new Error('Expected adoption');
-  expect(
-    await promote({
-      kind: 'command',
-      command: { kind: 'reserve', identity: adopted.value.identity },
-    }),
-  ).toMatchObject({ ok: true });
-  expect(
-    await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } }),
-  ).toMatchObject({ ok: true });
-  for (const chunk of e.chunks.slice(0, 1))
-    expect(await f.call({ kind: 'effect', packet: { kind: 'chunk', key, chunk } })).toMatchObject({
-      ok: true,
-    });
-  await fillNormalFeatureFence(f.stub);
-  const pressure = await revokeIntoProtectedEnvelope(f.stub, f.membership, members);
-  await evictDurableObject(f.stub);
-  expect(await promote({ kind: 'pending', after: 0 })).toMatchObject({
-    ok: true,
-    value: { pending: 1 },
-  });
-  expect(
-    await promote({
-      kind: 'command',
-      command: {
-        kind: 'decide',
-        identity: adopted.value.identity,
-        decision: { category: 'Finding', sentences: ['Retained original.'], evidenceRefs: [] },
+physicalPressureCase(
+  'completes an accepted original after unrelated member revocations grow into the protected membership envelope',
+  async () => {
+    const f = await fixture(),
+      members = await pressureMembers(f.membership),
+      e = await f.event('Accepted exact original after revocation', 2),
+      next = await f.event('New admission'),
+      key = keyOf(e.header);
+    const promote = (command: unknown, credential = f.credential) =>
+      f.stub.promote({ groupId: f.groupId, credential, command });
+    expect(await promote({ kind: 'designate', writerId: f.identity.installationId })).toMatchObject(
+      {
+        ok: true,
       },
-    }),
-  ).toMatchObject({ ok: true });
-  expect(await promote({ kind: 'pending', after: 0 }, pressure.revoked.credential)).toEqual({
-    ok: false,
-    error: 'denied',
-  });
-  expect(await f.call({ kind: 'effect', packet: { kind: 'begin', header: next.header } })).toEqual({
-    ok: false,
-    error: 'limit',
-  });
-  for (const chunk of e.chunks.slice(1))
-    expect(await f.call({ kind: 'effect', packet: { kind: 'chunk', key, chunk } })).toMatchObject({
+    );
+    const sourceId = await runInDurableObject(
+      f.stub,
+      (_, state) =>
+        state.storage.sql
+          .exec<{
+            source_id: string;
+          }>(
+            'SELECT source_id FROM delivery_messages WHERE message_id=?',
+            e.header.event.scope.source.messageId,
+          )
+          .one().source_id,
+    );
+    const source = groupPromotionSourceSchema.parse({
+      key: { groupId: f.groupId, sourceId, version: '1' },
+      writerId: f.identity.installationId,
+      scope: e.header.event.scope,
+      projectionScope: e.header.event.scope,
+      kind: 'human',
+      activity: 'substantive',
+      contentMode: 'shared-content',
+      original: { kind: 'inline', text: e.chunks.map((c) => c.text).join('') },
+      evidenceRefs: [],
+      correction: null,
+      decision: null,
+      synthesisAuthorized: false,
+    });
+    expect(await promote({ kind: 'register', source })).toMatchObject({ ok: true });
+    const adopted = await promote({ kind: 'adopt', source });
+    if (!adopted.ok || adopted.value.kind !== 'registered') throw new Error('Expected adoption');
+    expect(
+      await promote({
+        kind: 'command',
+        command: { kind: 'reserve', identity: adopted.value.identity },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await f.call({ kind: 'effect', packet: { kind: 'begin', header: e.header } }),
+    ).toMatchObject({ ok: true });
+    for (const chunk of e.chunks.slice(0, 1))
+      expect(await f.call({ kind: 'effect', packet: { kind: 'chunk', key, chunk } })).toMatchObject(
+        {
+          ok: true,
+        },
+      );
+    await fillNormalFeatureFence(f.stub);
+    return { f, members, e, next, key, promote, identity: adopted.value.identity };
+  },
+  async ({ f, members, e, next, key, promote, identity }) => {
+    const pressure = await revokeIntoProtectedEnvelope(f.stub, f.membership, members);
+    await evictDurableObject(f.stub);
+    expect(await promote({ kind: 'pending', after: 0 })).toMatchObject({
+      ok: true,
+      value: { pending: 1 },
+    });
+    expect(
+      await promote({
+        kind: 'command',
+        command: {
+          kind: 'decide',
+          identity,
+          decision: { category: 'Finding', sentences: ['Retained original.'], evidenceRefs: [] },
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(await promote({ kind: 'pending', after: 0 }, pressure.revoked.credential)).toEqual({
+      ok: false,
+      error: 'denied',
+    });
+    expect(
+      await f.call({ kind: 'effect', packet: { kind: 'begin', header: next.header } }),
+    ).toEqual({
+      ok: false,
+      error: 'limit',
+    });
+    for (const chunk of e.chunks.slice(1))
+      expect(await f.call({ kind: 'effect', packet: { kind: 'chunk', key, chunk } })).toMatchObject(
+        {
+          ok: true,
+        },
+      );
+    expect(await f.call({ kind: 'effect', packet: { kind: 'commit', key } })).toMatchObject({
+      ok: true,
+      value: { receipt: { state: 'committed', eventId: e.header.event.eventId } },
+    });
+    await evictDurableObject(f.stub);
+    expect(await f.call({ kind: 'receipt', key })).toMatchObject({
+      ok: true,
+      value: { receipt: { state: 'committed' } },
+    });
+    expect(await f.call({ kind: 'feed', after: 0, limit: 1, cursor: null })).toMatchObject({
       ok: true,
     });
-  expect(await f.call({ kind: 'effect', packet: { kind: 'commit', key } })).toMatchObject({
-    ok: true,
-    value: { receipt: { state: 'committed', eventId: e.header.event.eventId } },
-  });
-  await evictDurableObject(f.stub);
-  expect(await f.call({ kind: 'receipt', key })).toMatchObject({
-    ok: true,
-    value: { receipt: { state: 'committed' } },
-  });
-  expect(await f.call({ kind: 'feed', after: 0, limit: 1, cursor: null })).toMatchObject({
-    ok: true,
-  });
-  expect(await f.call({ kind: 'receipt', key }, pressure.revoked.credential)).toEqual({
-    ok: false,
-    error: 'denied',
-  });
-});
+    expect(await f.call({ kind: 'receipt', key }, pressure.revoked.credential)).toEqual({
+      ok: false,
+      error: 'denied',
+    });
+  },
+);
 
 it('retains more than 512 completed summary-source identities under the same byte ledger without membership-history growth', async () => {
   const f = await fixture();

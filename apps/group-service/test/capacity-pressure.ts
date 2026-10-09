@@ -1,5 +1,5 @@
 import { runInDurableObject } from 'cloudflare:test';
-import { expect } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { DELIVERY_LIMITS as L } from '@dock/shared/dist/group-delivery.js';
 import type { MembershipResult } from '@dock/shared/dist/group-membership.js';
 import type { GroupMembership } from '../src/membership.js';
@@ -12,6 +12,23 @@ const secret = () =>
   [...crypto.getRandomValues(new Uint8Array(32))]
     .map((v) => v.toString(16).padStart(2, '0'))
     .join('');
+
+/** Four owned fixtures write roughly 528 MiB of real SQLite pages. CI observed
+ * setup exceeding the ordinary 5s test limit. Only construction gets 30s;
+ * revocation, completion, reads and recovery retain the default 5s test limit. */
+export function physicalPressureCase<T>(
+  name: string,
+  setup: () => Promise<T>,
+  behavior: (fixture: T) => Promise<void>,
+) {
+  describe(name, () => {
+    let fixture: T;
+    beforeEach(async () => {
+      fixture = await setup();
+    }, 30_000);
+    it('checks authority, completion and exact recovery under pressure', () => behavior(fixture));
+  });
+}
 
 export async function pressureMembers(membership: Membership) {
   const members: { installationId: string; credential: string }[] = [];
