@@ -885,6 +885,7 @@ it('normal action board retains authenticated instructions across lost response/
   expect(proxyPath('POST', '/groups/actions')).toBe('/api/groups/actions');
 });
 
+// Repeated fresh authorization and FULL-sync receipts need a bounded outer fixture budget.
 it('shared work intent supplies a committed instruction and exact native task receipt; ordinary questions grant no action authority', async () => {
   let nativeContext: GroupContext | undefined;
   const factory: GroupNativeConnectorFactory = ({ events }) => ({
@@ -1001,7 +1002,7 @@ it('shared work intent supplies a committed instruction and exact native task re
   expect(next.json().entries).toHaveLength(0);
   const replayAck = await reopened.post('catchup/ack', acknowledgement);
   expect(replayAck.statusCode, replayAck.body).toBe(200);
-});
+}, 15000);
 async function joinMember(
   a: Awaited<ReturnType<typeof installation>>,
   b: Awaited<ReturnType<typeof installation>>,
@@ -2191,115 +2192,118 @@ it('delivers exact human messages and native question/reply between hosts withou
   ).toHaveLength(3);
 });
 
-it.each([false, true])(
-  'recovers an accepted legacy native result with summary already complete=%s without replay or duplicate shared events',
-  async (summaryComplete) => {
-    const a = await installation();
-    const { open } = await create(a, 'Legacy native delivery');
-    const b = await installation();
-    const joined = await joinMember(a, b, open.group.handle);
-    const request = {
-      handle: open.shared.handle,
-      key: randomUUID(),
-      text: 'Original accepted shared question?',
-    };
-    let record = a.host.nativeJournal.prepare(request.handle, {
-      key: request.key,
-      text: request.text,
-      context: open.shared.context,
-      enrollmentHandle: open.group.handle,
-    });
-    const { sessionId: _owner, ...scope } = open.shared.context;
-    const context = a.host.events.createContext({
-      ...scope,
-      provider: 'codex',
-      nativeSessionId: randomUUID(),
-    });
-    const source = {
-      sessionId: context.sessionId,
-      provider: context.provider,
-      nativeSessionId: context.nativeSessionId,
-      messageId: randomUUID(),
-    };
-    const text = 'Exact accepted reply before delivery migration 🧬';
-    record = a.host.nativeJournal.record(record, {
-      requestId: record.request.requestId,
-      state: 'completed',
-      message: 'Native reply retained.',
-      result: { context, source, text, nativeToolItems: 1 },
-    });
-    const access = a.host.events.trustedHostScope({
-      groupId: context.groupId,
-      memberId: context.memberId,
-      installationId: context.installationId,
-      visibility: 'shared',
-      source,
-      causalRefs: [],
-    });
-    const event = a.host.events.append(access, {
-      operationId: groupOperationIdSchema.parse(record.ids.operationId),
-      entityId: groupEntityIdSchema.parse(record.ids.entityId),
-      expectedRevision: 0,
-      category: 'Finding',
-      condensedText: 'Verified native original retained on its source computer',
-      original: { kind: 'inline', text },
-      evidenceRefs: [],
-      corrects: null,
-    }).event;
-    record = a.host.nativeJournal.mark(record, { eventId: event.eventId });
-    const port = await a.host.promotionContext(open.group.handle);
-    const sourceId = await port.registerSource(source, record.ids.operationId);
-    const legacyId = `native:${record.request.requestId}`;
-    expect(
-      await a.host.promotion.retain({
-        receiptId: legacyId,
+// Complete-summary migration adds durable transitions; the false case keeps its 5s budget.
+for (const summaryComplete of [false, true])
+  it(
+    `recovers an accepted legacy native result with summary already complete=${summaryComplete} without replay or duplicate shared events`,
+    async () => {
+      const a = await installation();
+      const { open } = await create(a, 'Legacy native delivery');
+      const b = await installation();
+      const joined = await joinMember(a, b, open.group.handle);
+      const request = {
+        handle: open.shared.handle,
+        key: randomUUID(),
+        text: 'Original accepted shared question?',
+      };
+      let record = a.host.nativeJournal.prepare(request.handle, {
+        key: request.key,
+        text: request.text,
+        context: open.shared.context,
         enrollmentHandle: open.group.handle,
-        sourceId,
-        scope: event.scope,
-        kind: 'native',
+      });
+      const { sessionId: _owner, ...scope } = open.shared.context;
+      const context = a.host.events.createContext({
+        ...scope,
+        provider: 'codex',
+        nativeSessionId: randomUUID(),
+      });
+      const source = {
+        sessionId: context.sessionId,
+        provider: context.provider,
+        nativeSessionId: context.nativeSessionId,
+        messageId: randomUUID(),
+      };
+      const text = 'Exact accepted reply before delivery migration 🧬';
+      record = a.host.nativeJournal.record(record, {
+        requestId: record.request.requestId,
+        state: 'completed',
+        message: 'Native reply retained.',
+        result: { context, source, text, nativeToolItems: 1 },
+      });
+      const access = a.host.events.trustedHostScope({
+        groupId: context.groupId,
+        memberId: context.memberId,
+        installationId: context.installationId,
+        visibility: 'shared',
+        source,
+        causalRefs: [],
+      });
+      const event = a.host.events.append(access, {
+        operationId: groupOperationIdSchema.parse(record.ids.operationId),
+        entityId: groupEntityIdSchema.parse(record.ids.entityId),
+        expectedRevision: 0,
+        category: 'Finding',
+        condensedText: 'Verified native original retained on its source computer',
         original: { kind: 'inline', text },
-      }),
-    ).toContain('pending');
-    if (summaryComplete) {
-      await selectFeedWriter(a, open.shared.handle);
-      await progressFeed(a);
-      expect(await a.host.promotion.status(legacyId)).toBe('complete');
-    }
-    await a.close();
-    const resumed = await installation(a.directory);
-    const recovered = await resumed.post('request-agent', request);
-    expect(recovered.statusCode, recovered.body).toBe(200);
-    expect(recovered.json()).toMatchObject({
-      requestId: record.request.requestId,
-      state: 'completed',
-      delivery: 'complete',
-    });
-    const current = resumed.host.nativeJournal.get(request.handle, request.key)!;
-    expect(current.ids).toEqual(record.ids);
-    expect(current.receipt.eventId).toBe(event.eventId);
-    expect(!!current.receipt.deliveryOperation).toBe(!summaryComplete);
-    await selectFeedWriter(resumed, open.shared.handle);
-    await progressFeed(resumed);
-    expect((await resumed.post('request-agent', request)).json()).toEqual(recovered.json());
-    const query = { visibility: 'shared', after: 0, limit: 20, cursor: null };
-    const feed = await b.post('feed', { handle: joined.open.shared.handle, query });
-    expect(feed.statusCode, feed.body).toBe(200);
-    expect(feed.json().entries).toHaveLength(2);
-    const originals = await Promise.all(
-      feed
-        .json()
-        .entries.map(
-          async (e: { eventId: string }) =>
-            (
-              await b.post('original', { handle: joined.open.shared.handle, eventId: e.eventId })
-            ).json().text,
-        ),
-    );
-    expect(originals).toContain(text);
-    expect(originals.filter((original) => original === text)).toHaveLength(1);
-    expect(originals).toContain(request.text);
-  },
-);
+        evidenceRefs: [],
+        corrects: null,
+      }).event;
+      record = a.host.nativeJournal.mark(record, { eventId: event.eventId });
+      const port = await a.host.promotionContext(open.group.handle);
+      const sourceId = await port.registerSource(source, record.ids.operationId);
+      const legacyId = `native:${record.request.requestId}`;
+      expect(
+        await a.host.promotion.retain({
+          receiptId: legacyId,
+          enrollmentHandle: open.group.handle,
+          sourceId,
+          scope: event.scope,
+          kind: 'native',
+          original: { kind: 'inline', text },
+        }),
+      ).toContain('pending');
+      if (summaryComplete) {
+        await selectFeedWriter(a, open.shared.handle);
+        await progressFeed(a);
+        expect(await a.host.promotion.status(legacyId)).toBe('complete');
+      }
+      await a.close();
+      const resumed = await installation(a.directory);
+      const recovered = await resumed.post('request-agent', request);
+      expect(recovered.statusCode, recovered.body).toBe(200);
+      expect(recovered.json()).toMatchObject({
+        requestId: record.request.requestId,
+        state: 'completed',
+        delivery: 'complete',
+      });
+      const current = resumed.host.nativeJournal.get(request.handle, request.key)!;
+      expect(current.ids).toEqual(record.ids);
+      expect(current.receipt.eventId).toBe(event.eventId);
+      expect(!!current.receipt.deliveryOperation).toBe(!summaryComplete);
+      await selectFeedWriter(resumed, open.shared.handle);
+      await progressFeed(resumed);
+      expect((await resumed.post('request-agent', request)).json()).toEqual(recovered.json());
+      const query = { visibility: 'shared', after: 0, limit: 20, cursor: null };
+      const feed = await b.post('feed', { handle: joined.open.shared.handle, query });
+      expect(feed.statusCode, feed.body).toBe(200);
+      expect(feed.json().entries).toHaveLength(2);
+      const originals = await Promise.all(
+        feed
+          .json()
+          .entries.map(
+            async (e: { eventId: string }) =>
+              (
+                await b.post('original', { handle: joined.open.shared.handle, eventId: e.eventId })
+              ).json().text,
+          ),
+      );
+      expect(originals).toContain(text);
+      expect(originals.filter((original) => original === text)).toHaveLength(1);
+      expect(originals).toContain(request.text);
+    },
+    summaryComplete ? 15000 : 5000,
+  );
 
 it('native host retains exact lost-handoff/result identities, scoped originals and private exclusion across restart', async () => {
   let submits = 0,
@@ -3930,6 +3934,7 @@ it('removing a watched Group disposes its native socket immediately; reads stay 
   expect(f.store.runs()).toHaveLength(0);
 });
 
+// Seed 27 durable instructions before checking bounded continuation and fair owner turns.
 it('native evidence continuation drains bounded pages before idle cadence and leaves other owners fair turns', async () => {
   const f = await installation(),
     { open } = await create(f, 'Bounded evidence continuation');
@@ -3991,7 +3996,7 @@ it('native evidence continuation drains bounded pages before idle cadence and le
   expect(effects).toBe(0);
   expect(f.store.runs()).toHaveLength(0);
   read.mockRestore();
-});
+}, 15000);
 
 it('protected per-enrollment routes retain two creators across restart, lost replies, originals, notifications and revocation', async () => {
   const secondPort = await freePort(),

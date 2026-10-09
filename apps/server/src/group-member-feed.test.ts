@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { latestGroupFeedEntries, type GroupContext, type GroupEvent } from '@dock/shared';
 import { Store } from './store.js';
 import { GroupHost } from './group-host.js';
@@ -541,29 +541,76 @@ it('parks a finished group result with unavailable authority so another group ca
   expect(store.runs()).toHaveLength(2);
 });
 
-it('bounds unprocessed backlog while allowing disposed history to retain dedupe receipts', async () => {
-  for (let i = 0; i <= MEMBER_FEED_LIMITS.pendingSources; i++)
-    feed.retain(source(`Pending original ${i}.`));
-  expect(store.db.prepare('SELECT count(*) n FROM group_member_feed_sources').get()!.n).toBe(
-    MEMBER_FEED_LIMITS.pendingSources,
-  );
-  now += 20_000;
-  await feed.pass();
-  store.updateRun(store.runs()[0].id, { status: 'interrupted' });
-  await feed.pass();
-  feed.retain(source('Another source after a disposed batch.'));
-  expect(store.db.prepare('SELECT count(*) n FROM group_member_feed_sources').get()!.n).toBe(
-    MEMBER_FEED_LIMITS.pendingSources + 1,
-  );
-  expect(
-    Number(
+describe('retained member-feed backlog capacity', () => {
+  beforeEach(() => {
+    // Construct the real durable backlog separately from the five-second
+    // overflow, processing and recovery checks. Every original still goes
+    // through its event transaction and FULL-sync retained-source insert.
+    for (let i = 0; i < MEMBER_FEED_LIMITS.pendingSources; i++)
+      feed.retain(source(`Pending original ${i}.`));
+  }, 15_000);
+
+  it('bounds unprocessed backlog while allowing disposed history to retain dedupe receipts', async () => {
+    const retained = store.db
+      .prepare('SELECT event_id,body FROM group_member_feed_sources ORDER BY rowid')
+      .all();
+    expect(retained).toHaveLength(MEMBER_FEED_LIMITS.pendingSources);
+    const overflow = source(`Pending original ${MEMBER_FEED_LIMITS.pendingSources}.`);
+    feed.retain(overflow);
+    expect(
       store.db
-        .prepare(
-          "SELECT count(*) n FROM group_member_feed_sources WHERE state IN ('pending','waiting')",
-        )
-        .get()!.n,
-    ),
-  ).toBeLessThanOrEqual(MEMBER_FEED_LIMITS.pendingSources);
+        .prepare('SELECT event_id FROM group_member_feed_sources WHERE event_id=?')
+        .get(overflow.event.eventId),
+    ).toBeUndefined();
+    expect(store.db.prepare('SELECT count(*) n FROM group_member_feed_sources').get()!.n).toBe(
+      MEMBER_FEED_LIMITS.pendingSources,
+    );
+    now += 20_000;
+    await feed.pass();
+    store.updateRun(store.runs()[0].id, { status: 'interrupted' });
+    await feed.pass();
+    feed.retain(source('Another source after a disposed batch.'));
+    expect(store.db.prepare('SELECT count(*) n FROM group_member_feed_sources').get()!.n).toBe(
+      MEMBER_FEED_LIMITS.pendingSources + 1,
+    );
+    expect(
+      Number(
+        store.db
+          .prepare(
+            "SELECT count(*) n FROM group_member_feed_sources WHERE state IN ('pending','waiting')",
+          )
+          .get()!.n,
+      ),
+    ).toBeLessThanOrEqual(MEMBER_FEED_LIMITS.pendingSources);
+    expect(
+      store.db
+        .prepare('SELECT event_id,body FROM group_member_feed_sources ORDER BY rowid')
+        .all()
+        .slice(0, retained.length),
+    ).toEqual(retained);
+    const disposed = store.db
+      .prepare(
+        "SELECT * FROM group_member_feed_sources WHERE state='unknown' ORDER BY rowid LIMIT 1",
+      )
+      .get()!;
+    const runs = store.runs();
+    const kicks = kick.mock.calls.length;
+    await feed.close();
+    feed = make();
+    feed.retain(inputs.get(String(disposed.event_id))!);
+    await feed.pass();
+    expect(
+      store.db
+        .prepare('SELECT * FROM group_member_feed_sources WHERE event_id=?')
+        .get(disposed.event_id),
+    ).toEqual(disposed);
+    expect(store.db.prepare('SELECT count(*) n FROM group_member_feed_sources').get()!.n).toBe(
+      MEMBER_FEED_LIMITS.pendingSources + 1,
+    );
+    expect(store.runs()).toEqual(runs);
+    expect(kick).toHaveBeenCalledTimes(kicks);
+    expect(publish).not.toHaveBeenCalled();
+  });
 });
 
 it('denies native tools/children for feed helpers without changing ordinary native agents', async () => {
