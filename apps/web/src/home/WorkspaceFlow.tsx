@@ -72,6 +72,7 @@ import {
 import { ProjectQuarkPreference } from './ProjectQuarkPreference';
 import { ClusterProjectDestination } from './ClusterProjectDestination';
 import { ClusterProjectList, ClusterProjectSetup } from './ClusterProjectSetup';
+import { controllingManager, subagentsRoute, workerActivity } from './worker-activity';
 import './workspace-flow.css';
 
 export const flowPages = new Set([
@@ -709,6 +710,16 @@ export function ChatPage({
   const goalEligible = managerView && !readOnly && !pane?.archived;
   const goalKey = `${apiScope()}:${id}`;
   const panel = pane?.panel && (pane.panel === 'config' || managerView) ? pane.panel : null;
+  const manager = agent && controllingManager(state, agent);
+  const returnToManager = manager && manager.id !== agent?.id ? subagentsRoute(manager.id) : null;
+  const workerState =
+    agent && returnToManager
+      ? workerActivity({
+          ...agent,
+          latestRun:
+            currentConversation?.runs.at(-1) ?? state.agents.find((a) => a.id === id)?.latestRun,
+        })
+      : null;
   const [goalOpen, setGoalOpen] = useState<string | null>(null);
   const closeGoal = useCallback(() => setGoalOpen(null), []);
   const goalVisible = goalEligible && goalOpen === goalKey;
@@ -745,7 +756,11 @@ export function ChatPage({
   };
   const paneHeader = pane && (
     <header className="chat-pane-head">
-      <a className="chat-icon-button chat-back" href="#/chats" aria-label="All chats">
+      <a
+        className="chat-icon-button chat-back"
+        href={returnToManager ?? '#/chats'}
+        aria-label={returnToManager ? 'Back to manager and subagents' : 'All chats'}
+      >
         <ChevronLeft size={20} />
       </a>
       <div className="chat-pane-title">
@@ -768,17 +783,33 @@ export function ChatPage({
             </span>
           )}
         </p>
-        <h1 tabIndex={-1}>{agentName(agent)}</h1>
+        {workerState ? (
+          <div className="chat-worker-heading">
+            <h1 tabIndex={-1}>{agentName(agent)}</h1>
+            <span className={`worker-state ${readError ? 'stale' : workerState.state}`}>
+              {readError ? 'Last reported: ' : ''}
+              {workerState.label}
+            </span>
+          </div>
+        ) : (
+          <h1 tabIndex={-1}>{agentName(agent)}</h1>
+        )}
         <p className="chat-pane-meta">
           <span className={`chat-dot ${agent.status}`} aria-hidden="true" />
           {agent.provider === 'codex' ? 'Codex' : 'Claude'} ·{' '}
           {agent.model ??
             (agent.nativeRootId ? 'Native model not reported' : 'Central model default')}{' '}
-          · {stateNames[agent.status]}
+          {!workerState && `· ${stateNames[agent.status]}`}
           {pane.archived && ' · Archived'}
         </p>
       </div>
       <div className="chat-pane-tools" role="group" aria-label="Conversation tools">
+        {returnToManager && (
+          <a className="chat-tool chat-worker-return" href={returnToManager}>
+            <ArrowLeft size={17} />
+            <span className="chat-tool-label">Back to manager</span>
+          </a>
+        )}
         {agent.interview && (
           <a className="chat-tool" href={go('chat', agent.interview.sourceAgentId)}>
             <ArrowLeft size={17} />
@@ -841,7 +872,12 @@ export function ChatPage({
           />
         )
       ) : panel === 'subagents' ? (
-        <SubagentsPanel state={state} manager={agent} />
+        <SubagentsPanel
+          state={state}
+          manager={agent}
+          stale={pane.data.snapshot.error}
+          retry={pane.data.snapshot.retry}
+        />
       ) : (
         <ConfigPanel
           agent={agent}
@@ -1222,7 +1258,11 @@ function MainChat({
   const parts = route.split('/');
   const page = parts[0];
   const groupView = page === 'chats' && parts[1] === 'groups';
-  const agentId = page === 'chat' ? (parts[1] ?? '') : '';
+  const nestedWorker = page === 'chat' && parts[2] === 'subagents' ? parts[3] : undefined;
+  const agentId = page === 'chat' ? (nestedWorker ?? parts[1] ?? '') : '';
+  const worker = nestedWorker && state.agents.find((a) => a.id === nestedWorker);
+  const workerOrigin =
+    worker && controllingManager(state, worker)?.id === parts[1] ? parts[1] : undefined;
   const brief = page === 'chat' && parts[2] === 'brief';
   const answerId = page === 'chat' && parts[2] === 'answer' ? parts[3] : undefined;
   let editorKey = '';
@@ -1236,10 +1276,23 @@ function MainChat({
   const [filter, setFilter] = useState<ChatFilter>(() =>
     page === 'managers' ? 'manager' : savedList().filter,
   );
-  const [panel, setPanel] = useState<ChatPanel | null>(answerId ? 'notes' : null);
+  const routePanel: ChatPanel | null =
+    !nestedWorker && ['notes', 'subagents', 'config'].includes(parts[2] ?? '')
+      ? (parts[2] as ChatPanel)
+      : null;
+  const rememberedPanels = useRef(
+    new Map<string, ChatPanel | null>(workerOrigin ? [[workerOrigin, 'subagents']] : []),
+  );
+  const [panel, setPanel] = useState<ChatPanel | null>(answerId ? 'notes' : routePanel);
   useEffect(() => {
-    setPanel(answerId ? 'notes' : null);
-  }, [agentId, answerId]);
+    if (workerOrigin) rememberedPanels.current.set(workerOrigin, 'subagents');
+    setPanel(answerId ? 'notes' : (routePanel ?? rememberedPanels.current.get(agentId) ?? null));
+  }, [agentId, answerId, routePanel, workerOrigin]);
+  const selectPanel = (next: ChatPanel | null) => {
+    rememberedPanels.current.set(agentId, next);
+    setPanel(next);
+    if (routePanel) location.hash = next ? `${go('chat', agentId)}/${next}` : go('chat', agentId);
+  };
   const [menu, setMenu] = useState(false);
   const mirrors = useMirrorChats(true);
   const visibility = useConversationVisibility();
@@ -1653,7 +1706,7 @@ function MainChat({
             personal={agentId === personalId}
             pane={{
               panel,
-              setPanel,
+              setPanel: selectPanel,
               brief,
               answerId,
               data,

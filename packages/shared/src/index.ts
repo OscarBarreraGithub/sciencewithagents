@@ -121,6 +121,18 @@ export const projectToolsRequestSchema = z
   .strict();
 export type WorkerTools = z.infer<typeof workerToolsSchema>;
 export type ProjectTools = z.infer<typeof projectToolsSchema>;
+export const runStatusSchema = z.enum([
+  'queued',
+  'running',
+  'completed',
+  'failed',
+  'interrupted',
+  'cancelled',
+  'coalesced',
+]);
+export const agentRunActivitySchema = z
+  .object({ id, status: runStatusSchema, createdAt: z.string() })
+  .strict();
 export const agentSchema = z.object({
   id,
   projectId: id,
@@ -166,6 +178,8 @@ export const agentSchema = z.object({
   nativeRootId: id.nullable().default(null),
   nativePath: z.string().nullable().default(null),
   checkpoint: z.string(),
+  // Read-only snapshot projection. Omission means the host has not reported run evidence.
+  latestRun: agentRunActivitySchema.nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   // Derived from retained owner/reply entries; status/configuration changes are separate.
@@ -329,15 +343,7 @@ export const runSchema = z.object({
   sourceId: id.nullable(),
   text: z.string(),
   kind: z.enum(['user', 'delegation', 'message', 'report', 'resume']),
-  status: z.enum([
-    'queued',
-    'running',
-    'completed',
-    'failed',
-    'interrupted',
-    'cancelled',
-    'coalesced',
-  ]),
+  status: runStatusSchema,
   createdAt: z.string(),
   queueEditable: z.boolean().optional(),
   queueRevision: z.number().int().nonnegative().optional(),

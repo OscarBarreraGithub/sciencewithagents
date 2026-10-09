@@ -88,6 +88,7 @@ import {
   quotaResumeSchema,
 } from '@dock/shared';
 import { Conflict, Invalid, Missing, Store, publicTask } from './store.js';
+import { projectAgentActivity } from './agent-activity-projection.js';
 import { conversationEntries } from './conversation-entries.js';
 import { Runtime } from './runtime.js';
 import { Terminals } from './terminal.js';
@@ -933,7 +934,7 @@ export async function createServer(
           internal: runtime.isInternalProject(p.id, internalProjects),
         }),
       ),
-      agents: store.agents(true).map((a) => agentSchema.parse(a)),
+      agents: store.agents(true).map((a) => agentSchema.parse(projectAgentActivity(store, a))),
       tasks: store.tasks().map(publicTask),
       approvals: store
         .approvals()

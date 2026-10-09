@@ -26,12 +26,15 @@ export const sourceDispositionSchema = z
 export const workItemKindSchema = z.enum(['human', 'internal', 'general', 'idea']);
 export const workItemStatusSchema = z.enum(['open', 'in_progress', 'waiting', 'done']);
 /** Saved app entry identity, not a quoted title or a filesystem path. */
+export const ownerMessageReferenceGuidance =
+  'Copy {agentId,entryId} verbatim from a dock_inspect {ownerRequests:{}} item. Never rebuild IDs from message text or replace entryId with a run/provider ID. If rejected, reread ownerRequests and retry with the exact pair; includeHandled:true also lists previously triaged messages.';
 export const ownerMessageReferenceSchema = z
   .object({
     agentId: workItemId,
     entryId: z.string().min(1).max(1024),
   })
-  .strict();
+  .strict()
+  .describe(ownerMessageReferenceGuidance);
 const sourceMessages = z
   .array(ownerMessageReferenceSchema)
   .max(50)

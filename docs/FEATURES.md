@@ -253,6 +253,14 @@ timeline. Without a phase, only earlier replies of a completed turn followed by 
 a later reply on the same page join the row, labelled Earlier replies and still readable; imports,
 running/stopped turns and replies after owner steering stay in the timeline. Routine draft autosave keeps one stable status line; failures alert with Retry. The saved history is retained;
 the two views page their own entries using recorded run provenance.
+
+Subagents shows queued/running/waiting/stopped/error activity and proven **Turn completed**
+separately from task status and the last saved checkpoint. A completed model turn does not
+certify task completion or background jobs. Idle workers without run evidence stay Idle; checkpoint
+times that were not retained are not invented. Failed refreshes label the last reported
+states and offer Retry. Worker activity has a visible **Back to manager** control; browser
+and app Back from the manager's Subagents links retain that panel and the manager draft.
+
 Managed chats show up to 200 entries per page. **Your prompts** in managed and shared
 editor chats reads one bounded history page at a time and opens the conversation around
 the selected owner message. Dates appear when retained by the source. **Back to latest**

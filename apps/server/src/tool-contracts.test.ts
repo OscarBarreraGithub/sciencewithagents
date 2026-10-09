@@ -7,14 +7,26 @@ import {
   jobEstimateSchema,
   roleSchema,
   slurmReviewToolSchema,
+  ownerMessageReferenceGuidance,
 } from '@dock/shared';
-import { toolsFor } from './charters.js';
+import { managerCharter, toolsFor } from './charters.js';
 import { slurmReviewToolDefinition } from './slurm-review.js';
 import { toolInputSchema } from './tool-schema.js';
 
 const tool = (name: string) => toolsFor('manager').find((item) => item.name === name)!;
 
 describe('advertised coordination tool contracts', () => {
+  it('preserves exact owner-source copying and retry guidance in the generated catalog', () => {
+    const schema = tool('dock_work_item').inputSchema as {
+      properties: { sourceMessages: { items: { description?: string } } };
+    };
+    expect(schema.properties.sourceMessages.items.description).toBe(ownerMessageReferenceGuidance);
+    expect(ownerMessageReferenceGuidance).toContain('Copy {agentId,entryId} verbatim');
+    expect(ownerMessageReferenceGuidance).toContain('includeHandled:true');
+    expect(tool('dock_work_item').description).toContain(ownerMessageReferenceGuidance);
+    expect(managerCharter).toContain(ownerMessageReferenceGuidance);
+  });
+
   it('advertises and explains the single dock_inspect target, preserving its modifiers', () => {
     const schema = tool('dock_inspect').inputSchema as { description?: string };
     expect(schema.description).toContain('Choose one inspection target per call');

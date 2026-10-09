@@ -14,6 +14,7 @@ import {
   ownerRequestQuerySchema,
   ownerRequestHttpQuerySchema,
   ownerRequestPageSchema,
+  ownerMessageReferenceGuidance,
   projectNotesRequestSchema,
   projectNotesSchema,
   workItemQuerySchema,
@@ -461,8 +462,7 @@ export class WorkItems {
           if (sources.length && !managerId)
             throw new Conflict('Source messages need their original project manager.');
           // Name the rejected reference; provenance itself is never relaxed here.
-          const sourceGuidance =
-            'sourceMessages may list only retained owner messages received by this manager (see dock_inspect {ownerRequests:{}}). Cite peer, worker or report evidence in the work-item detail or a checkpoint instead.';
+          const sourceGuidance = `sourceMessages may list only retained owner messages received by this manager. ${ownerMessageReferenceGuidance} Cite peer, worker or report evidence in the work-item detail or a checkpoint instead.`;
           // Links saved earlier stay attached when an item is updated; new links are checked.
           const linked = new Set(sourceKeys(previous?.sourceMessages ?? []));
           for (const source of sources) {

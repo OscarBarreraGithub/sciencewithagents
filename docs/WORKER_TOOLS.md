@@ -127,7 +127,10 @@ Managers also receive `ownerRequests`: retained owner messages without an explic
 disposition. Page `dock_inspect {ownerRequests:{cursor:...}}` until `nextCursor` is null, including
 after steering or compaction. Read full wording with `read:{source:"entry",id:entryId}`.
 Link each independent ask through `dock_work_item.sourceMessages:[{agentId,entryId}]`;
-one message may link several items. After reviewing the whole message and mapping every independent ask, record
+copy that pair verbatim from `ownerRequests`, rather than reconstructing an ID from text
+or substituting a run/provider ID. A rejected source needs a fresh `ownerRequests` read
+and the exact returned pair; use `includeHandled:true` for a previously triaged message.
+One message may link several items. After reviewing the whole message and mapping every independent ask, record
 `sourceDisposition` summarizing triage and linked items, or an answer, cancellation,
 replacement or nonactionable input. A bare link remains pending review; a disposition
 marks it triaged, not completed.

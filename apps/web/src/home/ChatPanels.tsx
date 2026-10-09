@@ -18,6 +18,7 @@ import { ProjectSettings } from './ProjectConfiguration';
 import { ProjectFocus } from './ProjectFocus';
 import { TeamActivity } from './TeamActivity';
 import type { HomeData } from './useHomeData';
+import { workerActivity, workerRoute, workerTaskStatus } from './worker-activity';
 
 export type ChatPanel = 'notes' | 'subagents' | 'config';
 const panelTitles: Record<ChatPanel, string> = {
@@ -455,7 +456,17 @@ export function NotesPanel({
   );
 }
 
-export function SubagentsPanel({ state, manager }: { state: Snapshot; manager: Agent }) {
+export function SubagentsPanel({
+  state,
+  manager,
+  stale = false,
+  retry,
+}: {
+  state: Snapshot;
+  manager: Agent;
+  stale?: boolean;
+  retry?: () => void;
+}) {
   const [tokens, setTokens] = useState<Map<string, { total: number | null; partial: boolean }>>(
     new Map(),
   );
@@ -500,6 +511,16 @@ export function SubagentsPanel({ state, manager }: { state: Snapshot; manager: A
           <h3>Workers</h3>
           <span>{team.length}</span>
         </div>
+        {stale && (
+          <div className="team-activity-error" role="status">
+            <p>Could not refresh worker activity. Showing the last reported states.</p>
+            {retry && (
+              <button className="chat-small-button" onClick={retry}>
+                Retry worker activity
+              </button>
+            )}
+          </div>
+        )}
         {tokenError && (
           <p className="chat-panel-error">Token readings are unavailable right now.</p>
         )}
@@ -509,16 +530,41 @@ export function SubagentsPanel({ state, manager }: { state: Snapshot; manager: A
             const closed =
               !!task && ['done', 'integrated', 'split', 'cancelled'].includes(task.status);
             const reading = tokens.get(agent.id);
-            const summary =
-              task?.title ??
-              (agent.scope ||
-                agent.checkpoint.split('\n')[0]?.slice(0, 200) ||
-                'No assignment summary');
+            const activity = workerActivity(agent);
+            const summary = task?.title ?? (agent.scope || 'No saved assignment');
             return (
-              <li key={agent.id} className="chat-item">
+              <li key={agent.id} className="chat-item worker-card" data-agent={agent.id}>
                 <div className="chat-item-text">
-                  <strong>{agentName(agent)}</strong>
-                  <p>{summary}</p>
+                  <div className="worker-heading">
+                    <strong>{agentName(agent)}</strong>
+                    <span className={`worker-state ${stale ? 'stale' : activity.state}`}>
+                      {stale ? 'Last reported: ' : ''}
+                      {activity.label}
+                    </span>
+                  </div>
+                  <p>Assignment: {summary}</p>
+                  {task && <p>Task: {workerTaskStatus(task)}</p>}
+                  {agent.latestRun && (
+                    <small>
+                      Last run requested{' '}
+                      <time dateTime={agent.latestRun.createdAt}>
+                        {when(agent.latestRun.createdAt)}
+                      </time>
+                    </small>
+                  )}
+                  <div className="worker-checkpoint">
+                    <small>
+                      Last saved checkpoint{agent.checkpoint ? ' · time not recorded' : ''}
+                    </small>
+                    {agent.checkpoint ? (
+                      <details>
+                        <summary>{agent.checkpoint.split('\n')[0]?.slice(0, 200)}</summary>
+                        <p>{agent.checkpoint}</p>
+                      </details>
+                    ) : (
+                      <p>No checkpoint recorded.</p>
+                    )}
+                  </div>
                   <small>
                     Spawned {when(agent.createdAt)} ·{' '}
                     {agent.model ?? agent.assignment?.model ?? 'model not reported'} ·{' '}
@@ -529,7 +575,7 @@ export function SubagentsPanel({ state, manager }: { state: Snapshot; manager: A
                   </small>
                 </div>
                 <div className="chat-item-actions">
-                  <a className="chat-small-button" href={`#/chat/${agent.id}`}>
+                  <a className="chat-small-button" href={workerRoute(manager.id, agent.id)}>
                     {closed ? 'Ask about this work' : 'Open activity'} <ArrowUpRight size={15} />
                   </a>
                   {task && (
@@ -558,8 +604,8 @@ export function SubagentsPanel({ state, manager }: { state: Snapshot; manager: A
         )}
         <p className="chat-side-note">
           Token counts are provider-reported QUARK measurements; missing values are unknown, not
-          zero. Finished workers open their saved record, where a separate read-only discussion can
-          start.
+          zero. Turn completion does not complete the task or its background jobs. Closed tasks
+          retain their saved record and offer a separate read-only discussion.
         </p>
       </section>
       <TeamActivity key={manager.id} manager={manager} state={state} />

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { inspectSchema, projectNotesSchema, workItemSchema, workItemsSchema } from '@dock/shared';
 import { Conflict, Missing, Store } from './store.js';
@@ -100,6 +100,59 @@ it('keeps canonical owner sources and dispositions across retries and restart, w
       sourceMessages: disposition.sourceMessages,
     },
   });
+});
+
+it('rejects a corrupted owner entry ID before saving, then accepts the exact ownerRequests pair', () => {
+  const run = store.enqueue(
+    managerId,
+    randomUUID(),
+    'Please report progress on the retained work.',
+  );
+  const { agentId, entryId } = items.ownerRequests(managerId).items[0]!;
+  const source = { agentId, entryId };
+  const corruptedEntryId = `${entryId.slice(0, -1)}${entryId.endsWith('0') ? '1' : '0'}`;
+  expect(z.uuid().parse(corruptedEntryId)).toBe(corruptedEntryId);
+  const key = randomUUID();
+  const input = {
+    key,
+    title: 'Report retained work progress',
+    sourceMessages: [{ agentId, entryId: corruptedEntryId }],
+    sourceDisposition: 'The status question is mapped to this item; the work remains open.',
+  };
+  const head = store.head;
+  expect(() => items.saveForManager(managerId, input)).toThrow(corruptedEntryId);
+  expect(() => items.saveForManager(managerId, input)).toThrow(
+    'reread ownerRequests and retry with the exact pair',
+  );
+  expect(items.list().items).toEqual([]);
+  expect(store.db.prepare('SELECT * FROM work_item_sources').all()).toEqual([]);
+  expect(
+    store.db.prepare('SELECT key FROM operations WHERE key=?').get(`work-item:${key}`),
+  ).toBeUndefined();
+  expect(store.head).toBe(head);
+  expect(store.savedEntry(managerId, entryId)?.text).toBe(run.text);
+  expect(items.ownerRequests(managerId).items[0]).toMatchObject({
+    ...source,
+    coverage: 'untriaged',
+  });
+
+  const refreshed = items.ownerRequests(managerId).items[0]!;
+  const corrected = {
+    ...input,
+    sourceMessages: [{ agentId: refreshed.agentId, entryId: refreshed.entryId }],
+  };
+  const saved = items.saveForManager(managerId, corrected);
+  expect(saved.sourceMessages).toEqual([source]);
+  expect(saved.status).toBe('open');
+  expect(items.ownerRequests(managerId).items).toEqual([]);
+  expect(items.ownerRequests(managerId, { includeHandled: true }).items[0]).toMatchObject({
+    ...source,
+    coverage: 'triaged',
+    workItemIds: [saved.id],
+  });
+  restart();
+  expect(items.saveForManager(managerId, corrected)).toEqual(saved);
+  expect(items.list().items).toHaveLength(1);
 });
 
 it('pages every untriaged input with stable boundaries and rejects foreign or non-owner sources', () => {
