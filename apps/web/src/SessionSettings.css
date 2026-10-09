@@ -48,3 +48,9 @@
   padding: 12px 0;
   cursor: pointer;
 }
+.settings-card.direct-session-settings :is(p, label, small, select, button) {
+  font-size: max(16px, 1rem);
+}
+.settings-card.direct-session-settings :is(button, select) {
+  min-height: 44px;
+}

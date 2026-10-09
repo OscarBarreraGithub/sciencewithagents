@@ -1,0 +1,121 @@
+.native-connections-dialog {
+  width: min(680px, calc(100vw - 24px));
+  font-size: max(16px, 1rem);
+}
+.native-connections-dialog :is(button, select),
+.native-connection-pane :is(button, a.secondary) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--home-line, var(--line));
+  border-radius: 10px;
+  background: var(--home-paper, var(--paper));
+  color: var(--home-ink, var(--ink));
+  font: inherit;
+  font-size: max(16px, 1rem);
+  cursor: pointer;
+}
+.native-connection-pane button.primary {
+  background: var(--home-accent, #426455);
+  color: white;
+}
+.native-connections-dialog button:disabled,
+.native-connection-pane button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.native-connections-dialog :is(button, select):focus-visible,
+.native-connection-pane :is(button, a, textarea):focus-visible {
+  outline: 3px solid var(--home-accent, #426455);
+  outline-offset: 2px;
+}
+.native-source {
+  border-top: 1px solid var(--home-line, var(--line));
+  margin-top: 20px;
+}
+.native-source ul {
+  padding: 0;
+  list-style: none;
+}
+.native-source li {
+  padding: 16px 0;
+  border-top: 1px solid var(--home-line, var(--line));
+}
+.native-source p {
+  overflow-wrap: anywhere;
+}
+.native-connection-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.native-connection-pane {
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 16px;
+  font-size: max(16px, 1rem);
+}
+.native-connection-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.native-connection-bar h2 {
+  flex: 1;
+  margin: 0;
+  font-size: max(18px, 1.15rem);
+}
+.native-connection-terminal {
+  height: clamp(240px, 45dvh, 500px);
+  min-width: 0;
+  margin: 16px 0;
+  overflow: hidden;
+  background: #202421;
+}
+.native-connection-draft {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 8px;
+  font-weight: 600;
+}
+.native-connection-draft textarea {
+  min-height: 96px;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--home-line, var(--line));
+  border-radius: 10px;
+  padding: 10px;
+  font: inherit;
+  font-size: max(16px, 1rem);
+}
+.native-connection-recovery,
+.native-connection-receipt {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--home-line, var(--line));
+  border-radius: 10px;
+}
+.native-saved-prompt {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+.native-saved-prompts,
+.native-saved-prompts :is(button, p, time, span),
+.native-connections-dialog p,
+.native-connection-pane :is(p, .muted) {
+  font-size: max(16px, 1rem);
+}
+
+.native-connection-row :is(strong, small, .chat-row-side) {
+  font-size: max(16px, 1rem);
+}
+
+.native-connection-pane label.native-connection-draft {
+  font-size: max(16px, 1rem);
+}

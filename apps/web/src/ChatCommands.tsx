@@ -16,7 +16,7 @@ export function ChatCommands({
   agentId,
   onNativeCommand,
 }: {
-  onGoal: () => void;
+  onGoal?: () => void;
   onCommand?: (command: ChatCommand) => void;
   onAdvanced?: () => void;
   onBack?: (close: (() => void) | null) => void;
@@ -77,9 +77,11 @@ export function ChatCommands({
         <Modal title="Session commands" close={() => setOpen(false)}>
           <p>Choose a command without changing your message draft.</p>
           <div className="session-command-list">
-            <button type="button" className="secondary" onClick={() => choose(onGoal)}>
-              <code>/goal</code> Goal
-            </button>
+            {onGoal && (
+              <button type="button" className="secondary" onClick={() => choose(onGoal)}>
+                <code>/goal</code> Goal
+              </button>
+            )}
             {onCommand && (
               <>
                 <button

@@ -15,10 +15,18 @@ export function PromptHistory<T>({
   read,
   choose,
   close,
+  title = 'Your prompts',
+  description = 'Choose a prompt to see the conversation around it.',
+  choiceLabel = 'View conversation',
+  className,
 }: {
   read: (before?: string) => Promise<PromptPage<T>>;
   choose: (value: T, id: string, newer: (string | undefined)[]) => void;
   close: () => void;
+  title?: string;
+  description?: string;
+  choiceLabel?: string;
+  className?: string;
 }) {
   useBackStep(close);
   const [page, setPage] = useState<PromptPage<T> | null>(null);
@@ -58,8 +66,8 @@ export function PromptHistory<T>({
   }, []);
 
   return (
-    <Modal title="Your prompts" close={close} className="prompt-history-dialog">
-      <p className="muted">Choose a prompt to see the conversation around it.</p>
+    <Modal title={title} close={close} className={`prompt-history-dialog ${className ?? ''}`}>
+      <p className="muted">{description}</p>
       {busy && <p role="status">Reading your prompts…</p>}
       {error && (
         <div role="alert">
@@ -98,7 +106,7 @@ export function PromptHistory<T>({
                     <span>
                       {text ? `${text.slice(0, 240)}${text.length > 240 ? '…' : ''}` : 'Attachment'}
                     </span>
-                    <span className="prompt-history-open">View conversation</span>
+                    <span className="prompt-history-open">{choiceLabel}</span>
                   </button>
                 </li>
               );

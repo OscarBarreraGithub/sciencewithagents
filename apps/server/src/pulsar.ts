@@ -26,6 +26,7 @@ import {
   type MachineCapacity,
   type LocalJob,
   type LocalResources,
+  isDirectExecution,
 } from '@dock/shared';
 import { Conflict, Store, type PrivateRun } from './store.js';
 import { readCapacity, capacityMaxAge } from './capacity.js';
@@ -466,6 +467,12 @@ export class Pulsar {
       return reject(
         'Paused. Release this job to let QUARK reconsider it. Running agent turns finish at their boundary.',
       );
+    if (isDirectExecution(agent))
+      return {
+        eligible: run.sourceId === null && ['user', 'resume'].includes(run.kind),
+        reason:
+          'Direct native input uses owner holds and native quota protection, without QUARK admission.',
+      };
     if (!projectFollowsQuark(this.store, agent.projectId))
       return {
         eligible: true,
@@ -861,9 +868,11 @@ export class Pulsar {
               runningBlock ??
               (held
                 ? 'Finishing this turn; following task turns are paused.'
-                : !projectFollowsQuark(this.store, agent.projectId)
-                  ? 'Running · QUARK scheduling off.'
-                  : 'Running with shared QUARK monitoring.'),
+                : isDirectExecution(agent)
+                  ? 'Running with the native runner.'
+                  : !projectFollowsQuark(this.store, agent.projectId)
+                    ? 'Running · QUARK scheduling off.'
+                    : 'Running with shared QUARK monitoring.'),
           }
         : this.decision(run);
     // Capacity eligibility does not wake a stopped agent or answer its pending request.

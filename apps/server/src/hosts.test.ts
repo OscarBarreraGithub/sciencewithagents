@@ -646,6 +646,40 @@ describe('isolated computer connections', () => {
     expect(JSON.stringify(state)).not.toContain('expectedHostId');
   });
 
+  it('allows typed native connection routes while refusing browser-selected commands and paths', () => {
+    const id = randomUUID();
+    for (const path of [
+      '/native-connections',
+      '/native-connections/launch-options',
+      `/native-connections/starts/${id}`,
+      `/native-connections/attachments/${id}`,
+      `/native-connections/attachments/${id}/receipts/${id}`,
+      `/native-connections/targets/${id}/prompts?before=${id}`,
+    ])
+      expect(proxyPath('GET', path)).toBe(`/api${path}`);
+    for (const path of [
+      '/native-connections/attach',
+      '/native-connections/start',
+      `/native-connections/attachments/${id}/detach`,
+      `/native-connections/attachments/${id}/send`,
+    ])
+      expect(proxyPath('POST', path)).toBe(`/api${path}`);
+    const socket = `/native-connections/attachments/${id}/socket`;
+    expect(proxyPath('GET', socket, true)).toBe(`/api${socket}`);
+    expect(proxyPath('GET', socket)).toBeNull();
+    expect(proxyPath('GET', '/native-connections', true)).toBeNull();
+    for (const [method, path] of [
+      ['POST', '/native-connections/start?command=sh'],
+      ['GET', '/native-connections/launch-options?path=/tmp'],
+      ['POST', '/native-connections/profiles'],
+      ['POST', '/native-connections/rpc'],
+      ['DELETE', `/native-connections/starts/${id}`],
+      ['GET', '/native-connections/starts/unknown'],
+      ['GET', `/native-connections/targets/${id}/prompts?path=/tmp`],
+      ['GET', `/native-connections/targets/${id}/prompts?before=${id}&before=${id}`],
+    ] as const)
+      expect(proxyPath(method, path)).toBeNull();
+  });
   it('refuses path escapes, unknown routes and methods without forwarding any action', async () => {
     for (const invalid of [
       '/phone/code',

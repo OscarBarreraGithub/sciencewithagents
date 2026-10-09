@@ -80,6 +80,7 @@ export class NativeChildren {
     if (known) return known;
     return this.store.transaction(() => {
       const agent = this.store.addAgent({
+        executionMode: root.executionMode,
         projectId: root.projectId,
         provider: 'claude',
         parentId: root.id,
@@ -243,6 +244,7 @@ export class NativeChildren {
         return existing.threadId === threadId && existing.nativeRootId === rootId ? existing : null;
       }
       const agent = this.store.addAgent({
+        executionMode: root.executionMode,
         projectId: root.projectId,
         provider: root.provider,
         parentId: parent.id,

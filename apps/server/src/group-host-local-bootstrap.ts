@@ -51,7 +51,7 @@ export function createLocalProductionGroupHost(dataDir: string, runtime: Runtime
     return JSON.stringify({
       sharedWatermark: shared.watermark,
       sharedCoverage:
-        'Latest eight shared headers; use dock_group_evidence_query for original typed evidence and incremental offline changes. Missing facts and index gaps remain unknown.',
+        'Latest eight shared headers; use this session’s registered Group evidence readers for original typed evidence and incremental offline changes. Missing facts and index gaps remain unknown.',
       shared: shared.entries.map((e) => ({
         eventId: e.eventId,
         memberId: e.scope.memberId,

@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/native-connections*.ts", "src/native-terminal-driver*.ts"],
+  "exclude": []
+}

@@ -17,13 +17,20 @@ that links both matching files, then open the new captured reply. Select the PDF
 and explicitly check the same-name `.tex` source and supporting files for Reading and sharing.
 
 The connector's live settled completion event supplies the exact saved request, owner anchor,
-native context/source and final manager run to `GroupHostNativeDocuments`. It captures only
+native context/source and final owner run to `GroupHostNativeDocuments`. It captures only
 report links from that exact reply inside its server-selected group workspace, plus recursively
 resolved literal `input`, `include`, `includegraphics`, `addbibresource` and `bibliography`
 dependencies. The optional exact `group-document-inputs` comment supplies additional selectable
 inputs. Unsupported dynamic dependencies must be named explicitly; missing dependencies fail
 capture. Other files in the folder, personal Library entries and conversation history are never
 scanned. Group Markdown cannot open personal Library/upload handles or host file links.
+The capture adapter revalidates the exact retained request, completed run and native result
+against the server's binding. A chosen project folder must retain its saved device/inode identity;
+the Python reader checks that identity on its opened root descriptor. Generated private Group
+workspaces remain supported. A legacy generated-workspace binding recorded through a symlinked
+data directory stays unavailable rather than being automatically rebound. Replaced folders,
+symlinks and changed request/context proofs fail
+without substituting bytes; the binding and owner membership are checked again after capture.
 
 A fixed public Python 3 helper uses isolated imports and descriptor-relative no-symlink reads
 on macOS/Linux, a five-second deadline and 100-file/8-MiB bounds. Python 3 is required for
@@ -44,7 +51,7 @@ The existing `GroupDocuments` and `GroupDocumentSharing` grant/read/share/revoke
 these copies, rechecking current owner/member authority even for cached/retried reads. Sharing
 requires explicit selected file grants and a separate publication action. Native mode has no
 document-server TeX builder: its source-only view explains how to request a PDF from the owner's
-Group manager. The isolated builder remains optional and is never a host compiler fallback.
+My group agent. The isolated builder remains optional and is never a host compiler fallback.
 
 ## Authority and exact grants
 

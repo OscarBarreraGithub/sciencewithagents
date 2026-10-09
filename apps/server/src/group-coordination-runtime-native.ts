@@ -178,6 +178,7 @@ export function createGroupNativeCoordination({
         { context, input },
         () => {
           const worker = runtime.store.addAgent({
+            executionMode: 'managed',
             projectId: manager.projectId,
             parentId: manager.id,
             taskId: task.id,

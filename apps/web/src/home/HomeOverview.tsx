@@ -1,3 +1,4 @@
+import { managedExecution } from '../execution-mode';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Aperture,
@@ -775,6 +776,11 @@ export function HomeOverview({
           <div className="overview-panel overview-todo-slot">
             <OwnerWorkBoard
               projects={ownerProjects(data)}
+              managedProjectIds={ownerProjects(data)
+                .filter((project) =>
+                  managedExecution(state?.agents.find((agent) => agent.id === project.managerId)),
+                )
+                .map((project) => project.id)}
               tasks={state?.tasks ?? []}
               reading={workItems}
               onSeedProject={onSeedProject}

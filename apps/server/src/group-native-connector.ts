@@ -500,6 +500,7 @@ export function createGroupNativeConnector(
       else {
         const project = runtime.store.project(configured.projectId);
         const agent = runtime.store.addAgent({
+          executionMode: 'managed',
           projectId: project.id,
           parentId: null,
           taskId: null,
@@ -772,6 +773,7 @@ export function createGroupNativeConnector(
       const configured = route(),
         project = runtime.store.project(configured.projectId);
       const agent = runtime.store.addAgent({
+        executionMode: 'managed',
         projectId: project.id,
         parentId: null,
         taskId: null,

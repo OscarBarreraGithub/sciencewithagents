@@ -1007,7 +1007,7 @@ export function ProjectConfiguration({
     }
   }, [briefOpen, policy, locked, canChooseFolder, capsInvalid, needsManagerChoice]);
   return (
-    <section className="flow-page project-config">
+    <section className="flow-page project-config creation-config">
       {heading}
       <SpawnBrief
         key={spawn.createKey}
@@ -1135,6 +1135,11 @@ export function ProjectConfiguration({
             )}
           </div>
         )}
+        <p className="config-help">
+          Project and folder setup uses a managed agent and its team. For a direct native
+          conversation, start a saved chat from Chats; connecting an existing native terminal is a
+          separate choice.
+        </p>
         <fieldset className="config-section" disabled={busy || locked}>
           <legend>Manager</legend>
           <p className="config-help">

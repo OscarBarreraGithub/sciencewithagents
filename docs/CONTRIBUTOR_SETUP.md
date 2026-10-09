@@ -134,8 +134,11 @@ or existing PDF reading. See [Group reports](GROUP_DOCUMENTS.md).
 4. Review the build result and any optional-dependency warning. After launch in step 6,
    check the person's actual first-run journey: confirm their provider (ask only if neither the
    request nor saved settings give it), check native sign-in/models, and create or connect
-   their first project. Creating a project sends no prompt. Start model
-   work only when requested.
+   their chosen workflow: a native chat, an existing session, or **Start native in a folder**.
+   Follow [native sessions](NATIVE_CONNECTIONS.md); tmux/Herdr are optional and installed only
+   for a chosen workflow. Folder Start launches the native CLI only on explicit Start; it
+   does not certify sign-in or a reply. Advanced managed project setup remains available.
+   Start model work only when requested.
    Ordinary installation does not need the developer test suite or browser downloads.
    If source changes were needed, run checks appropriate to those changes; a failed check
    is not acceptance. Record any device/account handoff in private installation notes, not in tracked source.
@@ -164,8 +167,9 @@ or existing PDF reading. See [Group reports](GROUP_DOCUMENTS.md).
    The handoff connects the default browser only; to use another browser, make it the
    default and open the app again.
    **Welcome and setup** summarizes the saved team; it is not a second questionnaire.
-   Continue to **Check this computer → Create first project**. Do not replace this journey
-   with package-manager commands. QUARK pacing is optional and off by default.
+   Continue to **Check this computer**, then choose **Start native in a folder**,
+   **Connect native session**, or **Managed project setup (Advanced)** as appropriate. Do not replace
+   this journey with package-manager commands. QUARK pacing is optional and off by default.
 
    **Model choices.** Keep saved or explicitly stated provider/model/team choices; otherwise
    use the recommended defaults. Do not interview the person role by role. If they stated a

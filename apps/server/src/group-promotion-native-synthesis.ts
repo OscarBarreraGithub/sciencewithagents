@@ -451,6 +451,7 @@ export function createGroupPromotionNativeSynthesis<B, H>(
           if (!saved) throw new Error('Retained designated writer shared native account required');
           // A bounded maintenance lane is a new agent, never a work task or child dispatch.
           const agent = runtime.store.addAgent({
+            executionMode: 'managed',
             id: randomUUID(),
             projectId: runtime.store.agent(
               journal.resolve(journal.reopen(writer.sessionId)).agentId,

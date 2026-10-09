@@ -5,6 +5,7 @@ import { api, models } from './api';
 import { useFormAction } from './useFormAction';
 import { ExecutionInfo } from './ExecutionInfo';
 import './SessionSettings.css';
+import { managedExecution } from './execution-mode';
 
 export function SessionSettings({
   agent,
@@ -21,6 +22,7 @@ export function SessionSettings({
   titled?: boolean;
 }) {
   const [catalog, setCatalog] = useState<Model[]>([]);
+  const managed = managedExecution(agent);
   const [model, setModel] = useState(
     agent.modelSelection === 'policy' ||
       (!agent.modelSelection && agent.assignment?.source === 'model_policy')
@@ -72,7 +74,7 @@ export function SessionSettings({
   const current = catalog.find((m) => m.id === model);
   return (
     <div
-      className="settings-card"
+      className={`settings-card${managed ? '' : ' direct-session-settings'}`}
       onChange={() => {
         dirty.current = true;
         setSaved(false);
@@ -90,7 +92,7 @@ export function SessionSettings({
       )}
       {/* Fields wrap by the card's own width, so a narrow panel stacks them instead of clipping. */}
       <div className="settings-fields session-fields">
-        {!agent.interview && (
+        {managed && !agent.interview && (
           <div className="session-field">
             <label>
               Tools and connections
@@ -111,6 +113,13 @@ export function SessionSettings({
                 : 'Only the tools chosen in this app are available.'}
             </small>
           </div>
+        )}
+        {!managed && (
+          <p className="settings-help">
+            Native tools, skills and hooks are preserved. This conversation’s native setup is fixed;
+            it cannot be converted into a managed agent. QUARK observations do not admit or pause
+            its native launch.
+          </p>
         )}
         {agent.provider === 'claude' && toolPolicy === 'native' && !agent.interview && (
           <div className="session-field">
@@ -175,16 +184,18 @@ export function SessionSettings({
           (agent.role === 'manager' && agent.toolPolicy === 'native' && !agent.interview)) && (
           <div className="session-field">
             <label>
-              Permissions
+              {managed ? 'Permissions' : 'Native permissions'}
               <select
                 value={permission}
                 onChange={(event) => setPermission(event.target.value as Agent['permission'])}
               >
                 <option value="read-only">Read files only</option>
                 <option value="workspace-write">
-                  {agent.role === 'manager'
-                    ? 'Edit files in this project folder'
-                    : 'Edit this task’s separate copy'}
+                  {!managed
+                    ? 'Use native approval and sandbox settings'
+                    : agent.role === 'manager'
+                      ? 'Edit files in this project folder'
+                      : 'Edit this task’s separate copy'}
                 </option>
               </select>
             </label>

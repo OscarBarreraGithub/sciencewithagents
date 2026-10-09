@@ -1,12 +1,22 @@
 # Shared evidence questions and retained private catch-up
 
-Normal native Groups exposes `dock_group_evidence_query` and `dock_group_evidence_original`
-to the Group manager, including read-only Ask. These tools read authenticated shared sources;
+Current managed Group sessions expose `dock_group_evidence_query` and `dock_group_evidence_original`
+to My group agent, including read-only Ask. These tools read authenticated shared sources;
 they do not publish, launch work or open a private conversation. A new query indexes at most
 16 additional shared event headers and verifies typed facts before committing each page.
 An exact query ID pins its watermark and index revision for retry and continuation. Original
 bodies are separately paged with a whole-body SHA-256 check. Missing facts and incomplete
 coverage remain explicit.
+
+The direct-session adapter has two optional equivalents, `group_evidence_query` and
+`group_evidence_original`, bound to the exact admitted Group context and turn. Personal direct
+sessions expose neither. Claude uses a separate `group` SDK namespace with read-only metadata
+and the existing native owner approval flow; it does not pre-approve these readers or native
+tools. Membership, context and original-turn checks run before and after reads. Fresh dedicated
+Group bindings use this direct adapter; existing managed sessions and background feature
+helpers retain their saved modes. Native Work keeps provider tools and permissions. Its
+committed files use [exact owner preview approval](GROUP_NATIVE_GIT.md) before Git sync;
+that approval is distinct from independently reviewed managed task application.
 
 A completed shared `offline_changes` query advances only this manager's local reading
 position; it does not acknowledge a retained private aside. Result pages contain at most eight

@@ -54,7 +54,7 @@ test('VS Code setup stays at the top of Chats and opens instructions without lea
   await expect(page).toHaveURL(/#\/chats$/);
   await expect(setup).toContainText('The extension is connected');
   await expect(setup).toContainText('Install from VSIX');
-  await expect(setup).toContainText('Chats → VS Code');
+  await expect(setup).toContainText('Chats → Native');
   await expect(setup.getByRole('link', { name: 'Extension setup guide' })).toHaveAttribute(
     'href',
     /CONTRIBUTOR_SETUP.md#optional-vs-code-companion$/,
@@ -410,7 +410,7 @@ test('Shared chat discovery refreshes cached metadata and marks disconnected cha
   await page.goto('/#/chats');
   await page
     .getByRole('group', { name: 'Conversation type' })
-    .getByRole('button', { name: 'VS Code', exact: true })
+    .getByRole('button', { name: 'Native', exact: true })
     .click();
   const rows = page.locator('.chat-row.vscode');
   await expect(rows).toHaveCount(1);

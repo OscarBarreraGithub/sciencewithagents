@@ -22,6 +22,7 @@ import {
   type ClaudeEvent,
   type ClaudeSessionOptions,
 } from './claude-session.js';
+import { groupNativeReadingNames } from './group-native-reading-names.js';
 
 const identity = parseClaudeIdentity({
   loggedIn: true,
@@ -96,6 +97,48 @@ function fixture(
   return { session, events, writes, config, spawn, auth, emit, channel, submit, end };
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+it('launches direct Claude with native config and observer-only hooks, without Dock or permission overrides', async () => {
+  const config = options({
+    executionMode: 'direct',
+    inheritNative: true,
+    charter: '',
+    hook: () => ({}),
+  });
+  const f = fixture(config);
+  await f.submit();
+  const args = f.spawn.mock.calls[0]![1];
+  for (const flag of [
+    '--mcp-config',
+    '--allowedTools',
+    '--system-prompt',
+    '--append-system-prompt',
+    '--permission-mode',
+    '--allow-dangerously-skip-permissions',
+    '--restricted',
+    '--tools',
+    '--settings',
+    '--setting-sources=',
+  ])
+    expect(args).not.toContain(flag);
+  expect(args).toContain('--model');
+  expect(args).toContain(config.model);
+  const initialize = f.writes.find((frame) => frame.request?.subtype === 'initialize')!.request;
+  expect(initialize.hooks).not.toHaveProperty('PreToolUse');
+  expect(initialize.hooks).not.toHaveProperty('SessionStart');
+  expect(initialize.hooks).toHaveProperty('SubagentStart');
+  expect(initialize.hooks).toHaveProperty('PostToolUse');
+  expect(initialize.forwardSubagentText).toBe(true);
+  expect(initialize).not.toHaveProperty('agents');
+  expect(initialize).not.toHaveProperty('skills');
+  expect(f.session.capabilities.coordinationTools).toBe(false);
+  const readOnly = claudeArguments({ ...config, role: 'read-only', unattended: true });
+  expect(readOnly[readOnly.indexOf('--permission-mode') + 1]).toBe('plan');
+  expect(
+    JSON.parse(readOnly[readOnly.indexOf('--settings') + 1]!).sandbox.filesystem.denyWrite,
+  ).toEqual([config.cwd]);
+  expect(readOnly).not.toContain('--append-system-prompt');
+  expect(() => new ClaudeSession({ ...config, charter: 'Manage with Dock.' })).toThrow();
+});
 it('bounds app context separately from owner text using encoded JSON bytes', async () => {
   const beforeWrite = vi.fn();
   const f = fixture(options({ beforeWrite }));
@@ -206,14 +249,151 @@ const permission = (requestId = randomUUID()) => ({
     permission_suggestions: [{ type: 'addRules', behavior: 'allow' }],
   },
 });
-const mcp = (method: string, params: unknown = {}, requestId = randomUUID()) => ({
+const mcp = (method: string, params: unknown = {}, requestId = randomUUID(), server = 'dock') => ({
   type: 'control_request',
   request_id: requestId,
   request: {
     subtype: 'mcp_message',
-    server_name: 'dock',
+    server_name: server,
     message: { jsonrpc: '2.0', id: 1, method, params },
   },
+});
+
+it('direct Group readers use only the scoped SDK namespace and native owner approval in read-only Ask', async () => {
+  const invoke = vi.fn(async () => ({
+    content: [{ type: 'text' as const, text: 'Exact shared original' }],
+  }));
+  const f = fixture(
+    options({
+      executionMode: 'direct',
+      inheritNative: true,
+      charter: '',
+      role: 'read-only',
+      unattended: true,
+      tools: groupNativeReadingNames.map((name) => ({
+        name,
+        description: 'Scoped read',
+        inputSchema: { type: 'object' },
+        invoke,
+      })),
+    }),
+  );
+  await f.submit();
+  const args = f.spawn.mock.calls[0]![1];
+  expect(JSON.parse(args[args.indexOf('--mcp-config') + 1]!)).toEqual({
+    mcpServers: { group: { type: 'sdk', name: 'group' } },
+  });
+  expect(args).not.toContain('--allowedTools');
+  expect(args).not.toContain('--append-system-prompt');
+  expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan');
+  f.emit(mcp('tools/list', {}, randomUUID(), 'group'));
+  await tick();
+  expect(f.writes.at(-1)!.response.response.mcp_response.result.tools).toEqual(
+    groupNativeReadingNames.map((name) => ({
+      name,
+      description: 'Scoped read',
+      inputSchema: { type: 'object' },
+      annotations: { readOnlyHint: true },
+    })),
+  );
+  const approval = permission();
+  f.emit({
+    ...approval,
+    request: {
+      ...approval.request,
+      tool_name: 'mcp__group__group_evidence_original',
+      input: { eventId: 'exact' },
+      mcp_server: { name: 'group', source: 'sdk' },
+      decision_reason_type: 'rule',
+      matched_ask_rule: { source: 'userSettings' },
+      requires_user_interaction: true,
+    },
+  });
+  const pending = f.events.find((event) => event.type === 'permission');
+  expect(pending).toMatchObject({
+    type: 'permission',
+    request: { requestId: approval.request_id, input: { eventId: 'exact' } },
+  });
+  expect(f.writes.some((frame) => frame.response?.request_id === approval.request_id)).toBe(false);
+  expect(invoke).not.toHaveBeenCalled();
+  f.session.answer(approval.request_id, 'accept');
+  expect(f.writes.at(-1)!.response.response).toEqual({
+    behavior: 'allow',
+    updatedInput: { eventId: 'exact' },
+  });
+  f.emit(
+    mcp(
+      'tools/call',
+      { name: 'group_evidence_original', arguments: { eventId: 'exact' } },
+      randomUUID(),
+      'group',
+    ),
+  );
+  await tick();
+  expect(invoke).toHaveBeenCalledOnce();
+  expect(invoke).toHaveBeenCalledWith(
+    { eventId: 'exact' },
+    expect.objectContaining({ sessionId: f.config.sessionId, deliveryId: expect.any(String) }),
+  );
+  expect(f.writes.at(-1)!.response.response.mcp_response.result.content[0].text).toBe(
+    'Exact shared original',
+  );
+  f.emit(mcp('tools/call', { name: 'dock_inspect' }));
+  await tick();
+  expect(f.writes.at(-1)!.response).toMatchObject({
+    subtype: 'error',
+    error: 'Unknown coordination server.',
+  });
+  expect(invoke).toHaveBeenCalledOnce();
+  expect(() =>
+    claudeArguments({ ...f.config, tools: [{ ...f.config.tools[0]!, name: 'dock_inspect' }] }),
+  ).toThrow('coordination tools');
+});
+
+it('direct Group transport never returns awaited evidence into a later native turn', async () => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const invoke = vi.fn(async () => {
+    await held;
+    return { content: [{ type: 'text' as const, text: 'Old private evidence' }] };
+  });
+  const f = fixture(
+    options({
+      executionMode: 'direct',
+      inheritNative: true,
+      charter: '',
+      tools: [
+        {
+          name: 'group_evidence_query',
+          description: 'Scoped read',
+          inputSchema: { type: 'object' },
+          invoke,
+        },
+      ],
+    }),
+  );
+  await f.submit();
+  const old = mcp('tools/call', { name: 'group_evidence_query' }, randomUUID(), 'group');
+  f.emit(old);
+  await tick();
+  expect(invoke).toHaveBeenCalledOnce();
+  f.emit({
+    type: 'result',
+    uuid: randomUUID(),
+    session_id: f.config.sessionId,
+    subtype: 'success',
+    is_error: false,
+  });
+  await f.submit();
+  release();
+  await tick();
+  expect(
+    f.writes.find((frame) => frame.response?.request_id === old.request_id)?.response.response
+      .mcp_response,
+  ).toMatchObject({ error: { message: 'The original native Group turn ended.' } });
+  expect(JSON.stringify(f.writes)).not.toContain('Old private evidence');
 });
 
 describe('Claude native launch policy', () => {

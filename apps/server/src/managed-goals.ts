@@ -33,6 +33,7 @@ export class ManagedGoals {
     const agent = this.store.agent(agentId);
     return (
       agent.role === 'manager' &&
+      agent.executionMode !== 'direct' &&
       !agent.parentId &&
       !agent.surface &&
       !agent.nativeRootId &&

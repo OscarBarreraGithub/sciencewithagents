@@ -1025,11 +1025,17 @@ test('Reading uses source-backed local macros in original and wrapped math', asy
   );
   await page.goto(`/#/latex/${data.doc.id}`);
   const reader = page.getByRole('dialog', { name: 'PDF reader' });
+  // This equation fits the desktop column; explicitly exercise the wrapped representation.
+  await page.setViewportSize({ width: 360, height: 800 });
   await expect(reader.locator('.reading-equation-wrapped')).toBeVisible();
   await expect(reader.locator('.katex-error')).toHaveCount(0);
   expect(await reader.locator('.math.inline annotation').textContent()).toBe(String.raw`\opt`);
   expect(await reader.locator('.math.inline .katex-html').textContent()).toBe('opt');
   expect(await reader.locator('.reading-equation-original annotation').textContent()).toBe(tex);
+  await expect(reader.locator('.reading-equation-wrapped .katex-html')).toContainText('opt');
+  expect(await reader.locator('.reading-equation-wrapped annotation').textContent()).toBe(
+    readingEqualityLayout(tex),
+  );
   await expect(reader.getByText('remains source-backed.', { exact: false })).toBeVisible();
 });
 

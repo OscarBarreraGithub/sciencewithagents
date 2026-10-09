@@ -47,12 +47,16 @@ browser drafts. Restore to an unused directory and verify before replacing any l
 
 ## Work supervision
 
-Managers maintain internal work and short human requests, continuing independent work when
+Advanced managed project managers maintain internal work and short human requests, continuing independent work when
 one item needs input. Workers use task worktrees. Reviews are bounded and exact reviewed
 changes are applied according to the project's manager/human policy. Read-only research need
 not create a code integration. [Decisions](DECISIONS.md), [QUARK](QUARK.md).
 
-QUARK shares priorities, resources, reservations and allowance caps across projects. Read the
+Native direct chats and attached terminal/editor sessions keep provider-owned coordination
+and permissions. QUARK is advisory there. External sessions survive app shutdown; reconnect
+checks identity again and uncertain saved input is never replayed. See [native sessions](NATIVE_CONNECTIONS.md).
+
+For managed projects, QUARK shares priorities, resources, reservations and allowance caps. Read the
 reason before releasing a hold; increasing a cap does not erase prior spending or release all
 other holds. Transient usage failure differs from quota exhaustion. Never relaunch a worker
 outside supervision just to bypass a wait. Control only the exact owned turn/process group.

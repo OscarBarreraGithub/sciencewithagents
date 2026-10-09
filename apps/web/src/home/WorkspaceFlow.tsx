@@ -1,6 +1,7 @@
 import { conversationCache } from '../conversation-cache';
 import type { CachedConversation, SavedCopy } from '../read-cache';
 import { agentName } from '../agentName';
+import { managedExecution } from '../execution-mode';
 import { GroupsApp } from '../groups/GroupsApp';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -26,6 +27,7 @@ import {
   compareConversationActivity,
   agentSchema,
   entrySchema,
+  id as uuidSchema,
   type ConversationVisibility,
   type ConversationVisibilityTarget,
   type Agent,
@@ -55,6 +57,13 @@ import { ProjectConfiguration } from './ProjectConfiguration';
 import { readProjectSeed, seedProjectBrief } from './SpawnBrief';
 import { ProjectOwnerWorkBoard } from './OwnerWorkBoard';
 import { NewConversation } from './NewConversation';
+import { NativeRunnerStartPage } from './NativeRunnerStart';
+import {
+  NativeConnectionPane,
+  NativeConnectionPicker,
+  NativeConnectionRows,
+  useNativeConnections,
+} from './NativeConnections';
 import { useBackStep } from './Navigation';
 import { ManagedGoalCard } from './ManagedGoalCard';
 import { AssistedSearch } from './AssistedSearch';
@@ -102,6 +111,7 @@ export const stateNames: Record<string, string> = {
 };
 /** A project's own manager chat: the only chat offering Notes and Subagents panels. */
 const managesProject = (agent: Agent, special: Set<string>) =>
+  managedExecution(agent) &&
   agent.role === 'manager' &&
   !agent.interview &&
   !surfaceOf(agent) &&
@@ -212,6 +222,17 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
   };
   if (page === 'chat' || page === 'chats' || page === 'managers')
     return <MainChat route={route} data={data} state={state} refresh={refresh} />;
+  if (page === 'new' && target === 'native')
+    return (
+      <NativeRunnerStartPage
+        heading={
+          <FlowHeading label="NATIVE SESSION" title="Start native in a folder">
+            Choose an existing folder and start explicitly. No project manager or initial prompt is
+            created.
+          </FlowHeading>
+        }
+      />
+    );
   if (page === 'new' && (target === 'chat' || target === 'terminal'))
     return (
       <NewConversation
@@ -239,8 +260,8 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
         cluster={() => <ClusterProjectSetup />}
         heading={
           <FlowHeading label="A NEW PROJECT" title="Start or connect a project">
-            Name it, choose its manager and how its team works. Nothing runs until you send the
-            first request.
+            Set up a managed project in a new or existing folder. Existing native terminal sessions
+            are connected separately. Nothing runs until you send the first request.
           </FlowHeading>
         }
         local={(heading) => (
@@ -268,6 +289,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
       (a) => a.projectId === target && a.role === 'manager' && !a.nativeRootId && !a.archivedAt,
     );
     const tasks = state.tasks.filter((t) => t.projectId === target);
+    const managed = managedExecution(state.agents.find((agent) => agent.id === project.managerId));
     return (
       <section className="flow-page">
         <FlowHeading
@@ -275,7 +297,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
           title={project.name}
           action={
             <a className="flow-button primary" href={go('chat', project.managerId)}>
-              <MessageCircle size={17} /> Talk to manager
+              <MessageCircle size={17} /> {managed ? 'Talk to manager' : 'Open conversation'}
             </a>
           }
         >
@@ -309,42 +331,49 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
           <section className="flow-panel">
             <div className="flow-section-title">
               <h2>Work in progress</h2>
-              <button className="flow-button" onClick={() => setAdding('task')}>
-                <Plus size={16} /> Add task
-              </button>
+              {managed && (
+                <button className="flow-button" onClick={() => setAdding('task')}>
+                  <Plus size={16} /> Add task
+                </button>
+              )}
             </div>
             {tasks.length ? (
               tasks.map((task) => <TaskLink key={task.id} task={task} />)
             ) : (
               <FlowEmpty title="Start with an outcome">
-                Tell your manager what you want to achieve and how you’ll know it worked.
+                {managed
+                  ? 'Tell your manager what you want to achieve and how you’ll know it worked.'
+                  : 'Tell your native agent what you want to work on. Native edits happen in this folder using your native permissions.'}
               </FlowEmpty>
             )}
           </section>
           <section className="flow-panel">
             <div className="flow-section-title">
-              <h2>Your managers</h2>
-              <button className="flow-button" onClick={() => setAdding('manager')}>
-                <Plus size={16} /> Add manager
-              </button>
+              <h2>{managed ? 'Your managers' : 'Native conversations'}</h2>
+              {managed && (
+                <button className="flow-button" onClick={() => setAdding('manager')}>
+                  <Plus size={16} /> Add manager
+                </button>
+              )}
             </div>
             {team.map((agent) => (
               <AgentLink key={agent.id} agent={agent} caption={agent.scope || 'Whole project'} />
             ))}
             <p className="flow-note">
-              Your managers coordinate the work and apply reviewed changes. You can require your
-              review in project settings.
+              {managed
+                ? 'Your managers coordinate the work and apply reviewed changes. You can require your review in project settings.'
+                : 'App-owned native conversations keep their history here. Native edits are not independently reviewed app commits.'}
             </p>
           </section>
         </div>
-        <ProjectTools key={project.id} projectId={project.id} />
+        {managed && <ProjectTools key={project.id} projectId={project.id} />}
         <SourceBackup
           key={`backup-${project.id}`}
           projectId={project.id}
           status={state.backups.find((b) => b.projectId === project.id)}
           refresh={refresh}
         />
-        {adding === 'task' && (
+        {managed && adding === 'task' && (
           <TaskModal
             key={project.id}
             projectId={project.id}
@@ -361,7 +390,7 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
             }}
           />
         )}
-        {adding === 'manager' && (
+        {managed && adding === 'manager' && (
           <ManagerModal
             key={project.id}
             projectId={project.id}
@@ -704,12 +733,18 @@ export function ChatPage({
     }
   };
   const managerView = !!pane && !!agent && managesProject(agent, pane.special);
+  const nativeHelpersView =
+    !!pane && !!agent && !managedExecution(agent) && !agent.nativeRootId && !agent.interview;
   const task = state.tasks.find((t) => t.id === agent?.taskId);
   const readOnly =
     !!agent && (!!agent.archivedAt || (!agent.interview && (closed(task) || !!agent.nativeRootId)));
   const goalEligible = managerView && !readOnly && !pane?.archived;
   const goalKey = `${apiScope()}:${id}`;
-  const panel = pane?.panel && (pane.panel === 'config' || managerView) ? pane.panel : null;
+  const panel =
+    pane?.panel &&
+    (pane.panel === 'config' || managerView || (pane.panel === 'subagents' && nativeHelpersView))
+      ? pane.panel
+      : null;
   const manager = agent && controllingManager(state, agent);
   const returnToManager = manager && manager.id !== agent?.id ? subagentsRoute(manager.id) : null;
   const workerState =
@@ -847,6 +882,17 @@ export function ChatPage({
             </button>
           </>
         )}
+        {nativeHelpersView && (
+          <button
+            type="button"
+            className="chat-tool"
+            aria-pressed={panel === 'subagents'}
+            onClick={() => togglePanel('subagents')}
+          >
+            <Users size={17} />
+            <span className="chat-tool-label">Native helpers</span>
+          </button>
+        )}
         <button
           type="button"
           className="chat-tool"
@@ -861,7 +907,11 @@ export function ChatPage({
     </header>
   );
   const sidePanel = pane && panel && (
-    <PanelFrame panel={panel} close={() => pane.setPanel(null)}>
+    <PanelFrame
+      panel={panel}
+      title={nativeHelpersView && panel === 'subagents' ? 'Native helpers' : undefined}
+      close={() => pane.setPanel(null)}
+    >
       {panel === 'notes' ? (
         project && (
           <NotesPanel
@@ -1211,7 +1261,7 @@ const rowLabels: Record<RowState, string> = {
 const filters: [ChatFilter, string][] = [
   ['manager', 'Projects'],
   // VS Code chats and native Codex sessions; the saved filter key stays 'vscode'.
-  ['vscode', 'VS Code'],
+  ['vscode', 'Native'],
   ['misc', 'Misc'],
 ];
 const kindLabels: Record<ChatKind, string> = {
@@ -1266,6 +1316,10 @@ function MainChat({
   const brief = page === 'chat' && parts[2] === 'brief';
   const answerId = page === 'chat' && parts[2] === 'answer' ? parts[3] : undefined;
   let editorKey = '';
+  const nativeId =
+    page === 'chats' && parts[1] === 'native' && uuidSchema.safeParse(parts[2]).success
+      ? parts[2]!
+      : '';
   if (page === 'chats' && parts[1] === 'vscode')
     try {
       editorKey = decodeURIComponent(parts.slice(2).join('/'));
@@ -1294,6 +1348,8 @@ function MainChat({
     if (routePanel) location.hash = next ? `${go('chat', agentId)}/${next}` : go('chat', agentId);
   };
   const [menu, setMenu] = useState(false);
+  const [nativePicker, setNativePicker] = useState(false);
+  const nativeConnections = useNativeConnections(!groupView);
   const mirrors = useMirrorChats(true);
   const visibility = useConversationVisibility();
   const [archived, setArchived] = useState(false);
@@ -1474,6 +1530,20 @@ function MainChat({
           (!term || `${row.name} ${row.caption} ${row.tag ?? ''}`.toLowerCase().includes(term)),
       )
     : [];
+  const nativeRowsVisible =
+    !archived &&
+    (filter === 'all' || filter === 'vscode') &&
+    nativeConnections.view?.attachments.some((attachment) => {
+      const target = nativeConnections.view?.targets.find(
+        (target) => target.id === attachment.targetId,
+      );
+      return (
+        !term ||
+        `${target?.label ?? 'Retained terminal connection'} ${attachment.status}`
+          .toLowerCase()
+          .includes(term)
+      );
+    });
   const noticeIdentity = notice && conversationVisibilityIdentity(notice.target);
   const noticeRecord = noticeIdentity ? records.get(noticeIdentity) : undefined;
   const noticeName =
@@ -1481,7 +1551,7 @@ function MainChat({
     'Conversation';
   const editor = mirrors.chats.find((chat) => mirrorKey(chat) === editorKey);
   const editorTarget = rows.find((row) => row.kind === 'vscode' && row.key === editorKey)?.target;
-  const selected = !!agentId || !!editorKey || (groupView && !!parts[2]);
+  const selected = !!agentId || !!editorKey || !!nativeId || (groupView && !!parts[2]);
   const ListTitle = selected ? 'h2' : 'h1';
   const visibilityNotice = (
     <div className="chat-visibility-status" role="status">
@@ -1585,7 +1655,16 @@ function MainChat({
             >
               <Plus size={17} /> New
             </button>
-            {menu && <NewMenu close={() => setMenu(false)} />}
+            {menu && (
+              <NewMenu
+                close={() => setMenu(false)}
+                connect={() => {
+                  setMenu(false);
+                  setNativePicker(true);
+                  nativeConnections.refresh();
+                }}
+              />
+            )}
           </div>
         </div>
         <div className="chat-editor-setup">
@@ -1634,6 +1713,13 @@ function MainChat({
         {!selected && visibilityNotice}
         <ClusterProjectList />
         <nav className="chat-list-scroll" aria-label="Conversation list">
+          {!archived && (filter === 'all' || filter === 'vscode') && (
+            <NativeConnectionRows
+              connections={nativeConnections}
+              query={query}
+              selectedId={nativeId}
+            />
+          )}
           {shown.slice(0, rowLimit).map((row) => (
             <div className="conversation-visible-row" key={`${row.kind}:${row.key}`}>
               <a
@@ -1668,7 +1754,7 @@ function MainChat({
               {!row.selected && visibilityAction(row.target, row.name)}
             </div>
           ))}
-          {!shown.length && (
+          {!shown.length && !nativeRowsVisible && (
             <p className="chat-list-empty">
               {!visibility.data
                 ? visibility.error
@@ -1726,6 +1812,16 @@ function MainChat({
                 ?.archived,
             }}
           />
+        ) : nativeId ? (
+          <NativeConnectionPane
+            key={nativeId}
+            id={nativeId}
+            changed={nativeConnections.refresh}
+            connect={() => {
+              nativeConnections.refresh();
+              setNativePicker(true);
+            }}
+          />
         ) : editorKey ? (
           <div className="chat-editor">
             <a className="chat-icon-button chat-back" href="#/chats" aria-label="All chats">
@@ -1761,6 +1857,16 @@ function MainChat({
           </div>
         )}
       </div>
+      {nativePicker && (
+        <NativeConnectionPicker
+          connections={nativeConnections}
+          close={() => setNativePicker(false)}
+          connected={(id) => {
+            setNativePicker(false);
+            location.hash = `#/chats/native/${encodeURIComponent(id)}`;
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -1845,8 +1951,8 @@ function OpenInEditor({ projectId }: { projectId: string }) {
   );
 }
 
-/** New: Project manager, or a chat. The native terminal stays an advanced choice. */
-function NewMenu({ close }: { close: () => void }) {
+/** Connect an existing session or create a separate app-owned conversation. */
+function NewMenu({ close, connect }: { close: () => void; connect: () => void }) {
   const [step, setStep] = useState<'start' | 'chat'>('start');
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1871,11 +1977,18 @@ function NewMenu({ close }: { close: () => void }) {
     <div className="chat-new-menu" id="chat-new-menu" ref={box} role="group" aria-label="Start new">
       {step === 'start' ? (
         <>
-          <a className="chat-new-option" href="#/new" onClick={close}>
-            <Users size={19} />
+          <button type="button" className="chat-new-option" onClick={connect}>
+            <Terminal size={19} />
             <span>
-              <strong>New project</strong>
-              <small>Set up a project, its manager and how its team works.</small>
+              <strong>Connect native session</strong>
+              <small>Observe or control an existing terminal session.</small>
+            </span>
+          </button>
+          <a className="chat-new-option" href="#/new/native" onClick={close}>
+            <FolderOpen size={19} />
+            <span>
+              <strong>Start native in a folder</strong>
+              <small>A persistent native terminal. No manager or initial prompt.</small>
             </span>
           </a>
           <button type="button" className="chat-new-option" onClick={() => setStep('chat')}>
@@ -1886,6 +1999,15 @@ function NewMenu({ close }: { close: () => void }) {
             </span>
             <ChevronRight size={17} />
           </button>
+          <a className="chat-new-option advanced" href="#/new" onClick={close}>
+            <Users size={19} />
+            <span>
+              <strong>
+                Managed project setup <em>Advanced</em>
+              </strong>
+              <small>Optional project manager and team in a new or existing folder.</small>
+            </span>
+          </a>
         </>
       ) : (
         <>

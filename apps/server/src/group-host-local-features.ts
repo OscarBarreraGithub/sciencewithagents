@@ -19,7 +19,9 @@ export function attachGroupHostLocalFeatures(
   connector: GroupHostNativeRuntime,
 ): { close(): Promise<void> } {
   registerGroupReadingCapabilities(runtime, host);
-  const reports = new GroupHostNativeDocuments(host);
+  const reports = new GroupHostNativeDocuments(host, (completion) =>
+    connector.completionWorkspace(completion),
+  );
   const documents = new GroupFeatureDocuments(host, reports);
   connector.completed((completion) => reports.captureCompleted(completion));
   const coordination = connector.coordination

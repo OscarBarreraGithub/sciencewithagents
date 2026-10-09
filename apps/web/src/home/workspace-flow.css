@@ -906,7 +906,7 @@
   align-items: center;
   min-height: 44px;
   gap: 6px;
-  font-size: var(--text-small);
+  font-size: max(16px, var(--text-small));
   font-weight: 650;
   color: var(--home-muted);
 }
@@ -927,11 +927,11 @@
   min-width: 0;
 }
 .chat-new-option strong {
-  font-size: var(--text-body);
+  font-size: max(16px, var(--text-body));
 }
 .chat-new-option small {
   color: var(--home-muted);
-  font-size: var(--text-small);
+  font-size: max(16px, var(--text-small));
   line-height: 1.45;
 }
 .chat-new-option em {
@@ -940,7 +940,7 @@
   border-radius: 6px;
   background: #f1f3f5;
   color: #596271;
-  font-size: var(--text-caption);
+  font-size: max(16px, var(--text-caption));
   font-style: normal;
   font-weight: 650;
 }
@@ -970,7 +970,7 @@
   min-width: 44px;
   padding: 8px 10px;
   white-space: nowrap;
-  font-size: var(--text-small);
+  font-size: max(16px, var(--text-small));
   cursor: pointer;
 }
 .chat-list-scroll {
@@ -2398,4 +2398,12 @@
 .tool-validation-provenance {
   margin: 8px 10px;
   overflow-wrap: anywhere;
+}
+
+/* Native helper observations use the same readable controls as the native connection flow. */
+.chat-subagents.native-helper-panel :is(p, a, button, small, span, strong) {
+  font-size: max(16px, 1rem);
+}
+.chat-subagents.native-helper-panel :is(a.chat-small-button, button) {
+  min-height: 44px;
 }

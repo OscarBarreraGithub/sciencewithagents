@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -8,8 +8,13 @@ import { groupNativeGitRequestSchema } from '@dock/shared/dist/group-native-git.
 import { GroupHostNativeGit } from './group-host-native-git.js';
 import type { GroupHost } from './group-host.js';
 import type { GroupHostNativeRuntime } from './group-native-host-runtime.js';
-import type { Runtime } from './runtime.js';
-import { Store } from './store.js';
+import { Runtime } from './runtime.js';
+import { createServer } from './server.js';
+import { LocalAccess, prepareLocalAccess } from './local-access.js';
+import { PhoneAccess } from './phone-access.js';
+import { Terminals } from './terminal.js';
+import { localRequestProof, type LocalRole } from '@dock/shared/dist/local-authorization.js';
+import { Missing, Store } from './store.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { git, ensureWorktree, checkpointWorktree, integrationPreview } from './workspaces.js';
 
@@ -49,10 +54,12 @@ beforeEach(async () => {
     projectId: project.id,
     agentId: project.managerId,
     provider: 'codex',
+    executionMode: 'managed',
     cwd,
   };
   host = {
     db,
+    directory: root,
     localVisible: () => true,
     authenticatedContext: async ({ handle: selected }: { handle: string }) => {
       if (selected !== handle) throw new Error('Unknown saved member');
@@ -85,6 +92,365 @@ afterEach(async () => {
 });
 const sync = () => adapter.request({ action: 'sync', handle, key: randomUUID() });
 const status = () => adapter.request({ action: 'status', handle });
+async function nativeCheckpoint() {
+  const base = await seed();
+  const project = store.register(cwd, 'Native Group fixture', '', 'codex', randomUUID(), 'direct');
+  binding = {
+    ...binding,
+    projectId: project.id,
+    agentId: project.managerId,
+    executionMode: 'direct',
+  };
+  const requestId = await work();
+  writeFileSync(join(cwd, 'native-result.txt'), 'Confirmed Group Work result\n');
+  await git(cwd, ['add', 'native-result.txt']);
+  await git(cwd, ['commit', '-m', 'Native Group checkpoint']);
+  const run = store.enqueue(binding.agentId!, requestId, 'Exact native Group Work');
+  requests.set(requestId, { ...binding, runId: run.id, intent: 'work' });
+  store.updateRun(run.id, { status: 'completed' });
+  store.updateAgent(binding.agentId!, { status: 'idle' });
+  completions.add(requestId);
+  (adapter as unknown as { starting: Map<string, unknown> }).starting.clear();
+  return { base, requestId, head: await git(cwd, ['rev-parse', 'HEAD']) };
+}
+it('shares native committed Group work only after exact owner preview approval, retains retry and makes no model run', async () => {
+  const checkpoint = await nativeCheckpoint();
+  const runs = store.runs().length;
+  expect((await sync()).message).toContain('ready for review');
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(checkpoint.base);
+  const first = await adapter.request({ action: 'preview-native', handle });
+  expect(first.nativeReviewAvailable).toBe(true);
+  expect(first.nativePreview).toMatchObject({
+    requestId: checkpoint.requestId,
+    base: checkpoint.base,
+    head: checkpoint.head,
+    files: ['native-result.txt'],
+  });
+  expect(first.nativePreview!.patch).toContain('+Confirmed Group Work result');
+  expect((await adapter.request({ action: 'preview-native', handle })).nativePreview).toEqual(
+    first.nativePreview,
+  );
+  const approval = {
+    action: 'approve-native' as const,
+    handle,
+    key: randomUUID(),
+    previewId: first.nativePreview!.id,
+    fingerprint: first.nativePreview!.fingerprint,
+  };
+  await expect(adapter.request(approval)).rejects.toThrow('authenticated app');
+  expect(groupNativeGitRequestSchema.safeParse({ ...approval, humanReview: true }).success).toBe(
+    false,
+  );
+  const accepted = await adapter.request(approval, true);
+  expect(await adapter.request(approval, true)).toEqual(accepted);
+  await expect(adapter.request({ ...approval, fingerprint: '0'.repeat(64) }, true)).rejects.toThrow(
+    'exact saved Git operation',
+  );
+  expect(Number(db.prepare('SELECT count(*) n FROM gng_native_reviews').get()!.n)).toBe(1);
+  expect(() => db.prepare('UPDATE gng_native_reviews SET body=?').run('{}')).toThrow(
+    'retained owner review',
+  );
+  expect((await sync()).message).toContain('work shared');
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(checkpoint.head);
+  expect(store.runs().length).toBe(runs);
+  expect(store.tasks()).toEqual([]);
+});
+it('includes changes introduced only by a merge commit in the exact native owner preview', async () => {
+  await nativeCheckpoint();
+  const workBranch = await git(cwd, ['symbolic-ref', '--short', 'HEAD']);
+  await git(cwd, ['switch', '-c', 'fixture-side']);
+  writeFileSync(join(cwd, 'side-result.txt'), 'Side branch result\n');
+  await git(cwd, ['add', 'side-result.txt']);
+  await git(cwd, ['commit', '-m', 'Side result']);
+  await git(cwd, ['switch', workBranch]);
+  writeFileSync(join(cwd, 'main-result.txt'), 'Work branch result\n');
+  await git(cwd, ['add', 'main-result.txt']);
+  await git(cwd, ['commit', '-m', 'Work result']);
+  await git(cwd, ['merge', '--no-commit', 'fixture-side']);
+  writeFileSync(join(cwd, 'merge-result.txt'), 'Owner must see this merge-only result\n');
+  await git(cwd, ['add', 'merge-result.txt']);
+  await git(cwd, ['commit', '-m', 'Resolve exact native merge']);
+  const { nativePreview: preview } = await adapter.request({ action: 'preview-native', handle });
+  expect(preview!.patch).toContain('Owner must see this merge-only result');
+  expect(preview!.files).toContain('merge-result.txt');
+});
+it.each(['new-first', 'shared-first'] as const)(
+  'shows a native merge reverting files to an already shared parent (%s) in the owner preview',
+  async (order) => {
+    const { base, head } = await nativeCheckpoint();
+    const parents = order === 'new-first' ? [head, base] : [base, head];
+    const merge = await git(cwd, [
+      'commit-tree',
+      `${base}^{tree}`,
+      '-p',
+      parents[0]!,
+      '-p',
+      parents[1]!,
+      '-m',
+      'Return to an earlier shared tree',
+    ]);
+    await git(cwd, ['read-tree', '-u', '-m', head, merge]);
+    await git(cwd, ['update-ref', 'HEAD', merge, head]);
+    const { nativePreview: preview } = await adapter.request({ action: 'preview-native', handle });
+    expect(preview!.patch).toContain('-Confirmed Group Work result');
+    expect(preview!.patch).toContain('deleted file mode');
+  },
+);
+it('refuses oversized native text previews with a readable status while preserving the checkpoint', async () => {
+  await nativeCheckpoint();
+  writeFileSync(
+    join(cwd, 'large-review.txt'),
+    'An ordinary bounded scientific result line.\n'.repeat(110000),
+  );
+  await git(cwd, ['add', 'large-review.txt']);
+  await git(cwd, ['commit', '-m', 'Large exact review']);
+  const head = await git(cwd, ['rev-parse', 'HEAD']);
+  await expect(adapter.request({ action: 'preview-native', handle })).rejects.toThrow(
+    'too large for the exact review screen',
+  );
+  expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(head);
+  expect(Number(db.prepare('SELECT count(*) n FROM gng_native_previews').get()!.n)).toBe(0);
+});
+it('keeps shared file status readable when an old bound agent is unavailable', async () => {
+  await nativeCheckpoint();
+  const original = store.agent.bind(store);
+  vi.spyOn(store, 'agent').mockImplementation((id) => {
+    if (id === binding.agentId) throw new Missing('Saved agent unavailable');
+    return original(id);
+  });
+  expect((await status()).nativeReviewAvailable).toBe(false);
+});
+it.each([
+  'head',
+  'dirty',
+  'native-session',
+  'completion',
+  'membership',
+  'origin',
+  'workspace',
+  'fingerprint',
+] as const)(
+  'refuses stale native owner approval after %s changes, preserving files and unpublished history',
+  async (change) => {
+    const checkpoint = await nativeCheckpoint();
+    const { nativePreview: p } = await adapter.request({ action: 'preview-native', handle });
+    if (change === 'head') {
+      writeFileSync(join(cwd, 'later.txt'), 'Later unreviewed work\n');
+      await git(cwd, ['add', 'later.txt']);
+      await git(cwd, ['commit', '-m', 'Later checkpoint']);
+    }
+    if (change === 'dirty') writeFileSync(join(cwd, 'unfinished.txt'), 'Unfinished owner work');
+    if (change === 'native-session') {
+      const request = requests.get(checkpoint.requestId)!;
+      requests.set(checkpoint.requestId, {
+        ...request,
+        context: { ...request.context, nativeSessionId: 'different-native-session' },
+      });
+    }
+    if (change === 'completion') completions.delete(checkpoint.requestId);
+    if (change === 'membership')
+      vi.spyOn(host, 'authenticatedContext').mockRejectedValue(new Error('Member revoked'));
+    if (change === 'origin')
+      await git(cwd, ['remote', 'set-url', 'origin', join(root, 'unexpected.git')]);
+    if (change === 'workspace') binding = { ...binding, workspaceChoiceKey: randomUUID() };
+    const headBefore = await git(cwd, ['rev-parse', 'HEAD']);
+    await expect(
+      adapter.request(
+        {
+          action: 'approve-native',
+          handle,
+          key: randomUUID(),
+          previewId: p!.id,
+          fingerprint: change === 'fingerprint' ? '0'.repeat(64) : p!.fingerprint,
+        },
+        true,
+      ),
+    ).rejects.toThrow();
+    expect(Number(db.prepare('SELECT count(*) n FROM gng_native_reviews').get()!.n)).toBe(0);
+    expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(headBefore);
+    expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(checkpoint.base);
+  },
+);
+it('rechecks native origin before publishing an approved checkpoint and blocks private intermediate commits', async () => {
+  const checkpoint = await nativeCheckpoint();
+  const { nativePreview: p } = await adapter.request({ action: 'preview-native', handle });
+  await adapter.request(
+    {
+      action: 'approve-native',
+      handle,
+      key: randomUUID(),
+      previewId: p!.id,
+      fingerprint: p!.fingerprint,
+    },
+    true,
+  );
+  await git(cwd, ['remote', 'set-url', 'origin', join(root, 'unexpected.git')]);
+  await expect(sync()).rejects.toThrow();
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(checkpoint.base);
+  await git(cwd, ['remote', 'set-url', 'origin', origin]);
+  writeFileSync(join(cwd, '.env'), 'PRIVATE_TEST_MARKER=never-share\n');
+  await git(cwd, ['add', '.env']);
+  await git(cwd, ['commit', '-m', 'Private intermediate checkpoint']);
+  await git(cwd, ['rm', '.env']);
+  await git(cwd, ['commit', '-m', 'Remove private file']);
+  await expect(adapter.request({ action: 'preview-native', handle })).rejects.toThrow('private');
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(checkpoint.base);
+});
+it('accepts actual browser and paired-device review while denying native owner/host/bridge credentials, wrong origins and revoked phones', async () => {
+  await nativeCheckpoint();
+  const { nativePreview: p } = await adapter.request({ action: 'preview-native', handle });
+  const url = '/api/groups/native-git';
+  const input = () => ({
+    action: 'approve-native',
+    handle,
+    key: randomUUID(),
+    previewId: p!.id,
+    fingerprint: p!.fingerprint,
+  });
+  const launches = vi.fn(async () => {
+    throw new Error('No real providers allowed');
+  });
+  const ownedRuntime = new Runtime(store, root, 'unavailable-provider', launches);
+  const access = new LocalAccess(prepareLocalAccess(root, 4999));
+  const app = await createServer(store, ownedRuntime, {
+    port: 4999,
+    localAccess: access,
+    groupHost: host,
+    ownsRuntime: false,
+  });
+  const cli = (role: LocalRole) => {
+    const challenge = randomBytes(32).toString('hex'),
+      proof = access.proof({ role, challenge });
+    return {
+      host: '127.0.0.1:4999',
+      origin: 'http://127.0.0.1:4999',
+      authorization: `Dock ${role}.${proof.nonce}.${localRequestProof(access.configuration[role], 'http://127.0.0.1:4999', role, challenge, proof.nonce, 'POST', url)}`,
+    };
+  };
+  let remote: Awaited<ReturnType<typeof createServer>> | undefined;
+  try {
+    for (const role of ['owner', 'host', 'bridge'] as const) {
+      const response = await app.inject({
+        method: 'POST',
+        url,
+        headers: cli(role),
+        payload: input(),
+      });
+      expect(response.statusCode, response.body).toBe(role === 'bridge' ? 401 : 409);
+    }
+    expect(Number(db.prepare('SELECT count(*) n FROM gng_native_reviews').get()!.n)).toBe(0);
+    const cookie = access.consumeHandoff(access.issueHandoff().ticket).split(';')[0];
+    const headers = {
+      host: new URL(access.browserOrigin).host,
+      origin: access.browserOrigin,
+      cookie,
+    };
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          headers: { ...headers, origin: 'https://foreign.example.test' },
+          payload: input(),
+        })
+      ).statusCode,
+    ).toBe(403);
+    const accepted = await app.inject({ method: 'POST', url, headers, payload: input() });
+    expect(accepted.statusCode, accepted.body).toBe(200);
+    expect(Number(db.prepare('SELECT count(*) n FROM gng_native_reviews').get()!.n)).toBe(1);
+    const phone = new PhoneAccess(store, {
+      origin: 'https://swa.example.test',
+      authentication: 'access',
+      issuer: 'https://owner.cloudflareaccess.com',
+      audience: 'a'.repeat(64),
+      owner: 'owner@example.test',
+      port: 4998,
+    });
+    phone.setEnabled(true);
+    const identity = {
+      email: 'owner@example.test',
+      subject: 'fixture-phone',
+      expiresAt: Date.now() + 60_000,
+    };
+    vi.spyOn(phone, 'identity').mockResolvedValue(identity);
+    const paired = phone.pair(identity, {
+      code: phone.issueCode(randomUUID()).code,
+      name: 'Owned test phone',
+    });
+    remote = await createServer(store, ownedRuntime, {
+      port: 4998,
+      phone,
+      terminals: new Terminals(ownedRuntime),
+      groupHost: host,
+      remote: true,
+      ownsRuntime: false,
+    });
+    const pairedHeaders = {
+      host: 'swa.example.test',
+      origin: 'https://swa.example.test',
+      cookie: paired.cookie.split(';')[0],
+      'cf-access-jwt-assertion': 'fixture-only',
+    };
+    const pairedReview = await remote.inject({
+      method: 'POST',
+      url,
+      headers: pairedHeaders,
+      payload: input(),
+    });
+    expect(pairedReview.statusCode, pairedReview.body).toBe(200);
+    phone.revoke(phone.status(false).devices[0]!.id);
+    expect(
+      (await remote.inject({ method: 'POST', url, headers: pairedHeaders, payload: input() }))
+        .statusCode,
+    ).toBe(401);
+    expect(Number(db.prepare('SELECT count(*) n FROM gng_native_reviews').get()!.n)).toBe(1);
+    expect(launches).not.toHaveBeenCalled();
+  } finally {
+    await remote?.close();
+    await app.close();
+    await ownedRuntime.close();
+  }
+});
+it('settles known refused reviews and recovers a lost approved reply without reauthorizing a later head', async () => {
+  const checkpoint = await nativeCheckpoint();
+  const { nativePreview: p } = await adapter.request({ action: 'preview-native', handle });
+  const refused = {
+    action: 'approve-native',
+    handle,
+    key: randomUUID(),
+    previewId: p!.id,
+    fingerprint: '0'.repeat(64),
+  };
+  await expect(adapter.request(refused, true)).rejects.toThrow('identity changed');
+  expect(
+    db.prepare('SELECT result FROM gng_operations WHERE key=?').get(refused.key)!.result,
+  ).not.toBeNull();
+  await expect(adapter.request(refused, true)).rejects.toThrow('identity changed');
+  const accepted = {
+    action: 'approve-native',
+    handle,
+    key: randomUUID(),
+    previewId: p!.id,
+    fingerprint: p!.fingerprint,
+  };
+  const view = vi.spyOn(
+    adapter as unknown as { view: (...args: unknown[]) => Promise<unknown> },
+    'view',
+  );
+  view.mockRejectedValueOnce(new Error('Lost HTTP response after review was recorded'));
+  await expect(adapter.request(accepted, true)).rejects.toThrow('Lost HTTP');
+  writeFileSync(join(cwd, 'later.txt'), 'Later unreviewed native result\n');
+  await git(cwd, ['add', 'later.txt']);
+  await git(cwd, ['commit', '-m', 'Later unreviewed native checkpoint']);
+  expect((await adapter.request(accepted, true)).message).toContain('review was recorded');
+  expect((await sync()).message).toContain('ready for review');
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(checkpoint.base);
+  const saved = String(
+    db.prepare('SELECT body FROM gng_native_previews WHERE id=?').get(p!.id)!.body,
+  );
+  expect(saved).not.toContain('Confirmed Group Work result');
+  expect(saved).not.toContain('patch');
+});
 async function chosenAdapter(verify = vi.fn(async () => {})) {
   await adapter.close();
   binding = { ...binding, workspaceChoiceKey: randomUUID() };

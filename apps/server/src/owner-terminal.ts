@@ -20,9 +20,13 @@ export class OwnerTerminals {
   private openings = new Map<string, string>();
   private stopped = false;
   beforeOpen: () => void = () => {};
+  /** Separate native attachment cap, included in allocation-idle evidence. */
+  externalActiveCount: () => number = () => 0;
   activeCount() {
-    return [...this.sessions.values()].filter((session) => session.info.status === 'running')
-      .length;
+    return (
+      [...this.sessions.values()].filter((session) => session.info.status === 'running').length +
+      this.externalActiveCount()
+    );
   }
   constructor(
     private configuration = (() => {

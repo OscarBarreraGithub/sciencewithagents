@@ -14,11 +14,17 @@ import { attachCli } from './attach-cli.js';
 import { agentClientCommand } from './agent-client.js';
 import { prepareBrowserHandoff } from './local-browser-handoff.js';
 import { saveGroupNativeOwnerConfig } from './group-native-owner-config.js';
+import { saveNativeConnectionProfiles } from './native-connections-config.js';
 
 process.umask(0o077);
 const [command, argument, ...rest] = process.argv.slice(2);
 const exec = promisify(execFile);
-if (command === 'group-native' && argument === 'configure' && rest.length === 1) {
+if (command === 'native-connections' && argument === 'configure' && rest.length === 1) {
+  saveNativeConnectionProfiles(dataDir, resolve(rest[0]!));
+  console.log(
+    'Private native source profiles saved. Refresh Connect existing in the app. No tool, native session, SSH configuration or account was changed.',
+  );
+} else if (command === 'group-native' && argument === 'configure' && rest.length === 1) {
   saveGroupNativeOwnerConfig(dataDir, resolve(rest[0]!));
   console.log(
     'Private native host route registered. Reopen the app at a safe idle checkpoint, then use Groups → Native setup to authorize each isolated context.',
@@ -160,6 +166,6 @@ if (command === 'group-native' && argument === 'configure' && rest.length === 1)
   }
 } else {
   console.log(
-    'sciencewithagents\n\n  pnpm dock open\n  pnpm dock quark help\n  pnpm dock doctor\n  pnpm dock group-native configure /absolute/private/native-route.json\n  pnpm dock add /absolute/repository --name "Project name"\n  pnpm dock list\n  pnpm dock attach <agent-id>\n  pnpm dock sessions <project-id>\n  pnpm dock import <project-id> <codex-thread-id> --stopped [--manager <manager-id>]\n\nRun pnpm build before using this CLI. Projects are registered locally; paths never come from the web client.',
+    'sciencewithagents\n\n  pnpm dock open\n  pnpm dock quark help\n  pnpm dock doctor\n  pnpm dock native-connections configure /absolute/private/native-profiles.json\n  pnpm dock group-native configure /absolute/private/native-route.json\n  pnpm dock add /absolute/repository --name "Project name"\n  pnpm dock list\n  pnpm dock attach <agent-id>\n  pnpm dock sessions <project-id>\n  pnpm dock import <project-id> <codex-thread-id> --stopped [--manager <manager-id>]\n\nRun pnpm build before using this CLI. Projects are registered locally; paths never come from the web client.',
   );
 }

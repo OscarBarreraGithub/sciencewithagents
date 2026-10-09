@@ -69,6 +69,7 @@ function hasPendingSetup() {
 function GroupConversation({
   slot,
   onChanged,
+  onManagedCoordination,
   nativeControlsTarget,
   onAuthorizationRequired,
   sharedHandle,
@@ -79,6 +80,7 @@ function GroupConversation({
 }: {
   slot: contracts.GroupHostSlot;
   onChanged: () => void;
+  onManagedCoordination: (available: boolean | undefined) => void;
   nativeControlsTarget: HTMLDivElement | null;
   onAuthorizationRequired: () => void;
   sharedHandle: string;
@@ -97,6 +99,7 @@ function GroupConversation({
         readOnly={readOnly}
         request={request}
         onChanged={onChanged}
+        onManagedCoordination={onManagedCoordination}
         nativeControlsTarget={nativeControlsTarget}
         onAuthorizationRequired={onAuthorizationRequired}
       />
@@ -138,6 +141,24 @@ export function GroupsApp({
   const [newSetupCodeAllowed, setNewSetupCodeAllowed] = useState(false);
   const [native, setNative] = useState('Checking agent availability…');
   const [selected, setSelected] = useState<contracts.GroupHostOpen | null>(null);
+  const [managedCoordination, setManagedCoordination] = useState<{
+    handle: string;
+    available: boolean | undefined;
+  } | null>(null);
+  const sharedHandle = selected?.shared.handle;
+  const currentSharedHandle = useRef(sharedHandle);
+  currentSharedHandle.current = sharedHandle;
+  const ownerCoordinationChanged = useCallback(
+    (available: boolean | undefined) => {
+      if (sharedHandle && currentSharedHandle.current === sharedHandle)
+        setManagedCoordination({ handle: sharedHandle, available });
+    },
+    [sharedHandle],
+  );
+  // Older hosts omit this capability. Only an exact current-context refusal
+  // hides the legacy managed execution controls.
+  const managedActionsAvailable =
+    managedCoordination?.handle !== sharedHandle || managedCoordination?.available !== false;
   const [error, setError] = useState('');
   const [listError, setListError] = useState('');
   const listRead = useRef<AbortController | null>(null);
@@ -701,8 +722,10 @@ export function GroupsApp({
                 >
                   <summary>Advanced</summary>
                   <p>
-                    Review shared action proposals, inspect repository details or make a private
-                    backup. Ordinary messages and report reading do not need these controls.
+                    {managedActionsAvailable
+                      ? 'Review shared action proposals, inspect repository details or make a private backup.'
+                      : 'Inspect repository details or make a private backup. Managed shared actions are unavailable for this native session.'}{' '}
+                    Ordinary messages and report reading do not need these controls.
                   </p>
                   {advancedLoaded && (
                     <>
@@ -715,18 +738,20 @@ export function GroupsApp({
                           <div ref={setGitAdvancedTarget} />
                         </details>
                       )}
-                      <details className="group-host-members group-host-actions">
-                        <summary>Review proposed shared actions</summary>
-                        <p>
-                          Your agent’s saved proposals are listed here. Review the exact instruction
-                          before confirming work on its owner’s computer.
-                        </p>
-                        <GroupActionsBoard
-                          key={`actions:${selected.shared.handle}`}
-                          handle={selected.shared.handle}
-                          actor={selected.member}
-                        />
-                      </details>
+                      {managedActionsAvailable && (
+                        <details className="group-host-members group-host-actions">
+                          <summary>Review proposed shared actions</summary>
+                          <p>
+                            Your agent’s saved proposals are listed here. Review the exact
+                            instruction before confirming work on its owner’s computer.
+                          </p>
+                          <GroupActionsBoard
+                            key={`actions:${selected.shared.handle}`}
+                            handle={selected.shared.handle}
+                            actor={selected.member}
+                          />
+                        </details>
+                      )}
                       {selected.native.executionMode !== 'host' && (
                         <>
                           <GroupGitPanel
@@ -832,6 +857,7 @@ export function GroupsApp({
                         executionMode={selected.native.executionMode}
                         sharedHandle={selected.shared.handle}
                         onChanged={changed}
+                        onManagedCoordination={ownerCoordinationChanged}
                         nativeControlsTarget={nativeControlsTarget}
                         onAuthorizationRequired={authorizationRequired}
                       />

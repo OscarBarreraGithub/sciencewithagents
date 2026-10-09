@@ -15,6 +15,7 @@ import {
   promptTextSchema,
 } from '@dock/shared';
 import type { NativeProviderBoundary } from './native-provider-boundary.js';
+import { groupNativeReadingNames } from './group-native-reading-names.js';
 import {
   claudeAuthDiagnosticReader,
   claudeAuthScanner,
@@ -236,6 +237,7 @@ export type ClaudeHostTool = {
     context: {
       sessionId: string;
       requestId: string;
+      deliveryId?: string;
       signal: AbortSignal;
     },
   ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>;
@@ -438,6 +440,8 @@ export type ClaudeSessionOptions = {
   accountAffinity: string;
   role: 'manager' | 'read-only' | 'implementer';
   inheritNative?: boolean;
+  /** Direct sessions inherit native instructions and expose no Dock MCP catalog. */
+  executionMode?: 'direct' | 'managed';
   /** Internal supplied-evidence helpers have no native tools, including file reads. */
   nativeTools?: 'off';
   /** Official per-session Chrome opt-in; omission preserves native preferences. */
@@ -539,14 +543,27 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
   if (
     !isAbsolute(options.cwd) ||
     !options.binary ||
-    !options.charter.trim() ||
+    (options.executionMode !== 'direct' && !options.charter.trim()) ||
     !/^[a-zA-Z0-9][a-zA-Z0-9._:/\[\]-]{0,199}$/.test(options.model)
   )
     throw new Error('Invalid private Claude session configuration.');
   if (
+    options.executionMode === 'direct' &&
+    (!options.inheritNative ||
+      options.tools.some((tool) => !groupNativeReadingNames.some((name) => name === tool.name)) ||
+      options.charter.trim())
+  )
+    throw new Error(
+      'Direct Claude sessions require native configuration without a Dock charter or coordination tools.',
+    );
+  if (
     options.tools.length > 20 ||
     new Set(options.tools.map((tool) => tool.name)).size !== options.tools.length ||
-    options.tools.some((tool) => !coordinationName.test(tool.name))
+    options.tools.some((tool) =>
+      options.executionMode === 'direct'
+        ? !groupNativeReadingNames.some((name) => name === tool.name)
+        : !coordinationName.test(tool.name),
+    )
   )
     throw new Error('Invalid coordination tool catalog.');
   // Claude drops the whole dock MCP server when one input schema lacks an object root.
@@ -571,6 +588,7 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
         : options.role === 'implementer'
           ? ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write']
           : ['Read', 'Glob', 'Grep'];
+  const toolServer = options.executionMode === 'direct' ? 'group' : 'dock';
   return [
     '--print',
     '--input-format',
@@ -601,11 +619,16 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
           '--strict-mcp-config',
         ]
       : []),
-    '--mcp-config',
-    JSON.stringify({ mcpServers: { dock: { type: 'sdk', name: 'dock' } } }),
+    ...(options.executionMode === 'direct' && !options.tools.length
+      ? []
+      : [
+          '--mcp-config',
+          JSON.stringify({ mcpServers: { [toolServer]: { type: 'sdk', name: toolServer } } }),
+        ]),
     ...(!options.inheritNative ? ['--tools', builtins.join(',')] : []),
-    '--allowedTools',
-    options.tools.map((tool) => `mcp__dock__${tool.name}`).join(','),
+    ...(options.executionMode === 'direct'
+      ? []
+      : ['--allowedTools', options.tools.map((tool) => `mcp__dock__${tool.name}`).join(',')]),
     ...(!options.inheritNative
       ? [
           '--settings',
@@ -651,16 +674,22 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
     '--model',
     options.model,
     ...(options.effort === providerDefaultEffort ? [] : ['--effort', options.effort]),
-    options.inheritNative ? '--append-system-prompt' : '--system-prompt',
-    [
-      options.charter,
-      ...(options.inheritNative && options.unattended && options.role === 'read-only'
-        ? [
-            'Use the registered Dock coordination tools directly without exiting plan mode or asking for routine approval. They enforce your host assignment scope; recording an assigned review verdict is authorized coordination even in plan mode.',
-          ]
-        : []),
-      ...(options.inheritNative && options.unattended && writing ? [nativeFullAccessNote] : []),
-    ].join('\n\n'),
+    ...(options.executionMode === 'direct'
+      ? []
+      : [
+          options.inheritNative ? '--append-system-prompt' : '--system-prompt',
+          [
+            options.charter,
+            ...(options.inheritNative && options.unattended && options.role === 'read-only'
+              ? [
+                  'Use the registered Dock coordination tools directly without exiting plan mode or asking for routine approval. They enforce your host assignment scope; recording an assigned review verdict is authorized coordination even in plan mode.',
+                ]
+              : []),
+            ...(options.inheritNative && options.unattended && writing
+              ? [nativeFullAccessNote]
+              : []),
+          ].join('\n\n'),
+        ]),
     ...(options.forkFrom
       ? [
           `--resume=${options.forkFrom.sessionId}`,
@@ -772,13 +801,15 @@ export function spawnClaudeChannel(
  * Native capabilities stay in Claude; this adapter adds observation and QUARK controls.
  */
 export class ClaudeSession extends EventEmitter {
-  readonly capabilities = {
-    managedChat: true,
-    coordinationTools: true,
-    originalApprovals: true,
-    nativeTerminal: false,
-    lazyResume: true,
-  } as const;
+  get capabilities() {
+    return {
+      managedChat: true,
+      coordinationTools: this.options.executionMode !== 'direct',
+      originalApprovals: true,
+      nativeTerminal: false,
+      lazyResume: true,
+    } as const;
+  }
   get externalMcp() {
     return this.options.inheritNative === true;
   }
@@ -965,16 +996,22 @@ export class ClaudeSession extends EventEmitter {
       subtype: 'initialize',
       hooks: this.options.hook
         ? Object.fromEntries(
-            observedHooks.map((name) => [
-              name,
-              [
-                {
-                  matcher: '*',
-                  hookCallbackIds: ['quark'],
-                  timeout: 5,
-                },
-              ],
-            ]),
+            observedHooks
+              .filter(
+                (name) =>
+                  this.options.executionMode !== 'direct' ||
+                  !['PreToolUse', 'SessionStart'].includes(name),
+              )
+              .map((name) => [
+                name,
+                [
+                  {
+                    matcher: '*',
+                    hookCallbackIds: ['quark'],
+                    timeout: 5,
+                  },
+                ],
+              ]),
           )
         : null,
       ...(!this.options.inheritNative ? { agents: {}, skills: [] } : { forwardSubagentText: true }),
@@ -1251,7 +1288,13 @@ export class ClaudeSession extends EventEmitter {
             return;
           }
         }
-        if (this.options.unattended && name !== 'AskUserQuestion') {
+        const nativeGroupRead =
+          this.options.executionMode === 'direct' &&
+          z
+            .object({ name: z.literal('group'), source: z.literal('sdk') })
+            .safeParse(request.mcp_server).success &&
+          this.options.tools.some((tool) => name === `mcp__group__${tool.name}`);
+        if (this.options.unattended && name !== 'AskUserQuestion' && !nativeGroupRead) {
           this.reply(key, {
             behavior: 'deny',
             message:
@@ -1333,7 +1376,11 @@ export class ClaudeSession extends EventEmitter {
     this.event(event);
   }
   private async mcp(key: string, request: Record<string, unknown>) {
-    if (request.server_name !== 'dock') {
+    const toolServer = this.options.executionMode === 'direct' ? 'group' : 'dock';
+    if (
+      request.server_name !== toolServer ||
+      (this.options.executionMode === 'direct' && !this.options.tools.length)
+    ) {
       this.reply(key, {}, 'Unknown coordination server.');
       return;
     }
@@ -1353,7 +1400,7 @@ export class ClaudeSession extends EventEmitter {
       response({
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'dock', version: '0.1.0' },
+        serverInfo: { name: toolServer, version: '0.1.0' },
       });
     } else if (method === 'notifications/initialized' || method === 'ping') response({});
     else if (method === 'tools/list')
@@ -1362,6 +1409,9 @@ export class ClaudeSession extends EventEmitter {
           name,
           description,
           inputSchema,
+          ...(this.options.executionMode === 'direct'
+            ? { annotations: { readOnlyHint: true } }
+            : {}),
         })),
       });
     else if (method === 'tools/call') {
@@ -1377,13 +1427,20 @@ export class ClaudeSession extends EventEmitter {
       }
       if (this.hostRequests.size >= 16) throw new Error('Too many coordination calls.');
       const controller = new AbortController();
+      const deliveryId = this.deliveryId;
       this.hostRequests.set(key, controller);
       try {
         const result = await tool.invoke(jsonObject.parse(params.arguments ?? {}), {
           sessionId: this.options.sessionId,
           requestId: key,
+          deliveryId,
           signal: controller.signal,
         });
+        if (this.options.executionMode === 'direct' && this.deliveryId !== deliveryId) {
+          if (!this.closed && !controller.signal.aborted)
+            response({}, 'The original native Group turn ended.');
+          return;
+        }
         if (!this.closed && !controller.signal.aborted)
           response(
             z

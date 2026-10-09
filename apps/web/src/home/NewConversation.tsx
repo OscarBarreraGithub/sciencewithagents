@@ -11,6 +11,7 @@ import {
 } from '@dock/shared';
 import { api, apiScope, connectionLost } from '../api';
 import { useCatalogs } from './ProjectConfiguration';
+import { ExecutionModeChoice, type CreationExecutionMode } from './ExecutionModeChoice';
 
 type Start = {
   key: string;
@@ -18,6 +19,7 @@ type Start = {
   provider: ProviderId | null;
   model: string | null;
   effort: string | null;
+  executionMode?: CreationExecutionMode;
 };
 const providerNames: Record<ProviderId, string> = { codex: 'Codex', claude: 'Claude' };
 const storageKey = (terminal: boolean) =>
@@ -29,13 +31,14 @@ function fresh(terminal: boolean): Start {
     provider: terminal ? 'codex' : null,
     model: null,
     effort: null,
+    executionMode: 'direct',
   };
 }
 function read(terminal: boolean): Start {
   try {
     const raw = JSON.parse(localStorage.getItem(storageKey(terminal)) ?? 'null') as Start | null;
     if (raw && uuidSchema.safeParse(raw.key).success && typeof raw.name === 'string')
-      return { ...fresh(terminal), ...raw };
+      return { ...fresh(terminal), ...raw, executionMode: raw.executionMode };
   } catch {
     /* A new request still works without saved browser state. */
   }
@@ -114,6 +117,7 @@ export function NewConversation({
           ...(request.model ? { model: request.model } : {}),
           ...(request.effort ? { effort: request.effort } : {}),
           saveContact: !terminal,
+          ...(request.executionMode ? { executionMode: request.executionMode } : {}),
         }),
       );
       localStorage.removeItem(storageKey(terminal));
@@ -132,7 +136,7 @@ export function NewConversation({
     }
   };
   return (
-    <section className="flow-page project-config">
+    <section className="flow-page project-config creation-config">
       {heading}
       <form
         className="config-form"
@@ -141,6 +145,11 @@ export function NewConversation({
           void create();
         }}
       >
+        <ExecutionModeChoice
+          value={start.executionMode}
+          disabled={busy}
+          change={(executionMode) => edit({ executionMode })}
+        />
         <fieldset className="config-section" disabled={busy}>
           <legend>{terminal ? 'Terminal session' : 'Conversation'}</legend>
           <p className="config-help">

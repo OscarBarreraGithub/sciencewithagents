@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { GroupContext } from '@dock/shared';
+import { groupInstallationIdSchema, type GroupContext } from '@dock/shared';
 import { groupPromotionSourceSchema } from '@dock/shared/dist/group-promotion.js';
 import { GroupEventRepository } from './group-events.js';
 import { Store } from './store.js';
@@ -84,7 +84,7 @@ beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'group-local-summary-'));
   store = new Store(join(directory, 'store.sqlite'));
   events = new GroupEventRepository(join(directory, 'events.sqlite'));
-  const project = store.register(directory, 'Shared fixture', '', 'claude');
+  const project = store.register(directory, 'Shared fixture', '', 'claude', undefined, 'direct');
   projectId = project.id;
   managerId = project.managerId;
   const { displayName: _, ...member } = events.createGroup('Owner');
@@ -111,12 +111,15 @@ it('queues one fresh native helper, preserves its receipt across reopen, and nev
   expect(await adapter.submit(input, signal())).toEqual({ state: 'pending' });
   const [run] = store.runs();
   expect(store.agent(run.agentId)).toMatchObject({
+    executionMode: 'managed',
     provider: 'claude',
     permission: 'read-only',
     parentId: null,
     threadId: null,
   });
   expect(run.agentId).not.toBe(managerId);
+  expect(store.agent(managerId).executionMode).toBe('direct');
+  expect(run.kind).toBe('delegation');
   expect(registerHelper).toHaveBeenCalledWith(
     run.agentId,
     context,
@@ -181,7 +184,13 @@ it('excludes private content before reading its body and refuses changed sources
   );
   expect(body).not.toHaveBeenCalled();
   await expect(
-    adapter.submit({ ...input, source: { ...input.source, writerId: randomUUID() } }, signal()),
+    adapter.submit(
+      {
+        ...input,
+        source: { ...input.source, writerId: groupInstallationIdSchema.parse(randomUUID()) },
+      },
+      signal(),
+    ),
   ).rejects.toThrow('source changed');
   const other = { ...input, evidence: [{ event: {} as never, original: 'private canary' }] };
   await expect(adapter.submit(other, signal())).rejects.toThrow('evidence changed');

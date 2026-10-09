@@ -39,6 +39,7 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 - [Local Groups removal, restoration and background admission](GROUP_LOCAL_SETTINGS.md)
 - [Groups production release readiness](GROUP_RELEASE_READINESS.md)
 - [Groups agents with existing native sign-in](GROUP_NATIVE_OWNER_SETUP.md)
+- [Native folder Start, terminal connections and direct chats](NATIVE_CONNECTIONS.md)
 - [Native Groups shared files, branches and reviewed sync](GROUP_NATIVE_GIT.md)
 - [Persistent local Groups test workflow](GROUP_FIXTURE.md)
 - [Groups presentation and synthetic browser preview](GROUP_UI.md)

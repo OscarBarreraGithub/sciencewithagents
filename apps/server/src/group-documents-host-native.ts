@@ -13,7 +13,10 @@ import {
 } from '@dock/shared/dist/group-documents.js';
 import type { GroupHost } from './group-host.js';
 import type { GroupHostNativeRecord } from './group-host-native-journal.js';
-import type { GroupHostNativeCompletion } from './group-native-host-runtime.js';
+import type {
+  GroupHostNativeCompletion,
+  GroupHostNativeWorkspaceProof,
+} from './group-native-host-runtime.js';
 import type { GroupDocumentsNative, GroupDocumentsAuthority } from './group-documents-native.js';
 import { GroupDocumentCaptureError } from './group-documents-native.js';
 import { groupDocumentVersion } from './group-documents.js';
@@ -59,9 +62,9 @@ export function hostDocumentResultNames(text: string, workspace: string): string
 
 /** Fixed isolated Python performs descriptor-relative reads on macOS and Linux.
  * This reads bytes only: it never evaluates TeX, runs a model or invokes a compiler. */
-export function captureHostDocumentFiles(workspace: string, names: string[]) {
+export function captureHostDocumentFiles(workspace: string, names: string[], identity?: string) {
   const output = spawnSync('python3', ['-I', '-B', helper], {
-    input: JSON.stringify({ workspace, names }),
+    input: JSON.stringify({ workspace, names, ...(identity ? { identity } : {}) }),
     encoding: 'utf8',
     timeout: 5_000,
     killSignal: 'SIGKILL',
@@ -111,7 +114,12 @@ export class GroupHostNativeDocuments implements GroupDocumentsNative {
   private authority?: GroupDocumentsAuthority;
   private closed = false;
   private readonly captures = new Map<string, Promise<void>>();
-  constructor(private readonly host: GroupHost) {
+  constructor(
+    private readonly host: GroupHost,
+    private readonly completionWorkspace?: (
+      completion: GroupHostNativeCompletion,
+    ) => GroupHostNativeWorkspaceProof,
+  ) {
     this.workspaceRoot = join(realpathSync.native(host.directory), 'host-workspaces');
     mkdirSync(this.workspaceRoot, { recursive: true, mode: 0o700 });
     if (lstatSync(this.workspaceRoot).isSymbolicLink())
@@ -271,12 +279,15 @@ export class GroupHostNativeDocuments implements GroupDocumentsNative {
     try {
       if (!this.authority) throw new Conflict('Report authority is unavailable.');
       await this.authority.revalidateOwner(completion.request.context);
-      const child = relative(
-        resolve(this.host.directory, 'host-workspaces'),
-        resolve(completion.cwd),
-      );
-      z.uuid().parse(child);
-      const workspace = join(this.workspaceRoot, child);
+      const proof = this.completionWorkspace?.(completion);
+      let workspace = proof?.root;
+      if (!workspace) {
+        const child = relative(resolve(this.workspaceRoot), resolve(completion.cwd));
+        z.uuid().parse(child);
+        workspace = join(this.workspaceRoot, child);
+      }
+      if (workspace !== completion.cwd)
+        throw new Conflict('Exact completed group workspace required.');
       if (lstatSync(workspace).isSymbolicLink() || realpathSync.native(workspace) !== workspace)
         throw new Conflict('Server-selected group workspace required.');
       const names = hostDocumentResultNames(completion.result.text, workspace);
@@ -286,8 +297,10 @@ export class GroupHostNativeDocuments implements GroupDocumentsNative {
           .run(resultId, 'no-report');
         return;
       }
-      const files = captureHostDocumentFiles(workspace, names);
+      const files = captureHostDocumentFiles(workspace, names, proof?.identity);
       await this.authority.revalidateOwner(completion.request.context);
+      if (proof && !equal(this.completionWorkspace!(completion), proof))
+        throw new Conflict('Completed group workspace changed during capture.');
       const manifest = groupDocumentManifestSchema.parse({
         receiptId,
         requestId: completion.request.requestId,

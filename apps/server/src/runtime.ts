@@ -51,6 +51,7 @@ import {
   sourceDispositionLengthMessage,
   sourceDispositionMaxLength,
   clusterWorkspaceControlSchema,
+  isDirectExecution,
 } from '@dock/shared';
 import { CodexRpc, threadResponse, toolCall, turnResponse, type Provider } from './codex.js';
 import { Conflict, Store, now, publicTask, type PrivateAgent, type PrivateRun } from './store.js';
@@ -84,6 +85,7 @@ import { ProjectApps } from './project-apps.js';
 import { sourceBackupStatus } from './source-backups.js';
 import { nativeConfigMutations, type NativeTransition } from './native-relay.js';
 import { managedMcpConfig } from './mcp.js';
+import { groupNativeReadingNames } from './group-native-reading-names.js';
 import { projectTools, delegationTools } from './worker-tools.js';
 import { pluginPolicy } from './plugins.js';
 import { NativeChildren, nativeChildConfig } from './native-children.js';
@@ -682,6 +684,7 @@ export class Runtime {
   groupHostNativeAdmission?: (agentId: string, runId: string) => Promise<void>;
   groupHostBackgroundReason?: (agentId: string, runId: string) => string | null;
   private charter(agent: PrivateAgent) {
+    if (isDirectExecution(agent)) return '';
     return `${this.roleCharter(agent)}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}`;
   }
   /** Retained helper identities also classify older projects without an internal flag. */
@@ -822,6 +825,11 @@ export class Runtime {
       : [];
   }
   private tools(agent: PrivateAgent) {
+    if (isDirectExecution(agent))
+      return groupNativeReadingNames.flatMap((name) => {
+        const tool = groupHostEvidenceDefinition(this, agent.id, name);
+        return tool ? [tool] : [];
+      });
     if (
       isMemberFeedAgent(this.store, agent.id) ||
       this.conversationSearch.isAgent(agent.id) ||
@@ -1046,7 +1054,7 @@ export class Runtime {
     }
   }
   kick() {
-    if (this.stopped || Date.now() < this.nextDrainAt) return;
+    if (this.stopped) return;
     if (this.draining) {
       this.drainRequested = true;
       return;
@@ -1145,6 +1153,11 @@ export class Runtime {
   ): Promise<T> {
     return this.withLock(`group-owner-control:${managerId}`, async () => {
       const agent = this.store.agent(managerId);
+      if (isDirectExecution(agent))
+        throw new Conflict(
+          'Managed task coordination is unavailable in a direct native Group conversation.',
+          'GROUP_MANAGED_COORDINATION_REQUIRED',
+        );
       if (
         this.stopped ||
         schedulerSettings(this.store).paused ||
@@ -1357,12 +1370,76 @@ export class Runtime {
     this.schedulingError =
       'QUARK could not check the queue. New starts wait while it retries automatically. Saved chats and drafts remain available.';
   }
+  /** Direct input keeps durable owner holds and native exhaustion, without QUARK admission. */
+  private directStartReason(run: PrivateRun): string | null {
+    if (run.sourceId !== null || !['user', 'resume'].includes(run.kind))
+      return 'Direct conversations start only from explicit owner input or recovery.';
+    if (
+      run.queueEdit ||
+      this.store.getSetting(`pulsar:held:${run.id}`) === true ||
+      this.quark.taskIds(run).some((id) => this.store.getSetting(`pulsar:held-task:${id}`) === true)
+    )
+      return 'This saved input is held. Release it explicitly before continuing.';
+    return (
+      this.nativeAdmissionReason(run) ??
+      this.groupHostBackgroundReason?.(run.agentId, run.id) ??
+      (this.providerMaintenance.blocks(this.store.agent(run.agentId).provider)
+        ? 'Waiting for the requested provider update.'
+        : null) ??
+      this.quark.block(run)?.reason ??
+      null
+    );
+  }
+  private async drainDirect() {
+    const heads = new Set<string>();
+    let inspected = 0;
+    for (const run of this.store.runs(['queued'])) {
+      const agent = this.store.agent(run.agentId);
+      if (!isDirectExecution(agent) || agent.nativeRootId) continue;
+      // Earlier held owner input remains the head; app-generated coordination cannot launch.
+      if (run.sourceId !== null || !['user', 'resume'].includes(run.kind)) continue;
+      if (heads.has(agent.id)) continue;
+      heads.add(agent.id);
+      if (++inspected % 16 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
+      if (this.stopped) return;
+      if (
+        this.executing.has(agent.id) ||
+        this.externalControl.has(agent.id) ||
+        this.restoring.has(agent.id) ||
+        ['interrupted', 'failed', 'waiting'].includes(agent.status) ||
+        closedAssignment(this.store, agent) ||
+        this.directStartReason(run)
+      )
+        continue;
+      if (!this.preparedRuns.has(run.id)) {
+        this.prepareQueuedRun(run);
+        continue;
+      }
+      const current = this.store.run(run.id);
+      if (
+        current.status !== 'queued' ||
+        this.directStartReason(current) ||
+        ['interrupted', 'failed', 'waiting'].includes(this.store.agent(agent.id).status)
+      )
+        continue;
+      if (!this.nativeAdmissionConsume(current)) continue;
+      this.preparedRuns.delete(run.id);
+      // Retain observed usage/native receipts. This does not reserve a scheduler slot or lease.
+      this.quark.begin(current);
+      this.executing.add(agent.id);
+      void this.startRun(current).catch((error) => this.failRun(current, error));
+    }
+  }
   /** Opted-out projects neither wait for nor occupy QUARK's shared work slots. */
   private quarkSlotCount() {
     return (
       [...this.executing].filter((id) => {
         const agent = this.store.agent(id);
-        return !agent.nativeRootId && projectFollowsQuark(this.store, agent.projectId);
+        return (
+          !agent.nativeRootId &&
+          !isDirectExecution(agent) &&
+          projectFollowsQuark(this.store, agent.projectId)
+        );
       }).length +
       this.localJobs
         .all()
@@ -1377,6 +1454,8 @@ export class Runtime {
     this.draining = true;
     this.drainRequested = false;
     try {
+      await this.drainDirect();
+      if (Date.now() < this.nextDrainAt) return;
       this.quark.sync();
       await this.enforceAllowances();
       await this.releaseFinishedWorkers();
@@ -1402,7 +1481,10 @@ export class Runtime {
       );
       new CoordinationReviews(this.store).coalescePending();
       if (!this.fixture) this.coordinator.tick();
-      const allQueued = this.store.runs(['queued']);
+      const pendingRuns = this.store.runs(['queued']);
+      const allQueued = pendingRuns.filter(
+        (run) => !isDirectExecution(this.store.agent(run.agentId)),
+      );
       const conversationHeads = new Map<string, string>();
       const inputHeads = new Map<string, string>();
       const refreshHeads = (runs: PrivateRun[]) => {
@@ -1423,7 +1505,7 @@ export class Runtime {
       };
       refreshHeads(allQueued);
       const queued = allQueued.filter((run) => !run.queueEdit);
-      const queuedIds = new Set(queued.map((run) => run.id));
+      const queuedIds = new Set(pendingRuns.filter((run) => !run.queueEdit).map((run) => run.id));
       for (const id of this.preparedRuns) if (!queuedIds.has(id)) this.preparedRuns.delete(id);
       const priority = { interactive: 3, high: 2, normal: 1, background: 0 };
       const local = this.fixture ? [] : this.localJobs.candidates();
@@ -1633,7 +1715,10 @@ export class Runtime {
             }
           : null;
       const allowance = coordinatorBound ?? this.quark.block(run);
-      const lease = !allowance && a.role === 'manager' ? this.quark.renewManagerLease(run) : null;
+      const lease =
+        !allowance && !isDirectExecution(a) && a.role === 'manager'
+          ? this.quark.renewManagerLease(run)
+          : null;
       const block =
         allowance ??
         (lease ? { cause: 'lease' as const, reason: lease } : null) ??
@@ -1844,7 +1929,7 @@ export class Runtime {
       if (this.factory) client = await this.factory(agent);
       else {
         const cwd =
-          agent.role === 'manager' && !agent.surface
+          !isDirectExecution(agent) && agent.role === 'manager' && !agent.surface
             ? join(this.dataDir, 'managers', agent.id)
             : agent.cwd;
         mkdirSync(cwd, { recursive: true, mode: 0o700 });
@@ -2062,7 +2147,7 @@ export class Runtime {
     const client = await this.client(agent);
     const project = this.store.project(agent.projectId);
     const cwd =
-      agent.role === 'manager' && !agent.surface
+      !isDirectExecution(agent) && agent.role === 'manager' && !agent.surface
         ? join(this.dataDir, 'managers', agent.id)
         : agent.cwd;
     const evidenceOnly =
@@ -2147,13 +2232,23 @@ export class Runtime {
       cwd,
       // Native writing roles need browsers, Git metadata and SSH that the workspace
       // sandbox cannot host; they get Codex's documented full access without prompts.
-      sandbox: evidenceOnly ? 'read-only' : fullAccess ? 'danger-full-access' : agent.permission,
-      ...(inherits
-        ? { approvalPolicy: 'never' }
-        : { approvalPolicy: 'on-request', approvalsReviewer: 'user' }),
-      developerInstructions: fullAccess
-        ? `${this.charter(agent)}\n\n${nativeFullAccessNote}`
-        : this.charter(agent),
+      ...(isDirectExecution(agent)
+        ? agent.permission === 'read-only'
+          ? { sandbox: 'read-only' }
+          : {}
+        : {
+            sandbox: evidenceOnly
+              ? 'read-only'
+              : fullAccess
+                ? 'danger-full-access'
+                : agent.permission,
+            ...(inherits
+              ? { approvalPolicy: 'never' }
+              : { approvalPolicy: 'on-request', approvalsReviewer: 'user' }),
+            developerInstructions: fullAccess
+              ? `${this.charter(agent)}\n\n${nativeFullAccessNote}`
+              : this.charter(agent),
+          }),
       config: {
         ...pluginConfig,
         ...native,
@@ -2163,7 +2258,9 @@ export class Runtime {
               web_search: agent.role === 'manager' || evidenceOnly ? 'disabled' : agent.webSearch,
             }
           : {}),
-        ...(inherits ? { 'sandbox_workspace_write.network_access': true } : {}),
+        ...(inherits && !isDirectExecution(agent)
+          ? { 'sandbox_workspace_write.network_access': true }
+          : {}),
         model_reasoning_effort: agent.effort,
       },
     };
@@ -2278,7 +2375,9 @@ export class Runtime {
       await client.request('thread/start', {
         ...params,
         threadSource: managedCodexSource,
-        dynamicTools: this.tools(agent),
+        ...(!isDirectExecution(agent) || this.tools(agent).length
+          ? { dynamicTools: this.tools(agent) }
+          : {}),
         historyMode: 'legacy',
       }),
     );
@@ -2450,6 +2549,17 @@ export class Runtime {
         'This saved QUARK conversation has been replaced. Open Work for the current coordinator.',
       );
     requireActiveAssignment(this.store, this.store.agent(run.agentId));
+    if (isDirectExecution(this.store.agent(run.agentId))) {
+      // Preserve the existing exact-queue recovery disposition for a Group
+      // Read-only change during native preparation; other holds interrupt.
+      this.requireGroupUnstartedMode(run);
+      const reason = this.directStartReason(run);
+      if (reason) {
+        this.interruptedStarts.add(run.id);
+        throw new Conflict(reason);
+      }
+      return;
+    }
     if (this.store.agent(run.agentId).role !== 'manager') return;
     this.quark.sync();
     try {
@@ -2478,8 +2588,44 @@ export class Runtime {
         turn.intent === 'ask'
           ? 'read-only'
           : (turn.permission ?? (agent.role === 'manager' ? 'workspace-write' : agent.permission));
-      if (agent.permission !== permission && agent.provider === 'claude')
-        await this.claude.forget(agent.id);
+      if (agent.permission !== permission) {
+        if (agent.provider === 'claude') await this.claude.forget(agent.id);
+        else if (agent.provider === 'codex' && isDirectExecution(agent)) {
+          // A loaded Codex thread keeps its previous turn's sandbox. Reopen the
+          // same saved identity so Work inherits native config after read-only Ask.
+          const closing = Promise.resolve().then(async () => {
+            const client = (await this.starting.get(agent.id)) ?? this.clients.get(agent.id);
+            await client?.close();
+            for (const member of this.nativeChildren.family(agent.id))
+              if (this.clients.get(member.id) === client) this.clients.delete(member.id);
+            this.mcpConfigs.delete(agent.id);
+            this.nativeConfigs.delete(agent.id);
+            this.pluginPolicies.delete(agent.id);
+            this.pluginsChanged.delete(agent.id);
+          });
+          this.releasing.set(agent.id, closing);
+          try {
+            await closing;
+          } finally {
+            if (this.releasing.get(agent.id) === closing) this.releasing.delete(agent.id);
+          }
+        }
+        // Closing a provider can await: owner Stop, local holds and membership
+        // changes must still prevent the next input from reaching a provider.
+        if (
+          this.stopped ||
+          this.store.run(run.id).status !== 'queued' ||
+          this.interruptedStarts.has(run.id)
+        ) {
+          this.executing.delete(agent.id);
+          this.interruptedStarts.delete(run.id);
+          this.quark.acknowledgeStop(run.id);
+          this.kick();
+          return;
+        }
+        this.requireGroupUnstartedMode(run);
+        await this.groupHostNativeAdmission(agent.id, run.id);
+      }
       agent = this.store.updateAgent(agent.id, { permission });
     }
     this.assertFixtureAgent(agent, true);
@@ -2618,7 +2764,7 @@ export class Runtime {
           ? { nativeCommand: true }
           : {
               // ChatImages.prompt preserves the original text as its exact prefix.
-              appContext: `${this.chatImages.prompt(run.text).slice(run.text.length)}\n\n<agent-dock-evidence>\n${this.context(current)}\n</agent-dock-evidence>`,
+              appContext: `${this.chatImages.prompt(run.text).slice(run.text.length)}${isDirectExecution(current) ? '' : `\n\n<agent-dock-evidence>\n${this.context(current)}\n</agent-dock-evidence>`}`,
             }),
       });
       return;
@@ -2651,6 +2797,7 @@ export class Runtime {
       return;
     }
     this.requireGroupUnstartedMode(run);
+    this.checkManagerStart(run);
     markRunHandoff(this.store, this.store.run(run.id));
     const response = turnResponse.parse(
       await client.request('turn/start', {
@@ -2665,12 +2812,13 @@ export class Runtime {
             text_elements: [],
           },
         ],
-        ...(evidenceOnly
+        ...(evidenceOnly || isDirectExecution(current)
           ? {}
           : { additionalContext: { agent_dock_state: { value: state, kind: 'untrusted' } } }),
         // Workspace network settings do not apply to Codex's read-only sandbox.
         // Keep read-only roles read-only while permitting native network requests.
-        ...(this.store.getSetting(`group:host-native-agent:${current.id}`) &&
+        ...(!isDirectExecution(current) &&
+        this.store.getSetting(`group:host-native-agent:${current.id}`) &&
         current.permission === 'workspace-write'
           ? { sandboxPolicy: { type: 'dangerFullAccess' } }
           : {}),
@@ -2692,6 +2840,7 @@ export class Runtime {
     const run = this.activeRun(agentId);
     if (
       event.hook_event_name === 'SessionStart' &&
+      !isDirectExecution(agent) &&
       !this.stopped &&
       agent.provider === 'claude' &&
       event.session_id === agent.threadId
@@ -2783,7 +2932,10 @@ export class Runtime {
       }
     }
     const evidenceAgent = child?.id ?? agentId;
-    if (['PreToolUse', 'SubagentStart'].includes(event.hook_event_name)) {
+    if (
+      !isDirectExecution(agent) &&
+      ['PreToolUse', 'SubagentStart'].includes(event.hook_event_name)
+    ) {
       // Register observed helpers first: chat-only authority never extends to
       // an active native family. The existing heartbeat stops the owned group.
       this.quark.sync();
@@ -3248,6 +3400,7 @@ export class Runtime {
   private managerNotice(agentId: string) {
     const agent = this.store.agent(agentId);
     if (
+      isDirectExecution(agent) ||
       agent.role !== 'manager' ||
       agent.nativeRootId ||
       agent.interview ||
@@ -3824,6 +3977,11 @@ export class Runtime {
     native = true,
   ): NativeTransition {
     const agent = this.store.agent(agentId);
+    const direct = isDirectExecution(agent);
+    if (direct && this.store.getSetting(`group:host-native-agent:${agentId}`))
+      throw new Conflict(
+        'Use this Group’s scoped Ask or Work controls. Native input cannot create a Group request receipt.',
+      );
     if (kind === 'compact')
       z.object({ threadId: z.literal(agent.threadId) })
         .strict()
@@ -3865,9 +4023,10 @@ export class Runtime {
           'Reconnect this idle native session; finish or release earlier queued work before starting a turn.',
         );
       const scheduling = schedulerSettings(this.store);
-      if (scheduling.paused)
+      if (!direct && scheduling.paused)
         throw new Conflict('QUARK admission is paused. Resume the work queue before sending.');
       if (
+        !direct &&
         projectFollowsQuark(this.store, current.projectId) &&
         this.quarkSlotCount() >= scheduling.maxConcurrent
       )
@@ -3924,7 +4083,7 @@ export class Runtime {
         await this.checkPluginPolicy(agentId, agent.threadId!);
         if (cancelled) throw new Conflict('Native input was disconnected before admission.');
         checkIdle();
-        this.quark.sync();
+        if (!direct) this.quark.sync();
         const admitted = this.store.transaction(() => {
           // Native choices are explicit and retain precedence over app defaults.
           const mode = params.collaborationMode?.settings;
@@ -3948,9 +4107,14 @@ export class Runtime {
           );
           const run = this.store.run(queued.id);
           if (kind === 'compact') this.store.setSetting(`quark:compaction:${run.id}`, true);
-          if (!this.pulsar.reserve(run, this.executing, true))
+          if (direct) {
+            const reason = this.directStartReason(run);
+            if (reason) throw new Conflict(reason);
+            if (!this.nativeAdmissionConsume(run))
+              throw new Conflict('Native admission changed before input.');
+          } else if (!this.pulsar.reserve(run, this.executing, true))
             throw new Conflict(this.pulsar.decision(run, this.executing).reason);
-          this.quark.issueManagerLease(run);
+          if (!direct) this.quark.issueManagerLease(run);
           this.store.updateRun(run.id, { status: 'running' });
           this.store.updateAgent(agentId, {
             status: 'running',
@@ -3965,8 +4129,8 @@ export class Runtime {
         if (!runId || cancelled) throw new Conflict('QUARK has not admitted this native turn.');
         const run = this.store.run(runId);
         requireActiveAssignment(this.store, this.store.agent(agentId));
-        if (agent.role === 'manager') this.quark.requireManagerLease(run);
-        const reason = this.quark.reason(run, true);
+        if (!direct && agent.role === 'manager') this.quark.requireManagerLease(run);
+        const reason = direct ? this.directStartReason(run) : this.quark.reason(run, true);
         if (reason) throw new Conflict(reason);
         recordInput('uncertain');
         sent = true;
@@ -4010,7 +4174,7 @@ export class Runtime {
             run,
             'The native turn acknowledgement was lost. Inspect saved progress before continuing.',
             false,
-            'lease',
+            direct ? 'manual' : 'lease',
           );
         }
         this.kick();
@@ -4074,7 +4238,7 @@ export class Runtime {
       .parse(raw);
     const agent = this.store.agent(agentId);
     const cwd =
-      agent.role === 'manager' && !agent.surface
+      !isDirectExecution(agent) && agent.role === 'manager' && !agent.surface
         ? join(this.dataDir, 'managers', agentId)
         : agent.cwd;
     const starting = method === 'thread/start';
@@ -4125,8 +4289,14 @@ export class Runtime {
           cwd,
           ephemeral: false,
           historyMode: 'legacy',
-          dynamicTools: this.tools(agent),
-          developerInstructions: this.charter(agent),
+          ...(isDirectExecution(agent)
+            ? this.tools(agent).length
+              ? { dynamicTools: this.tools(agent) }
+              : {}
+            : {
+                dynamicTools: this.tools(agent),
+                developerInstructions: this.charter(agent),
+              }),
         }
       : { ...nativeParams, cwd, ...(!resuming ? { deferGoalContinuation: true } : {}) };
     const adopt = (threadId: string) => {
@@ -4138,7 +4308,7 @@ export class Runtime {
         this.system(
           agentId,
           `Native context ${action}`,
-          `${starting ? 'Opened a fresh Codex context' : resuming ? 'Selected a saved Codex context for reconnection' : 'Forked the current Codex context'} for this same agent. The previous archive, checkpoint, role and task ownership are retained. Use dock_inspect to retrieve current project evidence.`,
+          `${starting ? 'Opened a fresh Codex context' : resuming ? 'Selected a saved Codex context for reconnection' : 'Forked the current Codex context'} for this same agent. The previous archive, checkpoint, role and task ownership are retained.${isDirectExecution(agent) ? '' : ' Use dock_inspect to retrieve current project evidence.'}`,
         );
         this.store.event(`session.${action}`, agent.projectId, agentId, {
           previousThreadId: agent.threadId,
@@ -4390,7 +4560,7 @@ export class Runtime {
       const run = this.activeRun(agentId);
       if (run) {
         this.store.updateRun(run.id, { turnId: turn.id });
-        if (agent.role === 'manager' && !agent.nativeRootId) {
+        if (agent.role === 'manager' && !agent.nativeRootId && !isDirectExecution(agent)) {
           const reason = this.quark.managerLeaseReason(this.store.run(run.id));
           if (reason) {
             this.quark.hold(this.store.run(run.id), reason, false, 'lease');
@@ -4986,6 +5156,14 @@ export class Runtime {
       throw new Conflict('Feed helpers use only supplied shared originals and cannot call tools.');
     if (this.fixture) throw new Conflict('Stub fixtures do not execute coordination tools.');
     const agent = this.store.agent(agentId);
+    if (isDirectExecution(agent)) {
+      if (groupNativeReadingNames.some((tool) => tool === name)) {
+        const run = this.activeRun(agentId);
+        if (!run) throw new Conflict('An admitted group turn is required.');
+        return invokeGroupHostEvidence(this, agentId, run.id, key, raw, name);
+      }
+      throw new Conflict('Direct native conversations do not expose Dock coordination tools.');
+    }
     if (this.conversationSearch.isAgent(agentId))
       throw new Conflict('The conversation finder can only rank its supplied saved evidence.');
     if (this.slurmReview.isAgent(agentId))
@@ -5781,6 +5959,17 @@ export class Runtime {
     const client = this.clients.get(approval.agentId);
     if (!client?.ready)
       throw new Conflict('The original Codex connection is gone; this request cannot be replayed.');
+    const current = this.store.agent(approval.agentId);
+    if (
+      isDirectExecution(current) &&
+      (!current.threadId ||
+        !current.turnId ||
+        approval.params.threadId !== current.threadId ||
+        approval.params.turnId !== current.turnId)
+    )
+      throw new Conflict(
+        'The original native turn is no longer current. No permission response was sent.',
+      );
     let result: unknown = { decision };
     if (approval.kind === 'mcp')
       result = {
@@ -6136,7 +6325,7 @@ export class Runtime {
           : [],
       note:
         agent.provider === 'claude'
-          ? 'Claude reports commands available without its terminal. Skills and custom commands use the same session and normal QUARK admission. Model, permissions and new context use app controls; interactive commands stay in Claude Code. Available names appear after the first reply.'
+          ? `Claude reports commands available without its terminal. Skills and custom commands use the same session${isDirectExecution(agent) ? ', owner holds and native allowance protection' : ' and normal QUARK admission'}. Model, permissions and new context use app controls; interactive commands stay in Claude Code. Available names appear after the first reply.`
           : 'Codex context and goal commands use typed app controls. Other Codex commands stay in Native terminal, where its full native menu is available.',
     });
   }

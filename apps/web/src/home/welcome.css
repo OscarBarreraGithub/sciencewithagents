@@ -310,3 +310,15 @@
   gap: 10px;
   margin-top: 16px;
 }
+.welcome-native-connect {
+  margin: 20px 0;
+  padding: 18px;
+  border: 1px solid var(--home-line);
+  border-radius: 14px;
+  background: var(--home-paper);
+  font-size: max(16px, 1rem);
+}
+.welcome-native-connect .flow-button {
+  font-size: max(16px, 1rem);
+  min-height: 44px;
+}

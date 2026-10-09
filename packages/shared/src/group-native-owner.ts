@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { executionModeSchema } from './execution-mode.js';
 
 const base = { handle: z.uuid() };
 const operation = { ...base, key: z.uuid() };
@@ -26,6 +27,8 @@ export const groupNativeOwnerInputSchema = z.discriminatedUnion('action', [
 export type GroupNativeOwnerInput = z.infer<typeof groupNativeOwnerInputSchema>;
 export const groupNativeOwnerStatusSchema = z.strictObject({
   executionMode: z.enum(['host', 'isolated']).optional(),
+  sessionMode: executionModeSchema.optional(),
+  managedCoordination: z.boolean().optional(),
   hostEnabled: z.boolean().optional(),
   configured: z.boolean(),
   productionReady: z.boolean(),

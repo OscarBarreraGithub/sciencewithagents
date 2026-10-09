@@ -23,6 +23,8 @@ import { DemoProvider, seedDemo } from './demo.js';
 import { PhoneAccess, readPhoneConfig } from './phone-access.js';
 import { Terminals } from './terminal.js';
 import { OwnerTerminals } from './owner-terminal.js';
+import { NativeConnections } from './native-connections.js';
+import { NativeRunnerLaunch } from './native-runner-launch.js';
 import { SourceBackups } from './source-backups.js';
 import { PublishingAccounts } from './publishing-accounts.js';
 import { PhoneTunnel } from './phone-tunnel.js';
@@ -87,6 +89,8 @@ let groupHost: GroupHost | undefined;
 let tunnel: PhoneTunnel | undefined;
 let terminals: Terminals | undefined;
 let ownerTerminals: OwnerTerminals | undefined;
+let nativeConnections: NativeConnections | undefined;
+let nativeRunnerLaunch: NativeRunnerLaunch | undefined;
 let backups: SourceBackups | undefined;
 let hosts: Hosts | undefined;
 let notebookGateway: NotebookGateway | undefined;
@@ -124,12 +128,15 @@ function stop() {
     };
     // Close marks Runtime stopped synchronously; do not dispatch new queued work while
     // slower network, backup, or browser connections are still draining below.
+    const nativeLaunchingClose = close(() => nativeRunnerLaunch?.close());
     const runtimeClosing = close(() => runtime?.close());
     await close(() => notebookGateway?.close());
     await close(() => tunnel?.close());
     await close(() => backups?.close());
     await close(() => terminals?.close());
     await close(() => ownerTerminals?.close());
+    await nativeLaunchingClose;
+    await close(() => nativeConnections?.close());
     await Promise.all([close(() => remote?.close()), close(() => app?.close())]);
     await close(() => clusterServices?.close());
     await close(() => clusterAdmission?.close());
@@ -289,6 +296,19 @@ startup = (async () => {
       process.env.DOCK_CLUSTER_BOOTSTRAP_FILE!,
       computeBootstrap(process.env.DOCK_CLUSTER_BOOTSTRAP_FILE!).idleMinutes,
     );
+  nativeConnections = new NativeConnections(store, root, undefined, undefined, !demo && !fixture);
+  nativeConnections.beforeOpen = () => ownerTerminals!.beforeOpen();
+  nativeRunnerLaunch = NativeRunnerLaunch.production(
+    store,
+    root,
+    nativeConnections,
+    runtime.modelPolicy,
+    { codex: binary, claude: process.env.DOCK_CLAUDE_BIN ?? 'claude' },
+    !demo && !fixture,
+  );
+  nativeRunnerLaunch.beforeStart = () => ownerTerminals!.beforeOpen();
+  ownerTerminals.externalActiveCount = () =>
+    nativeConnections!.activeCount() + nativeRunnerLaunch!.activeCount();
   if (!fixture) backups = new SourceBackups(store, root, undefined, demo ? [] : undefined);
   hosts = new Hosts(root, undefined, demo ? [] : undefined);
   // Demo data never checks the real computer's GitHub or Cloudflare sign-in.
@@ -323,6 +343,8 @@ startup = (async () => {
     notebookGateway,
     terminals,
     ownerTerminals,
+    nativeConnections,
+    nativeRunnerLaunch,
     mirrors,
     backups,
     hosts,

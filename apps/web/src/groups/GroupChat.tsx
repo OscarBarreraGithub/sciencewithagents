@@ -314,6 +314,7 @@ function draftView(handle: string, request: GroupChatClient) {
 export function GroupChat({
   slot,
   onChanged,
+  onManagedCoordination,
   request,
   nativeControlsTarget,
   onAuthorizationRequired,
@@ -324,6 +325,7 @@ export function GroupChat({
 }: {
   slot: GroupHostSlot;
   onChanged: () => void;
+  onManagedCoordination?: (available: boolean | undefined) => void;
   request: GroupChatClient;
   nativeControlsTarget?: HTMLDivElement | null;
   onAuthorizationRequired?: () => void;
@@ -604,6 +606,7 @@ export function GroupChat({
         requestState={ownerControlReceipt?.state}
         requestText={ownerControlReceipt?.text}
         request={request}
+        onManagedCoordination={onManagedCoordination}
         onChanged={() => {
           const handle = slot.handle;
           onChanged();

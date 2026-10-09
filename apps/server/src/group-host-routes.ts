@@ -19,6 +19,7 @@ export function registerGroupHostRoutes(
   host: GroupHost,
   authenticated: (request: FastifyRequest) => boolean,
   folders?: FolderConnections,
+  humanReviewAuthenticated: (request: FastifyRequest) => boolean = () => false,
 ) {
   const documents = groupFeatureDocuments(host);
   if (documents) {
@@ -56,7 +57,7 @@ export function registerGroupHostRoutes(
       });
   };
   app.get('/api/groups', { onRequest: guard }, async () => host.list());
-  const actions = {
+  const actions: Record<string, (v: unknown, request: FastifyRequest) => unknown> = {
     workspace: (raw: unknown) => {
       const input = groupWorkspaceInputSchema.parse(raw);
       const native = host.native as Partial<GroupHostNativeRuntime>;
@@ -124,7 +125,7 @@ export function registerGroupHostRoutes(
     'request-agent': (v: unknown) => host.requestAgent(v),
     'feed-writer': (v: unknown) => host.configurePromotion(v),
     'native-owner': (v: unknown) => host.nativeOwnerControl(v),
-    'native-git': (v: unknown) => {
+    'native-git': (v: unknown, request: FastifyRequest) => {
       const git = groupHostNativeGit(host);
       if (!git)
         throw new GroupHostError(
@@ -132,7 +133,7 @@ export function registerGroupHostRoutes(
           'GROUP_NATIVE_GIT_UNAVAILABLE',
           'Native shared workspace Git is unavailable.',
         );
-      return git.request(v);
+      return git.request(v, humanReviewAuthenticated(request));
     },
     git: (v: unknown) => {
       const git = groupFeatureGit(host);
@@ -153,7 +154,7 @@ export function registerGroupHostRoutes(
       { bodyLimit: 24 * 1024, onRequest: guard },
       async (request, reply) => {
         try {
-          return await fn(request.body);
+          return await fn(request.body, request);
         } catch (error) {
           if (error instanceof GroupHostError)
             return reply.code(error.status).send({ code: error.code, error: error.message });

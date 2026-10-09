@@ -5,6 +5,26 @@ How to check this source, and what the collected evidence does and does not show
 for the source actually checked. Historical passing runs do not certify a newer revision.
 Private logs, screenshots, disposable databases and native-session receipts stay under `data/`.
 
+## Native-first source checks — 2026-10-09
+
+Native Claude Opus 5.5 reviews cover exact implementation checkpoints and their bounded
+corrections. Seven owned local tmux/Herdr acceptance cases cover quiet observation,
+controller and target identity, uncertain input and external-session survival. Folder
+launch checks use actual owned tmux with a fake provider CLI. A separate installed Codex
+metadata check proves Ask/Work permissions across same-thread reconnect with zero model turns.
+
+Focused merged checks cover direct conversation recovery, Group authority/readers/report
+capture and all 46 native/legacy Git cases, including every merge parent and exact owner
+approval. Controlled Chromium fixtures cover desktop and 412×915, 360×800 and 915×412.
+They do not establish SSH, physical-phone, real-provider turns for this path or independent
+installed two-person Groups acceptance. Publication, CI and activation remain separate.
+
+Use Node 24 for the developer verification suite. The focused direct-runtime fixture also
+has a strict type check: `sh scripts/pnpm --filter @dock/server exec tsc -p tsconfig.native-direct-tests.json`
+after building shared contracts. The legacy auth fixture explicitly acquires its managed
+lease, and the public-file fixture sets its actual mode independently of the caller's umask.
+No production permission guard was weakened to satisfy these checks.
+
 ## Readiness corrections — 2026-10-09
 
 Focused Node 24 checks cover QUARK's unconfigured Off default and saved On/Off switches,

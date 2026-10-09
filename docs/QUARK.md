@@ -1,5 +1,14 @@
 # QUARK
 
+Fresh personal and dedicated Group direct conversations use QUARK as advice, with native quota observation
+and explicit owner Stop and held-request controls. They do not require a manager lease,
+coordination tools or a QUARK admission hook. Connected native editor/terminal workflows
+keep their own permissions and lifecycle. Existing managed conversations retain their saved
+mode and admission policy. Group membership, local-owner authority, Ask/Work permissions
+and publication checks still apply; background feature helpers retain managed admission.
+See [the native-first decision](DECISIONS.md#direct-conversations-and-connected-terminals)
+and [current delivery status](STATUS.md). Direct native edits are not independently reviewed commits.
+
 Open **QUARK** for its conversation, shared status board and live spending sliders.
 Managers record owner-requested task caps; the owner can raise or lower them on the cards. Tell it which project to
 pause, prioritize or allocate allowance to. Its typed controls save each decision; hard
@@ -19,7 +28,7 @@ Advisory values are rounded and bounded; `dock_inspect {scheduling:true}` retain
 These updates never issue leases, grant tools, approve requests or release a pause.
 
 **Queued Usage, Agent Routing Kernel** is sciencewithagents’
-central admission scheduler. It extends the existing durable work queue across projects,
+admission scheduler for managed work. It extends the existing durable work queue across projects,
 managers, Codex, Claude and owned local transcription jobs. Jira is unnecessary for this:
 tasks, branches, receipts and results already live together in the app.
 
@@ -49,7 +58,7 @@ owner controls after about 20 ms of work or 16 candidates; an individual check c
 
 ## Opt-in manager goals
 
-An app-owned project root manager can retain one explicit owner goal for Codex or Claude.
+An app-owned managed project root manager can retain one explicit owner goal for Codex or Claude.
 Creating or replacing it queues an ordinary owner request. A successful admitted turn may
 record useful progress and a next action with `dock_goal_update`; the host then saves at
 most one automatic report on the existing queue. Model policy, native capabilities,

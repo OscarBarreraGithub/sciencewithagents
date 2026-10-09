@@ -1,21 +1,51 @@
 # Design decisions
 
-Current decisions, consolidated 2026-10-01. Implementation gaps belong in [Status](STATUS.md),
+Current decisions, updated 2026-10-09. Implementation gaps belong in [Status](STATUS.md),
 not in another build plan. Detailed interface requirements are in [Design](DESIGN.md).
 
 ## Native agents, thin supervision
 
 Codex and Claude retain their native tools, skills, hooks, configured integrations and
-explicit choices. QUARK observes logs, tool activity, helper identities and usage; host
-hooks supervise admission and stopping. Avoid a second scheduler, external Jira dependency,
+explicit choices. QUARK observes logs, tool activity, helper identities and usage. Managed
+project hooks supervise admission and stopping; native direct work keeps owner controls
+and provider permissions. Avoid a second scheduler, external Jira dependency,
 generic RPC gateway or tool-by-tool reimplementation of either provider.
 
-Use supported native unattended permissions. Native writing roles use the provider's documented
-full access (Claude `bypassPermissions`, Codex `danger-full-access` + `never`); the project or
+Advanced managed writing roles use supported unattended permissions (Claude
+`bypassPermissions`, Codex `danger-full-access` + `never`). Direct conversations and native
+folder launches preserve provider configuration and permission prompts. The project or
 worktree is the intended scope, not containment. Read-only and saved restricted roles remain restricted.
 Routine unsupported operations should fail visibly rather than wait indefinitely for approval.
 Real account sign-in, human questions and external policy requirements remain meaningful.
 External MCP services are not made safe by a filesystem prompt instruction.
+
+### Direct conversations and connected terminals
+
+The owner requested native-first operation on 2026-10-09. Fresh personal conversations
+use direct execution: native tools, configuration and explicit permission choices,
+without a Dock manager charter, coordination catalog, lease or QUARK admission hook.
+QUARK is advisory for this path; explicit owner Stop, held requests and native quota
+observation remain. Central model policy still applies to new app-managed launches.
+Save the execution mode with the original conversation and use it during recovery.
+Existing managed conversations are not converted or relaunched under a new default.
+
+Connected editor and terminal sessions retain their native ownership. Closing SWA detaches
+its terminal clients; it does not stop externally owned agents. Connections use authenticated,
+typed adapters and server-issued identities. Terminal input receipts establish delivery to
+the pane, not an agent reply, and uncertain input is never automatically replayed.
+Native direct edits do not become independently reviewed commits by declaration.
+
+**Start native in a folder** launches a fixed native CLI in a server-issued folder using an
+optional local tmux installation. Existing SSH/tmux and Herdr sessions use the connection
+path. Native model choice preserves CLI defaults; policy/exact choices use the central
+resolver. A creation receipt does not prove sign-in or an agent reply. Recovery reads the
+original receipt and never replays an uncertain start. Advanced project setup remains managed.
+
+Fresh dedicated Group sessions also use direct execution, retaining membership, local-owner,
+Ask/Work, completion and publication checks. Only their two scoped shared-evidence readers
+are added. Native committed files require the owner's exact preview approval before sync;
+this is distinct from independently reviewed managed task application. Current delivery and
+limitations belong in [Status](STATUS.md).
 
 ## Groups v1: shared chats, native local agents
 
@@ -32,13 +62,15 @@ binding, domain purchase or phone VPN is part of new onboarding. Existing connec
 including domain routes, are preserved. Groups hosting stays independent.
 
 Groups lives in **Chats → Groups**, with the ordinary list and conversation layout. Group chat
-shows shared messages from all members; Group manager directs this member’s own agent in
+shows shared messages from all members; My group agent directs this member’s own agent in
 the shared context. Setup, invitations and management are compact dialogs. The private-chat
 and catch-up controls are removed from this journey; their saved records retain private
 identities and are never republished or reassigned to the shared context.
 
 Each member uses their own computer, provider account and native tools. Group agents run
-through the ordinary local runtime and QUARK. Shared and private conversations have distinct
+through the local runtime. Fresh dedicated sessions are direct; existing managed sessions
+retain their coordination and QUARK policy. Background summary/action helpers retain their
+separate managed authority. Shared and private conversations have distinct
 persisted identities, native sessions, drafts and publication destinations. Personal chat
 history is not imported into either one. Only shared content enters the group feed; private
 asides and local files require explicit sharing.
@@ -54,7 +86,10 @@ and are never silently resumed as host-native work. A new host-native request re
 separate durable execution identity. The hosted service, membership and delivery protocols
 are reused; unrelated public setup and provider accounts are never copied between members.
 
-## Durable project work
+## Durable managed project work
+
+The following coordination policy applies to advanced managed projects. Native direct
+agents use their provider's own tools and subagents without mandatory Dock coordination.
 
 Managers coordinate small assignments, with high-level plan review and atomic implementation
 reviews. Two correction rounds are the default bound. Then the manager records a disposition,

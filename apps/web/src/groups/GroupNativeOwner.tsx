@@ -16,6 +16,7 @@ export function GroupNativeOwner({
   requestId,
   request,
   onChanged,
+  onManagedCoordination,
   executionMode,
   requestPendingConsent,
   requestState,
@@ -25,6 +26,7 @@ export function GroupNativeOwner({
   requestId?: string;
   request: GroupChatClient;
   onChanged: () => void;
+  onManagedCoordination?: (available: boolean | undefined) => void;
   executionMode?: 'host' | 'isolated';
   requestPendingConsent?: boolean;
   requestState?: NonNullable<GroupHostChat['nativeRequests']>[number]['state'];
@@ -69,6 +71,7 @@ export function GroupNativeOwner({
       }
       const value = groupNativeOwnerStatusSchema.parse(await request('native-owner', body));
       setStatus(value);
+      onManagedCoordination?.(value.managedCoordination);
       if (value.terminalId && action === 'sign-in') setTerminal(value.terminalId);
       if (action !== 'status') sessionStorage.removeItem(storageKey);
       onChanged();

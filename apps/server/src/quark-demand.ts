@@ -95,6 +95,7 @@ export function materialDemand(store: Store, quark: Quark, now: number) {
   const coordinator = coordinatorAgentId(store);
   const projects = new Map<string, ProjectDemand>();
   for (const project of store.projects()) {
+    if (store.agent(project.managerId).executionMode === 'direct') continue;
     if (internal.has(project.id) || !projectFollowsQuark(store, project.id)) continue;
     const policy = quarkProjectPolicySchema.parse(
       store.getSetting(`quark:project:${project.id}`) ?? {},

@@ -1,3 +1,4 @@
+import { managedExecution } from './execution-mode';
 import { agentName } from './agentName';
 import './Composer.css';
 import { flushSync } from 'react-dom';
@@ -587,7 +588,9 @@ export function Conversation({
                 {intro?.note ??
                   (personal
                     ? 'Your assistant sees only the projects and notes you choose in Assistant privacy.'
-                    : 'Your team prepares changes separately. Your project settings decide how reviewed changes are applied.')}
+                    : managedExecution(agent)
+                      ? 'Your team prepares changes separately. Your project settings decide how reviewed changes are applied.'
+                      : 'Your native agent uses its own tools and permissions. Work starts when you send a prompt.')}
               </div>
             </div>
           )}
@@ -1498,7 +1501,7 @@ export function Composer({
               uploader={attachmentUpload}
             />
           )}
-          {!specialized && !steer && (
+          {!specialized && !steer && managedExecution(agent) && (
             <select
               className="composer-priority"
               aria-label="Message priority"
@@ -1521,11 +1524,7 @@ export function Composer({
         <div>
           {!specialized && (
             <ChatCommands
-              onGoal={
-                onGoal ??
-                (() =>
-                  fail('Goals are not available for this conversation. Your draft is retained.'))
-              }
+              onGoal={onGoal}
               onCommand={(command) => {
                 if (agent.provider === 'claude' && command === 'compact')
                   void runNativeCommand('/compact');
@@ -1591,7 +1590,7 @@ export function Composer({
                     <SendTiming steer={steer} disabled={sending} onChange={setSteer} />
                   </label>
                 )}
-                {!steer && (
+                {!steer && managedExecution(agent) && (
                   <label>
                     Priority for this message{' '}
                     <select

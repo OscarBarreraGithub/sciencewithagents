@@ -10,16 +10,16 @@ conversation accessible. Desktop and phone-size checks are separate from physica
 | Area                 | Available behavior                                                                                                    | Boundary                                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Home                 | Remaining allowances, computer snapshot, running projects, Ideas, To-dos, Completed/Undo and human action items       | Readings show freshness; missing data is not zero usage                                             |
-| Projects             | Choose a new/existing folder first, configure manager/workers and budget, then Spawn at the bottom                    | Folder selection creates no manager; Spawn saves setup and the first brief is sent explicitly       |
+| Managed projects     | Advanced setup: choose a folder, configure manager/workers and budget, then Spawn                                     | Folder selection creates no manager; Spawn saves setup and the first brief is sent explicitly       |
 | Model preferences    | Shared user defaults, project snapshots, editable task/family mappings, latest available versions and exact pins      | Native/imported choices stay native; unavailable models need a visible correction                   |
-| Chats                | Managers, shared editor sessions and saved Misc conversations; compact phone chat and grouped tool details            | Internal helpers/resource reports stay out of the ordinary chat list                                |
+| Chats                | Direct personal chats, managed teams, shared editor sessions and native terminals; compact chat and grouped activity  | Internal helpers/resource reports stay out of the ordinary chat list                                |
 | Prompt notepad       | Full-page editing, autosave, local versions, minimize and return to chat                                              | Unsent drafts are browser/device-local; erased storage cannot be guaranteed recoverable             |
 | Active messages      | Codex steering, native follow-up queues, held editing for app-owned queued messages, Stop and durable retries         | Native editor queues keep their supported controls; uncertain sends are not blindly replayed        |
-| Delegation           | Managers assign Codex/Claude workers, inspect tools/results and coordinate bounded reviews                            | Native helpers share parent supervision; partial helper counters are labelled                       |
+| Managed delegation   | Managers assign Codex/Claude workers, inspect tools/results and coordinate bounded reviews                            | Native helpers share parent supervision; partial helper counters are labelled                       |
 | Completed work       | Separate questions using saved evidence or an eligible copy of the original native conversation                       | Does not reopen the finished task/review or recover hidden reasoning                                |
 | Manager continuity   | Persistent internal/human work items, checkpoints and concise requests; owner-only Notes                              | Managers continue independent work when one item awaits a person                                    |
 | Context maintenance  | Native Claude 60% compaction with handoff hooks; natural Codex compaction                                             | External native/editor sessions need their own supported integration; no perfect-memory claim       |
-| QUARK                | Shared queue, priority/weights, caps/reserves, spending sliders, leases, pauses and coordinator chat                  | Estimated attribution and stopping latency prevent an exact provider-enforced spending ceiling      |
+| QUARK                | Managed queue, caps/reserves, pauses and coordinator chat; native work receives advice and usage observations         | Estimated attribution and stopping latency prevent an exact provider-enforced spending ceiling      |
 | Slurm cluster        | Shared cached queue, pending reasons, fairshare, native limits, recent efficiency and submitted-job tracking          | Advisory only: no app cluster limits; native SSH sign-in and site rules apply                       |
 | Cluster notebooks    | Open running compute-node Jupyter notebooks through the existing private SSH connection                               | Phone/selected-computer access needs that worker's separately configured notebook HTTPS address     |
 | Computer health      | Current pressure, charts, project/job attribution, grouped apps/processes and full-screen Ask                         | Detailed probes are macOS-specific; automatic checks are bounded and off on fresh installs          |
@@ -28,6 +28,18 @@ conversation accessible. Desktop and phone-size checks are separate from physica
 | Multiple computers   | Select configured hosts with separate accounts/projects/history; two copyable setup prompts                           | Connection is agent-assisted over a verified private route, not automatic discovery                 |
 | Updates and recovery | GitHub update check, automatic pre-update database copy, maintenance-agent assignment and source backups              | Agent handles customizations; quit/reopen is explicit. Source backup excludes private conversations |
 | Provider maintenance | Welcome has copyable terminal install/update commands; refresh usage and check native sign-in/models                  | Setup agent verifies the actual CLI version; desktop apps alone do not supply a verified CLI        |
+
+**New → Start native in a folder** launches an optional local tmux session with your chosen
+Codex/Claude CLI in an existing server-selected folder. Native model settings are the
+default; saved app policy and exact choices remain available. **Connect native session**
+observes an existing tmux/Herdr session, including configured SSH targets, without a model
+call. Control is explicit; closing the app detaches clients and preserves external sessions.
+Creation and terminal delivery receipts are distinct from an agent reply. Uncertain starts
+and sends are never replayed. See [native workflows](NATIVE_CONNECTIONS.md).
+
+Fresh personal conversations use native direct execution without mandatory Dock
+coordination or QUARK admission. Existing managed conversations keep their saved mode.
+Native tools, skills, hooks, permission prompts and subagents remain provider-owned.
 
 An open queued-message editor stops saving when another browser takes ownership or the
 message leaves the queue. Its local text and Versions remain available to copy or close.
@@ -44,9 +56,12 @@ histories remain saved and private; they are not shown or republished in these s
 **Manage → Advanced → Review proposed shared actions** connects proposals to the original task owner's native
 Work, task worktree, independent review and exact apply. Saved actions retain their request
 and execution identities through retries; an incoming message cannot authorize another
-computer. Native Ask stays read-only. [Shared files](GROUP_NATIVE_GIT.md) also shows bounded
-unfinished-file status without staging or publishing those files. Optional sync shares only
-reviewed applied commits, using each member's own GitHub access.
+computer. Direct native sessions omit this managed action board; ordinary chat, Ask/Work,
+shared-content reading, reports and backup remain available. Native Ask stays read-only;
+Work preserves native permission configuration. [Shared files](GROUP_NATIVE_GIT.md) shows
+bounded unfinished-file status without staging or publishing it. Direct Work uses ordinary
+commits and exact owner preview approval before automatic sync. Older managed sessions
+retain independently reviewed task application. Each member uses their own GitHub access.
 
 My group agent can query shared evidence and exact originals in bounded pages, including
 incremental and offline questions. Missing responsibility or causal facts remain unknown;
@@ -356,7 +371,7 @@ The legacy workspace is maintenance-only. See [Status](STATUS.md) before plannin
 Source is MIT licensed. Runtime data, credentials, private conversations, drawings and
 screenshots are excluded from the distributable repository. The public domain redirects to GitHub.
 
-Existing project folders can be selected in the app from a paired phone, desktop browser or
+In **Managed project setup (Advanced)**, existing project folders can be selected from a paired phone, desktop browser or
 connected-computer view. Familiar locations, clickable breadcrumbs, back/forward navigation
 and folder-name search make it possible to explore the selected computer. Search can include
 subfolders; broad searches are bounded and incomplete results are labelled. Hidden folders

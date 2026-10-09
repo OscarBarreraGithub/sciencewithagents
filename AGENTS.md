@@ -35,8 +35,10 @@ commands for agent launches. The explicit owner-operated terminal is a narrow ex
 an authenticated owner or paired device may type native shell commands directly; the server
 chooses the login shell and starting directory. Opening/reconnecting the terminal makes no
 model call and does not depend on QUARK admission. Authentication remains required.
-Managers use typed coordination tools; workers implement in task worktrees.
-Managers apply independently reviewed changes by default using an exact preview. A project's
+Managed project managers use typed coordination tools; their workers implement in task
+worktrees. Native direct sessions use provider-owned tools and subagents without a mandatory
+Dock catalog, charter or QUARK admission. Preserve saved execution modes during recovery.
+For this repository, apply independently reviewed changes using an exact preview. A project's
 human-review setting requires its owner's confirmation. Bound correction rounds to two,
 then record a manager disposition or ask the person according to the project policy.
 

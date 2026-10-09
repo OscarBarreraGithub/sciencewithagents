@@ -461,3 +461,17 @@
     width: 100%;
   }
 }
+.execution-mode-choice select {
+  min-height: 44px;
+  font-size: max(16px, 1rem);
+}
+.execution-mode-choice .config-help {
+  font-size: max(16px, 1rem);
+}
+
+.creation-config :is(label, p, small, button, input, select) {
+  font-size: max(16px, 1rem);
+}
+.creation-config button {
+  min-height: 44px;
+}

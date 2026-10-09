@@ -70,6 +70,10 @@ def collect(request):
         raise ValueError("bounded exact inputs required")
     root = directory(request["workspace"])
     try:
+        identity = request.get("identity")
+        root_stat = os.fstat(root)
+        if identity is not None and identity != f"{root_stat.st_dev}:{root_stat.st_ino}":
+            raise ValueError("workspace identity changed")
         files, pending = {}, list(names)
         while pending:
             resource = name(pending.pop())

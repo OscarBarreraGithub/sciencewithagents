@@ -35,7 +35,7 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-async function nativeResetFixture() {
+async function nativeResetFixture(direct = false) {
   const reset = start + 60 * 60_000;
   const affinity = 'a'.repeat(64);
   const sessionId = randomUUID();
@@ -67,6 +67,13 @@ async function nativeResetFixture() {
   monitors.push(monitor);
   await monitor.refresh('claude');
   const r = run('claude');
+  if (direct) {
+    // This fixture creates a fresh record; no public mode mutation or history conversion.
+    const raw = store.agent(r.agentId);
+    store.db
+      .prepare('UPDATE agents SET body=? WHERE id=?')
+      .run(JSON.stringify({ ...raw, executionMode: 'direct' }), raw.id);
+  }
   store.setSetting(`quark:project-scheduler:${store.agent(r.agentId).projectId}`, {
     projectId: store.agent(r.agentId).projectId,
     enabled: false,
@@ -95,6 +102,31 @@ async function nativeResetFixture() {
     },
   };
 }
+
+it('retains direct native exhaustion across restart and only releases explicitly after original-account reset proof', async () => {
+  const f = await nativeResetFixture(true);
+  expect(() => quark.release(f.r.id)).toThrow('Native allowance remains held');
+  vi.setSystemTime(f.reset + 60_000);
+  f.reading({ used: 0, reset: null });
+  await f.monitor.refresh('claude');
+  await f.monitor.close();
+  store.close();
+  store = new Store(join(root, 'dock.sqlite'));
+  pulsar = new Pulsar(store);
+  quark = new Quark(store, pulsar);
+  quark.recoverTransient(new Set());
+  expect(quark.holds()).toHaveLength(1);
+  expect(store.runs(['queued'])).toHaveLength(0);
+  expect(() => quark.release(f.r.id, true)).toThrow('explicit owner recovery');
+  store.setSetting(`claude:account:${f.r.agentId}`, 'b'.repeat(64));
+  expect(() => quark.release(f.r.id)).toThrow('Native allowance remains held');
+  store.setSetting(`claude:account:${f.r.agentId}`, 'a'.repeat(64));
+  quark.release(f.r.id);
+  expect(store.runs(['queued'])).toHaveLength(1);
+  expect(store.runs(['queued'])[0]).toMatchObject({ kind: 'resume', agentId: f.r.agentId });
+  expect(store.runs(['queued'])[0]!.text).toContain('Inspect retained progress');
+  expect(() => quark.release(f.r.id)).toThrow();
+});
 
 it('resumes once from a fresh native zero/null-reset report after restart, without another model turn', async () => {
   const f = await nativeResetFixture();

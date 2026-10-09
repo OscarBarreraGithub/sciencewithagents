@@ -285,6 +285,7 @@ macIt(
     const h = context('private', 'codex', project.managerId);
     const run = store.enqueue(project.managerId, randomUUID(), 'Owned auth-only unit');
     expect(pulsar.reserve(store.run(run.id), executing)).toBe(true);
+    quark.issueManagerLease(store.run(run.id));
     store.claimQueuedRun(run.id);
     quark.begin(store.run(run.id));
     executing.add(project.managerId);

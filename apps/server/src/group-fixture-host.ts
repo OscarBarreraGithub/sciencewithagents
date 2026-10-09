@@ -135,6 +135,7 @@ export class GroupFixtureHost {
             120,
           ),
           provider: 'codex',
+          executionMode: 'managed',
           model: 'demo',
           effort: 'medium',
           saveContact: true,

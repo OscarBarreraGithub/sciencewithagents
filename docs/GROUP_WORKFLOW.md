@@ -81,6 +81,17 @@ Each group has two tabs:
   reply; **Work** authorizes shared work. Other members' incoming messages do not authorize
   work on your computer.
 
+Fresh dedicated Group agent sessions use native direct execution with your configured tools,
+skills and permission prompts. Existing managed sessions keep their original identities and
+task/action coordination; they are never converted. Direct Work keeps the provider's native
+subagent controls. Files stay local until the owner approves their exact native Git preview
+for sync; a completed native turn alone is not an independent review. Shared evidence readers
+and immutable report selection remain scoped to this Group. Background feed/summary helpers
+keep their separate managed producer authority and do not become owner instructions.
+When a direct Codex Group session switches between Ask and Work, the app closes its loaded
+provider connection and resumes the same native history. Ask stays read-only; Work resumes
+with native permission configuration rather than forcing full access or disabling approvals.
+
 Opening or reloading a group, reading shared reports and receiving another member's messages
 do not request a model turn. Data transport and report reading do not call a model. **Ask** and **Work**
 request your agent and use your provider allowance, including an Ask for a read-only answer.

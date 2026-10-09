@@ -29,6 +29,7 @@ import { ProviderCliSetup } from './ProviderCliSetup';
 import { FlowHeading } from './WorkspaceFlow';
 import type { HomeData } from './useHomeData';
 import './welcome.css';
+import { NativeConnectionPicker, useNativeConnections } from './NativeConnections';
 
 const names = { codex: 'Codex', claude: 'Claude' };
 const tiersHighToLow = modelTierSchema.options.slice().reverse();
@@ -150,6 +151,8 @@ function CodexSignIn({ checked }: { checked: () => void }) {
 }
 
 export function Welcome({ data }: { data: HomeData }) {
+  const [connectOpen, setConnectOpen] = useState(false);
+  const connections = useNativeConnections(connectOpen);
   const [state, setState] = useState<SetupStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -201,15 +204,45 @@ export function Welcome({ data }: { data: HomeData }) {
   return (
     <section className="flow-page welcome-page">
       <FlowHeading label="WELCOME / WORKSPACE SETUP" title="Welcome and setup">
-        Set up your private workspace and start your first project. Your team, shared allowances and
-        results stay connected across computer and phone.
+        Connect an existing native session or start a saved chat. Managed project setup is available
+        separately, using your own accounts on this computer.
       </FlowHeading>
+      <div className="welcome-native-connect">
+        <h2>Already using a native session?</h2>
+        <p>
+          Observe or control an existing terminal session on this computer or a configured SSH host.
+          Local Codex or Claude installation, sign-in and model setup are only needed when starting
+          a new agent.
+        </p>
+        <div className="welcome-native-actions">
+          <button
+            type="button"
+            className="flow-button primary"
+            onClick={() => setConnectOpen(true)}
+          >
+            Connect native session
+          </button>
+          <a className="flow-button" href="#/new/native">
+            Start native in a folder
+          </a>
+        </div>
+      </div>
+      {connectOpen && (
+        <NativeConnectionPicker
+          connections={connections}
+          close={() => setConnectOpen(false)}
+          connected={(id) => {
+            setConnectOpen(false);
+            location.hash = `#/chats/native/${encodeURIComponent(id)}`;
+          }}
+        />
+      )}
       <div className="welcome-intro">
         <div>
           <ShieldCheck size={27} />
           <strong>Your computer. Your accounts.</strong>
           <p>
-            Managers coordinate the work. You review decisions and results in one place. QUARK
+            Native sessions keep their tools and permissions. Managed projects can add a team; QUARK
             pacing is optional and off by default.
           </p>
         </div>
@@ -415,8 +448,9 @@ export function Welcome({ data }: { data: HomeData }) {
             </div>
           )}
           <p className="welcome-fine">
-            Readiness can change. Every assignment still checks its model and QUARK allowance before
-            starting. A failed check never switches providers.
+            Readiness can change. Managed assignments check their model and QUARK allowance before
+            starting. Native workflows keep provider permissions and limits. A failed check never
+            switches providers.
           </p>
         </article>
         <div className="welcome-next-grid">
@@ -424,16 +458,16 @@ export function Welcome({ data }: { data: HomeData }) {
             <div className="welcome-step-top">
               <span className="welcome-number">{projectReady ? <Check size={18} /> : '03'}</span>
               <div>
-                <h2>{projectReady ? 'Your projects are here' : 'Create a project'}</h2>
+                <h2>Managed projects (Advanced)</h2>
                 <p>
-                  Give a project its own manager. Creating the project starts no model work; your
-                  first message does.
+                  Optional: give a project its own manager and team. Creating the project starts no
+                  model work; your first message does.
                 </p>
               </div>
             </div>
-            <a className="flow-button primary" href={projectReady ? '#/projects' : '#/new'}>
+            <a className="flow-button" href={projectReady ? '#/projects' : '#/new'}>
               <FolderPlus size={17} />
-              {projectReady ? 'Open projects' : 'Create first project'}
+              {projectReady ? 'Open managed projects' : 'Managed project setup (Advanced)'}
             </a>
           </article>
           <article className="welcome-step" aria-label="QUARK setup">

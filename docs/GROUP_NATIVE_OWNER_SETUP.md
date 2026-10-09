@@ -16,8 +16,9 @@ need no Cloudflare account to join. Tailscale is not part of Groups setup.
    computer. A saved request waiting for enablement keeps its original text and identity;
    continue that request explicitly after enabling.
 4. If the provider reports signed out, use the app’s normal account setup on this computer.
-   Do not copy credentials from another member. Model calls use normal QUARK admission and
-   each computer’s own allowance.
+   Do not copy credentials from another member. Model calls use each computer’s own allowance.
+   Fresh dedicated sessions use native direct execution; older managed sessions keep their
+   saved QUARK and coordination policy. Background feature helpers remain managed.
 
 ## What is shared
 
@@ -42,9 +43,10 @@ or other people’s private information into a shared message.
 
 Connect shared code/files through [native Git setup](GROUP_NATIVE_GIT.md). Each member uses
 their own GitHub account and the same intended repository. Shared Work uses member/request
-branches, task worktrees and independently reviewed integration. Optional sync publishes
-reviewed applied commits and fast-forwards clean checkouts; it does not publish private
-history or unfinished files.
+branches. Fresh direct agents make ordinary native commits; **Files to share** displays the
+exact outgoing preview for explicit owner review before automatic sync. Existing managed
+sessions retain task worktrees and independently reviewed application. Sync fast-forwards
+clean checkouts and never stages unfinished files or publishes private history.
 
 For reports, ask My group agent with **Work** to create a PDF and matching LaTeX source in its
 group workspace and link both in the final reply. **Open report from this reply** offers only exact captured

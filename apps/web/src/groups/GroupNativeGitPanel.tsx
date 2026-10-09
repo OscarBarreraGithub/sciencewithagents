@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  groupNativeCommitPreviewSchema,
   groupNativeGitRequestSchema,
   groupNativeGitViewSchema,
+  type GroupNativeCommitPreview,
   type GroupNativeGitRequest,
   type GroupNativeGitView,
 } from '@dock/shared/dist/group-native-git.js';
@@ -29,6 +31,9 @@ export function GroupNativeGitPanel({
   const [autoSync, setAutoSync] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [nativeReview, setNativeReview] = useState<GroupNativeCommitPreview | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [reviewRecorded, setReviewRecorded] = useState(false);
   const [pending, setPending] = useState<GroupNativeGitRequest | null>(null);
   const generation = useRef(0);
   const inFlight = useRef(false);
@@ -36,8 +41,52 @@ export function GroupNativeGitPanel({
   refreshVersion.current = refreshKey;
   const queuedStatus = useRef(false);
   const storageKey = `swa:${apiScope()}:group-native-git:${handle}`;
+  const reviewStorageKey = `${storageKey}:native-review`;
+  const approvalStorageKey = `${storageKey}:native-approval`;
+  const exactSavedReview = (
+    input: GroupNativeGitRequest,
+    preview: GroupNativeCommitPreview | null,
+  ) =>
+    input.action === 'approve-native' &&
+    preview?.id === input.previewId &&
+    preview.fingerprint === input.fingerprint;
 
-  async function control(input: GroupNativeGitRequest) {
+  const sameApproval = (saved: GroupNativeGitRequest, input: GroupNativeGitRequest) =>
+    saved.action === 'approve-native' &&
+    input.action === 'approve-native' &&
+    saved.handle === input.handle &&
+    saved.key === input.key &&
+    saved.previewId === input.previewId &&
+    saved.fingerprint === input.fingerprint;
+  function legacyPending() {
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      const saved = raw ? groupNativeGitRequestSchema.parse(JSON.parse(raw)) : null;
+      return saved && saved.handle === handle && 'key' in saved ? saved : null;
+    } catch {
+      return null;
+    }
+  }
+  function clearApproval(input: GroupNativeGitRequest) {
+    try {
+      const raw = localStorage.getItem(approvalStorageKey);
+      if (raw && raw.length <= 4_000_000) {
+        const saved = groupNativeGitRequestSchema.parse(JSON.parse(raw).input);
+        if (sameApproval(saved, input)) localStorage.removeItem(approvalStorageKey);
+      }
+    } catch {
+      /* Never erase another retained request when its identity is unavailable. */
+    }
+    const legacy = legacyPending();
+    if (legacy && sameApproval(legacy, input)) {
+      sessionStorage.removeItem(storageKey);
+      sessionStorage.removeItem(reviewStorageKey);
+      return null;
+    }
+    return legacy;
+  }
+
+  async function control(input: GroupNativeGitRequest, retainError = false) {
     if (inFlight.current) {
       if (input.action === 'status') queuedStatus.current = true;
       return;
@@ -46,11 +95,30 @@ export function GroupNativeGitPanel({
     const revision = refreshVersion.current;
     const changed = 'key' in input;
     inFlight.current = true;
+    let savingReview = false;
     setBusy(true);
-    setError('');
+    if (!retainError) setError('');
+    if (input.action === 'preview-native') {
+      setNativeReview(null);
+      setAcknowledged(false);
+      setReviewRecorded(false);
+    }
     try {
+      if (input.action === 'approve-native' && !exactSavedReview(input, nativeReview))
+        throw new Error(
+          'The exact saved review display is unavailable. This browser cannot check the retained approval yet; nothing new was sent.',
+        );
       if (changed) {
-        sessionStorage.setItem(storageKey, JSON.stringify(input));
+        if (input.action === 'approve-native') {
+          savingReview = true;
+          // One durable browser write retains both the acknowledged exact display
+          // and its request identity before any HTTP dispatch.
+          localStorage.setItem(
+            approvalStorageKey,
+            JSON.stringify({ input, preview: nativeReview }),
+          );
+          savingReview = false;
+        } else sessionStorage.setItem(storageKey, JSON.stringify(input));
         setPending(input);
       }
       const result = groupNativeGitViewSchema.parse(
@@ -64,7 +132,23 @@ export function GroupNativeGitPanel({
           setAutoSync(result.autoSync);
         }
       } else queuedStatus.current = true;
-      if (changed) {
+      if (input.action === 'preview-native' && revision === refreshVersion.current) {
+        if (!result.nativePreview)
+          throw new Error(
+            'This host did not return the exact native changes. Nothing was approved.',
+          );
+        setNativeReview(result.nativePreview);
+        setAcknowledged(false);
+        setReviewRecorded(false);
+      }
+      if (input.action === 'approve-native') {
+        setNativeReview(null);
+        setAcknowledged(false);
+        setReviewRecorded(true);
+        setPending(clearApproval(input));
+        queuedStatus.current = true;
+      }
+      if (changed && input.action !== 'approve-native') {
         sessionStorage.removeItem(storageKey);
         setPending(null);
       }
@@ -84,7 +168,11 @@ export function GroupNativeGitPanel({
     } catch (reason) {
       if (generation.current !== current) return;
       setError(
-        reason instanceof Error ? reason.message : 'Shared repository status is unavailable.',
+        savingReview
+          ? 'This browser could not save the exact review and request. No review request was sent. The displayed changes remain available; try saving again when browser storage is available.'
+          : reason instanceof Error
+            ? reason.message
+            : 'Shared repository status is unavailable.',
       );
       // A definite refusal did not acknowledge this change; a new inspected
       // action can replace it. Unknown delivery retains the exact request.
@@ -95,8 +183,15 @@ export function GroupNativeGitPanel({
         reason.status < 500 &&
         !connectionLost(reason)
       ) {
-        sessionStorage.removeItem(storageKey);
-        setPending(null);
+        if (input.action === 'approve-native') {
+          setPending(clearApproval(input));
+          setNativeReview(null);
+          setAcknowledged(false);
+          queuedStatus.current = true;
+        } else {
+          sessionStorage.removeItem(storageKey);
+          setPending(null);
+        }
       }
     } finally {
       if (generation.current === current) {
@@ -104,7 +199,7 @@ export function GroupNativeGitPanel({
         setBusy(false);
         if (queuedStatus.current) {
           queuedStatus.current = false;
-          void control({ action: 'status', handle });
+          void control({ action: 'status', handle }, true);
         }
       }
     }
@@ -118,14 +213,47 @@ export function GroupNativeGitPanel({
     setAutoSync(false);
     setBusy(false);
     setError('');
+    setNativeReview(null);
+    setAcknowledged(false);
+    setReviewRecorded(false);
     let saved: GroupNativeGitRequest | null = null;
     try {
-      const raw = sessionStorage.getItem(storageKey);
+      const raw = localStorage.getItem(approvalStorageKey);
+      if (raw && raw.length <= 4_000_000) {
+        const value = JSON.parse(raw) as { input: unknown; preview: unknown };
+        const input = groupNativeGitRequestSchema.parse(value.input);
+        if (input.action === 'approve-native' && input.handle === handle) {
+          saved = input;
+          try {
+            const preview = groupNativeCommitPreviewSchema.parse(value.preview);
+            if (exactSavedReview(input, preview)) setNativeReview(preview);
+          } catch {
+            /* Retain the exact request; a corrupt display cannot authorize its retry. */
+          }
+        }
+      }
+    } catch {
+      /* Invalid local retry data cannot select another workspace. */
+    }
+    try {
+      const raw = saved ? null : sessionStorage.getItem(storageKey);
       const parsed = raw ? groupNativeGitRequestSchema.safeParse(JSON.parse(raw)) : null;
       if (parsed?.success && parsed.data.handle === handle && 'key' in parsed.data)
         saved = parsed.data;
     } catch {
       /* Invalid local retry data cannot select another workspace. */
+    }
+    if (saved?.action === 'approve-native') {
+      try {
+        const raw = sessionStorage.getItem(reviewStorageKey);
+        const exact =
+          raw && raw.length <= 4_000_000
+            ? groupNativeCommitPreviewSchema.parse(JSON.parse(raw))
+            : null;
+        if (exactSavedReview(saved, exact)) setNativeReview(exact);
+      } catch {
+        /* Missing/corrupt display evidence cannot authorize a new review. */
+      }
     }
     setPending(saved);
     void control({ action: 'status', handle });
@@ -143,6 +271,142 @@ export function GroupNativeGitPanel({
   const mutable = !busy && !pending;
   const preview = view?.preview;
   const setupPrompt = `${groupGitHubSetupPromptForFolder(view?.workspacePath ?? '(choose the intended work folder first)', false)}\nCurrent GitHub repository: ${JSON.stringify(view?.repository ?? '(ask me which intended private repository to connect)')}.`;
+  const nativeFiles = (view?.nativeReviewAvailable ||
+    nativeReview ||
+    pending?.action === 'approve-native' ||
+    reviewRecorded) && (
+    <section className="group-native-review" aria-label="Files to share">
+      <h3>Files to share</h3>
+      <p>
+        Your native agent’s commits need your review before sharing. Previewing, recording a review
+        and Git sync make no model call.
+      </p>
+      <button
+        type="button"
+        className="secondary"
+        disabled={!mutable || !view?.nativeReviewAvailable}
+        onClick={() => void control({ action: 'preview-native', handle })}
+      >
+        Review changes
+      </button>
+      {nativeReview && (
+        <section aria-label="Exact native file changes">
+          <h4>Review these exact commits</h4>
+          <p>
+            Repository: <code>{nativeReview.repository}</code>
+            <br />
+            Work branch: <code>{nativeReview.branch}</code>
+          </p>
+          <dl>
+            <dt>From commit</dt>
+            <dd>
+              <code>{nativeReview.base}</code>
+            </dd>
+            <dt>Through commit</dt>
+            <dd>
+              <code>{nativeReview.head}</code>
+            </dd>
+          </dl>
+          <p>
+            Every new commit is included below. Binary notices identify files to inspect in your
+            chosen shared folder; their contents are not shown in the text diff.
+          </p>
+          <ul className="group-native-review-files" aria-label="Files in this review">
+            {nativeReview.files.map((file, index) => (
+              <li key={`${index}:${file}`}>
+                <code>{file}</code>
+              </li>
+            ))}
+          </ul>
+          <pre
+            className="group-native-review-patch"
+            tabIndex={0}
+            aria-label="Complete saved native diff"
+          >
+            {nativeReview.patch}
+          </pre>
+          {pending?.action !== 'approve-native' && (
+            <>
+              <label className="group-native-review-ack">
+                <input
+                  type="checkbox"
+                  checked={acknowledged}
+                  disabled={!mutable}
+                  onChange={(event) => setAcknowledged(event.target.checked)}
+                />
+                I reviewed these exact commits and files, including any binaries in my shared
+                folder.
+              </label>
+              <button
+                type="button"
+                className="secondary"
+                disabled={
+                  !mutable ||
+                  !acknowledged ||
+                  !view?.nativeReviewAvailable ||
+                  view.busy ||
+                  view.dirty
+                }
+                onClick={() =>
+                  void control({
+                    action: 'approve-native',
+                    handle,
+                    key: crypto.randomUUID(),
+                    previewId: nativeReview.id,
+                    fingerprint: nativeReview.fingerprint,
+                  })
+                }
+              >
+                Record review
+              </button>
+            </>
+          )}
+        </section>
+      )}
+      {pending?.action === 'approve-native' && (
+        <div className="group-git-retry">
+          <p>
+            Your original review acknowledgement is unresolved. Check that same saved request; this
+            does not create a new review.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy || !exactSavedReview(pending, nativeReview)}
+            onClick={() => void control(pending)}
+          >
+            Check saved review
+          </button>
+          {!nativeReview && (
+            <p>
+              The exact review details are unavailable in this browser. The saved request is
+              retained. Approval stays blocked: repository status cannot confirm or cancel it. Keep
+              this browser data; receipt-only recovery needs host support.
+            </p>
+          )}
+        </div>
+      )}
+      {reviewRecorded && (
+        <>
+          <p role="status">
+            Your exact review was recorded.{' '}
+            {view?.autoSync
+              ? 'Automatic sync can now share this checkpoint.'
+              : 'Automatic sync is paused; share the reviewed changes when ready.'}{' '}
+            Later changes need a fresh review.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            disabled={!mutable || !view?.available || view.busy || view.dirty}
+            onClick={() => void control({ action: 'sync', handle, key: crypto.randomUUID() })}
+          >
+            Share reviewed changes
+          </button>
+        </>
+      )}
+    </section>
+  );
   const advanced = (
     <section className="group-git-panel" aria-label="Shared GitHub workspace">
       <h3>Shared files on GitHub</h3>
@@ -286,7 +550,13 @@ export function GroupNativeGitPanel({
       {pending && (
         <div className="group-git-retry">
           <p>This change’s acknowledgement was interrupted. Retry its saved request.</p>
-          <button disabled={busy} onClick={() => void control(pending)}>
+          <button
+            disabled={
+              busy ||
+              (pending.action === 'approve-native' && !exactSavedReview(pending, nativeReview))
+            }
+            onClick={() => void control(pending)}
+          >
             Retry saved Git change
           </button>
         </div>
@@ -404,7 +674,8 @@ export function GroupNativeGitPanel({
           </button>
         )}
       </div>
-      {pending && pending.action !== 'connect' && (
+      {nativeFiles}
+      {pending && pending.action !== 'connect' && pending.action !== 'approve-native' && (
         <p>
           A saved repository change is unresolved. Review it in Advanced → Git sync and reviewed
           changes before connecting again.
@@ -413,8 +684,8 @@ export function GroupNativeGitPanel({
       {error && <p role="alert">{error}</p>}
       {view?.connected && (
         <p>
-          Only reviewed, applied commits sync. Advanced → Git sync and reviewed changes lets you
-          pause or inspect sync; an existing saved pause is preserved.
+          Only reviewed commits sync. Advanced → Git sync and reviewed changes lets you pause or
+          inspect sync; an existing saved pause is preserved.
         </p>
       )}
     </section>

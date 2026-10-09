@@ -184,6 +184,7 @@ export function createGroupLocalSynthesis(
         if (count >= GROUP_PROMOTION_LIMITS.receipts)
           throw new Error('Summary retention capacity reached.');
         const agent = store.addAgent({
+          executionMode: 'managed',
           id: randomUUID(),
           projectId: local.projectId,
           parentId: null,

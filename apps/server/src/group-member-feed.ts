@@ -296,6 +296,7 @@ export class GroupMemberFeed {
         cwd = join(this.directory, 'member-feed', id);
       mkdirSync(cwd, { recursive: true, mode: 0o700 });
       const agent = store.addAgent({
+        executionMode: 'managed',
         projectId: local!.projectId,
         parentId: null,
         taskId: null,

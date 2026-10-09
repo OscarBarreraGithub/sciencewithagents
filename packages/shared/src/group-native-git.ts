@@ -3,6 +3,19 @@ import { integrationPreviewSchema } from './integration.js';
 
 const selected = { handle: z.uuid() };
 const commit = z.string().regex(/^[a-f0-9]{40,64}$/);
+export const groupNativeCommitPreviewSchema = z.strictObject({
+  id: z.uuid(),
+  requestId: z.uuid(),
+  base: commit,
+  head: commit,
+  tree: commit,
+  branch: z.string().max(255),
+  repository: z.string().max(300),
+  fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+  files: z.array(z.string().max(512)).max(1000),
+  patch: z.string().max(131072),
+});
+export type GroupNativeCommitPreview = z.infer<typeof groupNativeCommitPreviewSchema>;
 export const groupNativeGitRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ ...selected, action: z.literal('status') }),
   z.strictObject({ ...selected, action: z.literal('sync'), key: z.uuid() }),
@@ -19,6 +32,14 @@ export const groupNativeGitRequestSchema = z.discriminatedUnion('action', [
     autoSync: z.boolean(),
   }),
   z.strictObject({ ...selected, action: z.literal('preview'), taskId: z.uuid() }),
+  z.strictObject({ ...selected, action: z.literal('preview-native') }),
+  z.strictObject({
+    ...selected,
+    action: z.literal('approve-native'),
+    key: z.uuid(),
+    previewId: z.uuid(),
+    fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+  }),
   z.strictObject({
     ...selected,
     action: z.literal('apply'),
@@ -66,6 +87,8 @@ export const groupNativeGitViewSchema = z.strictObject({
     )
     .max(100),
   preview: integrationPreviewSchema.nullable(),
+  nativeReviewAvailable: z.boolean().optional(),
+  nativePreview: groupNativeCommitPreviewSchema.nullable().optional(),
 });
 export type GroupNativeGitRequest = z.infer<typeof groupNativeGitRequestSchema>;
 export type GroupNativeGitView = z.infer<typeof groupNativeGitViewSchema>;

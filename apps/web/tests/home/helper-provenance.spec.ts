@@ -57,10 +57,10 @@ test('explicit helpers stay excluded while same-title personal, imported and sha
     'aria-pressed',
     'true',
   );
-  await page.getByRole('button', { name: 'VS Code', exact: true }).click();
+  await page.getByRole('button', { name: 'Native', exact: true }).click();
   await expect(page.locator('.flow-person')).toHaveCount(2);
   await page.reload();
-  await expect(page.getByRole('button', { name: 'VS Code', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('button', { name: 'Native', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -151,7 +151,7 @@ test('conversation filters keep whole labels and reachable touch targets at narr
       });
     });
     expect(layout).toEqual(
-      ['All', 'Projects', 'VS Code', 'Misc', 'Groups'].map((name) => ({
+      ['All', 'Projects', 'Native', 'Misc', 'Groups'].map((name) => ({
         name,
         lines: 1,
         fits: true,
@@ -162,7 +162,7 @@ test('conversation filters keep whole labels and reachable touch targets at narr
       expect(
         await filters.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       ).toBe(true);
-    for (const name of ['Projects', 'VS Code', 'Misc']) {
+    for (const name of ['Projects', 'Native', 'Misc']) {
       const button = filters.getByRole('button', { name, exact: true });
       await button.click();
       await expect(button).toHaveAttribute('aria-pressed', 'true');

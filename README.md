@@ -1,8 +1,10 @@
 # sciencewithagents
 
-Run Codex and Claude project teams from your computer or phone. QUARK coordinates their
-queue, shared allowance and computer resources. Personal conversations and worker records
-stay local; Groups publishes explicitly shared content to its configured group service.
+Organize Codex and Claude chats from your computer or phone. Use native agent conversations,
+start a persistent agent in a folder, or connect an existing tmux/Herdr session. Saved prompts
+and optional managed project teams share the same interface. QUARK advises native work and
+can coordinate managed teams. Personal records stay local; Groups publishes explicitly
+shared content to its configured group service.
 New installations start with QUARK pacing and automatic checks off, and an empty Apps page.
 Optional plugins and integrations require an explicit choice to install or connect.
 
@@ -50,9 +52,12 @@ install the Mac Applications launcher when supported, and open the app. Ask whic
 provider only if I have not said and none is saved. Keep saved or stated model choices,
 otherwise use the recommended defaults; do not interview me role by role. Save any
 explicit choice once in the app's Model preferences and confirm the saved values. Prepare
-my first project with those defaults, asking only for missing project details, without
-sending its brief until I am ready. QUARK pacing, phone access, VS Code sharing and
-GitHub backup are optional. Ask me only for necessary sign-in and device steps. Do not run
+my chosen workflow: a native conversation, an existing native session, or a native agent
+in a folder. Follow docs/NATIVE_CONNECTIONS.md. Install tmux/Herdr only if I choose that
+workflow; keep existing editor and terminal sessions intact. Starting a native agent in a
+folder can launch its CLI; do that only when I request Start, and explain any sign-in still
+needed. Managed project teams are optional advanced setup. QUARK pacing, phone access,
+VS Code sharing and GitHub backup are optional. Ask me only for necessary sign-in and device steps. Do not run
 the full developer test suite for ordinary setup. Explain how to reopen the app and
 report anything incomplete rather than claiming success.
 ```
@@ -131,9 +136,11 @@ service in their account, and members join by invitation.
 
 [Phone or laptop access](docs/PHONE_WORKFLOW.md) · [Another worker computer](docs/MULTI_COMPUTER_SETUP.md) · [Update an installation](docs/UPDATE_APP.md)
 
-**Access:** agents use your account's native tools and full-access execution by default,
-including files, commands and network access. Explicit read-only or restricted choices stay
-enforced. Shared and private chats have separate histories; this is not a filesystem sandbox.
+**Access:** native conversations and terminal sessions keep your provider's configured tools
+and permissions. Advanced managed writing roles use full native access by default; explicit
+read-only or restricted choices stay enforced. Group Ask is read-only; Work uses native
+permission configuration. Shared and private chats have separate histories; this is not a
+filesystem sandbox.
 See [native access](docs/DECISIONS.md#native-agents-thin-supervision) and
 [Groups setup](docs/GROUP_NATIVE_OWNER_SETUP.md).
 
@@ -218,5 +225,6 @@ and running the app; switching views does not move running jobs between computer
 
 <img src="docs/beta-test-demo/06-connected-computers.png" alt="This computer selector with online status beneath the sciencewithagents heading" width="270">
 
+[Native sessions and folder Start](docs/NATIVE_CONNECTIONS.md) ·
 [Features](docs/FEATURES.md) · [Setup details](docs/CONTRIBUTOR_SETUP.md) ·
 [Documentation](docs/README.md) · [MIT licence](LICENSE)

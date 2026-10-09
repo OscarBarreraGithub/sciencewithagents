@@ -1,4 +1,5 @@
 import { agentName } from '../agentName';
+import { managedExecution } from '../execution-mode';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowUpRight, Quote, X } from 'lucide-react';
 import { quarkStatusSchema, type Agent, type Project, type Snapshot } from '@dock/shared';
@@ -67,15 +68,17 @@ export function PanelFrame({
   panel,
   close,
   children,
+  title,
 }: {
   panel: ChatPanel;
   close: () => void;
   children: ReactNode;
+  title?: string;
 }) {
   return (
-    <aside className="chat-side" aria-label={panelTitles[panel]}>
+    <aside className="chat-side" aria-label={title ?? panelTitles[panel]}>
       <header className="chat-side-head">
-        <h2>{panelTitles[panel]}</h2>
+        <h2>{title ?? panelTitles[panel]}</h2>
         <button type="button" className="chat-icon-button" aria-label="Close panel" onClick={close}>
           <X size={18} />
         </button>
@@ -467,6 +470,7 @@ export function SubagentsPanel({
   stale?: boolean;
   retry?: () => void;
 }) {
+  const managed = managedExecution(manager);
   const [tokens, setTokens] = useState<Map<string, { total: number | null; partial: boolean }>>(
     new Map(),
   );
@@ -501,14 +505,14 @@ export function SubagentsPanel({
         a.id !== manager.id &&
         !a.interview &&
         (a.nativeRootId === manager.id ||
-          (a.projectId === manager.projectId && a.role !== 'manager')),
+          (managed && a.projectId === manager.projectId && a.role !== 'manager')),
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
-    <div className="chat-subagents">
-      <section aria-label="Workers">
+    <div className={`chat-subagents${managed ? '' : ' native-helper-panel'}`}>
+      <section aria-label={managed ? 'Workers' : 'Native helpers'}>
         <div className="chat-side-section">
-          <h3>Workers</h3>
+          <h3>{managed ? 'Workers' : 'Native helpers'}</h3>
           <span>{team.length}</span>
         </div>
         {stale && (
@@ -590,7 +594,9 @@ export function SubagentsPanel({
         </ul>
         {!team.length && (
           <p className="chat-side-empty">
-            No subagents yet. The manager brings in workers once there is work to delegate.
+            {managed
+              ? 'No subagents yet. The manager brings in workers once there is work to delegate.'
+              : 'No native helpers have been reported. Helpers are controlled by their native parent; this view does not delegate new work.'}
           </p>
         )}
         {team.length > limit && (
@@ -608,7 +614,7 @@ export function SubagentsPanel({
           retain their saved record and offer a separate read-only discussion.
         </p>
       </section>
-      <TeamActivity key={manager.id} manager={manager} state={state} />
+      {managed && <TeamActivity key={manager.id} manager={manager} state={state} />}
     </div>
   );
 }
@@ -735,41 +741,43 @@ export function ConfigPanel({
           {usageOpen && <ExecutionInfo agent={agent} />}
         </details>
       </section>
-      <section>
-        <h3>Scheduling</h3>
-        {!managerView &&
-          agent.role === 'manager' &&
-          !agent.taskId &&
-          !agent.nativeRootId &&
-          !agent.interview &&
-          agent.surface !== 'terminal' &&
-          !agent.archivedAt && <ChatQuarkPreference key={agent.id} agentId={agent.id} />}
-        {jobs.length ? (
-          <ul className="chat-item-list">
-            {jobs.map((job) => (
-              <li key={job.runId} className="chat-item">
-                <div className="chat-item-text">
-                  <strong>{job.status}</strong>
-                  <p>{job.reason}</p>
-                </div>
-                <a className="chat-small-button" href={`#/job/${job.runId}`}>
-                  Job controls <ArrowUpRight size={15} />
-                </a>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>No queued or running job for this conversation.</p>
-        )}
-        {managerView && project && <ProjectFocus project={project} state={state} />}
-        <p className="chat-side-note">
-          Each message also has its own priority in the composer. You can pause or reprioritize
-          individual jobs in QUARK.
-        </p>
-        <a className="chat-small-button" href="#/work">
-          Open QUARK <ArrowUpRight size={15} />
-        </a>
-      </section>
+      {managedExecution(agent) && (
+        <section>
+          <h3>Scheduling</h3>
+          {!managerView &&
+            agent.role === 'manager' &&
+            !agent.taskId &&
+            !agent.nativeRootId &&
+            !agent.interview &&
+            agent.surface !== 'terminal' &&
+            !agent.archivedAt && <ChatQuarkPreference key={agent.id} agentId={agent.id} />}
+          {jobs.length ? (
+            <ul className="chat-item-list">
+              {jobs.map((job) => (
+                <li key={job.runId} className="chat-item">
+                  <div className="chat-item-text">
+                    <strong>{job.status}</strong>
+                    <p>{job.reason}</p>
+                  </div>
+                  <a className="chat-small-button" href={`#/job/${job.runId}`}>
+                    Job controls <ArrowUpRight size={15} />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No queued or running job for this conversation.</p>
+          )}
+          {managerView && project && <ProjectFocus project={project} state={state} />}
+          <p className="chat-side-note">
+            Each message also has its own priority in the composer. You can pause or reprioritize
+            individual jobs in QUARK.
+          </p>
+          <a className="chat-small-button" href="#/work">
+            Open QUARK <ArrowUpRight size={15} />
+          </a>
+        </section>
+      )}
       <section>
         <h3>More controls</h3>
         <div className="chat-links">
@@ -792,9 +800,11 @@ export function ConfigPanel({
           <a className="chat-small-button" href="#/workspace">
             Open conversations <ArrowUpRight size={15} />
           </a>
-          <a className="chat-small-button" href="#/work">
-            QUARK budgets <ArrowUpRight size={15} />
-          </a>
+          {managedExecution(agent) && (
+            <a className="chat-small-button" href="#/work">
+              QUARK budgets <ArrowUpRight size={15} />
+            </a>
+          )}
         </div>
       </section>
       {managerView && !agent.archivedAt && (

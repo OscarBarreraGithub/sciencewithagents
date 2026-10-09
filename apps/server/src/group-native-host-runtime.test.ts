@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import {
   mkdtempSync,
   mkdirSync,
@@ -7,28 +7,39 @@ import {
   writeFileSync,
   readFileSync,
   renameSync,
+  symlinkSync,
   realpathSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
+import { DatabaseSync } from 'node:sqlite';
 import type { GroupAction } from '@dock/shared/dist/group-actions.js';
-import { groupEventIdSchema, type GroupContext } from '@dock/shared';
+import { groupEventIdSchema, modelPolicySchema, type GroupContext } from '@dock/shared';
 import { Store } from './store.js';
 import { Runtime } from './runtime.js';
+import { DemoProvider } from './demo.js';
 import { GroupEventRepository } from './group-events.js';
 import { createGroupHostNativeConnector } from './group-native-host-runtime.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { createProductionGroupHost } from './group-host-bootstrap.js';
 import { privateGroupFile } from './group-host-storage.js';
 import { prepareRunDelivery, markRunHandoff, recordRunFailure } from './run-recovery.js';
+import {
+  GroupHostNativeDocuments,
+  captureHostDocumentFiles,
+} from './group-documents-host-native.js';
+import { GroupHostNativeJournal } from './group-host-native-journal.js';
+import type { GroupHost } from './group-host.js';
+import type { GroupHostNativeCompletion } from './group-native-host-runtime.js';
+import { publicationCanonical } from './group-publication-protocol.js';
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
   vi.restoreAllMocks();
 });
 function fixture(readEvidence?: (context: GroupContext) => Promise<string>) {
-  const directory = mkdtempSync(join(tmpdir(), 'groups-host-native-'));
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'groups-host-native-')));
   mkdirSync(join(directory, 'groups'), { mode: 0o700 });
   const store = new Store(join(directory, 'dock.sqlite'));
   modelFixture(store);
@@ -117,6 +128,7 @@ function fixture(readEvidence?: (context: GroupContext) => Promise<string>) {
     rmSync(directory, { recursive: true, force: true });
   });
   return {
+    directory,
     store,
     runtime,
     kick,
@@ -127,6 +139,37 @@ function fixture(readEvidence?: (context: GroupContext) => Promise<string>) {
     input,
     scope,
     control,
+    async managedCompatibility() {
+      await control(scope(shared), 'prepare');
+      // Seed the old persisted shape before provisioning; no receipt is rewritten.
+      const cwd = join(directory, 'groups/host-workspaces', randomUUID());
+      mkdirSync(cwd, { recursive: true });
+      const project = store.register(cwd, 'Retained Group', '', 'codex');
+      store.updateAgent(project.managerId, { permission: 'read-only', toolPolicy: 'native' });
+      const { sessionId: _ownerSession, ...anchor } = shared;
+      const context = events.createContext({
+        ...anchor,
+        provider: 'codex',
+        nativeSessionId: randomUUID(),
+      });
+      const oldBinding = {
+        anchor: shared,
+        context,
+        enrollmentHandle,
+        projectId: project.id,
+        agentId: project.managerId,
+        provider: 'codex',
+        cwd,
+      };
+      const key = createHash('sha256')
+        .update(publicationCanonical({ anchor: shared, enrollment: enrollmentHandle }))
+        .digest('hex');
+      const nativeDb = new DatabaseSync(join(directory, 'groups/host-native.sqlite'));
+      nativeDb
+        .prepare('INSERT INTO hnr_bindings VALUES (?,?)')
+        .run(key, JSON.stringify(oldBinding));
+      nativeDb.close();
+    },
     get connector() {
       return connector;
     },
@@ -140,6 +183,291 @@ function fixture(readEvidence?: (context: GroupContext) => Promise<string>) {
     },
   };
 }
+it.each(['codex', 'claude'] as const)(
+  'fresh %s Group owner input uses direct native execution without managed control or implicit helper authority',
+  async (provider) => {
+    const f = fixture();
+    const policy = modelPolicySchema.parse(f.store.getSetting('model-policy'));
+    policy.providers.manager = provider;
+    f.store.setSetting('model-policy', policy);
+    await f.control(f.scope(f.shared), 'prepare');
+    const input = f.input(f.shared, 'work');
+    await f.connector.submit(input);
+    const binding = f.connector.context(input.requestId)!;
+    expect(f.store.agent(binding.agentId)).toMatchObject({ provider, executionMode: 'direct' });
+    const run = f.store.run(binding.runId!);
+    expect(run).toMatchObject({ kind: 'user', sourceId: null });
+    expect(run.text).toContain('group_evidence_original');
+    expect(run.text).toContain('not independently reviewed');
+    expect(run.text).not.toMatch(/dock_apply|task worktrees|tools and QUARK/);
+    const body = vi.fn();
+    await expect(
+      f.runtime.withGroupCoordinationControl(binding.agentId, randomUUID(), body),
+    ).rejects.toMatchObject({ code: 'GROUP_MANAGED_COORDINATION_REQUIRED' });
+    expect(body).not.toHaveBeenCalled();
+    expect(f.store.runs()).toHaveLength(1);
+    expect(() => f.connector.coordination.identity(binding.context)).toThrow(
+      'Managed task coordination',
+    );
+    const request = vi.fn(async (_method: string, _params: unknown) => ({
+      turn: { id: randomUUID(), status: 'inProgress' },
+    }));
+    const submit = vi.fn(async () => {});
+    if (provider === 'codex')
+      vi.spyOn(f.runtime, 'attach').mockResolvedValue({
+        client: { request } as never,
+        threadId: 'native-fixture-thread',
+      });
+    else vi.spyOn(f.runtime.claude, 'prepare').mockResolvedValue({ submit } as never);
+    const lease = vi.spyOn(f.runtime.quark, 'issueManagerLease');
+    await (f.runtime as unknown as { startRun(value: typeof run): Promise<void> }).startRun(run);
+    expect(lease).not.toHaveBeenCalled();
+    expect(f.store.getSetting(`quark:manager-lease:${run.id}`)).toBeNull();
+    if (provider === 'codex') {
+      expect(request.mock.calls[0]).toEqual([
+        'turn/start',
+        expect.objectContaining({ input: [expect.objectContaining({ text: run.text })] }),
+      ]);
+      const params = request.mock.calls[0]![1];
+      for (const key of [
+        'developerInstructions',
+        'additionalContext',
+        'approvalPolicy',
+        'sandboxPolicy',
+      ])
+        expect(params).not.toHaveProperty(key);
+    } else {
+      expect(submit).toHaveBeenCalledWith({ deliveryId: run.id, text: run.text, appContext: '' });
+    }
+    const scope = f.scope(f.shared);
+    const status = await f.connector.owner!.control(
+      scope,
+      { action: 'status', handle: scope.handle },
+      true,
+    );
+    expect(status).toMatchObject({ sessionMode: 'direct', managedCoordination: false });
+  },
+);
+
+it('retains a pre-mode managed Group binding and exact request through restart without adopting a direct session', async () => {
+  const f = fixture();
+  await f.managedCompatibility();
+  const input = f.input(f.shared, 'work');
+  await f.connector.submit(input);
+  const saved = f.connector.context(input.requestId)!;
+  expect(saved.executionMode).toBe('managed');
+  expect(f.store.run(saved.runId!).text).toContain('exact dock_apply preview');
+  await f.restart();
+  expect(f.connector.context(input.requestId)).toEqual(saved);
+  expect(await f.connector.submit(input)).toMatchObject({ state: 'queued' });
+  expect(f.store.runs()).toHaveLength(1);
+  const scope = f.scope(f.shared);
+  expect(
+    await f.connector.owner!.control(scope, { action: 'status', handle: scope.handle }, true),
+  ).toMatchObject({ sessionMode: 'managed', managedCoordination: true });
+});
+
+async function selectedReport() {
+  const f = fixture(),
+    choice = chosenFolder();
+  const scope = f.scope(f.shared);
+  f.connector.workspace(f.shared, scope.enrollmentHandle, {
+    key: randomUUID(),
+    revision: 0,
+    selection: choice,
+  });
+  await f.control(scope, 'prepare');
+  const db = new DatabaseSync(join(f.directory, 'groups/report-host.sqlite'));
+  const nativeJournal = new GroupHostNativeJournal(db);
+  const record = nativeJournal.prepare(scope.handle, {
+    key: randomUUID(),
+    text: 'Create this bounded report',
+    context: f.shared,
+    enrollmentHandle: scope.enrollmentHandle,
+    intent: 'work',
+  });
+  await f.connector.submit(record.request);
+  const binding = f.connector.context(record.request.requestId)!;
+  mkdirSync(join(choice.root, 'sections'));
+  writeFileSync(join(choice.root, 'sections/body.tex'), 'Exact nested source α');
+  writeFileSync(
+    join(choice.root, 'report.tex'),
+    '\\documentclass{article}\\begin{document}\\input{sections/body}\\end{document}',
+  );
+  writeFileSync(join(choice.root, 'report.pdf'), '%PDF-1.4\nExact immutable PDF');
+  writeFileSync(join(choice.root, 'private.tex'), 'Unrelated private material');
+  const run = f.store.run(binding.runId!);
+  f.store.entry({
+    id: randomUUID(),
+    agentId: binding.agentId,
+    runId: run.id,
+    kind: 'assistant',
+    title: 'Final',
+    text: '[Report](report.tex) [PDF](report.pdf)',
+    status: 'complete',
+    phase: 'final',
+    createdAt: new Date().toISOString(),
+  });
+  f.store.updateRun(run.id, { status: 'completed' });
+  const snapshot = await f.connector.inspect({ requestId: record.request.requestId });
+  nativeJournal.record(record, snapshot);
+  const completion: GroupHostNativeCompletion = {
+    request: record.request,
+    result: snapshot.result!,
+    runId: run.id,
+    cwd: binding.cwd,
+  };
+  const host = { directory: join(f.directory, 'groups'), db, nativeJournal } as GroupHost;
+  const owner = vi.fn(async (context: GroupContext) => {
+    if (publicationCanonical(context) !== publicationCanonical(f.shared))
+      throw Error('Foreign owner');
+    f.events.trustedHostScope({
+      groupId: context.groupId,
+      memberId: context.memberId,
+      installationId: context.installationId,
+      visibility: context.visibility,
+      source: {
+        sessionId: context.sessionId,
+        provider: context.provider,
+        nativeSessionId: context.nativeSessionId,
+        messageId: 'capture-fixture',
+      },
+      causalRefs: [],
+    });
+  });
+  let adapter = new GroupHostNativeDocuments(host, (c) => f.connector.completionWorkspace(c));
+  const authority = {
+    revalidateOwner: owner,
+    resolve: async () => ({ context: f.shared, revalidate: async () => owner(f.shared) }),
+  };
+  adapter.documents(authority);
+  cleanup.push(async () => {
+    await adapter.close();
+    db.close();
+  });
+  return {
+    ...f,
+    choice,
+    binding,
+    record,
+    completion,
+    owner,
+    get adapter() {
+      return adapter;
+    },
+    async restartCapture() {
+      await adapter.close();
+      adapter = new GroupHostNativeDocuments(host, (c) => f.connector.completionWorkspace(c));
+      adapter.documents(authority);
+    },
+  };
+}
+
+it('captures exact completed direct Work source/PDF from the retained outside folder and preserves bytes through restart', async () => {
+  const f = await selectedReport();
+  expect(f.completion.cwd.startsWith(f.directory)).toBe(false);
+  expect(f.connector.completionWorkspace(f.completion)).toEqual({
+    root: f.choice.root,
+    identity: f.choice.identity,
+  });
+  await f.adapter.captureCompleted(f.completion);
+  const manifest = await f.adapter.describe(f.record.ids.resultId);
+  expect(manifest.files.map((file) => file.name)).toEqual([
+    'report.pdf',
+    'report.tex',
+    'sections/body.tex',
+  ]);
+  const input = {
+    key: randomUUID(),
+    manifest,
+    artifactIds: manifest.files.map((file) => file.artifactId),
+    limits: { bytes: 8 * 1024 ** 2, timeoutMs: 5000 },
+  };
+  const saved = await f.adapter.export(input);
+  expect(saved.files.map((file) => file.bytes.toString()).join('\n')).toContain(
+    'Exact immutable PDF',
+  );
+  expect(saved.files.map((file) => file.bytes.toString()).join('\n')).toContain(
+    'Exact nested source α',
+  );
+  writeFileSync(join(f.choice.root, 'report.pdf'), 'Later bytes');
+  await f.restart();
+  await f.restartCapture();
+  expect(await f.adapter.export(input)).toEqual(saved);
+  await f.adapter.captureCompleted(f.completion);
+  expect(await f.adapter.describe(f.record.ids.resultId)).toEqual(manifest);
+});
+
+it.each([
+  'revoked',
+  'replaced',
+  'symlink',
+  'changed-run',
+  'changed-native-context',
+  'after-await-replaced',
+  'after-await-revoked',
+] as const)(
+  'refuses %s outside-folder capture and never captures later repaired bytes',
+  async (failure) => {
+    const f = await selectedReport();
+    let completion = f.completion;
+    const replace = () => {
+      const retained = `${f.choice.root}-retained`;
+      renameSync(f.choice.root, retained);
+      cleanup.push(async () => rmSync(retained, { recursive: true, force: true }));
+      if (failure === 'symlink') symlinkSync(retained, f.choice.root);
+      else {
+        mkdirSync(f.choice.root);
+        writeFileSync(join(f.choice.root, 'report.tex'), 'Substituted private source');
+      }
+    };
+    if (failure === 'revoked') f.events.revokeMember(f.group.groupId, f.group.memberId);
+    if (failure === 'replaced' || failure === 'symlink') replace();
+    if (failure === 'changed-run') completion = { ...completion, runId: randomUUID() };
+    if (failure === 'changed-native-context')
+      completion = {
+        ...completion,
+        result: {
+          ...completion.result,
+          context: { ...completion.result.context, nativeSessionId: randomUUID() },
+        },
+      };
+    if (failure === 'after-await-replaced')
+      f.owner.mockImplementationOnce(async () => {}).mockImplementationOnce(async () => replace());
+    if (failure === 'after-await-revoked')
+      f.owner
+        .mockImplementationOnce(async () => {})
+        .mockImplementationOnce(async () => {
+          f.events.revokeMember(f.group.groupId, f.group.memberId);
+        });
+    await f.adapter.captureCompleted(completion);
+    expect(f.adapter.documentAvailable(f.record.ids.resultId)).toBe(false);
+    await f.restartCapture();
+    await f.adapter.captureCompleted(f.completion);
+    expect(f.adapter.documentAvailable(f.record.ids.resultId)).toBe(false);
+    expect(f.adapter.documentCaptureState(f.record.ids.resultId)).toBe('unavailable');
+  },
+);
+
+it('does not broaden selected capture to a changed request or an unexpected descriptor identity', async () => {
+  const f = await selectedReport();
+  expect(() =>
+    f.connector.completionWorkspace({
+      ...f.completion,
+      request: { ...f.completion.request, text: 'Changed owner input' },
+    }),
+  ).toThrow('Exact completed Group request');
+  await f.adapter.captureCompleted({
+    ...f.completion,
+    request: { ...f.completion.request, text: 'Changed owner input' },
+  });
+  expect(f.adapter.documentAvailable(f.record.ids.resultId)).toBe(false);
+  expect(() => captureHostDocumentFiles(f.choice.root, ['report.tex'], '0:0')).toThrow(
+    'Exact report capture',
+  );
+  await f.adapter.captureCompleted(f.completion);
+  expect(f.adapter.documentAvailable(f.record.ids.resultId)).toBe(true);
+});
 it('local removal holds exact queued background helpers across restart without changing owner Work', async () => {
   const f = fixture(),
     input = f.input(f.shared, 'work');
@@ -731,45 +1059,149 @@ it('fresh helper is separately bound; admission rechecks authority and Ask canno
   f.events.revokeMember(f.group.groupId, f.group.memberId);
   await expect(f.runtime.groupHostNativeAdmission!(helper.id, run.id)).rejects.toThrow();
   await expect(f.runtime.tool(bound.agentId, randomUUID(), 'dock_delegate', {})).rejects.toThrow(
-    /Ask is read-only/,
+    /Direct native conversations/,
   );
 });
 
-it('applies per-run native Ask/Work policy on one retained thread immediately before provider input', async () => {
+function nativePermissionClients(f: ReturnType<typeof fixture>) {
+  const generations: DemoProvider[] = [];
+  const observations: {
+    generation: number;
+    method: string;
+    params: Record<string, unknown>;
+    sandbox: string;
+  }[] = [];
+  const clients = (f.runtime as unknown as { clients: Map<string, DemoProvider> }).clients;
+  vi.spyOn(f.runtime.modelPolicy, 'prepare').mockImplementation(async (agent) => agent);
+  vi.spyOn(f.runtime, 'client').mockImplementation(async (agent) => {
+    const existing = clients.get(agent.id);
+    if (existing?.ready) return existing;
+    const client = new DemoProvider();
+    generations.push(client);
+    const generation = generations.length;
+    // Model the pinned native server: omitted overrides keep a loaded thread's
+    // policy; an unloaded resume resolves omission from native configuration.
+    let sandbox = 'workspaceWrite';
+    vi.spyOn(client, 'request').mockImplementation(async (method, raw) => {
+      const params = (raw ?? {}) as Record<string, unknown>;
+      if (method === 'thread/start' || method === 'thread/resume') {
+        if (params.sandbox === 'read-only') sandbox = 'readOnly';
+        client.threadId = typeof params.threadId === 'string' ? params.threadId : client.threadId;
+        observations.push({ generation, method, params, sandbox });
+        return {
+          thread: { id: client.threadId, turns: [] },
+          model: 'demo',
+          sandbox: { type: sandbox },
+        };
+      }
+      if (method === 'turn/start') {
+        const override = params.sandboxPolicy as { type: string } | undefined;
+        if (override) sandbox = override.type;
+        observations.push({ generation, method, params, sandbox });
+        return { turn: { id: randomUUID(), status: 'inProgress' } };
+      }
+      return {};
+    });
+    clients.set(agent.id, client);
+    return client;
+  });
+  return { generations, observations };
+}
+
+it('reopens direct Codex Ask/Work permissions from native configuration with the same retained history', async () => {
   const f = fixture();
   await f.control(f.scope(f.shared), 'prepare');
   const ask = f.input(),
-    work = f.input(f.shared, 'work');
+    work = f.input(f.shared, 'work'),
+    nextAsk = f.input();
   await f.connector.submit(ask);
   await f.connector.submit(work);
+  await f.connector.submit(nextAsk);
   const bound = f.connector.context(ask.requestId)!,
     first = f.store.run(bound.runId!),
-    second = f.store.run(f.connector.context(work.requestId)!.runId!);
-  const request = vi.fn(async (_method: string, _raw?: unknown) => ({
-    turn: { id: randomUUID(), status: 'inProgress' },
-  }));
-  vi.spyOn(f.runtime, 'attach').mockResolvedValue({
-    client: { request } as never,
-    threadId: 'same-thread',
-  });
-  vi.spyOn(f.runtime.quark, 'sync').mockImplementation(() => {});
-  vi.spyOn(f.runtime.quark, 'managerLeaseReason').mockReturnValue(null);
+    second = f.store.run(f.connector.context(work.requestId)!.runId!),
+    third = f.store.run(f.connector.context(nextAsk.requestId)!.runId!);
+  const native = nativePermissionClients(f);
+  const retire = vi.spyOn(
+    f.runtime as unknown as { retireContext(agentId: string): Promise<void> },
+    'retireContext',
+  );
   const start = (run: typeof first) =>
     (f.runtime as unknown as { startRun(run: typeof first): Promise<void> }).startRun(run);
   await start(first);
-  expect(request.mock.calls[0][1]).toMatchObject({
-    threadId: 'same-thread',
-    sandboxPolicy: { type: 'readOnly', networkAccess: true },
-  });
+  const threadId = f.store.agent(bound.agentId).threadId;
+  const history = f.store.entries(bound.agentId);
   f.store.updateRun(first.id, { status: 'completed' });
   f.store.updateAgent(bound.agentId, { status: 'idle', turnId: null });
   await start(second);
-  expect(request.mock.calls[1][1]).toMatchObject({
-    threadId: 'same-thread',
-    sandboxPolicy: { type: 'dangerFullAccess' },
+  expect(native.generations).toHaveLength(2);
+  expect(native.generations[0]!.ready).toBe(false);
+  const resumed = native.observations.find((item) => item.method === 'thread/resume')!;
+  expect(resumed).toMatchObject({
+    generation: 2,
+    sandbox: 'workspaceWrite',
+    params: { threadId },
   });
+  for (const key of ['sandbox', 'approvalPolicy', 'developerInstructions'])
+    expect(resumed.params).not.toHaveProperty(key);
   expect(f.store.agent(bound.agentId).permission).toBe('workspace-write');
+  f.store.updateRun(second.id, { status: 'completed' });
+  f.store.updateAgent(bound.agentId, { status: 'idle', turnId: null });
+  await start(third);
+  expect(native.generations).toHaveLength(3);
+  expect(native.generations[1]!.ready).toBe(false);
+  expect(native.observations.filter((item) => item.method === 'turn/start')).toMatchObject([
+    { generation: 1, sandbox: 'readOnly', params: { threadId } },
+    { generation: 2, sandbox: 'workspaceWrite', params: { threadId } },
+    { generation: 3, sandbox: 'readOnly', params: { threadId } },
+  ]);
+  expect(native.observations.filter((item) => item.method === 'thread/start')).toHaveLength(1);
+  expect(native.observations.filter((item) => item.method === 'thread/resume')).toHaveLength(2);
+  expect(f.store.agent(bound.agentId)).toMatchObject({ threadId, permission: 'read-only' });
+  expect(f.store.entries(bound.agentId)).toEqual(history);
+  expect(retire).not.toHaveBeenCalled();
 });
+
+it.each(['owner Stop', 'Read-only', 'membership revoked'] as const)(
+  'rechecks %s during a direct Codex permission reconnect before dispatch',
+  async (change) => {
+    const f = fixture();
+    await f.control(f.scope(f.shared), 'prepare');
+    const ask = f.input(),
+      work = f.input(f.shared, 'work');
+    await f.connector.submit(ask);
+    await f.connector.submit(work);
+    const bound = f.connector.context(ask.requestId)!,
+      first = f.store.run(bound.runId!),
+      second = f.store.run(f.connector.context(work.requestId)!.runId!);
+    const native = nativePermissionClients(f);
+    const start = (run: typeof first) =>
+      (f.runtime as unknown as { startRun(run: typeof first): Promise<void> }).startRun(run);
+    await start(first);
+    const threadId = f.store.agent(bound.agentId).threadId;
+    f.store.updateRun(first.id, { status: 'completed' });
+    f.store.updateAgent(bound.agentId, { status: 'idle', turnId: null });
+    const old = native.generations[0]!;
+    const close = old.close.bind(old);
+    vi.spyOn(old, 'close').mockImplementationOnce(async () => {
+      if (change === 'owner Stop') await f.runtime.interrupt(bound.agentId);
+      else if (change === 'Read-only') f.connector.contributions(() => false);
+      else f.events.revokeMember(f.group.groupId, f.group.memberId);
+      await close();
+    });
+    if (change === 'owner Stop') {
+      await start(second);
+      expect(f.store.run(second.id).status).toBe('cancelled');
+    } else {
+      await expect(start(second)).rejects.toThrow();
+      expect(f.store.run(second.id).status).toBe('queued');
+    }
+    expect(native.generations).toHaveLength(1);
+    expect(native.observations.filter((item) => item.method === 'turn/start')).toHaveLength(1);
+    expect(f.store.agent(bound.agentId).threadId).toBe(threadId);
+    expect(f.store.getSetting(`run:delivery:${second.id}`)).toBeNull();
+  },
+);
 
 it('normal production bootstrap selects host mode without reading legacy route or launching providers', async () => {
   const f = fixture();
@@ -792,6 +1224,7 @@ it('normal production bootstrap selects host mode without reading legacy route o
 
 it('Work delegates with exact lineage, waits for its report and retains only the final manager reply', async () => {
   const f = fixture();
+  await f.managedCompatibility();
   await f.control(f.scope(f.shared), 'prepare');
   const input = f.input(f.shared, 'work');
   await f.connector.submit(input);
@@ -1151,6 +1584,7 @@ it('synthetic action controls cannot authorize capture or become the final repor
 });
 
 async function coordinationTask(f: ReturnType<typeof fixture>) {
+  await f.managedCompatibility();
   await f.control(f.scope(f.shared), 'prepare');
   const input = f.input(f.shared, 'work');
   await f.connector.submit(input);

@@ -16,6 +16,8 @@ import {
   policyDefaultEffort,
   workerDefaultEffort,
   taskTiers,
+  nativeRunnerModelResolutionSchema,
+  providerDefaultEffort,
   tierLabels,
   type Assignment,
   type ExecutionRequest,
@@ -24,6 +26,7 @@ import {
   type ModelTier,
   type ProviderId,
   type TaskClass,
+  type NativeRunnerModelChoice,
 } from '@dock/shared';
 import { Conflict, type PrivateAgent, type Store } from './store.js';
 
@@ -70,6 +73,38 @@ export class ModelPolicy {
         'Choose a provider for this new agent or delegation, or enable its provider in Model settings. Pick as I go requires an explicit choice; unattended checks use the saved provider.',
       );
     return selected;
+  }
+  /** An owner-operated native runner has no inferred Dock role or tier floor. */
+  async resolveNativeLaunch(provider: ProviderId, choice: NativeRunnerModelChoice) {
+    const revision = this.policy().revision;
+    let model: string | null = null,
+      effort: string | null = null;
+    if (choice.mode === 'policy') {
+      const assignment = await this.resolve('manager', {
+        provider,
+        mode: 'manual',
+        difficulty: 'unspecified',
+      });
+      model = assignment.model;
+      effort = assignment.effort === providerDefaultEffort ? null : assignment.effort;
+    } else if (choice.mode === 'exact') {
+      const selected = (await this.catalog(provider)).find((item) => item.id === choice.model);
+      if (!selected || (choice.effort && !selected.efforts.includes(choice.effort)))
+        throw new Conflict(
+          'Choose an available native model and thinking level. No substitute was started.',
+        );
+      model = selected.id;
+      effort = !choice.effort || choice.effort === providerDefaultEffort ? null : choice.effort;
+    }
+    if (this.closed)
+      throw new Conflict('Native model selection was cancelled while the app was stopping.');
+    return nativeRunnerModelResolutionSchema.parse({
+      provider,
+      mode: choice.mode,
+      model,
+      effort,
+      policyRevision: revision,
+    });
   }
   async catalog(provider: ProviderId, refresh = false): Promise<Model[]> {
     if (this.closed) throw new Conflict('Model discovery is stopping.');

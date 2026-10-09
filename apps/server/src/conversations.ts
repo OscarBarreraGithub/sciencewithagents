@@ -27,6 +27,7 @@ type Intent = {
   model: string;
   effort: Agent['effort'];
   assignment: Assignment | null;
+  executionMode?: Agent['executionMode'];
 };
 
 function privateDirectory(path: string) {
@@ -82,7 +83,13 @@ export async function createConversation(
         : model?.efforts.find((value) => effortSchema.safeParse(value).success));
     if (!model || !effort || !model.efforts.includes(effort))
       throw new Conflict('Choose a model and thinking level from the current provider catalog.');
-    intent = { input: serialized, model: model.id, effort: effortSchema.parse(effort), assignment };
+    intent = {
+      input: serialized,
+      model: model.id,
+      effort: effortSchema.parse(effort),
+      assignment,
+      executionMode: input.executionMode ?? 'direct',
+    };
     store.setSetting(key, intent);
   }
   const parent = join(realpathSync(dataDir), 'conversations');
@@ -101,6 +108,8 @@ export async function createConversation(
       input.name,
       'Private conversation workspace, separate from work projects.',
       input.provider,
+      undefined,
+      intent.executionMode ?? 'managed',
     );
   const choice = intent;
   return store.operation(key, input, () => {

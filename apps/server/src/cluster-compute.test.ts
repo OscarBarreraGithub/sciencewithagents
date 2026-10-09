@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultModelPolicy, newProjectWorkflow, clusterProjectRecordSchema } from '@dock/shared';
@@ -77,6 +77,7 @@ it('rejects public, linked or oversized bootstrap files before invoking native S
     expect(await computeClusterRunner(undefined)).toBeUndefined();
     const publicFile = join(root, 'public.json');
     writeFileSync(publicFile, '{}', { mode: 0o644 });
+    chmodSync(publicFile, 0o644);
     await expect(computeClusterRunner(publicFile)).rejects.toThrow('private owner file');
     const link = join(root, 'linked.json');
     symlinkSync(publicFile, link);

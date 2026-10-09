@@ -22,6 +22,11 @@ export function createGroupHostCoordination(
   const binding = (context: GroupContext) => {
     const saved = resolve(context),
       manager = store.agent(saved.agentId);
+    if (manager.executionMode !== 'managed')
+      throw new Conflict(
+        'Managed task coordination is unavailable in a direct native Group conversation.',
+        'GROUP_MANAGED_COORDINATION_REQUIRED',
+      );
     if (
       context.visibility !== 'shared' ||
       manager.role !== 'manager' ||

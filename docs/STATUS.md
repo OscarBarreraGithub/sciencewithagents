@@ -5,6 +5,22 @@ projects and desktop/phone browser checks.** This is not a claim that every devi
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
 
+The 2026-10-09 native-first source adds direct personal chats and fresh dedicated Group
+agents, optional local tmux folder Start, and authenticated existing tmux/Herdr/SSH
+connections. Native tools, configuration and permissions stay with the provider. Existing
+managed sessions retain their saved mode. Group Ask/Work, scoped evidence/report capture
+and exact owner-reviewed Git sharing retain their authority boundaries. QUARK advises
+direct work; advanced managed projects keep their scheduler.
+
+Exact slices received native Claude Opus 5.5 review. Owned local tmux/Herdr checks and
+a zero-model-turn Codex same-thread permission-resume check complement focused backend
+and four-layout Chromium fixtures. These establish source behavior, not activation or
+production certification. SSH, physical-phone, real provider turns for the new path and
+independent two-person Groups acceptance remain pending. Consult the published CI and
+installed source before assuming this candidate is running. [Native workflow](NATIVE_CONNECTIONS.md).
+Native folder Start is a release dependency: publish or install this candidate only with
+the matching New/Welcome screens and their reviewed receipt recovery.
+
 Current chat reliability changes add inline retry/continue, distinguish Claude sign-in check
 failures from verified sign-out, and keep bounded recent message copies during refresh.
 Internal team notifications can be combined into one durable review without deleting source

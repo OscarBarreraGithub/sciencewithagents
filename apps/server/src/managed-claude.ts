@@ -231,7 +231,7 @@ export class ManagedClaude {
         'Managed Claude currently supports its restricted project tools only. Use Claude in VS Code for plugins, external MCPs and other native features.',
       );
     const cwd =
-      agent.role === 'manager' && !agent.surface
+      agent.executionMode !== 'direct' && agent.role === 'manager' && !agent.surface
         ? join(this.dataDir, 'managers', agent.id)
         : agent.cwd;
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
@@ -266,6 +266,7 @@ export class ManagedClaude {
     const options: ClaudeSessionOptions = {
       binary: this.binary,
       cwd,
+      executionMode: agent.executionMode,
       sessionId: threadId,
       resume,
       forkFrom,
@@ -274,7 +275,10 @@ export class ManagedClaude {
       inheritNative: !evidenceOnly && agent.toolPolicy === 'native',
       nativeTools: evidenceOnly ? 'off' : undefined,
       nativeChrome: agent.nativeChrome,
-      unattended: !evidenceOnly && agent.toolPolicy === 'native',
+      unattended:
+        !evidenceOnly &&
+        agent.toolPolicy === 'native' &&
+        (agent.executionMode !== 'direct' || agent.permission === 'read-only'),
       role: evidenceOnly
         ? 'read-only'
         : agent.surface || agent.resourceAssistant?.mode === 'interactive'
@@ -342,7 +346,12 @@ export class ManagedClaude {
           if (
             this.stopped ||
             context.signal.aborted ||
-            this.store.agent(agent.id).threadId !== threadId
+            this.store.agent(agent.id).threadId !== threadId ||
+            (agent.executionMode === 'direct' &&
+              (context.sessionId !== threadId ||
+                !context.deliveryId ||
+                this.store.agent(agent.id).turnId !== context.deliveryId ||
+                this.store.run(context.deliveryId).status !== 'running'))
           )
             throw new Conflict('That original Claude turn is no longer connected.');
           try {
@@ -352,6 +361,15 @@ export class ManagedClaude {
               definition.name,
               input,
             );
+            if (
+              agent.executionMode === 'direct' &&
+              (this.stopped ||
+                context.signal.aborted ||
+                this.store.agent(agent.id).threadId !== threadId ||
+                this.store.agent(agent.id).turnId !== context.deliveryId ||
+                this.store.run(context.deliveryId!).status !== 'running')
+            )
+              throw new Conflict('That original Claude turn is no longer connected.');
             return { content: [{ type: 'text', text: JSON.stringify(result) }] };
           } catch (error) {
             return {

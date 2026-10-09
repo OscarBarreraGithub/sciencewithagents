@@ -43,11 +43,26 @@ handoffs to settle. A replaced or unavailable folder fails closed rather than ad
 
 ## Work, review and sync
 
-An explicit shared **Work** request starts on a member/request branch. Workers make changes
-in ordinary task worktrees. Independent review and an exact integration preview precede
-applying the committed result; the project's human-review setting still applies. Shared
-files exposes reviewed tasks and their exact apply previews. **Ask** does not start this
-file-writing workflow.
+An explicit shared **Work** request starts on a member/request branch. **Ask** does not start
+this file-writing workflow. Existing managed sessions retain task worktrees, independent
+review and exact apply previews; the project's human-review setting still applies.
+
+Direct native sessions use the provider's ordinary file and Git tools. After the exact Work
+request completes, commit the intended files and use **Review changes** in Shared files.
+The preview binds the repository, member/request branch, native completion, commit and tree.
+It includes every new commit's text diff, including changes removed in a later commit.
+Open binary files locally before approving: a text diff cannot display their contents.
+Only an authenticated owner browser or paired device can record this owner review; native
+agent credentials cannot attest it. This is owner approval, not an independent agent review.
+Review on the computer owning the folder or its paired device; a cross-computer host proxy
+does not carry owner-review authority. Native tools remain available, and this boundary is
+not protection against another process with full access to the owner's account.
+
+Recording review permits automatic sync of that exact checkpoint. New changes require a
+fresh preview and approval. A dirty checkout, changed folder, remote, native session or Work
+completion refuses approval and preserves files. Review makes no model call. Compact review
+identities stay on this computer; full diffs and these receipts are not stored in Cloudflare.
+The preview is limited to 128 KiB of text; larger changes need smaller checkpoints.
 
 **Unfinished files on this computer** shows local edits in the group workspace and up to
 50 task workspaces, with at most 16 file names per workspace. Likely private/runtime names
@@ -65,17 +80,17 @@ including while Read-only. Its original branch and request history stay fixed. M
 failed or uncertain completion, pending original/report capture, unresolved Git operations,
 dirty/active work and divergent
 history prevent that switch. A new Work request uses the latest shared base after prior
-work has been published. Sync publishes applied commits with retained independent-review
-evidence to the work branch, then advances the default branch when that is also a
-fast-forward. Sync itself makes no model call.
+work has been published. Sync publishes managed applied commits with retained independent-review
+evidence, or the exact owner-reviewed native checkpoint, to the work branch. It then advances
+the default branch when that is also a fast-forward. Sync itself makes no model call.
 
 Dirty or active work remains untouched. If another member advances the default branch
 independently, the reviewed work branch can be shared, but the app does not overwrite or
 force-merge the divergent work. A manager must prepare and review a correction before
 integration. No force-push, reset, rebase or branch deletion is part of automatic sync.
 
-Only committed, reviewed, applied changes are automatically published. This is not folder
-mirroring or automatic merging of arbitrary branches. The app checks outgoing checkpoints
+Only committed changes approved through the relevant review path are automatically published.
+This is not folder mirroring or automatic merging of arbitrary branches. The app checks outgoing checkpoints
 for likely private/runtime files and recognizable credentials; these checks do not replace
 review. Private chats, drafts, provider credentials and conversation databases stay outside
 the shared repository.
@@ -86,6 +101,11 @@ Git controls retain operation identities so a retry does not invent a different 
 target. Lost authentication, a changed remote, conflicts or a dirty checkout leave files
 and branches in place and show a status in Shared files. Fix the reported condition and
 retry. Turning automatic sync off preserves all files and branches.
+
+Keep an uncertain owner approval's exact saved key and preview when checking its receipt.
+A lost acknowledgement can confirm the original approval after later edits; it never
+approves those later edits. A known refused approval stays refused on retry. Refresh the
+preview and review again with a new key after fixing that condition.
 
 Native agents retain their ordinary Git tools and account permissions. These controls do
 not turn native execution into a filesystem sandbox. The older isolated Groups Git adapter

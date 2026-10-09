@@ -5,6 +5,7 @@ import { basename, dirname, join, parse, relative, sep } from 'node:path';
 import { Conflict } from './store.js';
 
 type Folder = { path: string; identity: string };
+export type NativeFolderSelection = Folder & { name: string };
 type Link = { id: string; name: string };
 type Options = { query?: string; scope?: 'children' | 'descendants'; hidden?: boolean };
 const searchSkips = new Set(['node_modules', 'Library', 'Caches', '.git', '.venv', 'venv']);
@@ -49,6 +50,20 @@ export class FolderBrowser {
     } catch {
       throw new Conflict('That folder changed or is no longer accessible. Browse again.');
     }
+  }
+  /** Host-only receipt for an issued folder; never accepts a browser filesystem path. */
+  async nativeSelection(id: string): Promise<NativeFolderSelection> {
+    const folder = await this.inspect(await this.resolve(id));
+    if (folder.path === parse(folder.path).root || folder.path === (await realpath(this.home)))
+      throw new Conflict(
+        'Choose a work folder instead of this computer or your entire home folder.',
+      );
+    return { ...folder, name: basename(folder.path) };
+  }
+  async verifyNativeSelection(saved: NativeFolderSelection) {
+    const current = await this.inspect(saved.path).catch(() => null);
+    if (!current || current.path !== saved.path || current.identity !== saved.identity)
+      throw new Conflict('That folder changed before native launch. Browse again.');
   }
   private async navigation(path: string) {
     const breadcrumbs: Link[] = [];

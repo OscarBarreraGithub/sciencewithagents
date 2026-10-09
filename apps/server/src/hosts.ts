@@ -482,6 +482,44 @@ export function proxyPath(
   const cluster = new RegExp(`^/cluster/projects/${uuid}/proxy(/.*)$`).exec(path);
   if (cluster)
     return clusterHop && proxyPath(method, cluster[1]!, socket, false) ? `/api${path}` : null;
+  if (pathname.startsWith('/native-connections')) {
+    const attachment = `/native-connections/attachments/${uuid}`;
+    if (socket)
+      return method === 'GET' &&
+        query === undefined &&
+        new RegExp(`^${attachment}/socket$`).test(pathname)
+        ? `/api${path}`
+        : null;
+    const prompts = new RegExp(`^/native-connections/targets/${uuid}/prompts$`).test(pathname);
+    const read =
+      method === 'GET' &&
+      (pathname === '/native-connections' ||
+        pathname === '/native-connections/launch-options' ||
+        new RegExp(`^/native-connections/starts/${uuid}$`).test(pathname) ||
+        prompts ||
+        new RegExp(`^${attachment}(?:/receipts/${uuid})?$`).test(pathname));
+    const write =
+      method === 'POST' &&
+      query === undefined &&
+      (pathname === '/native-connections/attach' ||
+        pathname === '/native-connections/start' ||
+        new RegExp(`^${attachment}/(?:detach|send)$`).test(pathname));
+    if (!read && !write) return null;
+    if (query !== undefined) {
+      const params = new URLSearchParams(query);
+      if (
+        !prompts ||
+        [...params].some(
+          ([name, value]) =>
+            name !== 'before' ||
+            params.getAll(name).length !== 1 ||
+            !new RegExp(`^${uuid}$`).test(value),
+        )
+      )
+        return null;
+    }
+    return `/api${path}`;
+  }
   if (pathname.startsWith('/slurm-review')) {
     if (socket) return null;
     const list = pathname === '/slurm-review/reviews';

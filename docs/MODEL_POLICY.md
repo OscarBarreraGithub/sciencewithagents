@@ -23,6 +23,13 @@ family default; the app does not pretend an older/different pinned model has cha
 
 ## Defaults and overrides
 
+**Start native in a folder** defaults to **Native**, preserving the selected CLI's own model
+and effort settings without catalog lookup. **App policy** uses the saved central manager
+choice; **Exact model** validates your explicit model/effort against its catalog and retains
+it even when weaker than a recommended role. Existing connected terminal/editor sessions
+keep their native choices. Starting and checking a creation receipt make no app model call;
+the launched CLI can begin its own native workflow.
+
 **New project defaults** is the user-wide starting point. Manager provider, model and
 reasoning are separate from the workers' provider mix and spending slider. A manager model
 pin does not change the model used by postdoc workers. Workers have

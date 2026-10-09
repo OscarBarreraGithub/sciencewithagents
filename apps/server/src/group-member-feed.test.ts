@@ -40,6 +40,7 @@ const make = () => {
         projectId,
         agentId: store.project(projectId).managerId,
         provider: 'codex',
+        executionMode: 'direct',
         cwd: directory,
       };
     },
@@ -128,7 +129,7 @@ beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'member-feed-'));
   store = new Store(join(directory, 'dock.sqlite'));
   host = new GroupHost(directory, { betaProfile: null });
-  projectId = store.register(directory, 'Groups fixture', '', 'codex').id;
+  projectId = store.register(directory, 'Groups fixture', '', 'codex', undefined, 'direct').id;
   const { displayName: _, ...member } = host.events.createGroup('Owner');
   context = host.events.createContext({
     ...member,
@@ -249,6 +250,7 @@ it('batches own committed originals on the central bulk model, then publishes id
     taskClass: 'bulk',
   });
   expect(agent).toMatchObject({
+    executionMode: 'managed',
     parentId: null,
     taskId: null,
     toolPolicy: 'restricted',
@@ -256,6 +258,8 @@ it('batches own committed originals on the central bulk model, then publishes id
     webSearch: 'disabled',
     pluginsEnabled: false,
   });
+  expect(store.agent(store.project(projectId).managerId).executionMode).toBe('direct');
+  expect(run.kind).toBe('delegation');
   expect(run.text).toContain(originalTexts.get(a.event.eventId));
   expect(run.text).toContain(originalTexts.get(b.event.eventId));
   await feed.pass();

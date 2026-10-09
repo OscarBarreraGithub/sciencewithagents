@@ -73,7 +73,7 @@ test('spawn an independently configured manager, retain notepad versions and sen
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page
     .getByRole('group', { name: 'Start new' })
-    .getByRole('link', { name: /New project/ })
+    .getByRole('link', { name: /Managed project setup/ })
     .click();
   await page.getByLabel('Project name', { exact: true }).fill(name);
   const manager = page.getByRole('group', { name: 'Manager', exact: true });

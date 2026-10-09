@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
@@ -7,6 +7,8 @@ import { z } from 'zod';
 import {
   groupNativeGitRequestSchema,
   groupNativeGitViewSchema,
+  groupNativeCommitPreviewSchema,
+  type GroupNativeCommitPreview,
   type GroupNativeGitView,
 } from '@dock/shared/dist/group-native-git.js';
 import { integrationPreviewSchema, type GroupContext } from '@dock/shared';
@@ -16,7 +18,7 @@ import type {
   GroupHostNativeWorkspace,
 } from './group-native-host-runtime.js';
 import type { GroupHost } from './group-host.js';
-import { Conflict } from './store.js';
+import { Conflict, Missing } from './store.js';
 import { git, integrationPreview, integrate } from './workspaces.js';
 import { groupNativePrivatePath } from './group-native-private-path.js';
 import {
@@ -31,6 +33,11 @@ const adapters = new WeakMap<GroupHost, GroupHostNativeGit>();
 export const groupHostNativeGit = (host: GroupHost) => adapters.get(host);
 const defaults: Settings = { githubUsername: '', autoSync: false };
 const oid = /^[a-f0-9]{40,64}$/;
+const nativePreviewIdentitySchema = groupNativeCommitPreviewSchema.omit({
+  files: true,
+  patch: true,
+});
+type NativePreviewIdentity = z.infer<typeof nativePreviewIdentitySchema>;
 const exec = promisify(execFile);
 
 /** The native shared checkout is host-selected. This adapter synchronizes approved
@@ -58,6 +65,13 @@ export class GroupHostNativeGit {
       CREATE TABLE IF NOT EXISTS gng_applies(key TEXT PRIMARY KEY,body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS gng_repositories(handle TEXT PRIMARY KEY,origin TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS gng_connections(handle TEXT NOT NULL,scope_key TEXT NOT NULL,origin TEXT NOT NULL,key TEXT PRIMARY KEY,UNIQUE(handle,scope_key,origin));
+      CREATE TABLE IF NOT EXISTS gng_native_previews(id TEXT PRIMARY KEY,scope_key TEXT NOT NULL,origin TEXT NOT NULL,fingerprint TEXT NOT NULL,body TEXT NOT NULL,UNIQUE(scope_key,origin,fingerprint));
+      CREATE INDEX IF NOT EXISTS gng_native_previews_head ON gng_native_previews(scope_key,origin,json_extract(body,'$.preview.head'),json_extract(body,'$.preview.branch'));
+      CREATE TABLE IF NOT EXISTS gng_native_reviews(key TEXT PRIMARY KEY,preview_id TEXT NOT NULL UNIQUE,body TEXT NOT NULL);
+      CREATE TRIGGER IF NOT EXISTS gng_native_previews_immutable BEFORE UPDATE ON gng_native_previews BEGIN SELECT RAISE(ABORT,'retained native commit preview'); END;
+      CREATE TRIGGER IF NOT EXISTS gng_native_previews_retain BEFORE DELETE ON gng_native_previews BEGIN SELECT RAISE(ABORT,'retained native commit preview'); END;
+      CREATE TRIGGER IF NOT EXISTS gng_native_reviews_immutable BEFORE UPDATE ON gng_native_reviews BEGIN SELECT RAISE(ABORT,'retained owner review'); END;
+      CREATE TRIGGER IF NOT EXISTS gng_native_reviews_retain BEFORE DELETE ON gng_native_reviews BEGIN SELECT RAISE(ABORT,'retained owner review'); END;
       CREATE TRIGGER IF NOT EXISTS gng_connections_immutable BEFORE UPDATE ON gng_connections BEGIN SELECT RAISE(ABORT,'retained verified Git connection'); END;
       CREATE TRIGGER IF NOT EXISTS gng_connections_retain BEFORE DELETE ON gng_connections BEGIN SELECT RAISE(ABORT,'retained verified Git connection'); END;
       CREATE TRIGGER IF NOT EXISTS gng_settings_immutable BEFORE UPDATE ON gng_settings BEGIN SELECT RAISE(ABORT,'retained Git settings'); END;
@@ -323,6 +337,242 @@ export class GroupHostNativeGit {
     }
     return null;
   }
+  private direct(binding: Binding) {
+    try {
+      return (
+        !!binding.agentId && this.runtime.store.agent(binding.agentId).executionMode === 'direct'
+      );
+    } catch (error) {
+      if (error instanceof Missing) return false;
+      throw error;
+    }
+  }
+  private async nativeReviewed(binding: Binding, origin: string, head: string, branch: string) {
+    if (!this.direct(binding) || !(await this.completedWorkBranch(binding, branch))) return null;
+    const rows = this.host.db
+      .prepare(
+        `SELECT p.body preview,r.body review FROM gng_native_previews p
+       JOIN gng_native_reviews r ON r.preview_id=p.id
+       WHERE p.scope_key=? AND p.origin=? AND json_extract(p.body,'$.preview.head')=? AND json_extract(p.body,'$.preview.branch')=?`,
+      )
+      .all(this.scopeKey(binding), origin, head, branch);
+    for (const row of rows) {
+      const saved = JSON.parse(String(row.preview)) as {
+        preview: NativePreviewIdentity;
+        context: GroupContext;
+        agentId: string;
+        runId: string;
+      };
+      const p = nativePreviewIdentitySchema.parse(saved.preview);
+      if (p.head !== head || p.branch !== branch || saved.agentId !== binding.agentId) continue;
+      const request = this.connector.context(p.requestId);
+      const review = JSON.parse(String(row.review)) as {
+        previewId: string;
+        fingerprint: string;
+        kind: string;
+      };
+      if (
+        !request ||
+        request.runId !== saved.runId ||
+        JSON.stringify(request.context) !== JSON.stringify(saved.context) ||
+        review.kind !== 'owner-preview' ||
+        review.previewId !== p.id ||
+        review.fingerprint !== p.fingerprint ||
+        this.workBranch(binding.context, p.requestId) !== branch ||
+        (await git(binding.cwd, ['rev-parse', 'HEAD^{tree}'])) !== p.tree
+      )
+        continue;
+      return p.base;
+    }
+    return null;
+  }
+  private async previewNative(binding: Binding, revalidate: () => Promise<void>) {
+    return this.lock(binding.cwd, async () => {
+      if (!this.direct(binding))
+        throw new Conflict('This preview is for a native Group conversation.');
+      const repo = await this.repository(binding);
+      if (!repo) throw new Conflict('Connect the intended private shared repository first.');
+      await revalidate();
+      await this.fetchDefault(binding, repo);
+      const head = await git(repo.cwd, ['rev-parse', 'HEAD']);
+      const branch = await git(repo.cwd, ['symbolic-ref', '--short', 'HEAD']);
+      if (
+        this.busy(binding) ||
+        (await git(repo.cwd, ['status', '--porcelain'])) ||
+        !(await this.completedWorkBranch(binding, branch))
+      )
+        throw new Conflict(
+          'Finish the exact Group Work request and commit its files before reviewing them for sharing.',
+        );
+      const requestId = branch.slice(this.workBranch(binding.context, '').length);
+      const request = this.connector.context(requestId)!;
+      const baselines = new Set(
+        this.host.db
+          .prepare('SELECT oid FROM gng_baselines WHERE handle=? AND origin=?')
+          .all(this.scopeKey(binding), repo.origin)
+          .map((row) => String(row.oid)),
+      );
+      const base = (await git(repo.cwd, ['rev-list', '--max-count=129', head]))
+        .split('\n')
+        .find((oid) => baselines.has(oid));
+      if (!base || base === head)
+        throw new Conflict(
+          'There is no bounded new checkpoint to review against a verified shared baseline.',
+        );
+      await this.shareable(repo.cwd, base, head);
+      const files = (await git(repo.cwd, ['diff', '--name-only', '-z', base, head, '--']))
+        .split('\0')
+        .filter(Boolean);
+      // Include every new commit, including changes removed by a later checkpoint.
+      const patch = await git(repo.cwd, [
+        'log',
+        '--reverse',
+        '--format=Commit %H%n%s',
+        '--no-ext-diff',
+        '--no-textconv',
+        '--no-color',
+        '-p',
+        '--diff-merges=separate',
+        `${base}..${head}`,
+        '--',
+      ]).catch((error: unknown) => {
+        if (
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
+        )
+          throw new Conflict(
+            'This checkpoint is too large for the exact review screen. Prepare a smaller checkpoint; nothing was shared.',
+          );
+        throw error;
+      });
+      if (
+        Buffer.byteLength(patch) > 131072 ||
+        files.length > 1000 ||
+        files.some((file) => file.length > 512)
+      )
+        throw new Conflict(
+          'This checkpoint is too large for the exact review screen. Prepare a smaller checkpoint; nothing was shared.',
+        );
+      const tree = await git(repo.cwd, ['rev-parse', 'HEAD^{tree}']);
+      const evidence = {
+        requestId,
+        base,
+        head,
+        tree,
+        branch,
+        repository: repo.label,
+        files,
+        patch,
+      };
+      const fingerprint = createHash('sha256')
+        .update(
+          JSON.stringify({
+            ...evidence,
+            scope: this.scopeKey(binding),
+            origin: repo.origin,
+            agentId: binding.agentId,
+            runId: request.runId,
+            context: request.context,
+          }),
+        )
+        .digest('hex');
+      const preview = groupNativeCommitPreviewSchema.parse({
+        id: randomUUID(),
+        fingerprint,
+        ...evidence,
+      });
+      await revalidate();
+      if (
+        this.busy(binding) ||
+        (await git(repo.cwd, ['status', '--porcelain'])) ||
+        (await git(repo.cwd, ['rev-parse', 'HEAD'])) !== head ||
+        (await git(repo.cwd, ['symbolic-ref', '--short', 'HEAD'])) !== branch ||
+        (await this.repository(binding))?.origin !== repo.origin ||
+        !(await this.completedWorkBranch(binding, branch))
+      )
+        throw new Conflict(
+          'Shared work changed during review preparation. Refresh the exact preview.',
+        );
+      const old = this.host.db
+        .prepare(
+          'SELECT id FROM gng_native_previews WHERE scope_key=? AND origin=? AND fingerprint=?',
+        )
+        .get(this.scopeKey(binding), repo.origin, fingerprint);
+      if (old) return { ...preview, id: String(old.id) };
+      // Git already retains the exact content. Keep compact identities and digests locally,
+      // rather than copying every full diff into either local or hosted chat storage.
+      const { files: _files, patch: _patch, ...identityInput } = preview;
+      const identity = nativePreviewIdentitySchema.parse(identityInput);
+      this.host.db.prepare('INSERT INTO gng_native_previews VALUES(?,?,?,?,?)').run(
+        preview.id,
+        this.scopeKey(binding),
+        repo.origin,
+        fingerprint,
+        JSON.stringify({
+          preview: identity,
+          context: request.context,
+          agentId: binding.agentId,
+          runId: request.runId,
+        }),
+      );
+      return preview;
+    });
+  }
+  private async approveNative(
+    binding: Binding,
+    input: { key: string; previewId: string; fingerprint: string },
+    revalidate: () => Promise<void>,
+  ) {
+    await this.lock(binding.cwd, async () => {
+      const row = this.host.db
+        .prepare('SELECT * FROM gng_native_previews WHERE id=? AND scope_key=?')
+        .get(input.previewId, this.scopeKey(binding));
+      if (!row) throw new Conflict('Review the exact saved preview for this shared folder first.');
+      const saved = JSON.parse(String(row.body)) as {
+        preview: NativePreviewIdentity;
+        context: GroupContext;
+        agentId: string;
+        runId: string;
+      };
+      const preview = nativePreviewIdentitySchema.parse(saved.preview);
+      if (
+        input.fingerprint !== preview.fingerprint ||
+        saved.agentId !== binding.agentId ||
+        !this.direct(binding)
+      )
+        throw new Conflict('The exact native review identity changed. Refresh the preview.');
+      const request = this.connector.context(preview.requestId);
+      await revalidate();
+      if (
+        !request ||
+        request.runId !== saved.runId ||
+        JSON.stringify(request.context) !== JSON.stringify(saved.context) ||
+        this.busy(binding) ||
+        (await this.repository(binding))?.origin !== row.origin ||
+        (await git(binding.cwd, ['status', '--porcelain'])) ||
+        (await git(binding.cwd, ['rev-parse', 'HEAD'])) !== preview.head ||
+        (await git(binding.cwd, ['rev-parse', 'HEAD^{tree}'])) !== preview.tree ||
+        (await git(binding.cwd, ['symbolic-ref', '--short', 'HEAD'])) !== preview.branch ||
+        !(await this.completedWorkBranch(binding, preview.branch))
+      )
+        throw new Conflict(
+          'These files or the completed Group request changed. Nothing was approved; refresh the preview.',
+        );
+      await revalidate();
+      this.host.db.prepare('INSERT OR IGNORE INTO gng_native_reviews VALUES(?,?,?)').run(
+        input.key,
+        preview.id,
+        JSON.stringify({
+          kind: 'owner-preview',
+          previewId: preview.id,
+          fingerprint: preview.fingerprint,
+          memberId: binding.context.memberId,
+          installationId: binding.context.installationId,
+        }),
+      );
+    });
+  }
   /** Scan every newly published checkpoint, including files deleted by a later commit. */
   private async shareable(cwd: string, base: string, head: string) {
     const allowProjectData = groupProjectDataAllowed(cwd, this.runtime.dataDir);
@@ -566,12 +816,18 @@ export class GroupHostNativeGit {
         head = await git(repo.cwd, ['rev-parse', 'HEAD']);
       }
       if (head === remoteHead) return 'Shared files are up to date. No model call was made.';
-      const base = this.reviewed(binding, head);
+      const base =
+        this.reviewed(binding, head) ??
+        (await this.nativeReviewed(binding, repo.origin, head, branch));
       if (!base)
-        return 'Local commits await independent task review and exact apply before they can be shared.';
+        return this.direct(binding)
+          ? 'Your committed Group files are ready for review. Review the exact changes before sharing; nothing was uploaded.'
+          : 'Local commits await independent task review and exact apply before they can be shared.';
       if (base === head && remoteHead && branch !== main)
         return 'Fetched shared commits. Your separate work branch was preserved; there is no newly reviewed work to publish.';
       await this.shareable(repo.cwd, base, head);
+      if (this.verifyPrivateAccess) await this.verifyPrivateAccess(repo.cwd, repo.origin);
+      else if (!this.localFixture) await this.privateAccess(repo.cwd, repo.origin);
       await revalidate();
       if (
         this.busy(binding) ||
@@ -581,6 +837,10 @@ export class GroupHostNativeGit {
       )
         throw new Conflict(
           'Shared work changed during sync. Its files were preserved; retry after it settles.',
+        );
+      if ((await this.repository(binding))?.origin !== repo.origin)
+        throw new Conflict(
+          'The shared repository changed. Nothing was sent to the new destination.',
         );
       // Explicit commits only; never stage, reset, rebase, force push or delete refs.
       const push = [
@@ -596,6 +856,16 @@ export class GroupHostNativeGit {
       if (remoteHead && !(await this.ancestor(repo.cwd, remoteHead, head)))
         return 'Reviewed work branch shared. The default branch advanced separately; prepare and review a correction before merging.';
       await revalidate();
+      if (
+        (await this.repository(binding))?.origin !== repo.origin ||
+        (await git(repo.cwd, ['rev-parse', 'HEAD'])) !== head ||
+        this.busy(binding) ||
+        (await git(repo.cwd, ['status', '--porcelain'])) ||
+        (await git(repo.cwd, ['symbolic-ref', '--short', 'HEAD'])) !== branch
+      )
+        throw new Conflict(
+          'Shared work changed before publishing to the default branch; the exact work branch remains preserved.',
+        );
       await git(repo.cwd, [...push, `${head}:refs/heads/${main}`]);
       this.baseline(binding, repo.origin, head);
       return 'Reviewed committed work shared; the default branch advanced without rewriting history.';
@@ -605,6 +875,7 @@ export class GroupHostNativeGit {
     handle: string,
     binding: Binding,
     preview: GroupNativeGitView['preview'] = null,
+    nativePreview: GroupNativeCommitPreview | null = null,
   ): Promise<GroupNativeGitView> {
     const settings = this.settings(handle, binding),
       repo = await this.repository(binding);
@@ -638,6 +909,16 @@ export class GroupHostNativeGit {
           reviewed: !!task.reviewedCommit && !!task.reviewAgentId,
         })),
       preview,
+      nativePreview,
+      nativeReviewAvailable:
+        !!repo &&
+        this.direct(binding) &&
+        !this.busy(binding) &&
+        !(await git(binding.cwd, ['status', '--porcelain'])) &&
+        (await this.completedWorkBranch(
+          binding,
+          (await this.optional(binding.cwd, ['symbolic-ref', '--short', 'HEAD'])) || '',
+        )),
     });
   }
   /** Owner-only metadata from server-selected group/task workspaces. Returns no
@@ -728,8 +1009,13 @@ export class GroupHostNativeGit {
     }
     return result;
   }
-  async request(raw: unknown): Promise<GroupNativeGitView> {
+  /** Human review authority is supplied only by the browser/paired route, never by input. */
+  async request(raw: unknown, humanReview = false): Promise<GroupNativeGitView> {
     const input = groupNativeGitRequestSchema.parse(raw);
+    if (input.action === 'approve-native' && !humanReview)
+      throw new Conflict(
+        'Approve the exact changes from your authenticated app or paired device. Native agents cannot attest owner review.',
+      );
     const scope = await this.host.authenticatedContext({ handle: input.handle });
     if (scope.context.visibility !== 'shared')
       throw new Conflict('Shared files belong to the shared group conversation.');
@@ -756,6 +1042,7 @@ export class GroupHostNativeGit {
       });
     }
     let preview: GroupNativeGitView['preview'] = null;
+    let nativePreview: GroupNativeCommitPreview | null = null;
     if ('key' in input) {
       const exact = JSON.stringify({
           ...input,
@@ -772,12 +1059,49 @@ export class GroupHostNativeGit {
         if (!old.result || JSON.stringify(oldInput) !== JSON.stringify(input))
           throw new Conflict('Retry the exact saved Git operation in its original shared folder.');
       }
-      if (old?.result) return groupNativeGitViewSchema.parse(JSON.parse(String(old.result)));
+      if (old?.result) {
+        const result = JSON.parse(String(old.result)) as Record<string, unknown>;
+        if (typeof result.nativeApprovalRejected === 'string')
+          throw new Conflict(result.nativeApprovalRejected);
+        return groupNativeGitViewSchema.parse(result);
+      }
       if (!old) {
         if (Number(this.host.db.prepare('SELECT count(*) n FROM gng_operations').get()!.n) >= 4096)
           throw new Conflict('Shared Git operation history is full; retained work is preserved.');
         this.host.db.prepare('INSERT INTO gng_operations VALUES (?,?,NULL)').run(input.key, exact);
       }
+    }
+    if (input.action === 'preview-native')
+      nativePreview = await this.previewNative(binding, scope.revalidate);
+    if (input.action === 'approve-native') {
+      const recorded = this.host.db
+        .prepare(
+          `SELECT r.body FROM gng_native_reviews r
+        JOIN gng_native_previews p ON p.id=r.preview_id
+        WHERE r.preview_id=? AND p.scope_key=? AND json_extract(p.body,'$.agentId')=?`,
+        )
+        .get(input.previewId, this.scopeKey(binding), binding.agentId);
+      const approved =
+        recorded && JSON.parse(String(recorded.body)).fingerprint === input.fingerprint;
+      if (!approved) {
+        try {
+          await this.approveNative(binding, input, scope.revalidate);
+        } catch (error) {
+          const message =
+            error instanceof Conflict
+              ? error.message
+              : 'The exact review could not be recorded. No files were shared.';
+          // A known refusal cannot become approval on a later retry or block folder changes.
+          this.host.db
+            .prepare('UPDATE gng_operations SET result=? WHERE key=? AND result IS NULL')
+            .run(JSON.stringify({ nativeApprovalRejected: message }), input.key);
+          throw new Conflict(message);
+        }
+      }
+      this.notices.set(
+        input.handle,
+        'Your exact file review was recorded. Automatic sync can now share this checkpoint. Later changes require a fresh review.',
+      );
     }
     if (input.action === 'connect') {
       await scope.revalidate();
@@ -915,7 +1239,7 @@ export class GroupHostNativeGit {
         preview = null;
       }
     }
-    const result = await this.view(input.handle, binding, preview);
+    const result = await this.view(input.handle, binding, preview, nativePreview);
     if ('key' in input)
       this.host.db
         .prepare('UPDATE gng_operations SET result=? WHERE key=? AND result IS NULL')

@@ -10,6 +10,8 @@ export type SharedEntryServices = Pick<
   | 'notebookGateway'
   | 'terminals'
   | 'ownerTerminals'
+  | 'nativeConnections'
+  | 'nativeRunnerLaunch'
   | 'mirrors'
   | 'backups'
   | 'hosts'

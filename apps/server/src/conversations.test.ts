@@ -155,7 +155,7 @@ it('keeps terminal-only Codex records searchable in the same list and rejects Cl
   expect(store.runs()).toHaveLength(0);
 });
 
-it('uses the direct conversation charter with native capabilities and retains its private write mode in settings', async () => {
+it('keeps fresh direct native permissions/config and rejects Dock per-tool settings without a model turn', async () => {
   const agent = (await post(input())).json();
   const settings = await app.inject({
     method: 'POST',
@@ -175,13 +175,41 @@ it('uses the direct conversation charter with native capabilities and retains it
   const start = request.mock.calls.find(([method]) => method === 'thread/start')![1];
   expect(start).toMatchObject({
     cwd: store.agent(agent.id).cwd,
+    config: { model_reasoning_effort: 'medium' },
+  });
+  for (const key of ['sandbox', 'approvalPolicy', 'developerInstructions', 'dynamicTools'])
+    expect(start).not.toHaveProperty(key);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: `/api/agents/${agent.id}/settings`,
+        headers,
+        payload: {
+          model: 'demo',
+          effort: 'medium',
+          permission: 'workspace-write',
+          toolPolicy: 'restricted',
+        },
+      })
+    ).statusCode,
+  ).toBe(409);
+  expect(request.mock.calls.some(([method]) => method === 'turn/start')).toBe(false);
+  expect(store.runs()).toHaveLength(0);
+});
+
+it('retains the managed conversation charter and launch contract only when explicitly chosen', async () => {
+  const agent = (await post({ ...input(), executionMode: 'managed' })).json();
+  expect(agent.executionMode).toBe('managed');
+  const client = await runtime.client(store.agent(agent.id));
+  const request = vi.spyOn(client, 'request');
+  await runtime.attach(agent.id);
+  expect(request.mock.calls.find(([method]) => method === 'thread/start')![1]).toMatchObject({
     sandbox: 'danger-full-access',
     approvalPolicy: 'never',
     developerInstructions: `${conversationCharter}\n\n${chatFormattingCharter}\n\n${latexAuthoringCharter}\n\n${nativeFullAccessNote}`,
-    config: { 'sandbox_workspace_write.network_access': true },
   });
   expect(request.mock.calls.some(([method]) => method === 'turn/start')).toBe(false);
-  expect(store.runs()).toHaveLength(0);
 });
 
 it('rejects unknown catalog choices and caller paths before creating storage', async () => {

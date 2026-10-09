@@ -13,6 +13,7 @@ const conversation = (route: string) => {
   const [page, id, ...key] = route.split('/');
   if ((page === 'chat' || page === 'advanced') && id) return `chat/${id}`;
   if (page === 'chats' && id === 'groups' && key[0]) return `chats/groups/${key[0]}`;
+  if (page === 'chats' && id === 'native' && key[0]) return `chats/native/${key[0]}`;
   return page === 'chats' && id === 'vscode' && key.join('/') ? route : undefined;
 };
 const visitRoute = (trail: string[], route: string) => {

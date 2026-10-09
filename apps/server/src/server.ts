@@ -93,6 +93,10 @@ import { conversationEntries } from './conversation-entries.js';
 import { Runtime } from './runtime.js';
 import { Terminals } from './terminal.js';
 import { OwnerTerminals } from './owner-terminal.js';
+import { NativeConnections } from './native-connections.js';
+import { registerNativeConnectionRoutes } from './native-connections-routes.js';
+import { NativeRunnerLaunch } from './native-runner-launch.js';
+import { registerNativeRunnerRoutes } from './native-runner-routes.js';
 import { ownerTerminalOpenSchema, ownerTerminalSessionSchema } from '@dock/shared';
 import { Sessions } from './sessions.js';
 import { diff, integrate, integrationPreview, reconcileTask } from './workspaces.js';
@@ -146,6 +150,8 @@ export async function createServer(
     editorOpener?: ProjectEditorOpener;
     terminals?: Terminals;
     ownerTerminals?: OwnerTerminals;
+    nativeConnections?: NativeConnections;
+    nativeRunnerLaunch?: NativeRunnerLaunch;
     ownsRuntime?: boolean;
     phone?: PhoneAccess;
     notebookGateway?: NotebookGateway;
@@ -189,6 +195,29 @@ export async function createServer(
           }
         : undefined,
     );
+  const nativeConnections =
+    options.nativeConnections ??
+    new NativeConnections(
+      store,
+      runtime.dataDir,
+      undefined,
+      undefined,
+      !options.demo && !runtime.fixture,
+    );
+  const nativeRunnerLaunch =
+    options.nativeRunnerLaunch ??
+    NativeRunnerLaunch.production(
+      store,
+      runtime.dataDir,
+      nativeConnections,
+      runtime.modelPolicy,
+      { codex: runtime.binary, claude: process.env.DOCK_CLAUDE_BIN ?? 'claude' },
+      !options.demo && !runtime.fixture,
+    );
+  nativeRunnerLaunch.beforeStart = () => ownerTerminals.beforeOpen();
+  if (!options.ownerTerminals)
+    ownerTerminals.externalActiveCount = () =>
+      nativeConnections.activeCount() + nativeRunnerLaunch.activeCount();
   if (
     runtime.fixture &&
     (!options.demo ||
@@ -911,6 +940,15 @@ export async function createServer(
           browserOrigins.has(remoteOrigin ?? `http://${request.headers.host}`) &&
           options.localAccess.browser(request.headers.cookie)),
       folders,
+      (request) =>
+        !!request.headers.origin &&
+        (options.remote
+          ? request.headers.origin === remoteOrigin && !!phoneSessions.get(request)
+          : !request.headers.authorization &&
+            !!options.localAccess &&
+            browserOrigins.has(request.headers.origin) &&
+            browserOrigins.has(`http://${request.headers.host}`) &&
+            !!options.localAccess.browser(request.headers.cookie)),
     );
   }
   if (options.groupFixture) {
@@ -1321,10 +1359,17 @@ export async function createServer(
     return folderBrowseSchema.parse(await folders.browser.browse(folderId, offset, options));
   });
   app.post('/api/projects/connect-folder', async (request) => {
-    const { key, name, provider, selectOnly, folderId, fresh } = projectFolderSchema.parse(
-      request.body,
+    const { key, name, provider, selectOnly, folderId, fresh, executionMode } =
+      projectFolderSchema.parse(request.body);
+    const project = await folders.connect(
+      key,
+      provider,
+      selectOnly,
+      folderId,
+      name,
+      fresh,
+      executionMode,
     );
-    const project = await folders.connect(key, provider, selectOnly, folderId, name, fresh);
     return projectConnectionSchema.parse({
       project,
       ...(selectOnly
@@ -1741,6 +1786,10 @@ export async function createServer(
         ? 'restricted'
         : (agent.toolPolicy ?? 'restricted'));
     const inherits = toolPolicy === 'native';
+    if (agent.executionMode === 'direct' && !inherits)
+      throw new Conflict(
+        'Direct conversations keep native tool configuration. Use native settings, or create a separate Managed conversation.',
+      );
     if (settings.nativeChrome !== undefined && (provider !== 'claude' || !inherits))
       throw new Conflict('Chrome browser settings are available for native Claude conversations.');
     if (inherits && runtime.resources.isSnapshot(target))
@@ -2103,13 +2152,27 @@ export async function createServer(
             options.localAccess.browser(request.headers.cookie)));
   app.addHook('preHandler', async (request, reply) => {
     if (
-      request.routeOptions.url?.startsWith('/api/owner-terminal') &&
+      (request.routeOptions.url?.startsWith('/api/owner-terminal') ||
+        request.routeOptions.url?.startsWith('/api/native-connections')) &&
       !ownerTerminalAllowed(request)
     )
       return reply
         .code(401)
         .send({ error: 'Connect an authenticated owner browser or paired device.' });
   });
+  registerNativeConnectionRoutes(
+    app,
+    nativeConnections,
+    (socket, request) => {
+      const session = phoneSessions.get(request);
+      if (session) {
+        const unwatch = phone!.watch(session, () => socket.terminate());
+        socket.once('close', unwatch);
+      }
+    },
+    (request) => remoteOrigin ?? `http://${request.headers.host}`,
+  );
+  registerNativeRunnerRoutes(app, nativeRunnerLaunch, folders.browser);
   app.post('/api/owner-terminal', async (request) => {
     const { key } = ownerTerminalOpenSchema.parse(request.body);
     return ownerTerminalSessionSchema.parse(ownerTerminals.open(key));
@@ -2177,6 +2240,8 @@ export async function createServer(
     stopNotifications?.();
     if (options.ownsRuntime !== false) terminals.close();
     if (!options.ownerTerminals) ownerTerminals.close();
+    if (!options.nativeRunnerLaunch) await nativeRunnerLaunch.close();
+    if (!options.nativeConnections) nativeConnections.close();
     folders.close();
   });
   app.addHook('onClose', async () => {

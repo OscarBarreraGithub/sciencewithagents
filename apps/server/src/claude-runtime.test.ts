@@ -24,6 +24,11 @@ import { git } from './workspaces.js';
 import { createInterview, nativeDiscussionBoundary } from './interviews.js';
 import { parseCapacity } from './capacity.js';
 import { recoverRun, runRecoveryView } from './run-recovery.js';
+import { GroupEventRepository } from './group-events.js';
+import { registerGroupHostEvidence } from './group-host-native-tools.js';
+import { GROUP_PRIVATE_EVIDENCE_TOOL } from './group-evidence-private.js';
+import { GROUP_EVIDENCE_ORIGINAL_TOOL } from './group-evidence-original.js';
+import { groupNativeReadingNames } from './group-native-reading-names.js';
 
 const identity = parseClaudeIdentity({
   loggedIn: true,
@@ -164,6 +169,130 @@ function request(session: FixtureSession, requestId = randomUUID()) {
   });
   return requestId;
 }
+
+it('uses direct native Claude with an unpaused scheduler, retaining original permissions and Stop without Dock admission', async () => {
+  const cwd = join(root, 'direct');
+  mkdirSync(cwd);
+  const project = store.register(cwd, 'Direct native fixture', '', 'claude', undefined, 'direct');
+  store.setSetting('scheduler:settings', { paused: false, maxConcurrent: 1 });
+  const { run, session } = await start(project.managerId, 'Native input');
+  expect(session.options).toMatchObject({
+    executionMode: 'direct',
+    inheritNative: true,
+    charter: '',
+    tools: [],
+    unattended: false,
+    cwd,
+  });
+  expect(session.submit.mock.calls[0]![0]).toMatchObject({
+    deliveryId: run.id,
+    text: 'Native input',
+    appContext: '',
+  });
+  expect(store.db.prepare('SELECT COUNT(*) AS count FROM pulsar_leases').get()?.count).toBe(0);
+  expect(store.getSetting(`quark:manager-lease:${run.id}`)).toBeNull();
+  expect(
+    await session.options.hook!(
+      {
+        session_id: session.options.sessionId,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Read',
+        tool_use_id: 'direct-native-read',
+        tool_response: { ok: true },
+      },
+      run.id,
+    ),
+  ).toEqual({});
+  const requestId = request(session);
+  await vi.waitFor(() => expect(store.approvals()).toHaveLength(1));
+  const approval = store.approvals()[0]!;
+  expect(approval.agentId).toBe(project.managerId);
+  await runtime.approve(approval.id, 'accept');
+  await runtime.approve(approval.id, 'accept');
+  expect(session.answer).toHaveBeenCalledExactlyOnceWith(requestId, 'accept');
+  await runtime.interrupt(project.managerId);
+  expect(session.interrupt).toHaveBeenCalledTimes(1);
+});
+
+it('binds direct Claude Group reads to the original delivery before and after awaited evidence', async () => {
+  const events = new GroupEventRepository(join(root, 'group-evidence.sqlite'));
+  try {
+    const cwd = join(root, 'direct-group');
+    mkdirSync(cwd);
+    const project = store.register(cwd, 'Native Group fixture', '', 'claude', undefined, 'direct');
+    const member = events.createGroup('Generic Group fixture');
+    const context = events.createContext({
+      groupId: member.groupId,
+      memberId: member.memberId,
+      installationId: member.installationId,
+      visibility: 'shared',
+      provider: 'claude',
+      nativeSessionId: randomUUID(),
+    });
+    store.setSetting(`group:host-native-agent:${project.managerId}`, { context });
+    let held: Promise<void> | undefined, release: (() => void) | undefined;
+    const invoke = vi.fn(async () => {
+      await held;
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify({ original: 'Scoped Group evidence' }) },
+        ],
+      };
+    });
+    registerGroupHostEvidence(runtime, () => [
+      { ...GROUP_PRIVATE_EVIDENCE_TOOL, invoke },
+      { ...GROUP_EVIDENCE_ORIGINAL_TOOL, invoke },
+    ]);
+    runtime.groupHostNativeAdmission = async (_agent, runId) => {
+      store.setSetting(`group:host-native-run:${runId}`, {
+        requestId: randomUUID(),
+        intent: 'ask',
+        context,
+      });
+    };
+    const run = store.enqueue(project.managerId, randomUUID(), 'Explicit Group Ask');
+    runtime.kick();
+    await vi.waitFor(() =>
+      expect(
+        instances.some((session) =>
+          session.submit.mock.calls.some(([input]) => input.deliveryId === run.id),
+        ),
+      ).toBe(true),
+    );
+    const session = instances.find((session) =>
+      session.submit.mock.calls.some(([input]) => input.deliveryId === run.id),
+    )!;
+    expect(session.options.tools.map((tool) => tool.name)).toEqual(groupNativeReadingNames);
+    expect(session.options.charter).toBe('');
+    const tool = session.options.tools[0]!;
+    const scope = {
+      sessionId: session.options.sessionId,
+      requestId: 'native-read',
+      deliveryId: run.id,
+      signal: new AbortController().signal,
+    };
+    await expect(tool.invoke({}, { ...scope, deliveryId: randomUUID() })).rejects.toThrow(
+      'no longer connected',
+    );
+    expect(invoke).not.toHaveBeenCalled();
+    expect(await tool.invoke({}, scope)).toEqual({
+      content: [{ type: 'text', text: JSON.stringify({ original: 'Scoped Group evidence' }) }],
+    });
+    held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const late = tool.invoke({}, { ...scope, requestId: 'held-native-read' });
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(2));
+    finish(session, run.id);
+    await vi.waitFor(() => expect(store.run(run.id).status).toBe('completed'));
+    release!();
+    const result = await late;
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result)).not.toContain('Scoped Group evidence');
+  } finally {
+    events.close();
+  }
+});
 
 describe('Claude uses the shared runtime without Codex protocol substitution', () => {
   it('starts QUARK checks in a fresh native context while keeping its identity, saved archive and durable decisions', async () => {

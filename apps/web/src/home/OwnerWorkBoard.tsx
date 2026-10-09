@@ -13,6 +13,7 @@ import { api, ApiError, apiScope } from '../api';
 import { useReading } from './useHomeData';
 import { Modal } from '../Modal';
 import './owner-work-board.css';
+import { managedExecution } from '../execution-mode';
 
 export type ProjectIdeaSeed = { brief: string; sourceItemIds: string[]; suggestedName?: string };
 type Reading = ReturnType<typeof useReading<ReturnType<typeof workItemsSchema.parse>>>;
@@ -101,12 +102,14 @@ export function OwnerWorkBoard({
   reading,
   projectId,
   onSeedProject,
+  managedProjectIds,
 }: {
   projects: Project[];
   tasks: Snapshot['tasks'];
   reading: Reading;
   projectId?: string;
   onSeedProject?: (seed: ProjectIdeaSeed) => void;
+  managedProjectIds?: readonly string[];
 }) {
   const id = useId();
   const prefix = `dock:${apiScope()}:${projectId ? `project-todo:${projectId}` : 'home-todo'}`;
@@ -321,8 +324,10 @@ export function OwnerWorkBoard({
       throw reason;
     }
   };
-  const eligibleProjects = projects.filter((project) =>
-    selected.every((item) => !item.projectId || item.projectId === project.id),
+  const eligibleProjects = projects.filter(
+    (project) =>
+      (!managedProjectIds || managedProjectIds.includes(project.id)) &&
+      selected.every((item) => !item.projectId || item.projectId === project.id),
   );
   const stale = selected.some(
     (source) => all.find((item) => item.id === source.id)?.revision !== source.revision,
@@ -474,7 +479,7 @@ export function OwnerWorkBoard({
         {selected.length > 0 && !packaging && !pending && (
           <div className="owner-board-selection">
             <span>{selected.length} selected</span>
-            {view === 'general' && (
+            {view === 'general' && eligibleProjects.length > 0 && (
               <button type="button" onClick={() => packageItems(selected)}>
                 Package {selected.length} {selected.length === 1 ? 'to-do' : 'to-dos'}
               </button>
@@ -517,6 +522,14 @@ export function OwnerWorkBoard({
                 aria-label="Package a QUARK ticket"
                 onSubmit={(event) => {
                   event.preventDefault();
+                  if (!eligibleProjects.some((project) => project.id === target)) {
+                    setError({
+                      id: 'ticket',
+                      message:
+                        'Background tickets require a managed project. Your selected to-dos are retained.',
+                    });
+                    return;
+                  }
                   const parsed = ownerTicketRequestSchema.safeParse({
                     key: crypto.randomUUID(),
                     projectId: target,
@@ -834,6 +847,11 @@ export function ProjectOwnerWorkBoard({
       reading={reading}
       projectId={project.id}
       onSeedProject={onSeedProject}
+      managedProjectIds={
+        managedExecution(state.agents.find((agent) => agent.id === project.managerId))
+          ? [project.id]
+          : []
+      }
     />
   );
 }

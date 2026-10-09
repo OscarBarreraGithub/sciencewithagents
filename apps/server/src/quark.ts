@@ -25,6 +25,7 @@ import {
   type QuotaHold,
   type TokenCounts,
   type TokenUsageSnapshot,
+  isDirectExecution,
 } from '@dock/shared';
 import { z } from 'zod';
 import { captureGroupQuarkTransition } from './group-native-activity-producers.js';
@@ -1136,6 +1137,14 @@ export class Quark {
   ): { cause: QuotaHold['cause']; reason: string; budgetTargetId?: string } | null {
     const a = this.store.agent(run.agentId),
       rootId = a.nativeRootId ?? a.id;
+    if (isDirectExecution(a)) {
+      const hold =
+        !ignoreHold &&
+        this.holds().find(
+          (h) => h.agentId === rootId && (h.nativeExhaustion || h.cause === 'manual'),
+        );
+      return hold ? { cause: hold.cause, reason: hold.reason } : null;
+    }
     const projectBypass = !projectFollowsQuark(this.store, a.projectId);
     const bypass = projectBypass || (allowChatBypass && chatBypassAllowed(this.store, run));
     if (!ignoreHold) {
@@ -1379,6 +1388,7 @@ export class Quark {
         return old;
       for (const b of this.budgets().filter(
         (b) =>
+          !isDirectExecution(a) &&
           b.enabled &&
           b.period === 'window' &&
           this.applies(b, {
@@ -1446,7 +1456,7 @@ export class Quark {
     return this.store.transaction(() => {
       const old = this.holds().find((h) => h.runId === run.id);
       if (old && (old.nativeExhaustion || !transientCauses.includes(old.cause))) return old;
-      const reason = `Claude reported its ${window.label} allowance exhausted until ${new Date(resetsAt).toISOString().slice(0, 16).replace('T', ' ')} UTC. QUARK resumes once after a fresh reading shows that window reset.`;
+      const reason = `Claude reported its ${window.label} allowance exhausted until ${new Date(resetsAt).toISOString().slice(0, 16).replace('T', ' ')} UTC. ${isDirectExecution(this.store.agent(run.agentId)) ? 'Check a fresh native reading after reset, then resume explicitly.' : 'QUARK resumes once after a fresh reading shows that window reset.'}`;
       const hold = this.hold(run, reason, true, 'reset');
       const value = quotaHoldSchema.parse({
         ...hold,
@@ -1496,6 +1506,7 @@ export class Quark {
   }
   recoverTransient(excluded: ReadonlySet<string>) {
     for (const h of this.holds()) {
+      if (isDirectExecution(this.store.agent(h.agentId))) continue;
       if (
         (!transientCauses.includes(h.cause) &&
           !(
@@ -1574,6 +1585,40 @@ export class Quark {
     if (!h) throw new Conflict('This pause was already released or no longer exists.');
     const run = this.store.run(runId),
       a = this.store.agent(run.agentId);
+    if (isDirectExecution(a) && automatic)
+      throw new Conflict('Direct native conversations require explicit owner recovery.');
+    if (isDirectExecution(a) && h.nativeExhaustion) {
+      const native = h.nativeExhaustion;
+      const cap = readCapacity(this.store, a.provider, this.clock());
+      const window = cap.windows.find((item) => item.id === native.windowId);
+      const account = nativeAccountSchema.safeParse(
+        this.store.getSetting(`quark:native-account:${run.id}`),
+      );
+      if (
+        !h.stopAcknowledgedAt ||
+        cap.stale ||
+        !cap.observedAt ||
+        Date.parse(cap.observedAt) <= Date.parse(native.resetsAt) ||
+        Date.parse(cap.observedAt) <= Date.parse(native.observedAt) ||
+        Date.parse(cap.observedAt) > this.clock() ||
+        !window ||
+        window.usedPercent >= 100 ||
+        window.windowMinutes !== nativeWindows[native.rateLimitType].minutes ||
+        (window.resetsAt !== null &&
+          (Date.parse(window.resetsAt) <= Date.parse(native.resetsAt) ||
+            sameAllowanceReset(window.resetsAt, native.resetsAt))) ||
+        a.provider !== 'claude' ||
+        a.threadId !== native.sessionId ||
+        !account.success ||
+        account.data.runId !== run.id ||
+        account.data.sessionId !== native.sessionId ||
+        account.data.affinity !== this.store.getSetting(`claude:account:${a.id}`) ||
+        account.data.affinity !== readClaudeCapacityAffinity(this.store, cap)
+      )
+        throw new Conflict(
+          'Native allowance remains held. Check a fresh post-reset reading for the original account before explicitly resuming.',
+        );
+    }
     if (
       automatic &&
       a.autoTurns >= (this.pulsar.policy().enabled ? this.pulsar.policy().maxAutomaticTurns : 12)
@@ -1604,7 +1649,7 @@ export class Quark {
       throw new Conflict('Another pause still protects this conversation.');
     const reason = this.block(run, true, true, !automatic)?.reason;
     if (reason) throw new Conflict(reason);
-    if (!automatic)
+    if (!automatic && !isDirectExecution(a))
       for (const b of this.budgets().filter((b) =>
         this.applies(b, {
           projectId: a.projectId,

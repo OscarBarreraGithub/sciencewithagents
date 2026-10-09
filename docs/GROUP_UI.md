@@ -5,8 +5,9 @@ member’s own provider account and allowance. **Setup** offers readable creator
 shared-file choices; phone pairing remains optional. **Manage** keeps invitations and local
 agent access visible, with **Remove from my app** directly below the dialog heading.
 Setup and management disclosure rows use readable bordered controls. **Advanced** holds
-repository review, shared proposals, older report lookup and creator backups. Advanced content
-loads once on first opening and stays mounted when collapsed. Exact pending/error request controls describe the specific request.
+managed task review, sync settings, shared proposals, older report lookup and creator backups.
+Advanced content loads once on first opening and stays mounted when collapsed. Exact pending/error
+request controls describe the specific request.
 
 Validated shared report notifications show **Open report** and a collapsed exact original.
 Completed own replies expose their report offer only through the exact retained result/source
@@ -19,9 +20,20 @@ limited presentation; current checks and remaining acceptance are in [Status](ST
 After creating or joining, **Manage → Work folder** attaches that saved selection explicitly
 and verifies the intended private repository. New verified connections start automatic sync;
 an existing saved pause is preserved. One repository controller retains exact pending changes
-across the ordinary connection controls and Advanced review. **Remove from my app** hides
-the local list entry while preserving membership, work, history and drafts; **Removed groups**
-offers restore and exact interrupted-change recovery. The visible contribution selector reflects
+across the ordinary connection controls and Advanced review. **Manage → Work folder → Files to share**
+previews a completed native Work checkpoint for owner review. The exact commit range, every file name
+and complete bounded text diff appear together, with long lines wrapping on phones. Binary notices
+identify files to inspect in the chosen folder. Recording a review requires an explicit
+acknowledgment and authorizes only that exact checkpoint, before automatic sync. Interrupted
+approvals retain the original preview and request durably in this browser, including after closing
+the tab, for an explicit check. A known changed-head refusal requires a fresh preview and acknowledgment.
+The optional **Share reviewed changes** button uses the existing exact Git sync receipt.
+If the saved display is missing or corrupt, the request stays retained and approval is blocked;
+a receipt-only recovery path is not yet available. These file controls make no model call. Older
+hosts and managed task review keep their existing controls.
+
+**Remove from my app** hides the local list entry while preserving membership, work, history and drafts.
+**Removed groups** offers restore and exact interrupted-change recovery. The visible contribution selector reflects
 the host’s saved Read-only/Contribute mode; drafts stay editable and new sends follow that
 admission setting. Advanced displays optional
 last-reported local receipt usage, separate from cloud or physical disk storage. Folder and

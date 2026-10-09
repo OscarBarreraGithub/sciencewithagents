@@ -26,12 +26,14 @@ export async function createProject(store: Store, dataDir: string, raw: unknown)
     description: string;
     provider?: 'codex' | 'claude';
     requestedProvider?: 'codex' | 'claude' | 'policy';
+    executionMode?: 'direct' | 'managed';
   } | null;
   if (
     saved &&
     (saved.name !== input.name ||
       saved.description !== input.description ||
-      (saved.requestedProvider ?? saved.provider ?? 'policy') !== (input.provider ?? 'policy'))
+      (saved.requestedProvider ?? saved.provider ?? 'policy') !== (input.provider ?? 'policy') ||
+      (input.executionMode && input.executionMode !== (saved.executionMode ?? 'managed')))
   )
     throw new Conflict(
       'This request already belongs to a different project. Reopen the form to start another.',
@@ -42,6 +44,7 @@ export async function createProject(store: Store, dataDir: string, raw: unknown)
     description: input.description,
     provider: store.defaultProvider('manager', input.provider),
     requestedProvider: input.provider ?? 'policy',
+    executionMode: input.executionMode ?? 'managed',
   };
   id.parse(intent.directoryId);
   if (!saved)
@@ -86,7 +89,16 @@ export async function createProject(store: Store, dataDir: string, raw: unknown)
       await run(['-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'Start project']);
     // Registration and its manager/event are atomic. A lost acknowledgement or restart
     // resolves this same reserved root; it cannot create a second project or initial commit.
-    return configure(store.register(root, input.name, input.description, intent.provider));
+    return configure(
+      store.register(
+        root,
+        input.name,
+        input.description,
+        intent.provider,
+        undefined,
+        intent.executionMode ?? 'managed',
+      ),
+    );
   } catch {
     store.event('project.creation_failed', null, null, { key: input.key });
     throw new Conflict(

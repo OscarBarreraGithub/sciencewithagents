@@ -11,6 +11,8 @@ export * from './mirror-native-requests.js';
 export * from './archive.js';
 export * from './project-workflow.js';
 export * from './conversations.js';
+export * from './execution-mode.js';
+import { executionModeSchema } from './execution-mode.js';
 export * from './conversation-chronology.js';
 import { conversationSurfaceSchema } from './conversations.js';
 import {
@@ -141,6 +143,7 @@ export const agentSchema = z.object({
   taskId: id.nullable(),
   name: z.string(),
   role: roleSchema,
+  executionMode: executionModeSchema.default('managed'),
   scope: z.string().default(''),
   status: statusSchema,
   provider: providerIdSchema.default('codex'),
@@ -206,6 +209,7 @@ export const projectCreateSchema = z
       .regex(/^[^\u0000-\u001f\u007f]+$/),
     description: z.string().trim().max(2000).default(''),
     provider: providerIdSchema.optional(),
+    executionMode: executionModeSchema.optional(),
   })
   .strict();
 export const projectOptionsSchema = z
@@ -241,6 +245,7 @@ export const projectFolderSchema = z
     key: id,
     name: projectCreateSchema.shape.name.optional(),
     provider: providerIdSchema.optional(),
+    executionMode: executionModeSchema.optional(),
     selectOnly: z.boolean().optional(),
     fresh: z.boolean().optional(),
     folderId: id.optional(),
@@ -725,3 +730,5 @@ export * from './cluster-admission-ledger.js';
 export * from './cluster-account-controls.js';
 export * from './cluster-coordination.js';
 export * from './group-updates.js';
+export * from './native-connections.js';
+export * from './native-runner-launch.js';

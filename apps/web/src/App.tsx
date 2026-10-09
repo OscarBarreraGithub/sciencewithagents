@@ -1,4 +1,5 @@
 import { SessionSettings } from './SessionSettings';
+import { managedExecution } from './execution-mode';
 import { TaskModal, ManagerModal } from './ProjectActions';
 import {
   Conversation,
@@ -322,6 +323,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
   const agent = state?.agents.find((a) => a.id === agentId);
   const isAssistant = !!frontdesk?.agentId && agentId === frontdesk.agentId;
   const project = state?.projects.find((p) => p.id === agent?.projectId);
+  const managed = managedExecution(agent);
   const agents = state?.agents.filter((a) => a.projectId === project?.id) ?? [];
   const tasks = state?.tasks.filter((t) => t.projectId === project?.id) ?? [];
   const managers = agents.filter((a) => a.role === 'manager');
@@ -387,11 +389,15 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
               </button>
               <span className="permission">
                 <span />{' '}
-                {agent.role === 'manager'
-                  ? 'Coordinates only'
-                  : agent.permission === 'workspace-write'
-                    ? 'Task workspace'
-                    : 'Read only'}
+                {!managed
+                  ? agent.permission === 'read-only'
+                    ? 'Read-only native session'
+                    : 'Native permissions'
+                  : agent.role === 'manager'
+                    ? 'Coordinates only'
+                    : agent.permission === 'workspace-write'
+                      ? 'Task workspace'
+                      : 'Read only'}
               </span>
               <span className="reasoning">{effortLabel(agent.effort)} reasoning</span>
             </div>
@@ -860,14 +866,16 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
                       <Badge status={agent.status} />
                     </div>
                     <p>
-                      {agent.role === 'manager'
-                        ? agent.scope || 'Whole project · The team takes care of the work.'
-                        : `${roleLabel[agent.role]} · ${tasks.find((t) => t.id === agent.taskId)?.title ?? 'Project session'}`}
+                      {!managed
+                        ? 'Native conversation · uses your native tools and permissions.'
+                        : agent.role === 'manager'
+                          ? agent.scope || 'Whole project · The team takes care of the work.'
+                          : `${roleLabel[agent.role]} · ${tasks.find((t) => t.id === agent.taskId)?.title ?? 'Project session'}`}
                     </p>
                   </div>
                 </div>
                 <div className="channel-actions">
-                  {!isAssistant && (
+                  {!isAssistant && managed && (
                     <button className="secondary task-button" onClick={() => setNewTask(true)}>
                       <Plus size={16} /> New task
                     </button>
@@ -930,7 +938,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
                 >
                   <MessageSquare size={15} /> Conversation
                 </button>
-                {!isAssistant && (
+                {!isAssistant && managed && (
                   <button
                     className={tab === 'workspace' ? 'active' : ''}
                     onClick={() => setTab('workspace')}
@@ -966,7 +974,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
                     }}
                   />
                 </Suspense>
-              ) : tab === 'workspace' ? (
+              ) : tab === 'workspace' && managed ? (
                 <Workboard
                   tasks={tasks}
                   agents={agents}
@@ -1007,15 +1015,17 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
           </header>
           <div className="team-content">
             <div className="section-title">
-              <h2>Your team</h2>
+              <h2>{managed ? 'Your team' : 'Native conversations and helpers'}</h2>
               <span>{agents.length}</span>
             </div>
             <p className="team-description">
-              Shared project. Focused managers and specialists.
+              {managed
+                ? 'Shared project. Focused managers and specialists.'
+                : 'Native-owned helpers remain with their original conversation.'}
               <br />
               Every conversation stays with the work.
             </p>
-            {project && !isAssistant && (
+            {project && !isAssistant && managed && (
               <>
                 <button className="secondary add-manager" onClick={() => setNewManager(true)}>
                   <Plus size={15} /> Add module manager
@@ -1161,7 +1171,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
           </button>
         </Modal>
       )}
-      {newTask && project && (
+      {managed && newTask && project && (
         <TaskModal
           projectId={project.id}
           managers={managers}
@@ -1170,7 +1180,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
           act={act}
         />
       )}
-      {newManager && project && (
+      {managed && newManager && project && (
         <ManagerModal
           projectId={project.id}
           close={() => setNewManager(false)}
@@ -1178,7 +1188,7 @@ export function App({ onHostChange }: { onHostChange?: (id: string) => void }) {
           onCreated={choose}
         />
       )}
-      {sessionsOpen && project && (
+      {managed && sessionsOpen && project && (
         <SessionBrowser
           projectId={project.id}
           managers={managers}

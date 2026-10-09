@@ -30,6 +30,7 @@ import {
   type Task,
   type ProviderId,
   type QueuedMessageAction,
+  type ExecutionMode,
 } from '@dock/shared';
 
 export class Conflict extends Error {
@@ -293,6 +294,7 @@ export class Store extends EventEmitter {
   agents(withConversationActivity = false) {
     return this.bodies<PrivateAgent>('agents').map((a) => ({
       ...a,
+      executionMode: a.executionMode ?? 'managed',
       provider: a.provider ?? 'codex',
       assignment: a.assignment ?? null,
       mcpServers: a.mcpServers ?? [],
@@ -378,6 +380,7 @@ export class Store extends EventEmitter {
     return {
       ...value,
       provider: value.provider ?? 'codex',
+      executionMode: value.executionMode ?? 'managed',
       assignment: value.assignment ?? null,
       mcpServers: value.mcpServers ?? [],
       pluginsEnabled: value.pluginsEnabled ?? false,
@@ -417,6 +420,7 @@ export class Store extends EventEmitter {
     description: string,
     provider?: ProviderId,
     freshKey?: string,
+    executionMode: ExecutionMode = 'managed',
   ) {
     const receipt = freshKey ? `project-spawn:${freshKey}` : null;
     const saved = receipt ? this.getSetting(receipt) : null;
@@ -445,6 +449,7 @@ export class Store extends EventEmitter {
         role: 'manager',
         cwd: root,
         provider,
+        executionMode,
       });
       this.event('project.created', p.id, p.managerId, { name });
       const workflow = newProjectWorkflow(
@@ -461,6 +466,7 @@ export class Store extends EventEmitter {
       id?: string;
       scope?: string;
       provider?: ProviderId;
+      executionMode?: ExecutionMode;
     },
   ) {
     const provider = this.defaultProvider(input.role, input.provider);
@@ -469,6 +475,7 @@ export class Store extends EventEmitter {
       id: input.id ?? randomUUID(),
       scope: input.scope ?? '',
       provider,
+      executionMode: input.executionMode ?? 'managed',
       assignment: null,
       status: 'idle',
       model: null,
@@ -518,6 +525,10 @@ export class Store extends EventEmitter {
   }
   updateAgent(id: string, changes: Partial<PrivateAgent>) {
     const previous = this.agent(id);
+    if (Object.hasOwn(changes, 'executionMode') && changes.executionMode !== previous.executionMode)
+      throw new Conflict(
+        'Saved conversations keep their execution mode. Create a new conversation; native history is not converted or replayed.',
+      );
     if (
       changes.provider &&
       changes.provider !== previous.provider &&

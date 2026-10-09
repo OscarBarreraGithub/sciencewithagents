@@ -138,7 +138,7 @@ test('archive and restore keep queued work, history and the composer; retries re
   await expect(actions.getByRole('button', { name: 'Archived', exact: true })).toBeVisible();
   await expect(
     page.getByRole('group', { name: 'Conversation type' }).getByRole('button'),
-  ).toHaveText(['All', 'Projects', 'VS Code', 'Misc', 'Groups']);
+  ).toHaveText(['All', 'Projects', 'Native', 'Misc', 'Groups']);
   const list = page.getByRole('navigation', { name: 'Conversation list' });
   await expect(list.getByRole('link', { name: new RegExp(saved.project.name) })).toHaveCount(0);
   await page.getByRole('button', { name: 'Projects', exact: true }).click();

@@ -169,7 +169,7 @@ test('a new workspace opens setup, preserves progress and retries checks without
   await page.reload();
   await expect(page.getByText('Native sign-in found', { exact: true })).toBeVisible();
   expect(writes).toEqual(['/api/setup/check', '/api/setup/check']);
-  await page.getByRole('link', { name: 'Create first project', exact: true }).click();
+  await page.getByRole('link', { name: 'Managed project setup (Advanced)', exact: true }).click();
   await expect(page).toHaveURL(/#\/new$/);
   await expect(page.getByRole('heading', { name: 'Start or connect a project' })).toBeVisible();
   await expect(page.getByLabel('Project name')).toHaveValue('New project');
@@ -189,7 +189,7 @@ test('a new workspace opens setup, preserves progress and retries checks without
     fullPage: true,
   });
   await page
-    .getByRole('heading', { name: 'Create a project', exact: true })
+    .getByRole('heading', { name: 'Managed projects (Advanced)', exact: true })
     .scrollIntoViewIfNeeded();
   await page.screenshot({
     path: `../../data/screenshots/welcome/${info.project.name}-next-steps.png`,
