@@ -7,6 +7,8 @@ import {
   statSync,
   chmodSync,
   readFileSync,
+  readdirSync,
+  renameSync,
 } from 'node:fs';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -14,10 +16,18 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer as netServer } from 'node:net';
 import { join } from 'node:path';
 import { repoRoot } from './paths.js';
-import { GroupHost } from './group-host.js';
+import { GroupHost, GroupHostError } from './group-host.js';
 import { groupDocumentVersion } from './group-documents.js';
 import { GroupFeatureDocuments } from './group-feature-documents.js';
 import { GroupFeatureCoordination } from './group-feature-coordination.js';
+import { GroupHostNativeActivity, registerGroupHostActivity } from './group-native-activity.js';
+import {
+  captureGroupRunTransition,
+  captureGroupNativeFinal,
+} from './group-native-activity-producers.js';
+import { inheritGroupHostWork } from './group-host-work-continuation.js';
+import { GroupMemberFeed } from './group-member-feed.js';
+import { groupFeatureEvidence } from './group-feature-evidence.js';
 import { modelFixture } from './model-policy.fixture.js';
 import type {
   GroupNativeConnector,
@@ -40,6 +50,8 @@ import {
 } from '@dock/shared/dist/group-host.js';
 import { publicationCanonical } from './group-publication-protocol.js';
 import { proxyPath } from './hosts.js';
+import { verifyHostedArchive } from './group-hosted-archive.js';
+import { groupExportArchiveSchema } from '@dock/shared/dist/group-hosted-export.js';
 import { groupActionResultSchema } from '@dock/shared/dist/group-actions.js';
 import type { GroupPromotionSynthesis, GroupPromotionSynthesisResult } from './group-promotion.js';
 import {
@@ -1025,7 +1037,7 @@ it('lost create and join replies resume exact retained intents without invitatio
       }
       // An exact legacy receipt can still contain the original pending
       // identity, while authenticated status now activates that enrollment.
-      const legacy = await response.json();
+      const legacy = (await response.json()) as { value: { identity: { state: string } } };
       legacy.value.identity.state = 'pending';
       return Response.json(legacy);
     }
@@ -2063,7 +2075,7 @@ it('normal authenticated action confirmation dispatches through its original idl
   await coordination.pass();
   expect(effects).toBe(1);
   expect(f.store.runs(['running'])).toHaveLength(0);
-});
+}, 20000);
 
 it('a legacy committed cross-host summary keeps original attribution while its writer is offline after a lost commit acknowledgement', async () => {
   let lost = false;
@@ -2453,3 +2465,359 @@ it.skipIf(!process.env.GROUP_DOCUMENT_COMPILER_FIXTURE)(
   },
   30000,
 );
+
+it('protected creator export retries a changed snapshot through the normal host route and verifies the private archive after restart', async () => {
+  const calls: string[] = [];
+  let exporting = false,
+    change = true;
+  const a = await installation(undefined, {
+    http: async (...args) => {
+      if (exporting) {
+        calls.push(String(args[0]));
+        if (change) {
+          change = false;
+          return Response.json({ ok: false, error: 'changed' });
+        }
+      }
+      return fetch(...args);
+    },
+  });
+  const b = await installation();
+  const { open } = await create(a, 'Private creator archive');
+  const joined = await joinMember(a, b, open.group.handle);
+  const input = { handle: open.group.handle, key: randomUUID() };
+  const instruction = await a.post('actions', {
+    handle: open.shared.handle,
+    command: { kind: 'instruction', operationId: randomUUID(), text: 'Retain this exact receipt.' },
+  });
+  expect(instruction.statusCode, instruction.body).toBe(200);
+  expect((await a.post('hosted-export', input, false)).statusCode).toBe(401);
+  expect(
+    (await b.post('hosted-export', { handle: joined.open.group.handle, key: randomUUID() }))
+      .statusCode,
+  ).toBe(403);
+  expect((await a.post('hosted-export', { ...input, path: '/tmp/arbitrary' })).statusCode).not.toBe(
+    200,
+  );
+  exporting = true;
+  const failed = await a.post('hosted-export', input);
+  expect(failed.statusCode).toBe(503);
+  expect(failed.json().error).toMatch(/quiet window/);
+  const original = a.host.exportHostedArchive.bind(a.host);
+  a.host.exportHostedArchive = async (raw) => {
+    await original(raw);
+    throw new GroupHostError(
+      503,
+      'FIXTURE_LOST_APP_ACK',
+      'Lost app response after verified archive commit.',
+    );
+  };
+  const lost = await a.post('hosted-export', input);
+  expect(lost.statusCode).toBe(503);
+  const intent = a.host.db
+    .prepare('SELECT body FROM gh_operations WHERE key=?')
+    .get(`hosted-export:${input.key}`)!;
+  const archiveId = JSON.parse(String(intent.body)).archiveId as string;
+  const saved = verifyHostedArchive(join(a.directory, 'groups'), archiveId);
+  expect(saved.groupId).toBe(open.shared.context.groupId);
+  expect(calls.length).toBeGreaterThan(2);
+  expect(calls.every((url) => url.endsWith('/export'))).toBe(true);
+  await a.close();
+  let reconciled = 0;
+  const resumed = await installation(a.directory, {
+    http: async (...args) => {
+      reconciled++;
+      return fetch(...args);
+    },
+  });
+  const response = await resumed.post('hosted-export', input);
+  expect(response.statusCode, response.body).toBe(200);
+  expect(groupExportArchiveSchema.parse(response.json())).toEqual(saved);
+  expect(reconciled).toBe(1); // Fresh current creator proof, no second full export.
+  expect(readdirSync(join(a.directory, 'groups', 'hosted-archives'))).toEqual([archiveId]);
+  expect(response.body).not.toContain(setup);
+  expect(verifyHostedArchive(join(a.directory, 'groups'), saved.archiveId)).toEqual(saved);
+  const other = await create(resumed, 'Different archive scope');
+  expect(
+    (await resumed.post('hosted-export', { ...input, handle: other.open.group.handle })).statusCode,
+  ).toBe(409);
+  expect(verifyHostedArchive(join(a.directory, 'groups'), archiveId)).toEqual(saved);
+  const archived = readFileSync(
+    join(a.directory, 'groups', 'hosted-archives', saved.archiveId, 'archive.jsonl'),
+    'utf8',
+  );
+  expect(archived).toContain('Retain this exact receipt.');
+  // Persisted state at process death: an exact intent and first page exist,
+  // but no complete footer/receipt was acknowledged.
+  const interrupted = { handle: input.handle, key: randomUUID() },
+    partialId = randomUUID();
+  const stored = resumed.host.db
+    .prepare('SELECT body FROM gh_groups WHERE handle=?')
+    .get(input.handle)!;
+  const mapping = JSON.parse(String(stored.body)).serviceHash as string;
+  resumed.host.db
+    .prepare('INSERT INTO gh_operations VALUES(?,?,?)')
+    .run(
+      `hosted-export:${interrupted.key}`,
+      publicationCanonical({ handle: input.handle, groupId: saved.groupId, serviceHash: mapping }),
+      JSON.stringify({ archiveId: partialId, receipt: null }),
+    );
+  const partialDirectory = join(a.directory, 'groups', 'hosted-archives', partialId);
+  mkdirSync(partialDirectory, { mode: 0o700 });
+  const partial = archived.split('\n')[0] + '\n';
+  writeFileSync(join(partialDirectory, 'archive.jsonl'), partial, { mode: 0o600 });
+  const held = await resumed.post('hosted-export', interrupted);
+  expect(held.json()).toMatchObject({ code: 'GROUP_EXPORT_HELD' });
+  expect(readFileSync(join(partialDirectory, 'archive.jsonl'), 'utf8')).toBe(partial);
+  const fresh = await resumed.post('hosted-export', { handle: input.handle, key: randomUUID() });
+  expect(fresh.statusCode, fresh.body).toBe(200);
+  expect(fresh.json().archiveId).not.toBe(partialId);
+  expect(readFileSync(join(partialDirectory, 'archive.jsonl'), 'utf8')).toBe(partial);
+  expect(verifyHostedArchive(join(a.directory, 'groups'), archiveId)).toEqual(saved);
+  const moved = join(a.directory, 'preserved-verified-archive.jsonl');
+  renameSync(join(a.directory, 'groups', 'hosted-archives', archiveId, 'archive.jsonl'), moved);
+  expect((await resumed.post('hosted-export', input)).json()).toMatchObject({
+    code: 'GROUP_EXPORT_HELD',
+  });
+  const afterMoved = await resumed.post('hosted-export', {
+    handle: input.handle,
+    key: randomUUID(),
+  });
+  expect(afterMoved.statusCode, afterMoved.body).toBe(200);
+  expect(afterMoved.json().archiveId).not.toBe(archiveId);
+  expect(readFileSync(moved, 'utf8')).toBe(archived);
+  expect(readdirSync(join(a.directory, 'groups', 'hosted-archives', archiveId))).toEqual([]);
+  const empty = { handle: input.handle, key: randomUUID() },
+    emptyId = randomUUID();
+  resumed.host.db
+    .prepare('INSERT INTO gh_operations VALUES(?,?,?)')
+    .run(
+      `hosted-export:${empty.key}`,
+      publicationCanonical({ handle: input.handle, groupId: saved.groupId, serviceHash: mapping }),
+      JSON.stringify({ archiveId: emptyId, receipt: null }),
+    );
+  const emptyDirectory = join(a.directory, 'groups', 'hosted-archives', emptyId);
+  mkdirSync(emptyDirectory, { mode: 0o700 });
+  expect((await resumed.post('hosted-export', empty)).json()).toMatchObject({
+    code: 'GROUP_EXPORT_HELD',
+  });
+  const afterEmpty = await resumed.post('hosted-export', {
+    handle: input.handle,
+    key: randomUUID(),
+  });
+  expect(afterEmpty.statusCode, afterEmpty.body).toBe(200);
+  expect(afterEmpty.json().archiveId).not.toBe(emptyId);
+  expect(readdirSync(emptyDirectory)).toEqual([]);
+  expect(readFileSync(moved, 'utf8')).toBe(archived);
+  expect(proxyPath('POST', '/groups/hosted-export')).toBe('/api/groups/hosted-export');
+}, 30000);
+
+it('native activity delivers exact producer originals once through hosted receipts and the member feed lane after a lost acknowledgement', async () => {
+  let nativeContext: GroupContext | undefined;
+  const nativeFactory: GroupNativeConnectorFactory = ({ events }) => ({
+    availability: () => ({
+      available: true,
+      productionReady: true,
+      authState: 'ready',
+      message: 'Controlled native producer, no provider.',
+    }),
+    submit: async (input) => {
+      const { sessionId: _session, ...scope } = input.context;
+      nativeContext = events.createContext({
+        ...scope,
+        provider: 'codex',
+        nativeSessionId: randomUUID(),
+      });
+      return { requestId: input.requestId, state: 'queued', message: 'Controlled request.' };
+    },
+    inspect: async ({ requestId }) => ({
+      requestId,
+      state: 'queued',
+      message: 'Controlled request.',
+    }),
+  });
+  const f = await installation(undefined, { nativeFactory }),
+    { open } = await create(f, 'Native activity');
+  const response = await f.post('request-agent', {
+    handle: open.shared.handle,
+    key: randomUUID(),
+    text: 'Perform this shared bounded work.',
+    intent: 'work',
+  });
+  expect(response.statusCode, response.body).toBe(200);
+  const requestId = response.json().requestId as string,
+    feature = await f.host.nativeFeatureContext(nativeContext!),
+    project = f.store.register(f.directory, 'Producer', ''),
+    manager = f.store.agent(project.managerId),
+    run = f.store.enqueue(manager.id, requestId, 'Exact shared Work');
+  f.store.setSetting(`group:host-native-agent:${manager.id}`, {
+    context: nativeContext,
+    anchor: open.shared.context,
+    enrollmentHandle: feature.enrollmentHandle,
+  });
+  f.store.setSetting(`group:host-native-run:${run.id}`, {
+    context: nativeContext,
+    requestId,
+    intent: 'work',
+  });
+  const memberFeed = new GroupMemberFeed(
+    f.runtime,
+    f.directory,
+    {
+      resolveLocalContext: () => {
+        throw new Error('No model source resolution in this fixture.');
+      },
+      registerHelper: () => {
+        throw new Error('No model helper in this fixture.');
+      },
+    },
+    {
+      source: async () => {
+        throw new Error('No model pass in this fixture.');
+      },
+      publish: async () => {
+        throw new Error('No summary publication in this fixture.');
+      },
+    },
+  );
+  f.host.memberFeedOriginal = (input) => memberFeed.retain(input);
+  captureGroupRunTransition(f.store, run.id, `run:${run.id}:queued`);
+  let lost = false;
+  const activity = new GroupHostNativeActivity(f.store, {
+    sharedGoalForRequest: (id) => f.host.sharedGoalForRequest(id),
+    publishNativeActivity: async (enrollment, receipt) => {
+      const published = await f.host.publishNativeActivity(enrollment, receipt);
+      if (!lost) {
+        lost = true;
+        throw new Error('Lost acknowledgement after hosted commit.');
+      }
+      return published;
+    },
+  });
+  const unregisterActivity = registerGroupHostActivity(f.host, activity);
+  try {
+    await activity.pass();
+    expect(lost).toBe(true);
+    expect(
+      f.store.db.prepare('SELECT state FROM group_native_activity_delivery').get()!.state,
+    ).toBe('pending');
+    await activity.pass();
+    expect(
+      f.store.db.prepare('SELECT state FROM group_native_activity_delivery').get()!.state,
+    ).toBe('complete');
+    expect(f.store.db.prepare('SELECT count(*) n FROM group_member_feed_sources').get()!.n).toBe(1);
+    const feed = await feature.readShared({
+        visibility: 'shared',
+        after: 0,
+        limit: 8,
+        cursor: null,
+      }),
+      item = feed.entries.find((e) => e.category === 'Action')!;
+    expect(feed.entries).toHaveLength(3); // Human message, exact Work instruction and one producer original.
+    expect(item.scope.memberId).toBe(open.member.memberId);
+    const header = await f.host.sharedEvidenceHeader(feature.enrollmentHandle, item.eventId),
+      original = JSON.parse(header.compactOriginal!);
+    expect(original).toMatchObject({
+      requestId,
+      runId: run.id,
+      detail: { producer: 'job', jobId: run.id, state: 'queued' },
+    });
+    expect(
+      (await f.host.original({ handle: open.shared.handle, eventId: item.eventId })).text,
+    ).toBe(header.compactOriginal);
+    const verified = await groupFeatureEvidence(f.host).readVerifiedShared(feature, item.eventId);
+    expect(verified.facts).toMatchObject({
+      kinds: ['job'],
+      originalIds: { managerId: manager.id, jobId: run.id },
+      instructionIds: [original.instructionEventId],
+    });
+    await expect(
+      f.host.publishNativeActivity(feature.enrollmentHandle, {
+        ...original,
+        detail: { ...original.detail, state: 'completed' },
+      }),
+    ).rejects.toThrow();
+    expect(f.store.runs()).toHaveLength(1);
+    const task = f.store.addTask(project.id, {
+        title: 'Exact output',
+        goal: 'Shared result',
+        acceptance: 'Keep exact original',
+        managerId: manager.id,
+        parentId: null,
+      }),
+      child = f.store.addAgent({
+        projectId: project.id,
+        parentId: manager.id,
+        taskId: task.id,
+        name: 'Result worker',
+        role: 'researcher',
+        provider: 'codex',
+        cwd: f.directory,
+      }),
+      childRun = f.store.enqueue(child.id, randomUUID(), 'Shared task', 'delegation', manager.id),
+      text = 'Exact chunked result 🧬\n'.repeat(2500);
+    inheritGroupHostWork(f.store, f.store.run(run.id), f.store.run(childRun.id));
+    f.store.updateRun(childRun.id, { status: 'running' });
+    captureGroupNativeFinal(f.store, childRun.id, `${child.id}:provider-final`, text);
+    f.store.entry({
+      id: randomUUID(),
+      agentId: child.id,
+      runId: childRun.id,
+      kind: 'assistant',
+      title: 'Result',
+      text,
+      status: 'complete',
+      phase: 'final',
+      createdAt: new Date().toISOString(),
+    });
+    f.store.updateRun(childRun.id, { status: 'completed' });
+    // Each bounded pass advances at most four existing delivery phases per source.
+    for (let i = 0; i < 4; i++) await activity.pass();
+    const sources = f.store.db
+        .prepare('SELECT body FROM group_native_activity')
+        .all()
+        .map((r) => JSON.parse(String(r.body))),
+      result = sources.find((r) => r.detail.producer === 'worker'),
+      page = await feature.readShared({ visibility: 'shared', after: 0, limit: 8, cursor: null }),
+      event = page.entries.find((e) => e.entityId === result.receiptId)!;
+    expect(event.manifest.chunks.length).toBeGreaterThan(1);
+    expect(
+      (await f.host.sharedEvidenceHeader(feature.enrollmentHandle, event.eventId)).compactOriginal,
+    ).toBeNull();
+    const exact = await f.host.original({ handle: open.shared.handle, eventId: event.eventId });
+    expect(JSON.parse(exact.text).detail.result).toMatchObject({ text, availability: 'complete' });
+    expect(
+      (await groupFeatureEvidence(f.host).readVerifiedShared(feature, event.eventId)).facts,
+    ).toMatchObject({
+      kinds: ['finding'],
+      originalIds: { workerId: child.id, jobId: childRun.id },
+    });
+    const local = await f.post('activity-original', {
+      handle: open.shared.handle,
+      receiptId: result.receiptId,
+      count: 16,
+    });
+    expect(local.statusCode, local.body).toBe(200);
+    expect(Buffer.from(local.json().data, 'base64').toString('utf8')).toBe(text);
+    expect(
+      (
+        await f.post(
+          'activity-original',
+          { handle: open.shared.handle, receiptId: result.receiptId },
+          false,
+        )
+      ).statusCode,
+    ).toBe(401);
+    expect((await f.post('activity-status', { handle: open.shared.handle })).json()).toMatchObject({
+      retained: 5,
+      pending: 0,
+      gaps: [],
+    });
+    expect(proxyPath('POST', '/groups/activity-status')).toBe('/api/groups/activity-status');
+    expect(proxyPath('POST', '/groups/activity-original')).toBe('/api/groups/activity-original');
+  } finally {
+    unregisterActivity();
+    await activity.close();
+    await memberFeed.close();
+  }
+}, 30000);

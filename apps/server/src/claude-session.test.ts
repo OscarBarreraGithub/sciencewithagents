@@ -380,6 +380,10 @@ describe('Claude native launch policy', () => {
     expect(prompt({ ...f.config, role: 'read-only' })).not.toContain(nativeFullAccessNote);
     for (const unsafe of ['relative/project', '/tmp/*', '/tmp/a\nb'])
       expect(() => claudeArguments({ ...f.config, writableDirectories: [unsafe] })).toThrow();
+    const unionRoot = { name: 'dock_inspect', description: 'Inspect', invoke: vi.fn() };
+    expect(() =>
+      claudeArguments({ ...f.config, tools: [{ ...unionRoot, inputSchema: { anyOf: [] } }] }),
+    ).toThrow('dock_inspect input schema needs a top-level object type');
   });
   it('runs writing roles in bypassPermissions and denies remaining prompts while retaining human questions', async () => {
     const f = fixture(options({ inheritNative: true, unattended: true, role: 'implementer' }));

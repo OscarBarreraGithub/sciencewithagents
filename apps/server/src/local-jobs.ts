@@ -14,6 +14,10 @@ import {
 } from '@dock/shared';
 import { Conflict, Missing, Store, type PrivateAgent } from './store.js';
 import { LocalProcess } from './local-process.js';
+import {
+  bindGroupNativeLocalJob,
+  captureGroupLocalJobTransition,
+} from './group-native-activity-producers.js';
 
 export const whisperModel = {
   url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
@@ -103,17 +107,31 @@ export class LocalJobs {
   }
   private save(job: LocalJob) {
     const value = localJobSchema.parse(job);
-    this.store.db
-      .prepare(
-        'INSERT INTO local_jobs(id,body) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',
-      )
-      .run(value.id, JSON.stringify(value));
-    this.store.event('localjob.updated', value.projectId, value.requestedBy, {
-      jobId: value.id,
-      status: value.status,
-      phase: value.phase,
-    });
-    return value;
+    this.store.db.exec('SAVEPOINT group_activity_job_transition');
+    try {
+      const previous = this.store.db
+        .prepare('SELECT body FROM local_jobs WHERE id=?')
+        .get(value.id);
+      this.store.db
+        .prepare(
+          'INSERT INTO local_jobs(id,body) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',
+        )
+        .run(value.id, JSON.stringify(value));
+      const event = this.store.event('localjob.updated', value.projectId, value.requestedBy, {
+        jobId: value.id,
+        status: value.status,
+        phase: value.phase,
+      });
+      if (!previous || JSON.parse(String(previous.body)).status !== value.status)
+        captureGroupLocalJobTransition(this.store, value.id, `localjob:${event.id}`);
+      this.store.db.exec('RELEASE group_activity_job_transition');
+      return value;
+    } catch (error) {
+      this.store.db.exec(
+        'ROLLBACK TO group_activity_job_transition; RELEASE group_activity_job_transition',
+      );
+      throw error;
+    }
   }
   private update(id: string, changes: Partial<LocalJob>) {
     return this.save({ ...this.get(id), ...changes });
@@ -139,7 +157,7 @@ export class LocalJobs {
         : 'Local transcription needs its host tools. Ask your setup agent to install yt-dlp, FFmpeg and whisper.cpp; your jobs can remain queued.',
     });
   }
-  create(raw: unknown, requester?: PrivateAgent) {
+  create(raw: unknown, requester?: PrivateAgent, sourceRunId?: string) {
     const input = transcriptionRequestSchema.parse(raw),
       url = youtubeUrl(input.url);
     if (requester && input.projectId && input.projectId !== requester.projectId)
@@ -166,8 +184,11 @@ export class LocalJobs {
                 priority: this.store.task(taskId).scheduling?.priority ?? input.resources.priority,
               }
             : input.resources;
+        const jobId = randomUUID();
+        if (requester && sourceRunId)
+          bindGroupNativeLocalJob(this.store, jobId, sourceRunId, requester.id);
         return this.save({
-          id: randomUUID(),
+          id: jobId,
           kind: 'youtube-transcription',
           projectId,
           taskId,

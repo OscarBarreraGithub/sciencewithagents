@@ -17,6 +17,7 @@ import {
 import { MEMBERSHIP_LIMITS } from '@dock/shared/dist/group-membership.js';
 import { capabilityHash, hostingEnvironment } from './crypto.js';
 import { MEMBERSHIP_CAPACITY as C } from './capacity.js';
+import { actionReservedPhysical } from './group-actions-storage.js';
 import { chatDeliveryConflict } from './chat-source-delivery.js';
 
 const SCHEMA = `
@@ -207,7 +208,9 @@ export class DeliveryStorage {
     )[0].allocated;
   }
   normalSize(): number {
-    return this.storage.sql.databaseSize - this.allocated();
+    return (
+      this.storage.sql.databaseSize - (this.allocated() - actionReservedPhysical(this.storage.sql))
+    );
   }
   /** Probe current write admission. A failed, unacknowledged revoke is not a completed revoke. */
   probe(): void {

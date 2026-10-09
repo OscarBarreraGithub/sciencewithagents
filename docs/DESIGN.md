@@ -60,7 +60,7 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 - Distinguish project chats, VS Code chats and saved Misc conversations by provenance.
   All, Projects, VS Code, Misc and Groups are filters in the same Chats frame. Groups lists
   shared conversations beside the selected group on desktop, with list/detail navigation on phones.
-  A group has two tabs: Group chat for everyone’s shared messages, and Your agent for
+  A group has two tabs: Group chat for everyone’s shared messages, and Group manager for
   the owner’s agent requests and shared work. No separate Groups page or private-chat controls.
   Keep setup, create/join and management in dialogs; preserve saved private history without
   publishing it. New invitations last seven days.

@@ -129,8 +129,8 @@ test('Group manager keeps exact agent retries across human-tab switches, shared 
   for (const text of ['Invite people', 'Shared feed agent', 'Local agent access'])
     await expect(page.getByText(text, { exact: true })).toBeVisible();
   await expect(page.getByText('Shared Git workspace', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Shared work and actions', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Shared reports', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Shared work and actions', { exact: true })).toBeVisible();
+  await expect(page.getByText('Shared reports', { exact: true })).toBeVisible();
   await page.getByText('Local agent access', { exact: true }).click();
   const owner = page.locator('.group-native-owner');
   await expect(owner).toContainText('existing sign-in and native tools');

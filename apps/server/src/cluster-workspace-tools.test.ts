@@ -64,3 +64,18 @@ it('does not expose connection control to workers or accept commands as coordina
   ).rejects.toThrow('no cluster workspace');
   expect(launch).not.toHaveBeenCalled();
 });
+it('advertises an object root for every manager tool, including both union-root schemas', () => {
+  const tools = (
+    runtime as unknown as {
+      tools(agent: unknown): { name: string; inputSchema: Record<string, unknown> }[];
+    }
+  ).tools(store.agent(manager));
+  const names = tools.map((tool) => tool.name);
+  expect(names).toEqual(expect.arrayContaining(['dock_cluster_workspace', 'dock_slurm_review']));
+  for (const tool of tools)
+    expect([tool.name, tool.inputSchema.type]).toEqual([tool.name, 'object']);
+  const workspace = tools.find((tool) => tool.name === 'dock_cluster_workspace')!.inputSchema;
+  expect(workspace.oneOf).toHaveLength(3);
+  for (const branch of workspace.oneOf as Record<string, unknown>[])
+    expect(branch).toMatchObject({ type: 'object', additionalProperties: false });
+});

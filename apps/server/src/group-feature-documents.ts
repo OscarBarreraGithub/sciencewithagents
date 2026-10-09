@@ -2,7 +2,7 @@ import { GroupDocumentSharing } from './group-document-sharing.js';
 import { join } from 'node:path';
 import { GroupDocuments } from './group-documents.js';
 import { nativeDocumentResultNames } from './group-documents-native-runtime.js';
-import type { GroupNativeConnector } from './group-native-connector.js';
+import type { GroupDocumentsAuthority, GroupDocumentsNative } from './group-documents-native.js';
 import type { GroupHost } from './group-host.js';
 import type { GroupHostNativeRecord } from './group-host-native-journal.js';
 import {
@@ -20,7 +20,10 @@ export class GroupFeatureDocuments {
   readonly sharing: GroupDocumentSharing;
   constructor(
     readonly host: GroupHost,
-    native: Pick<GroupNativeConnector, 'documents'>,
+    private readonly native: {
+      documents(authority: GroupDocumentsAuthority): GroupDocumentsNative;
+      documentAvailable?(resultId: string): boolean;
+    },
   ) {
     const authority = {
       resolve: (handle: string) => host.authenticatedContext({ handle }),
@@ -40,7 +43,11 @@ export class GroupFeatureDocuments {
   receipt(record: GroupHostNativeRecord) {
     if (!record.result) return {};
     try {
-      return { documentAvailable: nativeDocumentResultNames(record.result.text).length > 0 };
+      return {
+        documentAvailable:
+          this.native.documentAvailable?.(record.ids.resultId) ??
+          nativeDocumentResultNames(record.result.text).length > 0,
+      };
     } catch {
       return {};
     }

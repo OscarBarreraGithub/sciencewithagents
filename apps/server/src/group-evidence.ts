@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { groupEventSchema, type GroupEvent } from '@dock/shared';
+import { groupEventSchema, groupFeedPageSchema, type GroupEvent } from '@dock/shared';
 import {
   GROUP_EVIDENCE_LIMITS as LIMITS,
   groupEvidenceFactsSchema,
@@ -64,6 +64,8 @@ export class GroupEvidenceIndex {
       CREATE TABLE IF NOT EXISTS gqe_groups(group_id TEXT PRIMARY KEY,watermark INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS gqe_cursors(token TEXT PRIMARY KEY,query_id TEXT NOT NULL,reader_key TEXT NOT NULL,query_json TEXT NOT NULL,watermark INTEGER NOT NULL,after_position INTEGER NOT NULL,limit_count INTEGER NOT NULL,unknown_json TEXT NOT NULL,index_revision INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS gqe_requests(query_id TEXT NOT NULL,reader_key TEXT NOT NULL,query_json TEXT NOT NULL,watermark INTEGER NOT NULL,after_position INTEGER NOT NULL,limit_count INTEGER NOT NULL,unknown_json TEXT NOT NULL,index_revision INTEGER NOT NULL,PRIMARY KEY(query_id,reader_key));
+      CREATE TABLE IF NOT EXISTS gqe_shared_seen(reader_key TEXT PRIMARY KEY,through_position INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS gqe_fact_scan(group_id TEXT PRIMARY KEY,after_position INTEGER NOT NULL);
       CREATE UNIQUE INDEX IF NOT EXISTS gqe_cursor_replay ON gqe_cursors(query_id,reader_key,query_json,watermark,after_position,limit_count,unknown_json,index_revision);
       CREATE TRIGGER IF NOT EXISTS gqe_terms_immutable_update BEFORE UPDATE ON gqe_terms BEGIN SELECT RAISE(ABORT,'immutable terms'); END;
       CREATE TRIGGER IF NOT EXISTS gqe_terms_immutable_delete BEFORE DELETE ON gqe_terms BEGIN SELECT RAISE(ABORT,'immutable terms'); END;
@@ -182,6 +184,7 @@ export class GroupEvidenceIndex {
         if (facts.autonomous === true && facts.kinds.includes('decision'))
           this.#term(event, 'autonomous', 'true');
         if (facts.unresolved !== null) {
+          this.#term(event, 'unresolved_state', facts.sourceId);
           this.#term(event, 'unresolved_state', event.entityId);
           if (facts.unresolved) this.#term(event, 'unresolved', 'true');
         }
@@ -258,6 +261,136 @@ export class GroupEvidenceIndex {
     await reader.revalidate();
     this.#tx(() => this.#save(record.event, groupEvidenceFactsSchema.parse(record.facts)));
   }
+  /** Populate the native reader without opening a retained private aside. A
+   * bounded refresh precedes a new query only; retries retain their old snapshot. */
+  async refreshShared(reader: GroupCatchupReader, queryId: string): Promise<void> {
+    await reader.revalidate();
+    if (!z.uuid().safeParse(queryId).success)
+      catchupFail('invalid_cursor', 'An exact generated query identity is required.');
+    if (
+      this.#db
+        .prepare('SELECT 1 FROM gqe_requests WHERE query_id=? AND reader_key=?')
+        .get(queryId, evidenceReaderKey(reader))
+    )
+      return;
+    // Rotate through older unknown headers. A late registration can enrich a
+    // future query; pinned older queries retain their original index revision.
+    if (this.source) {
+      const group = reader.context.groupId;
+      const cursor =
+        (
+          this.#db
+            .prepare('SELECT after_position FROM gqe_fact_scan WHERE group_id=?')
+            .get(group) as { after_position: number } | undefined
+        )?.after_position ?? 0;
+      const missing = (after: number) =>
+        this.#db
+          .prepare(
+            'SELECT e.event_json FROM gqe_events e LEFT JOIN gqe_facts f ON f.group_id=e.group_id AND f.event_id=e.event_id WHERE e.group_id=? AND e.sequence>? AND f.event_id IS NULL ORDER BY e.sequence LIMIT 8',
+          )
+          .all(group, after) as { event_json: string }[];
+      let rows = missing(cursor);
+      if (!rows.length && cursor) rows = missing(0);
+      for (const row of rows) {
+        const event = groupEventSchema.parse(JSON.parse(row.event_json));
+        const facts = await this.#verifiedFacts(reader, event);
+        await reader.revalidate();
+        this.#tx(() => {
+          this.#save(event, facts);
+          this.#db
+            .prepare(
+              'INSERT INTO gqe_fact_scan VALUES(?,?) ON CONFLICT(group_id) DO UPDATE SET after_position=excluded.after_position',
+            )
+            .run(group, event.sequence);
+        });
+      }
+    }
+    for (let pageNumber = 0; pageNumber < 2; pageNumber++) {
+      const after =
+        (
+          this.#db
+            .prepare('SELECT watermark FROM gqe_groups WHERE group_id=?')
+            .get(reader.context.groupId) as { watermark: number } | undefined
+        )?.watermark ?? 0;
+      const page = groupFeedPageSchema.parse(
+        await reader.readShared({
+          visibility: 'shared',
+          after,
+          limit: 8,
+          cursor: null,
+        }),
+      );
+      if (
+        page.watermark < after ||
+        page.entries.some((e, i) => e.sequence !== after + i + 1) ||
+        (!page.entries.length && page.watermark > after)
+      )
+        catchupFail('discontinuous', 'Shared source refresh did not continue the saved positions.');
+      const records: { event: GroupEvent; facts: GroupEvidenceFacts | null }[] = [];
+      for (const event of page.entries) {
+        if (event.scope.visibility !== 'shared' || event.scope.groupId !== reader.context.groupId)
+          catchupFail('conflict', 'Only this authenticated shared group can be indexed.');
+        records.push({
+          event,
+          facts: this.source ? await this.#verifiedFacts(reader, event) : null,
+        });
+      }
+      await reader.revalidate();
+      this.#tx(() => records.forEach(({ event, facts }) => this.#save(event, facts)));
+      if (after + page.entries.length === page.watermark) break;
+    }
+  }
+  async #verifiedFacts(
+    reader: GroupCatchupReader,
+    event: GroupEvent,
+  ): Promise<GroupEvidenceFacts | null> {
+    const record = groupEvidenceRecordSchema.parse(
+      await this.source!.readVerifiedShared(reader, event.eventId),
+    );
+    if (catchupCanonical(record.event) !== catchupCanonical(event))
+      catchupFail(
+        'conflict',
+        'Shared source facts do not match the authenticated delivered event.',
+      );
+    return record.facts;
+  }
+  async sharedAcknowledged(reader: GroupCatchupReader): Promise<number> {
+    await reader.revalidate();
+    return (
+      (
+        this.#db
+          .prepare('SELECT through_position FROM gqe_shared_seen WHERE reader_key=?')
+          .get(evidenceReaderKey(reader)) as { through_position: number } | undefined
+      )?.through_position ?? 0
+    );
+  }
+  async acknowledgeShared(
+    reader: GroupCatchupReader,
+    queryId: string,
+    page: GroupEvidencePage,
+  ): Promise<void> {
+    await reader.revalidate();
+    const saved = this.#db
+      .prepare('SELECT query_json,watermark FROM gqe_requests WHERE query_id=? AND reader_key=?')
+      .get(queryId, evidenceReaderKey(reader)) as
+      | { query_json: string; watermark: number }
+      | undefined;
+    if (
+      !saved ||
+      JSON.parse(saved.query_json).type !== 'offline_changes' ||
+      page.continuation ||
+      page.watermark !== saved.watermark
+    )
+      catchupFail(
+        'invalid_cursor',
+        'Only a completed exact shared offline query can advance its local position.',
+      );
+    this.#db
+      .prepare(
+        'INSERT INTO gqe_shared_seen VALUES(?,?) ON CONFLICT(reader_key) DO UPDATE SET through_position=MAX(through_position,excluded.through_position)',
+      )
+      .run(evidenceReaderKey(reader), saved.watermark);
+  }
   #anchor(query: GroupEvidenceQuery): [string, string] {
     switch (query.type) {
       case 'who_working':
@@ -283,7 +416,7 @@ export class GroupEvidenceIndex {
       query.type === 'who_decided'
         ? ' AND e.event_id=?'
         : query.type === 'unresolved'
-          ? ` AND NOT EXISTS(SELECT 1 FROM gqe_terms newer WHERE newer.group_id=e.group_id AND newer.term_type='unresolved_state' AND newer.term_value=json_extract(e.event_json,'$.entityId') AND newer.sequence>e.sequence AND newer.sequence<=? AND newer.indexed_revision<=?)`
+          ? ` AND NOT EXISTS(SELECT 1 FROM gqe_terms newer WHERE newer.group_id=e.group_id AND newer.term_type='unresolved_state' AND (newer.term_value=json_extract(f.facts_json,'$.sourceId') OR newer.term_value=json_extract(e.event_json,'$.entityId')) AND newer.sequence>e.sequence AND newer.sequence<=? AND newer.indexed_revision<=?)`
           : '';
     return `SELECT e.event_json,f.facts_json FROM gqe_terms t JOIN gqe_events e ON e.group_id=t.group_id AND e.sequence=t.sequence LEFT JOIN gqe_facts f ON f.group_id=e.group_id AND f.event_id=e.event_id AND f.indexed_revision<=? WHERE t.group_id=? AND t.term_type=? AND t.term_value=? AND t.sequence>? AND t.sequence<=? AND t.indexed_revision<=?${extra} ORDER BY t.sequence LIMIT ?`;
   }
@@ -322,7 +455,7 @@ export class GroupEvidenceIndex {
     raw: GroupEvidenceQuery,
     limit: number,
     continuation: string | null,
-    catchup: GroupCatchupStore,
+    catchup: Pick<GroupCatchupStore, 'acknowledged'>,
     queryId: string,
   ): Promise<GroupEvidencePage> {
     const query = groupEvidenceQuerySchema.parse(raw);
@@ -442,14 +575,26 @@ export class GroupEvidenceIndex {
         event_json: string;
         facts_json: string | null;
       }[];
-      const records = rows.slice(0, limit).map((r) =>
-        groupEvidenceRecordSchema.parse({
-          event: JSON.parse(r.event_json),
-          facts: r.facts_json ? JSON.parse(r.facts_json) : null,
-        }),
-      );
+      const records: GroupEvidenceRecord[] = [];
+      // Include JSON escaping, not raw string length. Keep room for the fixed
+      // envelope, cursor and bounded unknown messages, even on an exact retry.
+      let encodedBytes = 4096;
+      for (const row of rows.slice(0, limit)) {
+        const record = groupEvidenceRecordSchema.parse({
+          event: JSON.parse(row.event_json),
+          facts: row.facts_json ? JSON.parse(row.facts_json) : null,
+        });
+        const bytes = Buffer.byteLength(JSON.stringify(record), 'utf8') + 1;
+        if (encodedBytes + bytes > LIMITS.pageBytes) {
+          if (!records.length)
+            catchupFail('limit', 'One evidence header exceeds the page byte limit.');
+          break;
+        }
+        records.push(record);
+        encodedBytes += bytes;
+      }
       let next: string | null = null;
-      if (rows.length > limit) {
+      if (rows.length > records.length) {
         // Exact replay keeps the same continuation identity, including after restart.
         const last = records[records.length - 1].event.sequence;
         const prior = this.#db

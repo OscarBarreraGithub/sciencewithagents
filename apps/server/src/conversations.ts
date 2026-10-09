@@ -16,6 +16,7 @@ import {
   type Agent,
   type ConversationVisibilityTarget,
   type MirrorState,
+  type ProviderId,
 } from '@dock/shared';
 import type { FastifyInstance } from 'fastify';
 import { Conflict, Missing, type Store } from './store.js';
@@ -160,6 +161,10 @@ export function registerConversationRoutes(
   });
 }
 
+type KnownShared = Pick<
+  MirrorState,
+  'provider' | 'threadId' | 'source' | 'label' | 'title' | 'lastActivityAt'
+>;
 const visibilityPrefix = 'conversation:visibility:';
 const visibilityKey = (target: ConversationVisibilityTarget) =>
   visibilityPrefix +
@@ -179,7 +184,17 @@ export function registerConversationVisibilityRoutes(
   app: FastifyInstance,
   store: Store,
   windows: () => Omit<MirrorState, 'entries'>[],
+  known: (provider: ProviderId, threadId: string) => KnownShared | null = () => null,
+  retained: (provider: ProviderId, threadId: string) => Promise<KnownShared | null> = async () =>
+    null,
 ) {
+  const live = (target: ConversationVisibilityTarget) =>
+    target.kind === 'shared'
+      ? windows().find(
+          (item) =>
+            (item.provider ?? 'codex') === target.provider && item.threadId === target.threadId,
+        )
+      : undefined;
   app.get('/api/conversations/visibility', async (request) => {
     const input = conversationVisibilityQuerySchema.parse(request.query);
     let after = 0;
@@ -210,7 +225,18 @@ export function registerConversationVisibilityRoutes(
   });
   app.post('/api/conversations/visibility', async (request) => {
     const input = conversationVisibilityUpdateSchema.parse(request.body);
-    return store.operation(`conversation.visibility:${input.key}`, input, () => {
+    const key = `conversation.visibility:${input.key}`;
+    const shared = input.target.kind === 'shared' ? input.target : null;
+    // Chats offline since before the catalog: only this computer's provenance or native record.
+    const earlier =
+      shared &&
+      !store.db.prepare('SELECT 1 FROM operations WHERE key=?').get(key) &&
+      !conversationVisibility(store, shared) &&
+      !live(shared) &&
+      !known(shared.provider, shared.threadId)
+        ? await retained(shared.provider, shared.threadId)
+        : null;
+    return store.operation(key, input, () => {
       const saved = conversationVisibility(store, input.target);
       if ((saved?.revision ?? 0) !== input.expectedRevision)
         throw new Conflict(
@@ -219,15 +245,16 @@ export function registerConversationVisibilityRoutes(
         );
       const agent = input.target.kind === 'agent' ? store.agent(input.target.agentId) : null;
       const target = input.target;
+      // An offline first archive uses metadata this computer retained, never client text.
       const window =
-        target.kind === 'shared'
-          ? windows().find(
-              (item) =>
-                (item.provider ?? 'codex') === target.provider && item.threadId === target.threadId,
-            )
-          : null;
+        live(target) ??
+        (target.kind === 'shared' && !saved
+          ? (known(target.provider, target.threadId) ?? earlier)
+          : null);
       if (!agent && !window && !saved)
-        throw new Missing('Share this native conversation before changing its visibility.');
+        throw new Missing(
+          'This computer has not listed this native conversation. Share it from VS Code once, then retry.',
+        );
       const updatedAt = new Date().toISOString();
       const record = conversationVisibilitySchema.parse({
         id: saved?.id ?? randomUUID(),

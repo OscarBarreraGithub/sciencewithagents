@@ -789,7 +789,13 @@ export async function createServer(
     options.mirrors ??
     new VscodeMirrors(store, undefined, (text) => runtime.chatImages.prompt(text));
   if (!options.remote) runtime.conversationSearchMirrorWindows = () => mirrors.windows();
-  registerConversationVisibilityRoutes(app, store, () => mirrors.windows());
+  registerConversationVisibilityRoutes(
+    app,
+    store,
+    () => mirrors.windows(),
+    (provider, threadId) => mirrors.known(provider, threadId),
+    (provider, threadId) => mirrors.retained(provider, threadId),
+  );
   registerMirrorRoutes(app, mirrors, !!options.remote);
   registerArchiveRoutes(app, new Archive(store, mirrors));
   if (!runtime.fixture) registerSlurmReviewRoutes(app, runtime.slurmReview, () => runtime.kick());

@@ -93,13 +93,16 @@ start a fresh snapshot. Unsupported schema versions fail closed without resettin
 
 ## Normal composition and acceptance
 
-The normal feed controller uses a designated writer with a renewable lease and durable
-projection/synthesis receipts. It uses the selected installation's own admitted provider
-account; it cannot borrow another member's credentials. Private native contexts retain
-separate fresh identities. See [promotion](GROUP_PROMOTION.md) and [native isolation](GROUP_ISOLATION.md).
+The normal native flow publishes exact shared originals independently of summaries.
+Each enabled member's computer batches its own newly shared sources through its saved
+provider and the central Bulk model, with durable run/publication receipts. The retained
+selected-writer controller has a separate renewable lease; it does not take over the native
+per-member lane. Neither lane borrows another member's credentials. Previously saved private
+native contexts retain their separate identities. See [promotion](GROUP_PROMOTION.md) and
+[native agents](GROUP_NATIVE_OWNER_SETUP.md).
 
 The normal host/service integrate invitations and revocation, quota/offline delivery,
-shared/private UI, Git controls and owner-bound actions. The group service uses actual
+shared chats, Git controls, native reports and owner-bound actions. The group service uses actual
 SQLite Durable Objects, with controlled local workerd checks. These are implemented source
 and local tests, not proof of Workers Free entitlement, a deployed HTTPS endpoint, real
 provider readiness or two installed computers collaborating. Current release acceptance is

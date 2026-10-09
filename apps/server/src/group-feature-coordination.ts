@@ -30,6 +30,7 @@ export class GroupFeatureCoordination {
   private pending?: Promise<void>;
   private closing = false;
   private position = 0;
+  private readonly unregister: () => void;
   readonly tools: (context: GroupContext) => ClaudeHostTool[];
   constructor(
     readonly runtime: Runtime,
@@ -85,7 +86,7 @@ export class GroupFeatureCoordination {
         identity.agentId !== identity.managerId,
       );
     };
-    registerGroupNativeCapabilities(runtime, 'coordination', this.tools);
+    this.unregister = registerGroupNativeCapabilities(runtime, 'coordination', this.tools);
   }
   private async ports(context: GroupContext) {
     const feature = await this.host.nativeFeatureContext(context);
@@ -98,6 +99,7 @@ export class GroupFeatureCoordination {
         displayName: feature.enrollment.displayName,
       },
       command: shared.command,
+      reconcile: (receipt) => this.host.reconcileAction(feature.enrollmentHandle, receipt),
       revalidate: feature.revalidate,
       publishOwnedTask: (key, binding, actual) => this.host.publishOwnedTask(key, binding, actual),
     });
@@ -130,6 +132,22 @@ export class GroupFeatureCoordination {
       identity.agentId !== identity.managerId
     )
       throw new Error('Original native manager binding unavailable.');
+    // Receipt recovery precedes active-member/execution admission. The only
+    // available capability here settles an exact retained owner receipt.
+    const retained = this.host.retainedActionContext(context);
+    const recovery = createGroupCoordinationRuntime(this.runtime, this.native, context, {
+      owner: retained.owner,
+      reconcile: retained.reconcile,
+      command: async () => ({ ok: false, error: 'denied' }),
+      revalidate: async () => {
+        throw new Error('Receipt-only recovery cannot execute work.');
+      },
+      publishOwnedTask: async () => {
+        throw new Error('Receipt-only recovery cannot publish tasks.');
+      },
+    });
+    const reconciled = await recovery.retained?.(action);
+    if (reconciled) return reconciled;
     return dispatchGroupAction(action, await this.ports(context));
   }
   start() {
@@ -166,13 +184,23 @@ export class GroupFeatureCoordination {
     if (!row) return;
     this.position = Number(row.position);
     const context = groupContextSchema.parse(JSON.parse(String(row.context_json)));
-    const ports = await this.ports(context);
-    const result = await ports.command({ kind: 'evidence', after: Number(row.cursor), limit: 25 });
-    if (!result.ok || result.value.kind !== 'evidence') return;
+    let records: import('@dock/shared/dist/group-actions.js').GroupActionEvidence[] = [];
+    try {
+      const ports = await this.ports(context);
+      const result = await ports.command({
+        kind: 'evidence',
+        after: Number(row.cursor),
+        limit: 25,
+      });
+      if (result.ok && result.value.kind === 'evidence') records = result.value.records;
+    } catch {
+      // Revoked/offline membership blocks new effects and shared reads, while
+      // locally retained original-owner receipts still get their finite pass.
+    }
     // Consume the durable evidence stream, not the board's latest-50 snapshot.
     // Older pending actions stay locally indexed until exact current authority
     // proves completion/supersession; later unrelated updates cannot hide them.
-    for (const record of result.value.records) {
+    for (const record of records) {
       const parsed = groupActionSchema.safeParse(JSON.parse(record.originalJson));
       if (
         !parsed.success ||
@@ -194,7 +222,7 @@ export class GroupFeatureCoordination {
           Number(['pending-owner', 'dispatching', 'uncertain'].includes(action.state)),
         );
     }
-    const cursor = result.value.records.at(-1)?.sequence ?? Number(row.cursor);
+    const cursor = records.at(-1)?.sequence ?? Number(row.cursor);
     let pending = this.host.db
       .prepare(
         'SELECT rowid AS position,body_json FROM gh_coordination_actions WHERE manager_id=? AND active=1 AND rowid>? ORDER BY rowid LIMIT 2',
@@ -228,6 +256,7 @@ export class GroupFeatureCoordination {
     this.closing = true;
     if (this.timer) clearInterval(this.timer);
     await this.pending;
+    this.unregister();
     owners.delete(this.host);
   }
 }

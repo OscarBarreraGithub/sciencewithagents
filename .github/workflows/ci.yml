@@ -52,3 +52,53 @@ jobs:
           path: data/browser-results/home/
           if-no-files-found: ignore
           retention-days: 7
+  groups-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @dock/shared build
+      - run: pnpm --filter @dock/group-service typecheck
+      - run: pnpm --filter @dock/group-service config:check
+      # Local workerd/SQLite fixtures; no account credentials or deployed Worker access.
+      - run: pnpm --filter @dock/group-service test
+  groups-browsers:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        viewport: [desktop, phone, small-phone, landscape]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @dock/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @dock/web exec playwright test --config playwright.group-host.config.ts --project=${{ matrix.viewport }} --reporter=line
+      - run: pnpm --filter @dock/web exec playwright test --config playwright.group-documents.config.ts --project=${{ matrix.viewport }} --reporter=line
+      - name: Retain Groups browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groups-browser-failures-${{ matrix.viewport }}
+          path: |
+            data/normal-groups/browser-results/
+            data/group-documents-ui/results/
+          if-no-files-found: ignore
+          retention-days: 7

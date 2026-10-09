@@ -44,9 +44,11 @@ const fail = (result: ReturnType<typeof groupActionResultSchema.parse>) => {
 /** Mount only for selected normal Groups handle. Endpoint resolves saved identity. */
 export function GroupActionsBoard({
   handle,
+  actor,
   request = (command) => api('/groups/actions', { handle, command }),
 }: {
   handle: string;
+  actor?: { memberId: string; installationId: string };
   request?: (command: GroupActionCommand) => Promise<unknown>;
 }) {
   const storage = `swa:group-actions:${apiScope()}:${handle}`;
@@ -228,6 +230,44 @@ export function GroupActionsBoard({
               </div>
             </article>
           ))}
+          {board.proposals
+            .filter(
+              (candidate) =>
+                actor &&
+                candidate.actor.memberId === actor.memberId &&
+                candidate.actor.installationId === actor.installationId &&
+                board.works.some(
+                  (work) =>
+                    work.workId === candidate.workId &&
+                    work.revision === candidate.observed.revision,
+                ) &&
+                !board.actions.some(
+                  (action) => action.proposal.proposalId === candidate.proposalId,
+                ),
+            )
+            .map((candidate) => (
+              <article key={candidate.proposalId}>
+                <h3>
+                  Proposed {candidate.kind}: {candidate.observed.title}
+                </h3>
+                <p>
+                  {candidate.origin.kind === 'autonomous'
+                    ? 'Your group manager'
+                    : candidate.actor.displayName}{' '}
+                  proposed this at{' '}
+                  <time dateTime={candidate.at}>{new Date(candidate.at).toLocaleString()}</time>.
+                </p>
+                <button
+                  disabled={busy || Boolean(proposal)}
+                  onClick={() => {
+                    sessionStorage.setItem(`${storage}:proposal`, JSON.stringify(candidate));
+                    setProposal(candidate);
+                  }}
+                >
+                  Review {candidate.kind} proposal
+                </button>
+              </article>
+            ))}
           {board.actions.map((a) => (
             <p key={a.actionId}>
               Requested {a.proposal.kind} ·{' '}

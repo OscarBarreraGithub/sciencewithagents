@@ -111,6 +111,9 @@ before publishing a hosted service or changing that boundary.
 Inherited contexts append the coordination charter and Dock MCP tools to native configuration.
 They do not use the old blanket restricted flags, empty builtin/skill/agent catalogs, or
 Dock-only MCP policy. Saved restricted contexts retain those limits until deliberately changed.
+Claude disconnects the whole Dock MCP server if any tool input schema lacks a top-level
+`"type": "object"`, so union inputs (Slurm review, cluster workspace) add that root over their
+strict branches and session startup rejects a catalog entry without it, naming the tool.
 The chat command endpoint accepts only a native-reported slash-command name and its text arguments. It cannot choose an executable, arbitrary RPC method or MCP transport.
 
 Built-in worker requests carry their original request and tool-use IDs and exact inputs.

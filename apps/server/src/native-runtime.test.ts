@@ -9,6 +9,7 @@ import { DemoProvider } from './demo.js';
 import type { Provider } from './codex.js';
 import { git, ensureWorktree } from './workspaces.js';
 import { repoRoot } from './paths.js';
+import { managerTool } from './manager-lease.fixture.js';
 
 let dir: string,
   store: Store,
@@ -419,3 +420,75 @@ it('retains separate child history through restart without replaying unfinished 
   ).rejects.toThrow('controlled by its parent');
   expect(store.runs().some((r) => r.agentId === child.id && r.status === 'queued')).toBe(false);
 });
+
+it.each([
+  { review: 'approve', status: 'review' },
+  { review: 'accepted_tradeoff', status: 'review' },
+  { review: 'changes_requested', status: 'needs_decision' },
+])(
+  'keeps a $review review for an identical checkpoint and clears it for changed code',
+  async ({ review, status }) => {
+    const cwd = store.agent(rootId).cwd,
+      reviewed = await git(cwd, ['rev-parse', 'HEAD']);
+    const reviewer = store.addAgent({
+      projectId: store.agent(rootId).projectId,
+      parentId: manager,
+      taskId,
+      role: 'reviewer',
+      name: 'Reviewer',
+      cwd,
+    }).id;
+    // A follow-up delegation reopens the task while the earlier verdict is retained.
+    store.updateTask(taskId, {
+      status: 'working',
+      review,
+      reviewedCommit: reviewed,
+      reviewAgentId: reviewer,
+    });
+    const turn = async () => {
+      const id = randomUUID();
+      notify('turn/started', { threadId, turn: { id } });
+      await flush();
+      complete(threadId, id);
+      await flush();
+    };
+    await turn();
+    expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(reviewed);
+    expect(store.task(taskId)).toMatchObject({
+      status,
+      review,
+      reviewedCommit: reviewed,
+      reviewAgentId: reviewer,
+    });
+    expect(
+      store
+        .events()
+        .filter((e) => e.type === 'task.checkpointed')
+        .at(-1)!.data,
+    ).toMatchObject({ commit: reviewed, reviewRetained: true });
+    writeFileSync(join(cwd, 'changed.txt'), 'New code after review\n');
+    await turn();
+    const changed = await git(cwd, ['rev-parse', 'HEAD']);
+    expect(changed).not.toBe(reviewed);
+    expect(store.task(taskId)).toMatchObject({
+      status: 'review',
+      review: null,
+      reviewedCommit: null,
+    });
+    expect(
+      store
+        .events()
+        .filter((e) => e.type === 'task.checkpointed')
+        .at(-1)!.data,
+    ).toMatchObject({ commit: changed, reviewRetained: false });
+    // Unreviewed code can never be completed through the retained reviewer identity.
+    await expect(
+      managerTool(runtime, manager, randomUUID(), 'dock_decide', {
+        taskId,
+        kind: 'complete',
+        rationale: 'Attempt completion after the implementer changed reviewed code.',
+        evidence: 'Changed checkpoint without a new independent review.',
+      }),
+    ).rejects.toThrow('independent review');
+  },
+);

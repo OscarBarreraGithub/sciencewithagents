@@ -16,10 +16,13 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
   [phone LaTeX authoring](TEX_AUTHORING.md)
 - [Update a customized installation](UPDATE_APP.md)
 - [Recovery copies](RECOVERY_COPIES.md) and [private source backups](SOURCE_BACKUPS.md)
+- [Private Groups archive and staged recovery](GROUP_RECOVERY.md)
+- [Creator-hosted Groups backup and recovery policy](GROUP_HOSTED_RECOVERY.md)
 
 ## Technical references
 
 - [Operations and recovery](OPERATIONS.md), [troubleshooting](ORCHESTRATOR_TROUBLESHOOTING.md)
+- [Maintenance failures and manager lessons](FAILURE_REVIEW.md)
 - [Cloudflare phone setup](CLOUDFLARE_SETUP.md), [real-phone acceptance](PHONE_ACCEPTANCE.md)
 - [Native provider boundaries](PROVIDER_COMPATIBILITY.md), [managed Claude](MANAGED_CLAUDE.md),
   [worker capabilities](WORKER_TOOLS.md), [cross-provider routing](MULTI_PROVIDER_ROUTING.md)
@@ -32,6 +35,7 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 - [Durable hosted receipts, exact source registration and Node transport](GROUP_DELIVERY.md)
 - [Durable group publication and journal limits](GROUP_PUBLICATION.md)
 - [Normal authenticated Groups workflow and current gates](GROUP_WORKFLOW.md)
+- [Groups production release readiness](GROUP_RELEASE_READINESS.md)
 - [Groups agents with existing native sign-in](GROUP_NATIVE_OWNER_SETUP.md)
 - [Native Groups shared files, branches and reviewed sync](GROUP_NATIVE_GIT.md)
 - [Persistent local Groups test workflow](GROUP_FIXTURE.md)

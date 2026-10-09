@@ -405,6 +405,21 @@ export class GroupNativeJournal {
       ? nativeReceiptSchema.parse(JSON.parse(String(latest.event_json)))
       : { requestId, contextId: row.context.sessionId, state: 'queued' };
   }
+  /** Exact retained queue binding. A newer worker turn cannot substitute for
+   * this request; conflicting historical bindings require explicit inspection. */
+  requestRunId(handle: GroupNativeContext, requestId: string): string | null {
+    if (!this.request(handle, requestId)) return null;
+    const rows = this.#db
+      .prepare(
+        `SELECT DISTINCT json_extract(event_json,'$.runId') AS run_id
+         FROM gn_request_events WHERE request_id=?
+         AND json_extract(event_json,'$.runId') IS NOT NULL LIMIT 2`,
+      )
+      .all(requestId);
+    if (rows.length > 1)
+      throw new GroupIsolationBlocked('Native request has ambiguous retained run bindings.');
+    return rows.length ? z.uuid().parse(rows[0]!.run_id) : null;
+  }
   beginRequest(handle: GroupNativeContext, requestId: string, prompt: string) {
     const row = this.resolve(handle);
     z.uuid().parse(requestId);

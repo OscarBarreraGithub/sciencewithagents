@@ -3,7 +3,8 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { GroupContext } from '@dock/shared';
+import type { GroupAction } from '@dock/shared/dist/group-actions.js';
+import { groupEventIdSchema, type GroupContext } from '@dock/shared';
 import { Store } from './store.js';
 import { Runtime } from './runtime.js';
 import { GroupEventRepository } from './group-events.js';
@@ -544,4 +545,411 @@ it('cancellation during the pre-input hook cannot enqueue the saved request afte
   expect(f.store.runs()).toHaveLength(0);
   await f.control(scope, 'continue', input);
   expect(f.store.runs()).toHaveLength(0);
+});
+
+it('captures exact live Work before next workspace preparation or input; restart never reopens old files', async () => {
+  const f = fixture();
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const capture = vi.fn(async () => held);
+  const beforeTurn = vi.fn(async () => {});
+  f.connector.completed(capture);
+  f.connector.beforeTurn(beforeTurn);
+  await f.control(f.scope(f.shared), 'prepare');
+  const work = f.input(f.shared, 'work');
+  await f.connector.submit(work);
+  const binding = f.connector.context(work.requestId)!;
+  f.store.entry({
+    id: randomUUID(),
+    agentId: binding.agentId,
+    runId: binding.runId!,
+    kind: 'assistant',
+    title: 'Response',
+    text: '[Report](report.tex)',
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+    phase: 'final',
+  });
+  f.store.updateRun(binding.runId!, { status: 'completed' });
+  await expect.poll(() => capture.mock.calls.length).toBe(1);
+  expect(capture).toHaveBeenCalledWith({
+    request: work,
+    result: expect.objectContaining({
+      text: '[Report](report.tex)',
+      context: binding.context,
+      source: expect.objectContaining({ messageId: work.requestId }),
+    }),
+    runId: binding.runId,
+    cwd: binding.cwd,
+  });
+  const next = f.input(f.shared, 'work');
+  let submitted = false;
+  const submitting = f.connector.submit(next).then(() => {
+    submitted = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(submitted).toBe(false);
+  expect(beforeTurn).toHaveBeenCalledTimes(1);
+  expect(f.connector.context(next.requestId)!.runId).toBeNull();
+  release();
+  await submitting;
+  expect(beforeTurn).toHaveBeenCalledTimes(2);
+  const nextRun = f.connector.context(next.requestId)!.runId!;
+  await f.runtime.groupHostNativeAdmission!(binding.agentId, nextRun);
+  await f.restart();
+  const afterRestart = vi.fn(async () => {});
+  f.connector.completed(afterRestart);
+  expect(await f.connector.inspect({ requestId: work.requestId })).toMatchObject({
+    state: 'completed',
+  });
+  expect(afterRestart).not.toHaveBeenCalled();
+});
+
+it('synthetic action controls cannot authorize capture or become the final report manager reply', async () => {
+  const f = fixture();
+  await f.control(f.scope(f.shared), 'prepare');
+  const work = f.input(f.shared, 'work');
+  await f.connector.submit(work);
+  const binding = f.connector.context(work.requestId)!;
+  f.store.entry({
+    id: randomUUID(),
+    agentId: binding.agentId,
+    runId: binding.runId!,
+    kind: 'assistant',
+    title: 'Response',
+    text: '[Original](report.tex)',
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+    phase: 'final',
+  });
+  f.store.updateRun(binding.runId!, { status: 'completed' });
+  await new Promise((resolve) => setImmediate(resolve));
+  // The original live boundary was missed; enabling capture later cannot repair it.
+  const capture = vi.fn(async () => {});
+  f.connector.completed(capture);
+  const control = f.store.enqueue(binding.agentId, randomUUID(), 'Synthetic control');
+  f.store.setSetting(`group:host-native-run:${control.id}`, {
+    requestId: work.requestId,
+    intent: 'work',
+    context: binding.context,
+    originRunId: binding.runId,
+    parentRunId: binding.runId,
+  });
+  f.store.setSetting(`group:native-control:${control.id}`, { actionId: randomUUID() });
+  f.store.entry({
+    id: randomUUID(),
+    agentId: binding.agentId,
+    runId: control.id,
+    kind: 'assistant',
+    title: 'Response',
+    text: 'Synthetic control response',
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+    phase: 'final',
+  });
+  f.store.updateRun(control.id, { status: 'completed' });
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(capture).not.toHaveBeenCalled();
+  expect(await f.connector.inspect({ requestId: work.requestId })).toMatchObject({
+    state: 'completed',
+    result: { text: '[Original](report.tex)' },
+  });
+});
+
+async function coordinationTask(f: ReturnType<typeof fixture>) {
+  await f.control(f.scope(f.shared), 'prepare');
+  const input = f.input(f.shared, 'work');
+  await f.connector.submit(input);
+  const binding = f.connector.context(input.requestId)!;
+  f.store.setSetting('pulsar:policy', { enabled: false });
+  f.store.updateRun(binding.runId!, { status: 'running' });
+  f.store.updateAgent(binding.agentId, { status: 'running', permission: 'workspace-write' });
+  const task = f.store.addTask(binding.projectId, {
+    title: 'Native shared task',
+    goal: 'One bounded file change',
+    acceptance: 'Independent review',
+    managerId: binding.agentId,
+    parentId: null,
+  });
+  const goal = groupEventIdSchema.parse(randomUUID());
+  f.connector.coordination.bindTask!(binding.context, task.id, goal);
+  f.store.updateRun(binding.runId!, { status: 'completed' });
+  f.store.updateAgent(binding.agentId, { status: 'idle' });
+  const action = (id: string): GroupAction => {
+    const owner = { ...binding.context, displayName: 'Unit' };
+    const origin = { kind: 'instruction' as const, eventId: goal };
+    const work = {
+      workId: randomUUID(),
+      title: task.title,
+      taskId: task.id,
+      managerId: binding.agentId,
+      sharedGoalId: goal,
+      owner,
+      revision: 1,
+      desired: 'start' as const,
+      availability: 'available' as const,
+      latest: { actionId: id, actor: owner, at: new Date().toISOString(), origin },
+    };
+    return {
+      actionId: id,
+      revision: 1,
+      state: 'dispatching',
+      outcome: null,
+      humanConfirmation: null,
+      proposal: {
+        proposalId: randomUUID(),
+        workId: work.workId,
+        kind: 'start',
+        origin,
+        actor: owner,
+        at: new Date().toISOString(),
+        observed: work,
+        overrideRequired: false,
+      },
+    };
+  };
+  return { input, binding, task, action };
+}
+it('host action delegates once through ordinary model policy and task worktrees, retaining exact request across restart', async () => {
+  const f = fixture(),
+    { input, binding, task, action } = await coordinationTask(f);
+  const policy = vi.spyOn(f.runtime.modelPolicy, 'resolveWorker').mockResolvedValue({
+    provider: 'codex',
+    model: 'demo',
+    effort: 'high',
+    difficulty: 'high',
+    source: 'model_policy',
+    reason: 'Controlled native policy',
+    policyRevision: '1',
+    tier: 'grad',
+    taskClass: 'reasoning',
+  });
+  const actionId = randomUUID(),
+    assignment = {
+      taskId: task.id,
+      role: 'implementer' as const,
+      name: 'Native task worker',
+      instruction: 'One file change',
+    };
+  const dispatch = () =>
+    f.runtime.withGroupCoordinationControl(binding.agentId, actionId, () =>
+      f.connector.coordination.delegate(binding.context, actionId, assignment, action(actionId)),
+    );
+  const originalDelegate = f.runtime.delegateGroupHostCoordinationWorker.bind(f.runtime);
+  vi.spyOn(f.runtime, 'delegateGroupHostCoordinationWorker').mockImplementationOnce(
+    async (...args) => {
+      await originalDelegate(...args);
+      throw new Error('Lost queued action acknowledgement');
+    },
+  );
+  await expect(dispatch()).rejects.toThrow(/Lost queued/);
+  const first = f.connector.coordination.inspect(binding.context, actionId)!;
+  expect(await dispatch()).toEqual(first);
+  expect(policy).toHaveBeenCalledOnce();
+  expect(f.store.agent(first.workerId)).toMatchObject({
+    parentId: binding.agentId,
+    taskId: task.id,
+    provider: 'codex',
+    role: 'implementer',
+    cwd: f.store.task(task.id).worktree,
+  });
+  expect(f.store.task(task.id).worktree).toContain(task.id);
+  const { groupHostWorkFamily } = await import('./group-host-work-continuation.js');
+  expect(groupHostWorkFamily(f.store, f.store.run(binding.runId!)).map((run) => run.id)).toContain(
+    first.runId,
+  );
+  expect(f.store.run(first.runId)).toMatchObject({ status: 'queued', sourceId: binding.agentId });
+  expect(f.store.getSetting(`group:host-native-run:${first.runId}`)).toMatchObject({
+    requestId: input.requestId,
+    intent: 'work',
+    context: binding.context,
+    originRunId: binding.runId,
+  });
+  expect(f.store.getSetting(`group:native-auth-agent:${first.workerId}`)).toBeNull();
+  const activity = f.store.db
+    .prepare('SELECT body FROM group_native_activity')
+    .all()
+    .map((r) => JSON.parse(String(r.body)))
+    .filter((r) => r.runId === first.runId);
+  expect(activity).toHaveLength(1);
+  expect(activity[0]).toMatchObject({
+    requestId: input.requestId,
+    rootRunId: binding.runId,
+    managerId: binding.agentId,
+    workerId: first.workerId,
+    taskId: task.id,
+    workId: expect.any(String),
+    origin: { kind: 'instruction' },
+    detail: { producer: 'job', jobId: first.runId, state: 'queued' },
+  });
+  await f.restart();
+  expect(f.connector.coordination.inspect(binding.context, actionId)).toEqual(first);
+  await expect(
+    f.runtime.withGroupCoordinationControl(binding.agentId, actionId, () =>
+      f.connector.coordination.delegate(
+        binding.context,
+        actionId,
+        {
+          ...assignment,
+          instruction: 'Changed',
+        },
+        action(actionId),
+      ),
+    ),
+  ).rejects.toThrow(/different input/);
+  // Stop works while admission is held and targets only the retained run.
+  f.store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  await f.runtime.withGroupCoordinationStopControl(binding.agentId, () =>
+    f.runtime.stopGroupCoordinationWorker(first.workerId, first.runId, 'Exact owner stop'),
+  );
+  expect(f.store.run(first.runId).status).toBe('cancelled');
+  const later = f.store.enqueue(first.workerId, randomUUID(), 'Later explicit turn');
+  await f.runtime.stopGroupCoordinationWorker(first.workerId, first.runId, 'Retry original stop');
+  expect(f.store.run(later.id).status).toBe('queued');
+});
+it('host action never borrows Ask or a stopped original Work grant', async () => {
+  const f = fixture(),
+    { input, binding, task, action } = await coordinationTask(f);
+  const ask = f.input(f.shared, 'ask');
+  await f.connector.submit(ask);
+  const askBinding = f.connector.context(ask.requestId)!;
+  const askRun = f.store.run(askBinding.runId!);
+  f.runtime.quark.sync();
+  f.runtime.pulsar.reserve(askRun, new Set());
+  f.runtime.quark.issueManagerLease(askRun);
+  f.runtime.quark.begin(askRun);
+  f.store.updateRun(askRun.id, { status: 'running' });
+  const assignment = {
+    taskId: task.id,
+    role: 'researcher' as const,
+    name: 'No worker',
+    instruction: 'Do not execute',
+  };
+  const rejectedId = randomUUID();
+  expect(f.connector.coordination.identity(binding.context).requestId).toBeNull();
+  await expect(
+    f.runtime.withGroupCoordinationControl(binding.agentId, randomUUID(), () =>
+      f.connector.coordination.delegate(
+        binding.context,
+        rejectedId,
+        assignment,
+        action(rejectedId),
+      ),
+    ),
+  ).rejects.toThrow(/Ask cannot authorize/);
+  f.store.updateRun(askBinding.runId!, { status: 'completed' });
+  f.store.updateAgent(binding.agentId, { status: 'idle' });
+  const { groupHostStopKey } = await import('./group-host-work-continuation.js');
+  f.store.setSetting(groupHostStopKey(input.requestId), true);
+  await expect(
+    f.runtime.withGroupCoordinationControl(binding.agentId, randomUUID(), () =>
+      f.connector.coordination.delegate(
+        binding.context,
+        rejectedId,
+        assignment,
+        action(rejectedId),
+      ),
+    ),
+  ).rejects.toThrow(/Work task authority/);
+  expect(f.store.agents().filter((agent) => agent.parentId === binding.agentId)).toHaveLength(0);
+});
+it('host shared coordination keeps object-root catalogs and refuses mutations during Ask', async () => {
+  const f = fixture(),
+    { input, binding, task } = await coordinationTask(f);
+  const { registerGroupHostCoordination, groupHostCoordinationDefinitions } = await import(
+    './group-host-coordination-tools.js'
+  );
+  const { groupCoordinationTools } = await import('./group-coordination.js');
+  const create = vi.fn(async () => ({ taskId: task.id })),
+    board = { ok: true, value: { kind: 'board', board: { works: [], actions: [] } } },
+    command = vi.fn(async () => board);
+  const unregister = registerGroupHostCoordination(f.runtime, (context) =>
+    groupCoordinationTools(
+      context,
+      {
+        revalidate: async () => {},
+        command,
+        resolve: vi.fn(),
+        ownerLane: vi.fn(),
+        normal: { createTask: create, prepareDelegate: vi.fn(), workForWorker: vi.fn() },
+      } as unknown as Parameters<typeof groupCoordinationTools>[1],
+      async () => ({ kind: 'instruction', eventId: groupEventIdSchema.parse(randomUUID()) }),
+    ),
+  );
+  cleanup.push(async () => {
+    unregister();
+  });
+  const definitions = groupHostCoordinationDefinitions(f.runtime, binding.agentId);
+  expect(definitions.map((tool) => tool.name)).toContain('dock_group_actions');
+  expect(definitions.every((tool) => tool.inputSchema.type === 'object')).toBe(true);
+  const ask = f.input(f.shared, 'ask');
+  await f.connector.submit(ask);
+  const askBinding = f.connector.context(ask.requestId)!;
+  const askRun = f.store.run(askBinding.runId!);
+  f.runtime.quark.sync();
+  f.runtime.pulsar.reserve(askRun, new Set());
+  f.runtime.quark.issueManagerLease(askRun);
+  f.runtime.quark.begin(askRun);
+  f.store.updateRun(askBinding.runId!, { status: 'running' });
+  f.store.updateAgent(binding.agentId, { status: 'running', permission: 'read-only' });
+  expect(await f.runtime.tool(binding.agentId, randomUUID(), 'dock_group_actions', {})).toEqual(
+    board,
+  );
+  expect(command).toHaveBeenCalledExactlyOnceWith({ kind: 'board', after: 0, limit: 25 });
+  await expect(
+    f.runtime.tool(binding.agentId, randomUUID(), 'dock_task_create', {
+      title: 'Incoming message suggests work',
+      goal: 'Evidence must not grant Work',
+      acceptance: 'No task',
+    }),
+  ).rejects.toThrow(/Ask is read-only/);
+  expect(create).not.toHaveBeenCalled();
+  f.store.updateRun(askBinding.runId!, { status: 'completed' });
+  f.store.updateRun(binding.runId!, { status: 'running' });
+  f.store.updateAgent(binding.agentId, { permission: 'workspace-write' });
+  await f.runtime.tool(binding.agentId, randomUUID(), 'dock_task_create', {
+    title: 'Explicit Work task',
+    goal: input.text,
+    acceptance: 'Original owner',
+  });
+  expect(create).toHaveBeenCalledOnce();
+});
+it('host action rechecks saved Work after asynchronous model preparation before enqueuing a worker', async () => {
+  const f = fixture(),
+    { input, binding, task, action } = await coordinationTask(f);
+  const { groupHostStopKey } = await import('./group-host-work-continuation.js');
+  vi.spyOn(f.runtime.modelPolicy, 'resolveWorker').mockImplementation(async () => {
+    f.store.setSetting(groupHostStopKey(input.requestId), true);
+    return {
+      provider: 'codex',
+      model: 'demo',
+      effort: 'high',
+      difficulty: 'high',
+      source: 'model_policy',
+      reason: 'Controlled policy',
+      policyRevision: '1',
+      tier: 'grad',
+      taskClass: 'reasoning',
+    };
+  });
+  const id = randomUUID();
+  await expect(
+    f.runtime.withGroupCoordinationControl(binding.agentId, id, () =>
+      f.connector.coordination.delegate(
+        binding.context,
+        id,
+        {
+          taskId: task.id,
+          role: 'researcher',
+          name: 'Cancelled task',
+          instruction: 'No enqueue',
+        },
+        action(id),
+      ),
+    ),
+  ).rejects.toThrow(/authority changed|was stopped/);
+  expect(f.connector.coordination.inspect(binding.context, id)).toBeNull();
+  expect(f.store.agents().filter((agent) => agent.parentId === binding.agentId)).toHaveLength(0);
 });

@@ -13,6 +13,11 @@ export interface GroupActionsHostPort {
     revalidate(): Promise<void>;
     command(command: GroupActionCommand): Promise<GroupActionResult>;
   }>;
+  /** This compiled owner/paired-device lane alone may attest an exact override. */
+  confirmHuman(
+    handle: string,
+    command: Extract<GroupActionCommand, { kind: 'confirm' }>,
+  ): Promise<GroupActionResult>;
 }
 export function registerGroupActionsRoutes(
   app: FastifyInstance,
@@ -38,7 +43,11 @@ export function registerGroupActionsRoutes(
         if (ctx.visibility !== 'shared' && command.kind !== 'board')
           return reply.code(403).send({ ok: false, error: 'denied' });
         await ctx.revalidate();
-        return groupActionResultSchema.parse(await ctx.command(command));
+        return groupActionResultSchema.parse(
+          await (command.kind === 'confirm'
+            ? host.confirmHuman(handle, command)
+            : ctx.command(command)),
+        );
       } catch {
         return reply.code(503).send({ ok: false, error: 'unavailable' });
       }

@@ -17,6 +17,10 @@ import { GroupEventRepository } from './group-events.js';
 import { GroupNativeJournal } from './group-native.js';
 import { groupNativeChildScope } from './group-native-coordination-scope.js';
 import { GroupDockerEngine } from './group-container.js';
+import { DatabaseSync } from 'node:sqlite';
+import { GroupFeatureCoordination } from './group-feature-coordination.js';
+import type { GroupHost } from './group-host.js';
+import { createGroupNativeCoordination } from './group-coordination-runtime-native.js';
 let root: string, store: Store, runtime: Runtime, managerId: string, context: GroupContext;
 const provider = vi.fn(async () => new DemoProvider());
 beforeEach(() => {
@@ -84,6 +88,10 @@ function setup() {
     }),
   };
   let loseAck = false;
+  const reconcile = vi.fn<NonNullable<GroupCoordinationHostPort['reconcile']>>(async () => ({
+    ok: false,
+    error: 'denied',
+  }));
   const publish = vi.fn(
     async (..._args: Parameters<GroupCoordinationHostPort['publishOwnedTask']>) => ({
       eventId: groupEventIdSchema.parse(randomUUID()),
@@ -141,6 +149,7 @@ function setup() {
     owner,
     revalidate: async () => {},
     command,
+    reconcile,
     publishOwnedTask: async (...args) => {
       const result = await publish(...args);
       if (loseAck) {
@@ -157,6 +166,7 @@ function setup() {
     origin,
     publish,
     works,
+    reconcile,
     lose: () => {
       loseAck = true;
     },
@@ -211,6 +221,169 @@ it('idle online owner Start obtains its own model-free signed lease and retry di
   expect((await lane!.inspect(actionId)).state).toBe('completed');
 });
 const nativeCalls = (n: GroupCoordinationNativePort) => vi.mocked(n.delegate).mock.calls.length;
+it('retained receipt reconciliation survives revoked admission and never calls the provider or dispatch lane', async () => {
+  const f = setup();
+  const work = await admitted(() =>
+    f.ports.normal.createTask(
+      randomUUID(),
+      { title: 'Retained', goal: 'Retained goal', acceptance: 'Retained receipt' },
+      f.origin,
+    ),
+  );
+  const action = {
+    actionId: randomUUID(),
+    revision: 1,
+    state: 'dispatching',
+    outcome: null,
+    humanConfirmation: null,
+    proposal: {
+      proposalId: randomUUID(),
+      workId: work.workId,
+      kind: 'start',
+      origin: f.origin,
+      actor: work.owner,
+      at: new Date().toISOString(),
+      observed: work,
+      overrideRequired: false,
+    },
+  } satisfies GroupAction;
+  const outcome = {
+    taskId: work.taskId,
+    workerId: randomUUID(),
+    outcomeId: randomUUID(),
+    status: 'started' as const,
+    message: 'Exact durable native completion.',
+  };
+  store.setSetting(`group:coordination:${context.sessionId}:action:${action.actionId}`, {
+    input: 'unchanged exact command',
+    kind: 'start',
+    taskId: work.taskId,
+    outcome,
+  });
+  const proofPort = createGroupCoordinationRuntime(runtime, f.native, context, {
+    owner: work.owner,
+    command: async () => {
+      throw new Error('No action dispatch');
+    },
+    revalidate: async () => {
+      throw new Error('Revoked membership');
+    },
+    publishOwnedTask: async () => {
+      throw new Error('No task publication');
+    },
+    reconcile: async (proof) => {
+      expect(proof).toMatchObject({
+        actionId: action.actionId,
+        revision: 1,
+        owner: work.owner,
+        effect: 'completed',
+        outcome,
+      });
+      return {
+        ok: true,
+        value: {
+          kind: 'action',
+          action: {
+            ...action,
+            state: 'completed',
+            outcome,
+            reconciliationReceiptId: proof.receiptId,
+          },
+        },
+      };
+    },
+  });
+  const first = await proofPort.retained!(action);
+  expect(first?.state).toBe('completed');
+  expect(await proofPort.retained!(action)).toEqual(first);
+  expect(nativeCalls(f.native)).toBe(0);
+  expect(provider).not.toHaveBeenCalled();
+  expect(store.runs(['running'])).toHaveLength(0);
+});
+it('finite reconnect pass consumes the retained owner receipt even when active membership reads fail', async () => {
+  const f = setup(),
+    work = await admitted(() =>
+      f.ports.normal.createTask(
+        randomUUID(),
+        { title: 'Retained reconnect', goal: 'One result', acceptance: 'One receipt' },
+        f.origin,
+      ),
+    );
+  const action = {
+    actionId: randomUUID(),
+    revision: 1,
+    state: 'dispatching',
+    outcome: null,
+    humanConfirmation: null,
+    proposal: {
+      proposalId: randomUUID(),
+      workId: work.workId,
+      kind: 'start',
+      origin: f.origin,
+      actor: work.owner,
+      at: new Date().toISOString(),
+      observed: work,
+      overrideRequired: false,
+    },
+  } satisfies GroupAction;
+  const outcome = {
+    taskId: work.taskId,
+    workerId: randomUUID(),
+    outcomeId: randomUUID(),
+    status: 'started' as const,
+    message: 'Exact original completion.',
+  };
+  store.setSetting(`group:coordination:${context.sessionId}:action:${action.actionId}`, {
+    input: 'retained',
+    kind: 'start',
+    taskId: work.taskId,
+    outcome,
+  });
+  const db = new DatabaseSync(':memory:'),
+    reconcile = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        kind: 'action' as const,
+        action: { ...action, state: 'completed' as const, outcome },
+      },
+    }));
+  const host = {
+    db,
+    nativeFeatureContext: async () => {
+      throw new Error('Current membership revoked');
+    },
+    retainedActionContext: (saved: GroupContext) => {
+      expect(saved).toEqual(context);
+      return { owner: work.owner, reconcile };
+    },
+  } as unknown as GroupHost;
+  const feature = new GroupFeatureCoordination(runtime, host, f.native);
+  db.prepare('INSERT INTO gh_coordination_owners(manager_id,context_json) VALUES(?,?)').run(
+    managerId,
+    JSON.stringify(context),
+  );
+  db.prepare('INSERT INTO gh_coordination_actions VALUES(?,?,?,?,?)').run(
+    action.actionId,
+    managerId,
+    JSON.stringify(action),
+    1,
+    1,
+  );
+  try {
+    await feature.pass();
+    expect(reconcile).toHaveBeenCalledOnce();
+    expect(
+      db
+        .prepare('SELECT active FROM gh_coordination_actions WHERE action_id=?')
+        .get(action.actionId)?.active,
+    ).toBe(0);
+    expect(provider).not.toHaveBeenCalled();
+    expect(nativeCalls(f.native)).toBe(0);
+  } finally {
+    await feature.close();
+    db.close();
+  }
+});
 it('publication failure retries the same task and never uses the primary manager', async () => {
   const f = setup(),
     key = randomUUID(),
@@ -595,6 +768,12 @@ it.each(['idle', 'interrupted', 'waiting'] as const)(
     store.setSetting(`group:native-auth-agent:${worker.id}`, { contextId: randomUUID() });
     const run = store.enqueue(worker.id, randomUUID(), 'Exact queued worker'),
       pending = store.enqueue(managerId, randomUUID(), 'Pending owner input');
+    const resource = await f.ports.resolve(work.workId);
+    store.setSetting(`group:coordination:${context.sessionId}:work:${work.workId}`, {
+      ...resource,
+      stop: { agentId: worker.id, reason: 'Owner requests exact Stop' },
+      stopRunId: run.id,
+    });
     store.updateAgent(managerId, { status });
     store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
     const reserve = vi.spyOn(runtime.pulsar, 'reserve').mockReturnValue(false),
@@ -670,3 +849,471 @@ it('resolves an owned work beyond the first fifty board rows using exact current
   });
   expect((await f.ports.resolve(work.workId)).work.revision).toBe(7);
 });
+it('definite pre-effect Start admission refusal can settle without blocking an explicit Stop', async () => {
+  const f = setup(),
+    work = await admitted(() =>
+      f.ports.normal.createTask(
+        randomUUID(),
+        {
+          title: 'Held start',
+          goal: 'No effect while held',
+          acceptance: 'Retain explicit recovery',
+        },
+        f.origin,
+      ),
+    );
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  const id = randomUUID(),
+    lane = (await f.ports.ownerLane(work.owner))!;
+  const action: GroupAction = {
+    actionId: id,
+    revision: work.revision,
+    state: 'dispatching',
+    outcome: null,
+    proposal: {
+      proposalId: randomUUID(),
+      workId: work.workId,
+      kind: 'start',
+      origin: f.origin,
+      actor: work.owner,
+      at: new Date().toISOString(),
+      observed: work,
+      overrideRequired: false,
+    },
+  };
+  await expect(
+    lane.delegate(
+      id,
+      {
+        taskId: work.taskId,
+        role: 'implementer',
+        name: 'Held worker',
+        instruction: 'One change',
+      },
+      action,
+    ),
+  ).rejects.toMatchObject({ outcome: { status: 'blocked', workerId: null } });
+  expect(nativeCalls(f.native)).toBe(0);
+  expect(await lane.inspect(id)).toEqual({ state: 'absent' });
+});
+it('lost Start acknowledgement restores its exact worker Stop binding during receipt reconciliation', async () => {
+  const f = setup(),
+    work = await admitted(() =>
+      f.ports.normal.createTask(
+        randomUUID(),
+        {
+          title: 'Recover stop target',
+          goal: 'One retained worker',
+          acceptance: 'Same worker after lost ACK',
+        },
+        f.origin,
+      ),
+    );
+  const nativeDelegate = vi.mocked(f.native.delegate).getMockImplementation()!;
+  vi.mocked(f.native.delegate).mockImplementationOnce(async (...args) => {
+    await nativeDelegate(...args);
+    throw new Error('Lost queued worker acknowledgement');
+  });
+  const id = randomUUID(),
+    lane = (await f.ports.ownerLane(work.owner))!;
+  const action: GroupAction = {
+    actionId: id,
+    revision: work.revision,
+    state: 'dispatching',
+    outcome: null,
+    proposal: {
+      proposalId: randomUUID(),
+      workId: work.workId,
+      kind: 'start',
+      origin: f.origin,
+      actor: work.owner,
+      at: new Date().toISOString(),
+      observed: work,
+      overrideRequired: false,
+    },
+  };
+  await expect(
+    lane.delegate(
+      id,
+      {
+        taskId: work.taskId,
+        role: 'implementer',
+        name: 'Recover worker',
+        instruction: 'Retain exact target',
+      },
+      action,
+    ),
+  ).rejects.toThrow(/Lost queued/);
+  const receipt = await lane.inspect(id);
+  expect(receipt.state).toBe('completed');
+  if (receipt.state !== 'completed') throw new Error('Expected retained native receipt');
+  expect(await f.ports.resolve(work.workId)).toMatchObject({
+    stop: { agentId: receipt.outcome.workerId },
+    stopRunId: receipt.outcome.jobId,
+  });
+  expect(await f.ports.normal.workForWorker(receipt.outcome.workerId!)).toMatchObject({
+    workId: work.workId,
+  });
+  expect(nativeCalls(f.native)).toBe(1);
+});
+it.each([
+  'current',
+  'legacy',
+  'missing-receipt',
+  'ambiguous-receipt',
+  'wrong-request',
+  'wrong-context',
+])(
+  'action lane Stop uses only the exact retained Start run with %s resource proof',
+  async (proof) => {
+    const f = setup(),
+      work = await admitted(() =>
+        f.ports.normal.createTask(
+          randomUUID(),
+          { title: 'Delayed Stop', goal: 'Exact run only', acceptance: 'Later turn stays queued' },
+          f.origin,
+        ),
+      );
+    vi.mocked(f.native.delegate).mockImplementationOnce(async (_context, actionId) => {
+      const worker = store.addAgent({
+        projectId: store.agent(managerId).projectId,
+        parentId: managerId,
+        taskId: work.taskId,
+        name: 'Retained native worker',
+        role: 'implementer',
+        provider: 'codex',
+        cwd: join(root, 'workspace'),
+      });
+      store.setSetting(`group:native-child:${worker.id}`, {
+        contextId: randomUUID(),
+        sharedContextId: context.sessionId,
+        managerId,
+        taskId: work.taskId,
+      });
+      store.setSetting(`group:native-auth-agent:${worker.id}`, { contextId: context.sessionId });
+      const run = store.enqueue(worker.id, randomUUID(), 'Original action turn');
+      store.setSetting(`group:native-request:${run.id}`, actionId);
+      return {
+        workerId: worker.id,
+        runId: run.id,
+      };
+    });
+    const lane = (await f.ports.ownerLane(work.owner))!;
+    const action = (kind: 'start' | 'stop'): GroupAction => ({
+      actionId: randomUUID(),
+      revision: work.revision,
+      state: 'dispatching',
+      outcome: null,
+      proposal: {
+        proposalId: randomUUID(),
+        workId: work.workId,
+        kind,
+        origin: f.origin,
+        actor: work.owner,
+        at: new Date().toISOString(),
+        observed: work,
+        overrideRequired: false,
+      },
+    });
+    const start = action('start'),
+      started = await lane.delegate(
+        start.actionId,
+        (await f.ports.resolve(work.workId)).start,
+        start,
+      );
+    expect(started.status).toBe('started');
+    store.updateRun(started.jobId!, { status: 'completed' });
+    const later = store.enqueue(started.workerId!, randomUUID(), 'Later explicit worker turn');
+    if (proof !== 'current') {
+      const legacy = await f.ports.resolve(work.workId),
+        startKey = `group:coordination:${context.sessionId}:action:${start.actionId}`,
+        receipt = store.getSetting(startKey) as { workId?: string };
+      delete legacy.stopRunId;
+      delete receipt.workId;
+      store.setSetting(`group:coordination:${context.sessionId}:work:${work.workId}`, legacy);
+      store.setSetting(startKey, receipt);
+      if (proof === 'missing-receipt')
+        store.db.prepare('DELETE FROM settings WHERE key=?').run(startKey);
+      else if (proof === 'ambiguous-receipt')
+        store.setSetting(`group:coordination:${context.sessionId}:action:${randomUUID()}`, receipt);
+      else if (proof === 'wrong-request')
+        store.setSetting(`group:native-request:${started.jobId}`, randomUUID());
+      else if (proof === 'wrong-context') {
+        const marker = store.getSetting(`group:native-child:${started.workerId}`) as object;
+        store.setSetting(`group:native-child:${started.workerId}`, {
+          ...marker,
+          sharedContextId: randomUUID(),
+        });
+      }
+    }
+    store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+    const stop = action('stop'),
+      inspectNative = vi.spyOn(f.native, 'inspect'),
+      retainedResource = await f.ports.resolve(work.workId),
+      pause = () => lane.pauseWorker(stop.actionId, retainedResource.stop, stop);
+    if (!['current', 'legacy'].includes(proof)) {
+      await expect(pause()).rejects.toThrow(/Exact legacy Start run cannot be proven/);
+      expect((await f.ports.resolve(work.workId)).stopRunId).toBeUndefined();
+    } else {
+      const stopped = await pause();
+      expect(stopped).toMatchObject({
+        status: 'stopped',
+        workerId: started.workerId,
+        jobId: started.jobId,
+      });
+      expect(await pause()).toEqual(stopped);
+      expect((await f.ports.resolve(work.workId)).stopRunId).toBe(started.jobId);
+    }
+    expect(inspectNative).not.toHaveBeenCalled();
+    expect(store.run(started.jobId!).status).toBe('completed');
+    expect(store.run(later.id).status).toBe('queued');
+    expect(provider).not.toHaveBeenCalled();
+  },
+);
+it('Stop on registered work that never started settles without targeting its manager', async () => {
+  const f = setup(),
+    work = await admitted(() =>
+      f.ports.normal.createTask(
+        randomUUID(),
+        {
+          title: 'Unstarted work',
+          goal: 'No worker exists',
+          acceptance: 'No manager interruption',
+        },
+        f.origin,
+      ),
+    );
+  store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  const id = randomUUID(),
+    lane = (await f.ports.ownerLane(work.owner))!;
+  const action: GroupAction = {
+    actionId: id,
+    revision: work.revision,
+    state: 'dispatching',
+    outcome: null,
+    proposal: {
+      proposalId: randomUUID(),
+      workId: work.workId,
+      kind: 'stop',
+      origin: f.origin,
+      actor: work.owner,
+      at: new Date().toISOString(),
+      observed: work,
+      overrideRequired: false,
+    },
+  };
+  const pause = vi.spyOn(runtime, 'stopGroupCoordinationWorker');
+  expect(
+    await lane.pauseWorker(id, { agentId: managerId, reason: 'Stop unstarted work' }, action),
+  ).toMatchObject({ status: 'stopped', workerId: null });
+  expect(pause).not.toHaveBeenCalled();
+  expect(store.agent(managerId).status).toBe('idle');
+});
+
+it.each(['exact', 'pending', 'wrong-run', 'changed-input', 'missing-start'])(
+  'restarted legacy uncertain Stop retains its original receipt with %s proof',
+  async (proof) => {
+    const f = setup(),
+      work = await admitted(() =>
+        f.ports.normal.createTask(
+          randomUUID(),
+          { title: 'Legacy Stop', goal: 'Retain old receipt', acceptance: 'No later turn stopped' },
+          f.origin,
+        ),
+      ),
+      worker = store.addAgent({
+        projectId: store.agent(managerId).projectId,
+        parentId: managerId,
+        taskId: work.taskId,
+        role: 'implementer',
+        name: 'Legacy worker',
+        provider: 'codex',
+        cwd: join(root, 'workspace'),
+      }),
+      original = store.enqueue(worker.id, randomUUID(), 'Original native action'),
+      startId = randomUUID(),
+      stopId = randomUUID(),
+      prefix = `group:coordination:${context.sessionId}:`,
+      stop = { agentId: worker.id, reason: 'Exact retained Stop' };
+    store.updateRun(original.id, { status: 'interrupted' });
+    store.setSetting(`group:native-child:${worker.id}`, {
+      contextId: randomUUID(),
+      sharedContextId: context.sessionId,
+      managerId,
+      taskId: work.taskId,
+    });
+    store.setSetting(`group:native-auth-agent:${worker.id}`, { contextId: context.sessionId });
+    store.setSetting(`group:native-request:${original.id}`, startId);
+    store.setSetting(`${prefix}worker:${worker.id}`, work.workId);
+    const resource = await f.ports.resolve(work.workId);
+    store.setSetting(`${prefix}work:${work.workId}`, { ...resource, stop });
+    if (proof !== 'missing-start')
+      store.setSetting(`${prefix}action:${startId}`, {
+        kind: 'start',
+        taskId: work.taskId,
+        input: 'Retained legacy Start',
+        outcome: {
+          taskId: work.taskId,
+          workerId: worker.id,
+          outcomeId: randomUUID(),
+          jobId: original.id,
+          status: 'started',
+          message: 'Retained Start outcome',
+        },
+      });
+    const later = store.enqueue(worker.id, randomUUID(), 'Later explicit worker input');
+    const legacyInput = JSON.stringify({
+      kind: 'stop',
+      input: proof === 'changed-input' ? { ...stop, reason: 'Different instruction' } : stop,
+      taskId: work.taskId,
+      managerId,
+    });
+    store.setSetting(`${prefix}action:${stopId}`, {
+      kind: 'stop',
+      taskId: work.taskId,
+      input: legacyInput,
+      workerId: worker.id,
+      runId: proof === 'wrong-run' ? later.id : original.id,
+    });
+    if (proof === 'pending') store.setSetting(`group:native-stop-unverified:${original.id}`, true);
+    store.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+    await runtime.close();
+    store.close();
+    store = new Store(join(root, 'host.sqlite'));
+    runtime = new Runtime(store, root, 'UNUSED', provider, undefined, {
+      workspace: join(root, 'workspace'),
+    });
+    const ports = createGroupCoordinationRuntime(runtime, f.native, context, {
+      owner: work.owner,
+      revalidate: async () => {},
+      command: f.ports.command,
+      publishOwnedTask: f.publish,
+    });
+    const lane = (await ports.ownerLane(work.owner))!,
+      action: GroupAction = {
+        actionId: stopId,
+        revision: work.revision,
+        state: 'uncertain',
+        outcome: null,
+        proposal: {
+          proposalId: randomUUID(),
+          workId: work.workId,
+          kind: 'stop',
+          origin: f.origin,
+          actor: work.owner,
+          at: new Date().toISOString(),
+          observed: work,
+          overrideRequired: false,
+        },
+      },
+      pause = vi.spyOn(runtime, 'stopGroupCoordinationWorker'),
+      retry = () => lane.pauseWorker(stopId, stop, action);
+    if (proof === 'pending') {
+      await expect(retry()).rejects.toThrow('Existing action outcome is uncertain');
+      store.setSetting(`group:native-stop-unverified:${original.id}`, null);
+    }
+    if (['exact', 'pending'].includes(proof)) {
+      const outcome = await retry();
+      expect(outcome).toMatchObject({ status: 'stopped', workerId: worker.id, jobId: original.id });
+      expect(await retry()).toEqual(outcome);
+    } else await expect(retry()).rejects.toThrow(/Action retry changed input|legacy Start run/);
+    expect(store.getSetting(`${prefix}action:${stopId}`)).toMatchObject({ input: legacyInput });
+    expect(store.run(later.id).status).toBe('queued');
+    expect(pause).not.toHaveBeenCalled();
+    expect(provider).not.toHaveBeenCalled();
+  },
+);
+
+it.each(['exact', 'missing', 'ambiguous', 'wrong-request', 'wrong-worker'])(
+  'reopened isolated action inspection resolves only its journal run with %s binding',
+  async (proof) => {
+    const events = new GroupEventRepository(join(root, 'inspection-events.sqlite')),
+      path = join(root, 'inspection-native.sqlite');
+    let journal = new GroupNativeJournal(path, events);
+    try {
+      const group = events.createGroup('Retained isolated action'),
+        parent = journal.issue(
+          {
+            groupId: group.groupId,
+            memberId: group.memberId,
+            installationId: group.installationId,
+            visibility: 'shared',
+          },
+          managerId,
+          'codex',
+        ),
+        owner = journal.resolve(parent).context,
+        task = store.addTask(store.agent(managerId).projectId, {
+          title: 'Exact isolated action',
+          goal: 'One retained run',
+          acceptance: 'Later run stays intact',
+          managerId,
+          parentId: null,
+        }),
+        worker = store.addAgent({
+          projectId: task.projectId,
+          parentId: managerId,
+          taskId: task.id,
+          role: 'implementer',
+          name: 'Restarted isolated worker',
+          provider: 'codex',
+          cwd: join(root, 'workspace'),
+        }),
+        handle = journal.issue(owner, worker.id, 'codex'),
+        child = journal.resolve(handle),
+        actionId = randomUUID(),
+        original = store.enqueue(worker.id, randomUUID(), 'Original queued action');
+      store.updateRun(original.id, { status: 'completed' });
+      const later = store.enqueue(worker.id, randomUUID(), 'Later worker turn');
+      store.setSetting(`group:native-action:${actionId}`, {
+        workerId: worker.id,
+        contextId: child.context.sessionId,
+        managerContextId: owner.sessionId,
+      });
+      store.setSetting(`group:native-child:${worker.id}`, {
+        contextId: child.context.sessionId,
+        sharedContextId: owner.sessionId,
+        managerId,
+        taskId: task.id,
+      });
+      store.setSetting(`group:native-request:${original.id}`, actionId);
+      journal.beginRequest(handle, actionId, 'Exact original instruction');
+      if (proof !== 'missing') journal.requestEvent(handle, actionId, { runId: original.id });
+      if (proof === 'ambiguous') journal.requestEvent(handle, actionId, { runId: later.id });
+      if (proof === 'wrong-request')
+        store.setSetting(`group:native-request:${original.id}`, randomUUID());
+      if (proof === 'wrong-worker')
+        store.setSetting(`group:native-action:${actionId}`, {
+          workerId: managerId,
+          contextId: child.context.sessionId,
+          managerContextId: owner.sessionId,
+        });
+      journal.close();
+      journal = new GroupNativeJournal(path, events);
+      const unused = () => {
+        throw new Error('Inspection must not invoke a provider or queue effect');
+      };
+      const native = createGroupNativeCoordination({
+        runtime,
+        journal,
+        bridge: {} as never,
+        route: unused,
+        resources: unused,
+        active: new Map(),
+        pendingText: new Map(),
+        runTurn: vi.fn(unused),
+      });
+      if (proof === 'exact')
+        expect(native.inspect(owner, actionId)).toEqual({
+          workerId: worker.id,
+          runId: original.id,
+        });
+      else expect(() => native.inspect(owner, actionId)).toThrow(/retained|binding changed/);
+      expect(store.run(later.id).status).toBe('queued');
+      expect(provider).not.toHaveBeenCalled();
+    } finally {
+      journal.close();
+      events.close();
+    }
+  },
+);

@@ -66,9 +66,40 @@ export function createGroupNativeCoordination({
       if (!saved) return null;
       if (saved.managerContextId !== context.sessionId)
         throw new GroupIsolationBlocked('Action belongs to another native group context.');
-      identity(context);
-      const run = runtime.store.runs().find((r) => r.agentId === saved.workerId);
-      return run ? { workerId: saved.workerId, runId: run.id } : null;
+      const owner = identity(context),
+        handle = journal.reopen(saved.contextId),
+        child = journal.resolve(handle),
+        worker = runtime.store.agent(saved.workerId),
+        marker = runtime.store.getSetting(`group:native-child:${worker.id}`) as {
+          contextId?: string;
+          sharedContextId?: string;
+          managerId?: string;
+          taskId?: string;
+        } | null;
+      if (
+        child.agentId !== worker.id ||
+        child.context.groupId !== context.groupId ||
+        child.context.memberId !== context.memberId ||
+        child.context.installationId !== context.installationId ||
+        child.context.visibility !== 'shared' ||
+        child.context.provider !== context.provider ||
+        worker.parentId !== owner.managerId ||
+        marker?.contextId !== saved.contextId ||
+        marker.sharedContextId !== context.sessionId ||
+        marker.managerId !== owner.managerId ||
+        marker.taskId !== worker.taskId
+      )
+        throw new GroupIsolationBlocked('Retained native action child binding changed.');
+      const runId = journal.requestRunId(handle, actionId);
+      if (!runId)
+        throw new GroupIsolationBlocked('Exact retained native action run is unavailable.');
+      const run = runtime.store.run(runId);
+      if (
+        run.agentId !== worker.id ||
+        runtime.store.getSetting(`group:native-request:${run.id}`) !== actionId
+      )
+        throw new GroupIsolationBlocked('Retained native action run binding changed.');
+      return { workerId: saved.workerId, runId: run.id };
     },
     async delegate(context, actionId, input) {
       const owner = identity(context),

@@ -224,7 +224,9 @@ export function RecoveryBackups({
             <p>
               Not included: project files, unfinished work in task folders, Codex or Claude’s own
               session files, VS Code chat transcripts, browser-only drafts, provider sign-in files,
-              or external setup files. A database check is not a full-machine restore test.
+              Groups journals and shared files, or external setup files. Ask your setup agent to
+              make a separate private Groups recovery archive. A database check is not a
+              full-machine restore test.
             </p>
           </details>
           <details className="recovery-help">

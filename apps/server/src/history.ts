@@ -15,6 +15,7 @@ import {
   type RecoveryReason,
 } from '@dock/shared';
 import { Conflict, Missing, Store, now, publicTask } from './store.js';
+import { earlierAppNotificationSql, earlierAppNotificationTitle } from './app-notifications.js';
 
 const cursorSchema = z
   .object({
@@ -38,7 +39,9 @@ const archiveSql = `
     e.agent_id, json_extract(a.body, '$.taskId') AS task_id,
     json_extract(e.body, '$.runId') AS run_id,
     CASE WHEN sender.project_id=a.project_id THEN sender.id ELSE NULL END AS sender_id,
-    json_extract(e.body, '$.kind') AS kind, json_extract(e.body, '$.title') AS title,
+    CASE WHEN ${earlierAppNotificationSql} THEN 'system' ELSE json_extract(e.body, '$.kind') END AS kind,
+    CASE WHEN ${earlierAppNotificationSql} THEN '${earlierAppNotificationTitle}'
+      ELSE json_extract(e.body, '$.title') END AS title,
     json_extract(e.body, '$.text') AS text, json_extract(e.body, '$.status') AS status,
     json_extract(e.body, '$.createdAt') AS created_at
   FROM entries e JOIN agents a ON a.id=e.agent_id

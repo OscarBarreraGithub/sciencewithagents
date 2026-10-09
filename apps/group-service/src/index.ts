@@ -16,8 +16,10 @@ import {
   type MembershipResult,
 } from '@dock/shared/dist/group-membership.js';
 import { groupIdSchema } from '@dock/shared/dist/groups.js';
+import { groupExportRequestSchema } from '@dock/shared/dist/group-hosted-export.js';
 import {
   groupActionCommandSchema,
+  groupActionRetainedReceiptSchema,
   type GroupActionResult,
 } from '@dock/shared/dist/group-actions.js';
 import {
@@ -175,6 +177,34 @@ export default {
       /^Bearer ([a-f0-9]{64})$/.exec(request.headers.get('Authorization') ?? '')?.[1],
     );
     if (!credential.success) return reply({ ok: false, error: 'denied' });
+    const exportRoute = /^\/v1\/groups\/([a-f0-9-]+)\/export$/.exec(url.pathname);
+    if (exportRoute) {
+      const id = groupIdSchema.safeParse(exportRoute[1]),
+        setup = membershipCapabilitySchema.safeParse(request.headers.get('X-Group-Setup'));
+      if (
+        !id.success ||
+        !setup.success ||
+        !betaGroupMatches(beta, id.data) ||
+        request.headers.has('Origin')
+      )
+        return reply({ ok: false, error: 'denied' });
+      try {
+        const parsed = groupExportRequestSchema.safeParse(await boundedBody(request, 2048));
+        if (!parsed.success) return reply({ ok: false, error: 'invalid' });
+        return Response.json(
+          await env.GROUPS.getByName(id.data).exportHosted({
+            groupId: id.data,
+            credential: credential.data,
+            setupCapability: setup.data,
+            ...(betaAdmission === null ? {} : { betaAdmission }),
+            request: parsed.data,
+          }),
+          { headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } },
+        );
+      } catch {
+        return reply({ ok: false, error: 'unavailable' });
+      }
+    }
     const documentsRoute = /^\/v1\/groups\/([a-f0-9-]+)\/documents$/.exec(url.pathname);
     if (documentsRoute) {
       const id = groupIdSchema.safeParse(documentsRoute[1]);
@@ -227,7 +257,9 @@ export default {
         return reply({ ok: false, error: 'unavailable' });
       }
     }
-    const actionsRoute = /^\/v1\/groups\/([a-f0-9-]+)\/actions$/.exec(url.pathname);
+    const actionsRoute = /^\/v1\/groups\/([a-f0-9-]+)\/actions(?:\/(confirm|reconcile))?$/.exec(
+      url.pathname,
+    );
     if (actionsRoute) {
       const id = groupIdSchema.safeParse(actionsRoute[1]);
       if (
@@ -238,10 +270,27 @@ export default {
       )
         return reply({ ok: false, error: 'denied' });
       try {
+        if (actionsRoute[2] === 'reconcile') {
+          const receipt = groupActionRetainedReceiptSchema.safeParse(
+            await boundedBody(request, 12000),
+          );
+          if (!receipt.success) return reply({ ok: false, error: 'invalid' });
+          return reply(
+            await env.GROUPS.getByName(id.data).actionsReconcile({
+              groupId: id.data,
+              credential: credential.data,
+              receipt: receipt.data,
+            }),
+          );
+        }
         const command = groupActionCommandSchema.safeParse(await boundedBody(request, 12_000));
         if (!command.success) return reply({ ok: false, error: 'invalid' });
+        if (actionsRoute[2] === 'confirm' && command.data.kind !== 'confirm')
+          return reply({ ok: false, error: 'invalid' });
         return reply(
-          await env.GROUPS.getByName(id.data).actions({
+          await env.GROUPS.getByName(id.data)[
+            actionsRoute[2] === 'confirm' ? 'actionsConfirm' : 'actions'
+          ]({
             groupId: id.data,
             credential: credential.data,
             command: command.data,

@@ -112,3 +112,70 @@ test('shared conflict confirmation, retry identity, stale recovery and board fit
   await page.getByRole('button', { name: 'Confirm override' }).click();
   await expect(page.getByRole('button', { name: 'Confirm override' })).toHaveCount(0);
 });
+test('native manager proposal is reviewable by its owning member after reopening', async ({
+  page,
+}) => {
+  const proposal = {
+    proposalId: id(20),
+    workId: work.workId,
+    kind: 'stop',
+    origin: {
+      kind: 'autonomous',
+      eventId: id(21),
+      sharedGoalId: work.sharedGoalId,
+      managerId: work.managerId,
+    },
+    actor: bob,
+    at: '2026-10-08T12:00:00.000Z',
+    observed: work,
+    overrideRequired: true,
+  };
+  let confirmed = false;
+  await page.route('**/api/groups/actions', async (route) => {
+    const { command } = route.request().postDataJSON();
+    const value =
+      command.kind === 'confirm'
+        ? (() => {
+            expect(command.proposalId).toBe(proposal.proposalId);
+            expect(command.expectedRevision).toBe(work.revision);
+            expect(command.override).toBe(true);
+            confirmed = true;
+            return {
+              kind: 'action',
+              action: {
+                actionId: id(22),
+                proposal,
+                revision: 3,
+                state: 'pending-owner',
+                outcome: null,
+              },
+            };
+          })()
+        : {
+            kind: 'board',
+            board: {
+              works: [work],
+              instructions: [],
+              proposals: confirmed
+                ? []
+                : [proposal, { ...proposal, proposalId: id(23), actor: alice }],
+              actions: [],
+              notices: [],
+              after: 0,
+              continuation: null,
+            },
+          };
+    await route.fulfill({ json: { ok: true, value } });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Review stop proposal' })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Review stop proposal' }).click();
+  await page.reload();
+  await expect(page.getByRole('article', { name: 'Confirm shared action' })).toBeVisible();
+  await page.getByRole('button', { name: 'Confirm override', exact: true }).click();
+  await expect.poll(() => confirmed).toBe(true);
+  await expect(page.getByRole('article', { name: 'Confirm shared action' })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+});

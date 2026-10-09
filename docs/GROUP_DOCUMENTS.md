@@ -1,9 +1,44 @@
 # Group reports and scoped document access
 
-Normal Groups connects scoped document storage, native completion capture, explicit grants
-and the existing Reading/PDF interface. The reviewed compiler recipe and controlled two-host
-report journey have local acceptance checks. Real provider-generated reports, deployed hosting
-and two installed computers remain separate acceptance; see [Status](STATUS.md#groups).
+Normal native Groups captures exact completed Work artifacts for explicit file selection,
+scoped Reading/PDF access and **Manage → Shared reports**. Existing PDF bytes are readable
+without a compiler. This source integration has focused fixture and emulated-browser checks;
+real provider artifacts, creator-hosted delivery and two installed computers remain acceptance
+work. The retained isolated compiler is described separately below.
+
+## Native local reports
+
+Ask your **Group manager** with **Work** to create the report in its group workspace and link
+the final `.tex` and `.pdf` files in the final reply. PDF generation is an explicitly authorized
+ordinary native Work task, using that owner's tools; the document server never compiles remote
+TeX on the host. Source-only replies can open Reading now. To add PDF later, request new Work
+that links both matching files, then open the new captured reply. Select the PDF as the report
+and explicitly check the same-name `.tex` source and supporting files for Reading and sharing.
+
+The connector's live settled completion event supplies the exact saved request, owner anchor,
+native context/source and final manager run to `GroupHostNativeDocuments`. It captures only
+report links from that exact reply inside its server-selected group workspace, plus recursively
+resolved literal `input`, `include`, `includegraphics`, `addbibresource` and `bibliography`
+dependencies. The optional exact `group-document-inputs` comment supplies additional selectable
+inputs. Unsupported dynamic dependencies must be named explicitly; missing dependencies fail
+capture. Other files in the folder, personal Library entries and conversation history are never
+scanned. Group Markdown cannot open personal Library/upload handles or host file links.
+
+A fixed public Python 3 helper uses isolated imports and descriptor-relative no-symlink reads
+on macOS/Linux, a five-second deadline and 100-file/8-MiB bounds. Python 3 is required for
+capture; Reading also needs its existing conversion tools. It executes no TeX or native agent
+tools. The protected `host-native-documents.sqlite` journal atomically retains source bytes,
+digests and opaque file/receipt identities, with a 512-MiB logical fence including pending
+capture reservations. Later app-managed Git preparation and native input wait for capture; model-free action
+control records cannot authorize capture or replace the final manager reply. A missed, interrupted or denied
+capture stays unavailable; browser retries/restart cannot substitute later working files.
+Capture failure preserves the exact native reply and never resends model input.
+
+The existing `GroupDocuments` and `GroupDocumentSharing` grant/read/share/revoke paths handle
+these copies, rechecking current owner/member authority even for cached/retried reads. Sharing
+requires explicit selected file grants and a separate publication action. Native mode has no
+document-server TeX builder: its source-only view explains how to request a PDF from the owner's
+Group manager. The isolated builder remains optional and is never a host compiler fallback.
 
 ## Authority and exact grants
 
@@ -56,7 +91,7 @@ uncertain replies reconcile the same native operation. Successful effects and br
 commit atomically. Unknown receipts remain evidence. A previous successful immutable PDF stays
 readable; a new source/dependency version requires a new offer/grant.
 
-## Concrete runtime factory and normal integration
+## Retained isolated runtime factory and integration
 
 `createGroupDocumentsNativeRuntime` in `group-documents-native-runtime.ts` implements the
 production `GroupDocumentsNative` interface with the existing GroupContainer boundary. Pass
@@ -117,7 +152,7 @@ The 512 MiB logical envelope counts retained snapshot/cache bytes and metadata, 
 pending capture/export/PDF reservations; at most 128 unresolved captures and 128 unresolved
 export/build operations may be reserved. New work fails before guest execution when capacity is unavailable.
 
-## Normal host and reader composition
+## Scoped host and reader composition
 
 The normal document authority resolves `GroupHost.authenticatedContext({handle})` and
 revalidates the exact persisted owner/context and current remote membership. Authenticated
@@ -133,7 +168,13 @@ attachment bypass is introduced.
 
 ## Local verification, separate from acceptance
 
-Node 24 focused checks exercise exact fabricated native-receipt exports, changed-byte/receipt
+Native-host checks cover live completion/admission ordering, exact workspace links, nested
+dependencies, symlink/escape/missing-file denial, immutable bytes after mutation/restart, export
+retry identity, owner revocation and personal-Library exclusion in the group reader. These use
+no model turns. Eight Chromium reader tests pass across desktop, 412×915, 360×800 and 915×412;
+these are emulated layouts.
+
+Retained isolated Node 24 focused checks exercise exact fabricated native-receipt exports, changed-byte/receipt
 and mixed-handle denial, private/other-group/version denial, source/reader revocation, interrupted
 export and build recovery, same-key concurrency across repository instances, explicit sharing,
 missing build dependency, include/symlink escape, derived-asset scope and authenticated routes.
@@ -173,7 +214,7 @@ Run focused checks with:
 ```sh
 pnpm --filter @dock/shared build
 pnpm --filter @dock/server exec tsc -p tsconfig.group-documents-tests.json
-pnpm --filter @dock/server exec vitest run src/group-documents.test.ts src/group-documents-native-runtime.test.ts src/group-documents-native-runtime-guest.test.ts src/group-container-stop-race.test.ts
+pnpm --filter @dock/server exec vitest run src/group-documents-host-native.test.ts src/group-native-host-runtime.test.ts src/group-documents.test.ts src/group-documents-native-runtime.test.ts src/group-documents-native-runtime-guest.test.ts src/group-container-stop-race.test.ts
 pnpm --filter @dock/web exec tsc -p tsconfig.group-documents.json
 pnpm --filter @dock/web exec playwright test --config playwright.group-documents.config.ts
 ```

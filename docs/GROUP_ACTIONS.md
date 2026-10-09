@@ -41,30 +41,80 @@ known stale confirmations can be discarded and replaced after refresh. It shows
 requester/time, original owner, override notification and pending/uncertain outcome.
 The separate browser fixture checks these controls with simulated API responses.
 
-## Original-owner runtime adapter
+## Native v1 runtime
 
-`group-coordination-runtime` binds normal Store tasks, immutable shared native task
-attestations and durable action receipts to the original group manager. An idle
-online owner can confirm an action through model-free ordinary QUARK admission and
-that manager's signed lease. It does not borrow the project's primary manager or
-launch an ordinary host worker. Retries retain exact input and stop target; unknown
-native closure retains the hold.
+The host-native bootstrap attaches `GroupFeatureCoordination` to the same action
+service and exposes the board under **Manage → Shared work and actions**. The owner’s
+manager creates attributable tasks and start/stop proposals from an admitted shared
+Work turn. Its ordinary task inspection, independent review and exact apply tools
+remain available. `dock_group_actions` reads the shared board. Ask cannot create,
+confirm or execute work; incoming messages remain evidence.
 
-Shared native managers issue fresh worker conversation identities under the same
-accepted owner/group/shared guest HOME account scope. Each task uses an explicit
-`/workspace/tasks/<taskId>` native process directory and separate container/run
-lifetime. Containers never delete the shared volume; private contexts cannot reuse
-it. Native workers receive board inspection, while manager mutations require the
-exact current Work grant and retained manager/task/shared-goal source. A provider
-or saved restricted-tool choice without an accepted route fails visibly without
-changing the choice or importing host credentials.
+`group-coordination-runtime-host` binds each task/shared goal to its exact local Work
+request. Confirmed effects run through ordinary Runtime delegation, central model
+policy, QUARK admission and signed manager leases, using the original owner’s native
+accounts. Implementers receive ordinary task worktrees. A fresh app-owned workspace
+can receive an empty local Git baseline without staging files; a GitHub remote remains
+optional. Workers retain normal review/checkpoint tools and their own task lineage.
 
-Focused controlled checks cover idle-owner leases, actual connector queue binding,
-lost publication/action acknowledgements, immutable delegation input, original stop
-target recovery, scope/grant rejection, explicit process cwd and independent shared
-HOME container stopping. These are source regressions, not real-provider, shared
-HOME concurrency or two-installed-computer acceptance. The normal UI and protected
-consumer mounts have separate local integration checks.
+An idle owner uses a model-free control turn carrying the original Work request’s
+lineage. An active Ask or unrelated Work cannot lend authority. Durable Store receipts
+retain exact action/input/worker/run identities across a lost acknowledgement or restart.
+A stopped Work grant cannot launch another worker. Stop needs no allowance admission,
+retains its exact original target and cannot interrupt a later worker turn. Definite
+pre-effect refusal can settle as blocked; unknown effects remain held for inspection.
+
+The retained isolated connector uses its existing separate native contexts and guest
+resources. It is not a prerequisite for native Groups and its saved requests are never
+adopted by the host adapter.
+Older isolated work records without a saved Stop run recover only from one completed
+Start receipt whose worker, task, work mapping, original context and native request
+marker prove the exact run. Missing or ambiguous proof blocks Stop for inspection;
+the worker's current turn is never substituted.
+Pending older Stop receipts may retain their original fingerprint without a run field.
+They reconcile only when their saved worker/run matches that proved Start receipt;
+the old input stays intact and an uncertain closure is not replayed. Isolated Start
+inspection also requires one exact journaled action/run binding, including after restart.
+
+Focused fixtures cover native queue/worktree binding, central policy, Ask and stopped
+Work rejection, asynchronous cancellation, lost acknowledgements, restart inspection,
+held-admission Stop and manager-proposal recovery in the board. They do not establish
+real-provider, separate-computer or physical-phone acceptance.
+
+## Retained owner receipt recovery
+
+The finite reconnect pass can reconcile an exact retained owner receipt even when
+current membership denies shared reads or new effects. The private receipt-only lane
+accepts the saved original enrollment capability, exact action/revision/task and completed
+or absent outcome. A pending action can close without effect only after known owner or
+requester revocation and an exact no-effect receipt. Unavailable membership is not treated
+as revocation. This lane never invokes a model, starts or stops work, or restores shared
+reading permission. Offline owners with no retained receipt remain unresolved.
+
+## Exact override confirmation and capacity
+
+A conflicting override needs the exact authenticated owner/paired-device confirmation
+route. The host uses a separate protected service lane to retain the proposal, observed
+revision, operation ID and confirming enrollment in one transaction. Generic native action
+commands cannot mint that receipt by setting `override: true`. Claims and same-ID claim
+retries recheck the stored proof and current requester/owner membership. This is trusted
+host confirmation provenance; the full-access native host is not an OS security sandbox
+or a physical-human-presence attestation.
+
+New admissions are bounded per member and by the existing shared storage envelope.
+Confirmation atomically reserves 384 KiB logical and 512 KiB physical lifecycle capacity
+inside the existing delivery pools, with at most 8 unfinished actions per member and 32
+per group. Delivery/document admission cannot spend those held bytes. Claim, uncertain
+and completion use three fixed action-derived IDs and consume the held capacity rather
+than a new admission/day/history allowance. Completion or supersession releases unused
+bytes. The separate membership revocation reserve remains available.
+
+First-use schema and all action/receipt/notice growth are authorized, synchronously
+accounted and committed with the action. Prior action identities, immutable events,
+originals and receipts remain intact; unresolved legacy actions acquire reservations
+atomically or fail closed without resetting history. Terminal hot rows point to their
+retained append-only event; shared evidence pages keep exact original JSON and typed
+causal facts. An autonomous decision is never relabelled as a human instruction.
 
 ## Normal composition
 
@@ -87,9 +137,11 @@ the original publication receipt must confirm it.
 
 ## Focused verification
 
-With Node 24 and built shared contracts, run
-`vitest run apps/server/src/group-actions.test.ts`. Persisted confirmation, competing
-proposals, stale CAS, revocation, original-owner routing and exact retries are covered.
-From `apps/web`, `playwright test --config playwright.group-actions.config.ts` checks the
-control fixture at desktop, 412×915, 360×800 and 915×412. Its runner owns the loopback
-preview and browser. These fixtures do not establish real-provider or physical-device acceptance.
+With Node 24, the repository pnpm wrapper and built shared contracts, run
+`sh scripts/pnpm --filter @dock/group-service test test/actions-lifecycle.test.ts test/membership.test.ts`
+and `sh scripts/pnpm --filter @dock/server exec vitest run src/group-actions.test.ts src/group-coordination-runtime.test.ts src/group-coordination-runtime-stop.test.ts`.
+These checks cover actual Worker SQLite reservation/rollback, admission exhaustion,
+legacy preservation, exact source hashes/aliases, override proof, revocation, eviction,
+lost acknowledgements and model-free retained recovery. They establish local source
+regressions, not creator-deployed delivery, real-provider, separate-computer or physical-phone
+acceptance. Browser control checks are documented in [release readiness](GROUP_RELEASE_READINESS.md).

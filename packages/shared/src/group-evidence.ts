@@ -3,6 +3,7 @@ import { groupEventSchema } from './groups.js';
 
 export const GROUP_EVIDENCE_LIMITS = {
   pageSize: 8,
+  pageBytes: 256 * 1024,
   records: 8192,
   queries: 4096,
   facts: 16,

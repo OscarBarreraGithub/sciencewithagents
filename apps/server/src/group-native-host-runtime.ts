@@ -3,11 +3,14 @@ import {
   groupHostWorkFamily,
   groupHostStopKey,
 } from './group-host-work-continuation.js';
+import { createGroupHostCoordination } from './group-coordination-runtime-host.js';
+import type { GroupCoordinationNativePort } from './group-coordination-runtime.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
+import { captureGroupRunTransition } from './group-native-activity-producers.js';
 import { groupContextSchema, GROUP_LIMITS, type GroupContext } from '@dock/shared';
 import type { GroupNativeOwnerStatus } from '@dock/shared/dist/group-native-owner.js';
 import { groupNativeOwnerInputSchema } from '@dock/shared/dist/group-native-owner.js';
@@ -37,8 +40,16 @@ type SavedRequest = { request_id: string; binding_key: string; input: string; pr
 const hash = (v: string) => createHash('sha256').update(v).digest('hex');
 const notice =
   'Runs on this computer with your existing provider sign-in and native tools. Work can access files, commands and network as your user. Your already-shared messages also receive bounded background feed summaries and labels using your saved bulk model. Private conversations stay separate; this is not a sandbox.';
+export type GroupHostNativeCompletion = {
+  request: GroupNativeRequest;
+  result: NonNullable<GroupNativeSnapshot['result']>;
+  runId: string;
+  cwd: string;
+};
 export interface GroupHostNativeRuntime extends GroupNativeConnector {
   readonly executionMode: 'host';
+  completed(callback: (completion: GroupHostNativeCompletion) => Promise<void>): void;
+  readonly coordination: GroupCoordinationNativePort;
   beforeTurn(callback: (context: GroupContext, requestId: string) => Promise<void>): void;
   revalidate(callback: (context: GroupContext) => Promise<void>): void;
   evidence(callback: (context: GroupContext) => Promise<string>): void;
@@ -77,6 +88,8 @@ export function createGroupHostNativeConnector(
   protectGroupSidecars(path);
   let beforeTurn: ((context: GroupContext, requestId: string) => Promise<void>) | undefined;
   let revalidate: ((context: GroupContext) => Promise<void>) | undefined;
+  let completed: ((completion: GroupHostNativeCompletion) => Promise<void>) | undefined;
+  const completions = new Map<string, Promise<unknown>>();
   let readEvidence: ((context: GroupContext) => Promise<string>) | undefined;
   const pending = new Map<string, Promise<GroupNativeSnapshot>>();
   let closing = false;
@@ -272,7 +285,11 @@ export function createGroupHostNativeConnector(
       );
       return value;
     }
-    const managerRuns = family.filter((item) => item.agentId === binding.agentId);
+    const managerRuns = family.filter(
+      (item) =>
+        item.agentId === binding.agentId &&
+        !runtime.store.getSetting(`group:native-control:${item.id}`),
+    );
     const managerRunIds = new Set(managerRuns.map((item) => item.id));
     const entries = runtime.store
       .entries(binding.agentId, undefined, 10000)
@@ -325,6 +342,15 @@ export function createGroupHostNativeConnector(
       return inspect({ requestId: request.request_id });
     if (!enabled(binding.enrollmentHandle)) return inspect({ requestId: request.request_id });
     if (!runFor(request.request_id)) {
+      // Git preparation can change the workspace too, so it shares the same
+      // completion barrier as native input admission.
+      await Promise.allSettled(completions.values());
+      if (
+        closing ||
+        runtime.store.getSetting(groupHostStopKey(request.request_id)) ||
+        db.prepare('SELECT 1 FROM hnr_results WHERE request_id=?').get(request.request_id)
+      )
+        return inspect({ requestId: request.request_id });
       await beforeTurn?.(binding.context, request.request_id);
       if (
         closing ||
@@ -340,6 +366,7 @@ export function createGroupHostNativeConnector(
           intent: JSON.parse(request.input).intent,
           context: binding.context,
         });
+        captureGroupRunTransition(runtime.store, run.id, `run:${run.id}:queued`);
       });
       runtime.kick();
     }
@@ -537,7 +564,21 @@ export function createGroupHostNativeConnector(
   };
   const connector: GroupHostNativeRuntime = {
     executionMode: 'host',
+    coordination: createGroupHostCoordination(runtime, (context) => {
+      const row = db
+        .prepare("SELECT body FROM hnr_bindings WHERE json_extract(body,'$.context.sessionId')=?")
+        .get(context.sessionId);
+      if (!row) throw new Conflict('Original host-native manager binding unavailable.');
+      const binding = bindingSchema.parse(JSON.parse(String(row.body)));
+      trust(binding.context);
+      if (!enabled(binding.enrollmentHandle)) throw new Conflict('Enable group agents first.');
+      return binding;
+    }),
     owner,
+    completed(callback) {
+      if (completed) throw new Conflict('Native completion owner already registered.');
+      completed = callback;
+    },
     beforeTurn(callback) {
       if (beforeTurn) throw new Conflict('Pre-turn owner already registered.');
       beforeTurn = callback;
@@ -639,10 +680,63 @@ export function createGroupHostNativeConnector(
     async close() {
       if (closing) return;
       closing = true;
-      await Promise.allSettled(pending.values());
+      runtime.store.off('event', onCompleted);
+      await Promise.allSettled([...pending.values(), ...completions.values()]);
       db.close();
     },
   };
+  // Store emits after its transaction, before the next scheduler turn. Capture
+  // exact settled Work results immediately, including manager continuations.
+  const onCompleted = (event: { type: string; data?: unknown }) => {
+    if (closing || event.type !== 'run.completed') return;
+    const parsed = z.object({ id: z.uuid() }).safeParse(event.data);
+    if (!parsed.success || runtime.store.getSetting(`group:native-control:${parsed.data.id}`))
+      return;
+    const turn = groupHostTurnSchema.safeParse(
+      runtime.store.getSetting(`group:host-native-run:${parsed.data.id}`),
+    );
+    if (!turn.success || !completed) return;
+    const saved = savedRequest(turn.data.requestId);
+    if (!saved) return;
+    const binding = bindingFor(saved);
+    const finished = runtime.store.run(parsed.data.id);
+    if (finished.agentId !== binding.agentId) return;
+    const family =
+      turn.data.intent === 'work'
+        ? groupHostWorkFamily(runtime.store, runFor(turn.data.requestId)!)
+        : [finished];
+    if (
+      family.some((run) => ['queued', 'running'].includes(run.status)) ||
+      family
+        .filter(
+          (run) =>
+            run.agentId === binding.agentId &&
+            !runtime.store.getSetting(`group:native-control:${run.id}`),
+        )
+        .at(-1)?.id !== finished.id
+    )
+      return;
+    // This live event is the only capture authority. Inspecting old completed
+    // runs after restart never substitutes their later workspace bytes.
+    const capture = inspect({ requestId: turn.data.requestId })
+      .then(async (snapshot) => {
+        if (snapshot.state === 'completed' && snapshot.result)
+          await completed!({
+            request: groupNativeRequestSchema.parse(JSON.parse(saved.input)),
+            result: snapshot.result,
+            runId: finished.id,
+            cwd: binding.cwd,
+          });
+      })
+      .catch(() => {
+        /* Report failure retains the native reply without replay. */
+      });
+    completions.set(turn.data.requestId, capture);
+    void capture.finally(() => {
+      if (completions.get(turn.data.requestId) === capture) completions.delete(turn.data.requestId);
+    });
+  };
+  runtime.store.on('event', onCompleted);
   if (runtime.groupHostNativeAdmission)
     throw new Conflict('Host-native admission owner already registered.');
   const admission = async (agentId: string, runId: string) => {
@@ -667,6 +761,8 @@ export function createGroupHostNativeConnector(
     trust(marker.context);
     if (!revalidate) throw new Conflict('Current group membership verifier unavailable.');
     await revalidate(marker.context);
+    // A new app-managed input cannot overtake a completion's immutable capture.
+    await Promise.allSettled(completions.values());
     if (closing || runtime.store.getSetting(groupHostStopKey(turn.requestId)))
       throw new Conflict('Saved group request was stopped.');
     trust(marker.context);

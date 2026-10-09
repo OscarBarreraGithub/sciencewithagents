@@ -7,6 +7,10 @@ Workers Free entitlement or two installed computers. See [current acceptance](ST
 
 ## Creator-owned Cloudflare setup
 
+Creator-only read-only hosted SQL archives, finite capacity transitions and the required
+quiescence/reconciliation policy for any manual PITR are documented in
+[Hosted Groups archives and recovery](GROUP_HOSTED_RECOVERY.md).
+
 The group creator deploys the service in **their own Cloudflare account**. Fresh app
 installations have no default maintainer-hosted service and require no beta operator or
 operator-issued creation code. Joining members use the creator's service; they do not each

@@ -28,6 +28,7 @@ import {
 } from '@dock/shared';
 import { Conflict, Missing, now, Store, publicTask } from './store.js';
 import { projectWorkflow } from './project-workflow.js';
+import { earlierAppNotificationSql } from './app-notifications.js';
 import { delegationTools } from './worker-tools.js';
 
 const requestCursor = z
@@ -41,10 +42,11 @@ const requestCursor = z
 // Native owner steering used a system entry before structured provenance existed.
 // It was written only after confirmation. Queued/cancelled runs remain visibly distinct.
 // Native-admission run entries are generated turn/compaction placeholders; the owner's
-// captured native input is its own entry on that run.
+// captured native input is its own entry on that run. App-generated reconciliation handoffs
+// saved before their origin was recorded are app notifications, identified by run key.
 const ownerSourceSql = `e.agent_id=? AND (
   (json_extract(e.body,'$.kind')='user' AND (json_extract(e.body,'$.ownerInput') IS NOT NULL OR
-    r.id IS NULL OR (json_extract(r.body,'$.sourceId') IS NULL AND json_extract(r.body,'$.kind')='user' AND (e.id!=r.id OR (r.key NOT LIKE 'native:%' AND r.key NOT LIKE 'native-admission:%')))))
+    r.id IS NULL OR (json_extract(r.body,'$.sourceId') IS NULL AND json_extract(r.body,'$.kind')='user' AND (e.id!=r.id OR (r.key NOT LIKE 'native:%' AND r.key NOT LIKE 'native-admission:%' AND NOT ${earlierAppNotificationSql})))))
   OR (json_extract(e.body,'$.kind')='system' AND json_extract(e.body,'$.title')='Owner steering')
 )`;
 
@@ -458,17 +460,27 @@ export class WorkItems {
             JSON.stringify(sourceKeys(previous?.sourceMessages ?? []));
           if (sources.length && !managerId)
             throw new Conflict('Source messages need their original project manager.');
+          // Name the rejected reference; provenance itself is never relaxed here.
+          const sourceGuidance =
+            'sourceMessages may list only retained owner messages received by this manager (see dock_inspect {ownerRequests:{}}). Cite peer, worker or report evidence in the work-item detail or a checkpoint instead.';
+          // Links saved earlier stay attached when an item is updated; new links are checked.
+          const linked = new Set(sourceKeys(previous?.sourceMessages ?? []));
           for (const source of sources) {
             if (source.agentId !== managerId)
-              throw new Conflict('Source messages belong to the receiving manager.');
+              throw new Conflict(
+                `Source message ${JSON.stringify(source)} names another agent, not the receiving manager ${managerId}. ${sourceGuidance}`,
+              );
             if (
+              !linked.has(`${source.agentId}:${source.entryId}`) &&
               !this.store.db
                 .prepare(
                   `SELECT e.id FROM entries e LEFT JOIN runs r ON r.id=json_extract(e.body,'$.runId') AND r.agent_id=e.agent_id WHERE ${ownerSourceSql} AND e.id=?`,
                 )
                 .get(managerId, source.entryId)
             )
-              throw new Conflict('Source is not a retained owner message for this manager.');
+              throw new Conflict(
+                `Source message ${JSON.stringify(source)} is not a retained owner message for this manager. ${sourceGuidance}`,
+              );
           }
           if (input.sourceDisposition && !sources.length)
             throw new Conflict('A source disposition needs a saved source message.');

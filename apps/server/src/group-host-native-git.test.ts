@@ -74,6 +74,34 @@ afterEach(async () => {
 });
 const sync = () => adapter.request({ action: 'sync', handle, key: randomUUID() });
 const status = () => adapter.request({ action: 'status', handle });
+it('owner status shows unfinished group/task edits without returning contents or sharing private names', async () => {
+  await seed();
+  writeFileSync(join(cwd, 'unfinished.txt'), 'local draft');
+  writeFileSync(join(cwd, '.env'), 'PRIVATE_FIXTURE');
+  const task = store.addTask(binding.projectId, {
+    title: 'Pending task',
+    goal: 'Work',
+    acceptance: 'Review',
+    parentId: null,
+  });
+  const taskPath = await ensureWorktree(store, task, root);
+  writeFileSync(join(taskPath, 'worker.txt'), 'worker draft');
+  const view = await status();
+  expect(view.localEdits).toMatchObject([
+    {
+      taskId: null,
+      state: 'changed',
+      changed: 2,
+      withheld: 1,
+      files: [{ path: 'unfinished.txt', status: '??' }],
+    },
+    { taskId: task.id, state: 'changed', files: [{ path: 'worker.txt', status: '??' }] },
+  ]);
+  expect(JSON.stringify(view.localEdits)).not.toContain('PRIVATE_FIXTURE');
+  expect(JSON.stringify(view.localEdits)).not.toContain('.env');
+  expect(await git(cwd, ['ls-files', '--', 'unfinished.txt'])).toBe('');
+  expect(readFileSync(join(taskPath, 'worker.txt'), 'utf8')).toBe('worker draft');
+});
 async function seed() {
   await git(cwd, ['commit', '--allow-empty', '-m', 'Canonical shared baseline']);
   await git(cwd, ['push', 'origin', 'HEAD:refs/heads/main']);
@@ -308,3 +336,26 @@ it('rejects a separate push destination and refuses credentials even when later 
   await expect(sync()).rejects.toThrow('likely credential');
   expect(await git(root, ['--git-dir', origin, 'ls-tree', '-r', '--name-only', 'main'])).toBe('');
 });
+it('local task repository without a remote keeps optional GitHub setup available', async () => {
+  await git(cwd, ['remote', 'remove', 'origin']);
+  const view = await adapter.request({ action: 'status', handle });
+  expect(view.available).toBe(false);
+});
+
+it.each(['data/runtime-canary.txt', 'nested/data/runtime-canary.txt', '.env', 'notes.sqlite'])(
+  'native Git still refuses the private/runtime path %s',
+  async (name) => {
+    await seed();
+    await work();
+    const item = await reviewed();
+    mkdirSync(join(item.path, name, '..'), { recursive: true });
+    writeFileSync(join(item.path, name), 'Private runtime canary');
+    await git(item.path, ['add', name]);
+    await git(item.path, ['commit', '-m', 'Private path checkpoint']);
+    const head = await git(item.path, ['rev-parse', 'HEAD']);
+    store.updateTask(item.task.id, { reviewedCommit: head });
+    await adapter.request((await apply(item.task.id)).input);
+    await expect(sync()).rejects.toThrow('likely private or runtime file');
+    expect(await git(root, ['--git-dir', origin, 'ls-tree', '-r', '--name-only', 'main'])).toBe('');
+  },
+);

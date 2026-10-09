@@ -12,7 +12,7 @@ import { groupFeatureGit } from './group-feature-git.js';
 import { groupFeatureDocuments } from './group-feature-documents.js';
 import { groupFeatureCoordination } from './group-feature-coordination.js';
 
-it('an adapter without secondary ports keeps core Groups routes responsive and export controls unavailable', async () => {
+it('host Groups attaches scoped reports without starting a provider or requiring isolated ports', async () => {
   mkdirSync('data/tests', { recursive: true });
   const root = mkdtempSync('data/tests/host-optional-features-');
   const store = new Store(join(root, 'dock.sqlite'));
@@ -27,14 +27,15 @@ it('an adapter without secondary ports keeps core Groups routes responsive and e
     const resolve = vi.fn(() => {
       throw new Error('No turn admitted in route check');
     });
-    // The helper only receives these two side-effect-free adapter ports until an
+    // The helper receives side-effect-free native ports until an
     // actual retained shared source requires synthesis. No native run starts here.
     features = attachGroupHostLocalFeatures(runtime, host, {
       resolveLocalContext: resolve,
       registerHelper: vi.fn(),
+      completed: vi.fn(),
     } as unknown as GroupHostNativeRuntime);
     expect(groupFeatureGit(host)).toBeUndefined();
-    expect(groupFeatureDocuments(host)).toBeUndefined();
+    expect(groupFeatureDocuments(host)).toBeDefined();
     expect(groupFeatureCoordination(host)).toBeUndefined();
     registerGroupHostRoutes(app, host, () => true);
     expect((await app.inject({ method: 'GET', url: '/api/groups' })).statusCode).toBe(200);

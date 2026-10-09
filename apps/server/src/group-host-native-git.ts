@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
@@ -12,6 +14,7 @@ import type { GroupHostNativeRuntime } from './group-native-host-runtime.js';
 import type { GroupHost } from './group-host.js';
 import { Conflict } from './store.js';
 import { git, integrationPreview, integrate } from './workspaces.js';
+import { groupNativePrivatePath } from './group-native-private-path.js';
 
 type Binding = ReturnType<GroupHostNativeRuntime['resolveLocalContext']>;
 type Settings = { githubUsername: string; autoSync: boolean };
@@ -19,6 +22,7 @@ const adapters = new WeakMap<GroupHost, GroupHostNativeGit>();
 export const groupHostNativeGit = (host: GroupHost) => adapters.get(host);
 const defaults: Settings = { githubUsername: '', autoSync: false };
 const oid = /^[a-f0-9]{40,64}$/;
+const exec = promisify(execFile);
 const secret =
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-(?:proj-)?[A-Za-z0-9_-]{32,}|AKIA[A-Z0-9]{16})\b/;
 
@@ -100,7 +104,8 @@ export class GroupHostNativeGit {
       (await git(cwd, ['rev-parse', '--show-toplevel'])) !== cwd
     )
       throw new Conflict('The saved shared repository needs repair; its files were preserved.');
-    const origin = await git(cwd, ['remote', 'get-url', 'origin']);
+    const origin = await this.optional(cwd, ['remote', 'get-url', 'origin']);
+    if (!origin) return null; // Local task worktrees do not require GitHub or a remote.
     const https = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/;
     const ssh = /^git@github\.com:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?$/;
     if (!https.test(origin) && !ssh.test(origin) && !(this.localFixture && origin.startsWith('/')))
@@ -244,12 +249,7 @@ export class GroupHostNativeGit {
       for (const name of names) {
         if (++count > 1000)
           throw new Conflict('This publication exceeds the shared file review limit.');
-        if (
-          /(?:^|\/)(?:\.env(?:\..*)?|auth\.json|credentials(?:\..*)?|id_rsa|id_ed25519|data|uploads|logs|\.codex|\.claude)(?:$|\/)/i.test(
-            name,
-          ) ||
-          /\.(?:pem|p12|pfx|key|sqlite|sqlite3|db|log)$/i.test(name)
-        )
+        if (groupNativePrivatePath(name))
           throw new Conflict(
             'Publication stopped at a likely private or runtime file. Inspect the shared task locally.',
           );
@@ -429,6 +429,7 @@ export class GroupHostNativeGit {
         (repo
           ? 'Shared repository connected. Sync is off until you enable it. Only reviewed, applied checkpoints are published.'
           : 'Ask your setup agent to clone the shared repository into this group workspace. Existing files stay local.'),
+      localEdits: await this.localEdits(binding),
       tasks: this.runtime.store
         .tasks()
         .filter((task) => task.projectId === binding.projectId)
@@ -441,6 +442,91 @@ export class GroupHostNativeGit {
         })),
       preview,
     });
+  }
+  /** Owner-only metadata from server-selected group/task workspaces. Returns no
+   * file contents and never stages/publishes pending edits. */
+  private async localEdits(binding: Binding): Promise<GroupNativeGitView['localEdits']> {
+    const tasks = this.runtime.store
+      .tasks()
+      .filter((t) => t.projectId === binding.projectId && t.worktree)
+      .slice(-50);
+    const workspaces = [
+      { taskId: null as string | null, label: 'Group workspace', cwd: binding.cwd },
+      ...tasks.map((t) => ({ taskId: t.id, label: t.title.slice(0, 200), cwd: t.worktree! })),
+    ];
+    const result: GroupNativeGitView['localEdits'] = [];
+    const signal = AbortSignal.timeout(2500);
+    for (const workspace of workspaces) {
+      try {
+        if (realpathSync(workspace.cwd) !== resolve(workspace.cwd))
+          throw new Error('Workspace moved');
+        const { stdout } = await exec(
+          'git',
+          [
+            '-c',
+            'core.hooksPath=/dev/null',
+            '-c',
+            'core.fsmonitor=false',
+            '--no-optional-locks',
+            'status',
+            '--porcelain=v1',
+            '-z',
+            '--untracked-files=normal',
+            '--ignore-submodules=all',
+          ],
+          {
+            cwd: workspace.cwd,
+            timeout: 5000,
+            maxBuffer: 64 * 1024,
+            signal,
+            env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' },
+          },
+        );
+        const rows = stdout.split('\0'),
+          files: { path: string; status: string }[] = [];
+        let changed = 0,
+          withheld = 0;
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i]!;
+          if (!row) continue;
+          const status = row.slice(0, 2),
+            path = row.slice(3);
+          changed++;
+          if (/[RC]/u.test(status)) i++;
+          if (
+            groupNativePrivatePath(path) ||
+            path.length > 512 ||
+            path.startsWith('/') ||
+            path.split('/').includes('..') ||
+            /[\0\r\n\\]/u.test(path)
+          ) {
+            withheld++;
+            continue;
+          }
+          if (files.length < 16) files.push({ path, status });
+        }
+        result.push({
+          taskId: workspace.taskId,
+          label: workspace.label,
+          state: changed ? 'changed' : 'clean',
+          changed,
+          withheld,
+          truncated: changed - withheld > files.length,
+          files,
+        });
+      } catch {
+        result.push({
+          taskId: workspace.taskId,
+          label: workspace.label,
+          state: 'unavailable',
+          changed: 0,
+          withheld: 0,
+          truncated: false,
+          files: [],
+        });
+      }
+    }
+    return result;
   }
   async request(raw: unknown): Promise<GroupNativeGitView> {
     const input = groupNativeGitRequestSchema.parse(raw);

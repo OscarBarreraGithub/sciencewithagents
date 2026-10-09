@@ -1,6 +1,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "noEmit": true },
-  "include": ["src/group-documents*.ts"],
+  "include": [
+    "src/group-documents*.ts",
+    "src/group-native-host-runtime.test.ts",
+    "src/group-host-local-features.test.ts"
+  ],
   "exclude": []
 }

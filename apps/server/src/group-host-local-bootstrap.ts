@@ -47,9 +47,15 @@ export function createLocalProductionGroupHost(dataDir: string, runtime: Runtime
         : [];
     await scope.revalidate();
     return JSON.stringify({
+      sharedWatermark: shared.watermark,
+      sharedCoverage:
+        'Latest eight shared headers; use dock_group_evidence_query for original typed evidence and incremental offline changes. Missing facts and index gaps remain unknown.',
       shared: shared.entries.map((e) => ({
+        eventId: e.eventId,
+        memberId: e.scope.memberId,
         sequence: e.sequence,
         category: e.category,
+        causalRefs: e.scope.causalRefs,
         text: e.condensedText.slice(0, 3000),
       })),
       ownPrivate: own,

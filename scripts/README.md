@@ -25,6 +25,14 @@ Browser checks are separate. Do not run every live smoke script as a setup step 
 passing suites merely to increase the test count. [Verification](../docs/VERIFICATION.md)
 records what actually ran; a script's presence is not a current compatibility result.
 
+`groups-recovery.mjs save DATA_DIR`, `verify DATA_DIR UUID` and `stage DATA_DIR UUID`
+provide private offline Groups archives and separate staging. They never stop or start
+the app, overwrite current data or replay requests. Follow [Groups recovery](../docs/GROUP_RECOVERY.md);
+run `node --test scripts/groups-recovery.test.mjs` for its disposable fixture checks.
+`group-hosted-archive.mjs verify DATA_DIR UUID` checks an existing private hosted archive
+without network access or SQL execution. Export from the creator's **Groups → Manage** panel;
+see [hosted Groups recovery](../docs/GROUP_HOSTED_RECOVERY.md). Neither tool restores state.
+
 ## Cloudflare phone address without a domain
 
 `phone-cloudflare-setup.mjs prepare` creates private deployment/configuration files for a

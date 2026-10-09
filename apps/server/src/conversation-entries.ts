@@ -1,6 +1,7 @@
 import type { SQLInputValue } from 'node:sqlite';
 import { entrySchema, type AgentDetailChannel } from '@dock/shared';
 import type { Store } from './store.js';
+import { earlierAppNotificationSql, earlierAppNotificationTitle } from './app-notifications.js';
 
 /** Presentation only: retain the complete transcript and derive provenance from every saved run. */
 export function conversationEntries(
@@ -25,7 +26,8 @@ export function conversationEntries(
         (json_extract(e.body,'$.kind')='message' OR
           (json_extract(e.body,'$.kind') IN ('assistant','tool') AND o.run_id IS NULL AND g.key IS NULL))
         THEN json_extract(r.body,'$.kind') ELSE NULL END AS coordination_kind,
-      json_extract(r.body,'$.sourceId') AS source_id
+      json_extract(r.body,'$.sourceId') AS source_id,
+      COALESCE(${earlierAppNotificationSql},0) AS app_notification
     FROM entries e
     LEFT JOIN runs r ON r.id=json_extract(e.body,'$.runId') AND r.agent_id=e.agent_id
     LEFT JOIN owner_runs o ON o.run_id=r.id
@@ -42,7 +44,7 @@ export function conversationEntries(
         ? " AND NOT COALESCE(e.id=r.id AND r.key LIKE 'native-admission:%' AND json_extract(r.body,'$.kind')='user' AND json_extract(e.body,'$.kind')='user',0)"
         : ''
     }
-  ) SELECT body, coordination_kind, source_id FROM classified
+  ) SELECT body, coordination_kind, source_id, app_notification FROM classified
     ${channel === 'all' ? '' : `WHERE coordination_kind IS ${channel === 'conversation' ? '' : 'NOT '}NULL`}
     ORDER BY ordinal DESC LIMIT 201`;
   const rows = store.db.prepare(sql).all(...args);
@@ -53,6 +55,8 @@ export function conversationEntries(
       .map((row) =>
         entrySchema.parse({
           ...JSON.parse(String(row.body)),
+          // Retained text is unchanged; only its origin label is corrected.
+          ...(row.app_notification ? { kind: 'system', title: earlierAppNotificationTitle } : {}),
           coordination: row.coordination_kind
             ? { kind: row.coordination_kind, sourceId: row.source_id }
             : undefined,

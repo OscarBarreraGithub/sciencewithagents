@@ -68,15 +68,9 @@ export function GroupReports({ handle }: { handle: string }) {
       </button>
       {entries.map((entry) => (
         <div key={entry.key.publicationId} className="group-report-row">
-          <a
-            href={`#/groups/report/${entry.key.publicationId}/${entry.key.manifestHash}`}
-            onClick={(event) => {
-              event.preventDefault();
-              setSelected(entry.key);
-            }}
-          >
+          <button type="button" onClick={() => setSelected(entry.key)}>
             {entry.manifest.title}
-          </a>
+          </button>
           <small>
             {entry.manifest.files.reduce((n, file) => n + file.bytes, 0).toLocaleString()} bytes ·
             immutable shared copy

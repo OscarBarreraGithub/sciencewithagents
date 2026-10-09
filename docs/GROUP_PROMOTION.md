@@ -106,19 +106,40 @@ links. Stale revisions and integrity failures remain visible and retain receipts
 Lost acknowledgements and publication failures retry the existing event and outbox
 identity through `GroupPublicationController`, never a fresh send.
 
-## Consumer entry hooks still required
+## Native producer integration
 
-The normal integration owner must replace the human/native first-240-character
-branches with the controller after saving and verifying the producer receipt;
-retain raw messages independently when promotion is quiet or needs synthesis.
-It must attach the seven concrete hooks to scoped substantive producer paths,
-return protected same-DO commands and register writer projection aliases using
-the existing source/publication transport. Shared actions and worker/QUARK/file/job
-outcomes must use verified causal receipts, never a global event subscription.
-Hosted source/version digest verification, original-author mappings, lease policy,
-capacity composition, confirmed-delivery proof and evidenced disposition are
-required service hooks. Catch-up consumes the verified evidence index. These
-normal hooks are owned by the separate integration task, not this slice.
+Native Groups preserve the existing human and manager-reply originals. Exact shared
+**Work** runs also retain manager action/outcome, worker final result, QUARK hold/resume,
+checkpoint path and run/local-job state receipts. Capture reads the producer's durable
+transition and exact run lineage; it never subscribes to personal history or SSE prose.
+Ask, private contexts, synthetic control turns, drafts and account readings are excluded.
+Instruction and autonomous origins remain distinct. Evidence queries verify hosted source
+identity and exact registered work before indexing causal IDs or stopped/unresolved state.
+
+Each immutable receipt uses the existing original-delivery journal and member-owned summary
+lane. A finite eight-source pass retries the same event after authority loss, restart or a
+lost acknowledgement. It launches no model and does not select a group summary writer.
+The older selected-writer protocol remains separate for its retained sources.
+
+Worker receipts use immutable raw text from an exact live completed final event, captured
+before the native transcript's display limit. Display entries, streaming text and unknown
+phases cannot prove a final. Interrupted work or missing/unsupported final proof explicitly
+says `unavailable` with a reason; capture failure never blocks native run settlement.
+Proven finals contain the complete text up to the existing 1 MiB shared payload bound,
+including chunked originals. Larger or escape-heavy output explicitly says
+`local-only`; its immutable full body remains on the originating computer. Authenticated
+owner/paired-device `POST /api/groups/activity-original` accepts a saved `handle`, exact
+`receiptId`, byte `start` and `count` of at most sixteen 16 KiB blocks, returning base64,
+total bytes and SHA-256. It cannot read paths or another enrollment. A body that exceeds
+local capacity is explicitly `unavailable`, never represented as complete by its digest.
+
+Local capture retains at most 8,192 receipts/64 MiB plus 64 MiB of immutable result bodies.
+`POST /api/groups/activity-status` with a saved handle exposes pending delivery and capture
+gap counts, including job-binding capacity; exhaustion preserves existing identities and
+native work. File receipts contain at most sixteen filtered paths from an exact checkpoint
+commit, with an explicit omission flag, and no contents or host paths. They share native
+Git's private/runtime filter (including `data/`) and additionally exclude draft and hidden paths. Local checks do not
+establish real-provider or two-computer acceptance.
 
 ## Local verification
 

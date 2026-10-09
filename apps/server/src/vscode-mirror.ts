@@ -31,11 +31,17 @@ import {
 import { Store, Conflict, Missing } from './store.js';
 import { conversationHidden } from './conversations.js';
 import type { CodexDaemonChats } from './codex-daemon-chats.js';
+import {
+  defaultCodexHome,
+  readCodexThreadLabels,
+  type CodexThreadLabels,
+} from './codex-thread-index.js';
 
 type DaemonChats = Pick<
   CodexDaemonChats,
   'discover' | 'windows' | 'read' | 'send' | 'control' | 'goal' | 'goalAction' | 'close'
->;
+> &
+  Partial<Pick<CodexDaemonChats, 'metadata'>>;
 
 type Peer = {
   socket: WebSocket;
@@ -54,6 +60,14 @@ type Peer = {
     }
   >;
 };
+/** Display metadata only; never transcripts, drafts, window IDs or tokens. */
+const knownThreadSchema = mirrorStateSchema
+  .pick({ provider: true, source: true, label: true, title: true, lastActivityAt: true })
+  .required({ provider: true })
+  .strict();
+export type KnownThread = z.infer<typeof knownThreadSchema> & { threadId: string };
+const knownThreadLimit = 2000;
+type Listed = { provider: string; threadId: string; body: string };
 /** Too many reads are already waiting; the editor is connected, not offline. */
 class MirrorBusy extends Conflict {}
 const uncertain: MirrorResult = {
@@ -68,15 +82,37 @@ export class VscodeMirrors {
   private listing?: Promise<void>;
   private reads = new Map<string, Promise<MirrorState>>();
   private goalChanges = new Set<string>();
+  /** Mirrors mirror_listed_threads exactly, oldest listing first; never above the limit. */
+  private listed = new Map<string, Listed>();
+  private listedOrder = 0;
   readonly queue: MirrorOutbox;
   constructor(
     private readonly store: Store,
     private readonly daemon?: DaemonChats,
     private readonly prepareText: (text: string) => string = (text) => text,
+    private readonly codexHome: string = defaultCodexHome(),
   ) {
     store.db.exec(
       'CREATE TABLE IF NOT EXISTS mirror_deliveries (key TEXT PRIMARY KEY, input_hash TEXT NOT NULL, result TEXT NOT NULL)',
     );
+    store.db.exec(
+      `CREATE TABLE IF NOT EXISTS mirror_listed_threads (provider TEXT NOT NULL, thread_id TEXT NOT NULL,
+        body TEXT NOT NULL, listed INTEGER NOT NULL, PRIMARY KEY(provider, thread_id));
+      CREATE INDEX IF NOT EXISTS mirror_listed_threads_order ON mirror_listed_threads(listed)`,
+    );
+    for (const row of store.db
+      .prepare(
+        'SELECT provider, thread_id, body, listed FROM mirror_listed_threads ORDER BY listed',
+      )
+      .all()) {
+      const item = {
+        provider: String(row.provider),
+        threadId: String(row.thread_id),
+        body: String(row.body),
+      };
+      this.listed.set(`${item.provider}:${item.threadId}`, item);
+      this.listedOrder = Math.max(this.listedOrder, Number(row.listed));
+    }
     this.queue = new MirrorOutbox(store, {
       windows: () => this.list(true),
       read: (id) => this.read(id, {}),
@@ -120,6 +156,7 @@ export class VscodeMirrors {
     try {
       await this.listing;
       const windows = this.windows();
+      this.remember(windows);
       return includeArchived
         ? windows
         : windows.filter(
@@ -134,6 +171,92 @@ export class VscodeMirrors {
     } finally {
       this.listing = undefined;
     }
+  }
+  /** Retains identities the owner's list has shown, so an offline chat stays archivable.
+   *  Order is when each identity was last listed, even if its metadata is unchanged. */
+  private remember(windows: Omit<MirrorState, 'entries'>[]) {
+    const batch = new Map<string, Listed>();
+    for (const window of windows) {
+      if (!window.threadId || batch.size >= knownThreadLimit) continue;
+      const provider = window.provider ?? 'codex';
+      batch.set(`${provider}:${window.threadId}`, {
+        provider,
+        threadId: window.threadId,
+        body: JSON.stringify(
+          knownThreadSchema.parse({
+            provider,
+            source: window.source ?? 'vscode',
+            label: window.label,
+            title: window.title,
+            lastActivityAt: window.lastActivityAt,
+          }),
+        ),
+      });
+    }
+    // Repeated polls of the same list are already the newest rows: no write.
+    const newest = new Set([...this.listed.keys()].slice(-batch.size));
+    if (
+      [...batch].every(([key, item]) => newest.has(key) && this.listed.get(key)?.body === item.body)
+    )
+      return;
+    const put = this.store.db.prepare(
+      'INSERT OR REPLACE INTO mirror_listed_threads VALUES (?,?,?,?)',
+    );
+    const drop = this.store.db.prepare(
+      'DELETE FROM mirror_listed_threads WHERE provider=? AND thread_id=?',
+    );
+    // Memory changes only after the database commits, so both always hold the same rows.
+    const next = new Map(this.listed);
+    let order = this.listedOrder;
+    this.store.transaction(() => {
+      for (const [key, item] of batch) {
+        put.run(item.provider, item.threadId, item.body, ++order);
+        next.delete(key);
+        next.set(key, item);
+      }
+      for (const [key, item] of next) {
+        if (next.size <= knownThreadLimit) break;
+        drop.run(item.provider, item.threadId);
+        next.delete(key);
+      }
+    });
+    this.listed = next;
+    this.listedOrder = order;
+  }
+  /** A previously listed native thread, even after its editor disconnects or the app restarts. */
+  known(provider: 'codex' | 'claude', threadId: string): KnownThread | null {
+    const item = this.listed.get(`${provider}:${threadId}`);
+    if (!item) return null;
+    const known = knownThreadSchema.safeParse(JSON.parse(item.body));
+    return known.success && known.data.provider === provider ? { ...known.data, threadId } : null;
+  }
+  /** Threads known before the catalog existed: this computer's own outbox provenance or an exact
+   *  native Codex record. Labels come only from Codex (its server, else its local index);
+   *  never invented. Nothing is resumed, sent, shared or copied. */
+  async retained(provider: 'codex' | 'claude', threadId: string): Promise<KnownThread | null> {
+    const queued = !!this.store.db
+      .prepare('SELECT 1 FROM mirror_outbox WHERE provider=? AND thread_id=? LIMIT 1')
+      .get(provider, threadId);
+    let labels: CodexThreadLabels | null = null;
+    let unreadable = false;
+    if (provider === 'codex') {
+      labels = (await this.daemon?.metadata?.(threadId).catch(() => null)) ?? null;
+      if (!labels)
+        try {
+          labels = readCodexThreadLabels(this.codexHome, threadId);
+        } catch {
+          unreadable = true;
+        }
+    }
+    if (labels) return { ...knownThreadSchema.parse({ provider, ...labels }), threadId };
+    if (queued || unreadable)
+      throw new Conflict(
+        provider === 'codex'
+          ? 'Codex conversation details are unavailable right now. Retry this same request; nothing was saved.'
+          : 'This offline conversation’s title is not saved here. Open it in VS Code once, then retry; nothing was saved.',
+        'METADATA_UNAVAILABLE',
+      );
+    return null;
   }
   /** Resolves true when the shared refresh finished within `waitMs`. */
   private refresh(id: string, peer: Peer, waitMs: number): Promise<boolean> {

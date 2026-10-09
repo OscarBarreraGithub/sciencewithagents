@@ -1366,7 +1366,7 @@ describe('thin typed HTTP and fail-closed activation', () => {
           kind: 'invite',
           operationId: operationId(),
           inviteSecret: secret(),
-          ttlSeconds: 901,
+          ttlSeconds: L.inviteSeconds + 1,
         })
       ).status,
     ).toBe(400);

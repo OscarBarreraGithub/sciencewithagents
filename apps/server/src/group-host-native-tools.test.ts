@@ -67,7 +67,7 @@ it('ordinary native tools retain their catalog and private evidence uses only th
     expect(catalog(privateAgent).length).toBeLessThanOrEqual(20);
     expect(new Set(catalog(privateAgent)).size).toBe(catalog(privateAgent).length);
     expect(catalog(sharedAgent)).toContain('dock_delegate');
-    expect(catalog(sharedAgent)).not.toContain(GROUP_HOST_EVIDENCE_TOOL);
+    expect(catalog(sharedAgent)).toContain(GROUP_HOST_EVIDENCE_TOOL);
     const run = store.enqueue(privateAgent.id, randomUUID(), 'Private evidence read');
     store.updateRun(run.id, { status: 'running' });
     store.setSetting(`group:host-native-run:${run.id}`, {
@@ -86,12 +86,23 @@ it('ordinary native tools retain their catalog and private evidence uses only th
     });
     await expect(
       runtime.tool(privateAgent.id, randomUUID(), GROUP_HOST_EVIDENCE_TOOL, {}),
-    ).rejects.toThrow('original admitted private group turn');
+    ).rejects.toThrow('original admitted group turn');
     store.updateRun(run.id, { status: 'completed' });
     await expect(
       runtime.tool(privateAgent.id, randomUUID(), GROUP_HOST_EVIDENCE_TOOL, {}),
-    ).rejects.toThrow('admitted private group turn');
+    ).rejects.toThrow('admitted group turn');
     expect(invoke).toHaveBeenCalledTimes(1);
+    const sharedRun = store.enqueue(sharedAgent.id, randomUUID(), 'Shared evidence read');
+    store.updateRun(sharedRun.id, { status: 'running' });
+    store.setSetting(`group:host-native-run:${sharedRun.id}`, {
+      requestId: randomUUID(),
+      intent: 'ask',
+      context: sharedContext,
+    });
+    expect(await runtime.tool(sharedAgent.id, randomUUID(), GROUP_HOST_EVIDENCE_TOOL, {})).toEqual({
+      privateContext: sharedContext.sessionId,
+    });
+    expect(invoke).toHaveBeenCalledTimes(2);
     expect(provider).not.toHaveBeenCalled();
   } finally {
     await runtime.close();

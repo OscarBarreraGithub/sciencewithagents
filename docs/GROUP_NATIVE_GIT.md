@@ -31,6 +31,11 @@ applying the committed result; the project's human-review setting still applies.
 files exposes reviewed tasks and their exact apply previews. **Ask** does not start this
 file-writing workflow.
 
+**Unfinished files on this computer** shows local edits in the group workspace and up to
+50 task workspaces, with at most 16 file names per workspace. Likely private/runtime names
+are withheld. Status responses contain no file contents and never stage or publish unfinished work.
+Unavailable workspaces remain visible for repair; clean status is not a completed review.
+
 Automatic sync checks enabled workspaces about once a minute while this app is running.
 It fetches the repository's default branch and advances a clean, idle checkout only when
 Git can fast-forward, and only on the default branch. Existing work branches stay fixed;

@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { basename, isAbsolute } from 'node:path';
 import { promisify } from 'node:util';
 import WebSocket from 'ws';
 import { z } from 'zod';
@@ -294,6 +294,23 @@ export class CodexDaemonChats {
       ...(token && token.length <= 128 ? { stopToken: token, steerToken: token } : {}),
     };
     return value;
+  }
+
+  /** Stored display metadata for one exact thread. Never resumes it, reads turns or starts work. */
+  async metadata(
+    threadId: string,
+  ): Promise<Pick<Window, 'source' | 'label' | 'title' | 'lastActivityAt'>> {
+    await this.connect();
+    const thread = await this.thread(threadId, false);
+    const editor = thread.source === 'vscode';
+    return {
+      source: editor ? 'vscode' : 'codex-daemon',
+      label: editor
+        ? (basename(text(thread.cwd)) || 'VS Code').slice(0, 200)
+        : 'Codex on this computer',
+      title: (thread.name || thread.preview || 'Codex conversation').slice(0, 500),
+      lastActivityAt: latestConversationActivity([thread.updatedAt, thread.createdAt]),
+    };
   }
 
   async discover(): Promise<void> {

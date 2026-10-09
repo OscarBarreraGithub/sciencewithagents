@@ -127,14 +127,18 @@ it('pages every untriaged input with stable boundaries and rejects foreign or no
     { agentId: managerId, entryId: report.id },
     { agentId: managerId, entryId: assistantId },
     { agentId: managerId, entryId: randomUUID() },
-  ])
-    expect(() =>
+  ]) {
+    const save = () =>
       items.saveForManager(managerId, {
         key: randomUUID(),
         title: 'Invalid claim',
         sourceMessages: [source],
-      }),
-    ).toThrow(Conflict);
+      });
+    expect(save).toThrow(Conflict);
+    // The error names the exact rejected reference and where peer evidence belongs.
+    expect(save).toThrow(source.entryId);
+    expect(save).toThrow('Cite peer, worker or report evidence in the work-item detail');
+  }
   expect(() => items.ownerRequests(peer.id, { cursor: first.nextCursor })).toThrow(
     'another manager',
   );

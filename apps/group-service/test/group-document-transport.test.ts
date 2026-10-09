@@ -46,6 +46,15 @@ async function fixture() {
       token,
     );
     if (!reply.ok || reply.value.kind !== 'identity') throw new Error('join');
+    const installationId = reply.value.identity.installationId;
+    // New invitations join directly. Model a retained legacy pending enrollment
+    // explicitly so this fixture still exercises document authorization.
+    if (!approve)
+      await runInDurableObject(stub, (_, state) => {
+        state.storage.sql
+          .exec('UPDATE enrollments SET state=? WHERE installation_id=?', 'pending', installationId)
+          .toArray();
+      });
     if (approve)
       expect(
         (

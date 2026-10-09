@@ -98,10 +98,11 @@ The older selected-writer workflow remains separate for retained activity; selec
 does not take over these per-member summaries. Long originals and full summary storage
 remain original-only. See [summary limits](GROUP_PROMOTION.md#per-member-local-feed-summaries).
 
-**Manage** collects invitations, Shared files, the optional feed writer and local agent
-access. The separately configured isolated mode also offers its own shared actions, Git and reports. Saved agent
-receipts are collapsed separately; a request needing authorization opens its existing
-controls.
+**Manage** collects invitations, Shared files, Shared work and actions, Shared reports,
+the optional feed writer and local agent access. The shared board includes your manager’s
+saved proposals; review and confirm them there, including a competing override. Work stays
+on its original owner’s computer and account. Saved agent receipts are collapsed separately;
+a request needing authorization opens its existing controls.
 
 Work records the exact shared instruction before native handoff. Questions, private
 conversations and incoming group messages do not grant work authority. Cancellation and
@@ -118,10 +119,12 @@ Shared and private chats use separate native conversations. Local execution is n
 filesystem or credential isolation: the agent retains the computer's ordinary tools and
 account access. Existing isolated contexts remain separate and retain their own sign-in
 and acceptance controls; switching modes does not import their history or rebind a saved
-request. The separate action board, protected shared Git and captured-report sharing
-panels are unavailable in local mode; their saved records are retained. Native Ask and
-Work keep the agent's ordinary tools. These optional panels remain available only with
-their separately configured adapter.
+request. Native shared actions use ordinary task worktrees, independent review and exact
+integration previews. Native Work captures offered report files before the workspace can
+change again. Choose their explicit grants before reading or publishing them; **Manage →
+Shared reports** lists the selected shared copies. Native Ask and Work retain the agent's
+ordinary tools within their requested mode. Older isolated records and adapters remain
+separate. See [shared actions](GROUP_ACTIONS.md) and [reports](GROUP_DOCUMENTS.md).
 
 ## Shared files and Git
 
@@ -137,12 +140,12 @@ the shared feed. Previously saved private conversations and catch-up records sta
 the current two-tab Groups view does not expose those older controls. Notepad/draft conflicts
 require choosing a version rather than silently replacing your text.
 
-The older protected Git, captured-report and confirmed-action adapters remain separate
-from native mode and retain their records. Native shared-file sync uses ordinary task
-worktrees, independent review and exact integration previews. Creating a group alone
-still does not select or create a repository: connect the intended shared folder and
-collaborators with the setup agent before enabling sync. Private conversation history and
-credentials stay outside Git. [Status](STATUS.md#groups) records the current scope.
+Shared files also shows bounded unfinished-file status for the group folder and its task
+worktrees without staging or publishing those edits. The older protected Git adapter retains
+its separate records. Creating a group alone does not select or create a remote repository:
+connect the intended shared folder and collaborators with the setup agent before enabling
+sync. Private conversation history and credentials stay outside Git.
+[Status](STATUS.md#groups) records the current scope.
 
 ## Setup-agent boundary and limits
 

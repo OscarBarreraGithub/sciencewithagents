@@ -59,7 +59,8 @@ must retain their original answer semantics. [Worker tools](WORKER_TOOLS.md), [C
 ## Phone and other computers
 
 [Phone setup](PHONE_SETUP.md) supplies a copyable prompt for an external agent to configure
-a domain and named tunnel in the person's own Cloudflare account, with a human to-do list.
+a free `workers.dev` address and named tunnel in the person's own Cloudflare account,
+with a human to-do list. A purchased domain is not required.
 Existing connections are retained. Pair a browser using the temporary code, passkey creation
 and matching computer confirmation. There
 is no repeat lock. Turning access off blocks connections while preserving approved devices;

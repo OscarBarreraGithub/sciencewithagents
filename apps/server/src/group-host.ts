@@ -5,6 +5,10 @@ import {
   type DocumentTransportCommand,
 } from '@dock/shared/dist/group-document-transport.js';
 import { groupFeatureDocuments } from './group-feature-documents.js';
+import {
+  groupNativeActivitySchema,
+  type GroupNativeActivity,
+} from '@dock/shared/dist/group-native-activity.js';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
@@ -67,9 +71,23 @@ import {
 import { GroupHostNativeJournal, type GroupHostNativeRecord } from './group-host-native-journal.js';
 import type { GroupHostFeatureContext } from './group-host-context.js';
 import {
+  captureHostedArchive,
+  verifyHostedArchive,
+  HostedArchiveHeld,
+} from './group-hosted-archive.js';
+import {
+  groupExportArchiveRequestSchema,
+  groupExportArchiveSchema,
+  groupExportResultSchema,
+  GROUP_EXPORT_LIMITS,
+} from '@dock/shared/dist/group-hosted-export.js';
+import {
   groupActionCommandSchema,
+  groupActionRetainedReceiptSchema,
+  type GroupActionRetainedReceipt,
   groupActionResultSchema,
   type GroupActionCommand,
+  type GroupActionResult,
   groupOwnedTaskReceiptSchema,
   type GroupOwnedTaskReceipt,
 } from '@dock/shared/dist/group-actions.js';
@@ -1073,6 +1091,199 @@ export class GroupHost {
     const value = await this.active(enrollmentHandle);
     return this.actionContext(value.shared!.handle);
   }
+  /** Called only by the authenticated owner/paired-device HTTP confirmation
+   * handler, never included in the native coordination command port. */
+  async confirmAction(handle: string, raw: Extract<GroupActionCommand, { kind: 'confirm' }>) {
+    const command = groupActionCommandSchema.parse(raw);
+    if (command.kind !== 'confirm') throw new Conflict('Exact confirmation required.');
+    const feature = await this.authenticatedContext({ handle });
+    if (feature.context.visibility !== 'shared')
+      throw new Conflict('Confirm from the shared group.');
+    await feature.revalidate();
+    const { value } = await this.resolve(handle);
+    const result = await this.actionProofTransport(value, 'confirm', command);
+    await feature.revalidate();
+    return result;
+  }
+  /** Internal receipt-only recovery. The saved enrollment capability and exact
+   * completed local journal receipt remain usable after a membership revoke;
+   * this lane never resolves a manager, calls a model or starts/stops work. */
+  async reconcileAction(enrollmentHandle: string, raw: GroupActionRetainedReceipt) {
+    const receipt = groupActionRetainedReceiptSchema.parse(raw);
+    const value = this.record(enrollmentHandle);
+    if (
+      receipt.owner.groupId !== value.identity.groupId ||
+      receipt.owner.memberId !== value.identity.memberId ||
+      receipt.owner.installationId !== value.identity.installationId
+    )
+      throw new Conflict('Original owner receipt required.');
+    return this.actionProofTransport(value, 'reconcile', receipt);
+  }
+  /** Exact registered native source anchor for receipt recovery only. It does
+   * not return chat, originals, command transport or an execution grant. */
+  retainedActionContext(raw: GroupContext) {
+    const context = groupContextSchema.parse(raw);
+    if (context.provider === 'owner' || context.visibility !== 'shared')
+      throw new Conflict('Original shared native context required.');
+    this.events.trustedHostScope({
+      groupId: context.groupId,
+      memberId: context.memberId,
+      installationId: context.installationId,
+      visibility: 'shared',
+      source: {
+        sessionId: context.sessionId,
+        provider: context.provider,
+        nativeSessionId: context.nativeSessionId,
+        messageId: 'retained-action-receipt',
+      },
+      causalRefs: [],
+    });
+    const value = this.records().find(
+      (value) =>
+        value.identity.groupId === context.groupId &&
+        value.identity.memberId === context.memberId &&
+        value.identity.installationId === context.installationId,
+    );
+    if (!value?.shared) throw new Missing('Original enrollment unavailable.');
+    return {
+      owner: {
+        groupId: value.identity.groupId,
+        memberId: value.identity.memberId,
+        installationId: value.identity.installationId,
+        displayName: value.identity.displayName,
+      },
+      reconcile: (receipt: GroupActionRetainedReceipt) =>
+        this.reconcileAction(value.handle, receipt),
+    };
+  }
+  private async actionProofTransport(
+    value: Record,
+    lane: 'confirm' | 'reconcile',
+    body: unknown,
+  ): Promise<GroupActionResult> {
+    const config = this.configured();
+    const response = await this.http(
+      `${config.endpoint.replace(/\/$/, '')}/v1/groups/${value.identity.groupId}/actions/${lane}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${value.credential}`,
+          ...this.serviceHeaders(value, false, config),
+        },
+        body: JSON.stringify(body),
+        redirect: 'error',
+        credentials: 'omit',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    return groupActionResultSchema.parse(await this.bounded(response, 1_000_000));
+  }
+  /** Creator-owned SQL export. Browser selects only its saved group handle;
+   * destination, setup capability, paging and fresh private paths stay here. */
+  async exportHostedArchive(raw: unknown) {
+    const { handle, key } = groupExportArchiveRequestSchema.parse(raw),
+      value = this.record(handle);
+    if (!value.creator)
+      throw new GroupHostError(
+        403,
+        'GROUP_CREATOR_REQUIRED',
+        'Only the original creator can export hosted group data.',
+      );
+    try {
+      this.serviceHeaders(value, true);
+      return await this.lock(`hosted-export:${key}`, async () => {
+        const intent = z
+          .strictObject({ archiveId: z.uuid(), receipt: groupExportArchiveSchema.nullable() })
+          .parse(
+            this.intent(
+              `hosted-export:${key}`,
+              { handle, groupId: value.identity.groupId, serviceHash: value.serviceHash },
+              () => ({ archiveId: randomUUID(), receipt: null }),
+            ),
+          );
+        if (intent.receipt) {
+          try {
+            if (
+              publicationCanonical(verifyHostedArchive(this.directory, intent.archiveId)) !==
+              publicationCanonical(intent.receipt)
+            )
+              throw new Error('Archive changed.');
+          } catch {
+            throw new HostedArchiveHeld(intent.archiveId);
+          }
+        }
+        const receipt = await captureHostedArchive(
+          this.directory,
+          value.identity.groupId,
+          async (request) => {
+            const config = this.configured();
+            const response = await this.http(
+              `${config.endpoint.replace(/\/$/, '')}/v1/groups/${value.identity.groupId}/export`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${value.credential}`,
+                  ...this.serviceHeaders(value, true, config),
+                },
+                body: JSON.stringify(request),
+                redirect: 'error',
+                credentials: 'omit',
+                cache: 'no-store',
+                referrerPolicy: 'no-referrer',
+                signal: AbortSignal.timeout(GROUP_EXPORT_LIMITS.pageMs),
+              },
+            );
+            const result = groupExportResultSchema.parse(
+              await this.bounded(response, GROUP_EXPORT_LIMITS.pageBytes + 4096),
+            );
+            if (!result.ok)
+              throw new Error(
+                result.error === 'changed'
+                  ? 'The group changed during export. Choose a quiet window and start a fresh export.'
+                  : `Hosted export refused (${result.error}).`,
+              );
+            return result.value;
+          },
+          undefined,
+          intent.archiveId,
+        );
+        if (
+          intent.receipt &&
+          publicationCanonical(receipt) !== publicationCanonical(intent.receipt)
+        )
+          throw new Conflict('The retained archive receipt changed.');
+        if (!intent.receipt) {
+          const committed = this.db
+            .prepare('UPDATE gh_operations SET body=? WHERE key=? AND body=?')
+            .run(
+              JSON.stringify({ ...intent, receipt }),
+              `hosted-export:${key}`,
+              JSON.stringify(intent),
+            );
+          if (committed.changes !== 1)
+            throw new Conflict('Archive acknowledgement changed; retry the same request.');
+        }
+        return receipt;
+      });
+    } catch (error) {
+      if (error instanceof GroupHostError) throw error;
+      if (error instanceof Conflict)
+        throw new GroupHostError(409, 'GROUP_EXPORT_CONFLICT', error.message);
+      if (error instanceof HostedArchiveHeld)
+        throw new GroupHostError(503, 'GROUP_EXPORT_HELD', error.message);
+      throw new GroupHostError(
+        503,
+        'GROUP_EXPORT_UNAVAILABLE',
+        error instanceof Error
+          ? error.message
+          : 'Hosted export unavailable. Retry in a quiet window.',
+      );
+    }
+  }
   /** Internal same-owner promotion port. Protected credentials, source
    * registration and publication never enter the browser protocol. */
   /** Same authenticated enrollment/DO as chat; no browser path or endpoint. */
@@ -1296,6 +1507,74 @@ export class GroupHost {
     } catch {
       /* Summary capacity never prevents original delivery. */
     }
+  }
+  /** Typed internal producer port. Stable IDs and complete immutable originals
+   * precede delivery; no browser request or incoming message invokes this. */
+  async publishNativeActivity(enrollmentHandle: string, raw: GroupNativeActivity) {
+    const receipt = groupNativeActivitySchema.parse(raw),
+      feature = await this.nativeFeatureContext(receipt.context);
+    if (feature.enrollmentHandle !== enrollmentHandle)
+      throw new Conflict('Native activity owning enrollment changed.');
+    await feature.revalidate();
+    const value = await this.active(enrollmentHandle),
+      d = receipt.detail,
+      category =
+        d.producer === 'file' || d.producer === 'worker'
+          ? ('Finding' as const)
+          : ('Action' as const),
+      caption =
+        d.producer === 'file'
+          ? `Shared checkpoint ${d.commit.slice(0, 12)} · ${d.paths.length} paths${d.omitted ? ' (bounded selection)' : ''}`
+          : d.producer === 'worker' && d.result.availability !== 'complete'
+            ? `Shared worker · ${d.state} · ${d.result.availability === 'local-only' ? 'full original on originating computer' : 'original capture unavailable'}`
+            : `Shared ${d.producer} · ${d.state}`,
+      refs = [
+        ...new Set(
+          [
+            receipt.instructionEventId,
+            receipt.sharedGoalId,
+            receipt.origin?.eventId ?? null,
+          ].filter((id): id is NonNullable<typeof id> => id !== null),
+        ),
+      ],
+      source = {
+        sessionId: receipt.context.sessionId,
+        provider: receipt.context.provider,
+        nativeSessionId: receipt.context.nativeSessionId,
+        messageId: receipt.receiptId,
+      },
+      scope = {
+        groupId: receipt.context.groupId,
+        memberId: receipt.context.memberId,
+        installationId: receipt.context.installationId,
+        visibility: 'shared' as const,
+        source,
+        causalRefs: refs,
+      },
+      access = this.events.trustedHostScope(scope),
+      { event } = this.events.append(access, {
+        operationId: groupOperationIdSchema.parse(receipt.receiptId),
+        entityId: groupEntityIdSchema.parse(receipt.receiptId),
+        expectedRevision: 0,
+        category,
+        condensedText: caption,
+        original: nativeOriginal(publicationCanonical(receipt)),
+        evidenceRefs: refs,
+        corrects: null,
+      });
+    await this.registerSource(value, source, receipt.receiptId);
+    const pub = this.publication(value),
+      operation = pub.controller.enqueue(pub.access, [event.eventId]).operations[0]!;
+    this.retainMemberFeed({ enrollmentHandle, event, deliveryOperation: operation });
+    await this.drive(pub, operation);
+    await feature.revalidate();
+    return {
+      eventId: event.eventId,
+      state:
+        pub.controller.inspect(pub.access, operation).state === 'complete'
+          ? ('committed' as const)
+          : ('pending' as const),
+    };
   }
   /** Resolve a provisioned native context back to its own saved enrollment.
    * The native tool gets its distinct session, never another member's aside. */
@@ -2030,7 +2309,8 @@ export class GroupHost {
       // A compact typed receipt may be read without expanding arbitrary large
       // originals. The transport verifies this delivered chunk's exact digest.
       compactOriginal:
-        reply.header.event.manifest.chunks.length === 1 && reply.header.event.manifest.bytes <= 2048
+        reply.header.event.manifest.chunks.length === 1 &&
+        reply.header.event.manifest.bytes <= 32 * 1024
           ? (reply.chunks[0]?.text ?? null)
           : null,
     };

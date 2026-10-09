@@ -7,6 +7,8 @@ import {
   GroupDocumentGrant,
   type GroupDocumentReaderProps,
 } from '../src/groups/GroupDocumentLink';
+import { ChatMarkdown } from '../src/ChatMarkdown';
+import { GroupReports } from '../src/groups/GroupReports';
 import { DocumentReading } from '../src/DocumentReading';
 import '../src/documents.css';
 const handle = 'd5ced7dc-df8d-4e94-82b1-a4f97218cd9c',
@@ -80,6 +82,10 @@ function App() {
     <main style={{ maxWidth: 700, margin: 'auto', padding: 12 }}>
       <h1>Scoped document UI fixture</h1>
       <GroupDocumentScope handle={handle}>
+        <ChatMarkdown entry={{ agentId: grantId, id: grantId }}>
+          {`[Personal report](#/latex/${grantId}) [Host report](/private/report.tex) [Web reference](https://example.com/research) [Scoped report](${href})`}
+        </ChatMarkdown>
+        <GroupReports handle={handle} />
         <GroupDocumentGrant offer={offer} onGranted={(link) => setHref(link.href)} />
         <p>
           <GroupDocumentLink href={href}>Open my report</GroupDocumentLink>

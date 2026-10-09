@@ -24,8 +24,18 @@ export interface GroupCoordinationResource {
   owner: GroupActionActor;
   start: z.infer<typeof delegateSchema>;
   stop: z.infer<typeof pauseWorkerSchema>;
+  /** Exact owner-side Start receipt. Never resolve Stop by a worker's current turn. */
+  stopRunId?: string;
 }
 export type GroupCoordinationOutcome = NonNullable<GroupAction['outcome']>;
+/** A definite admission refusal before any native worker effect. */
+export class GroupCoordinationBlocked extends Error {
+  constructor(readonly outcome: GroupCoordinationOutcome) {
+    super(outcome.message);
+    if (outcome.status !== 'blocked' || outcome.workerId !== null || outcome.jobId !== undefined)
+      throw new Error('A blocked outcome must prove no worker/job effect.');
+  }
+}
 export interface GroupCoordinationLane {
   readonly owner: GroupActionActor;
   /** Existing owner-side durable operation receipt, NOT provider probing.
@@ -67,6 +77,8 @@ export interface GroupCoordinationNormalTools {
   workForWorker(agentId: string): Promise<GroupActionWork>;
 }
 export interface GroupCoordinationPorts {
+  /** Compiled receipt-only original-owner reconciliation; no new effect. */
+  retained?(action: GroupAction): Promise<GroupAction | null>;
   command(command: z.infer<typeof groupActionCommandSchema>): Promise<GroupActionResult>;
   resolve(workId: string): Promise<GroupCoordinationResource>;
   ownerLane(owner: GroupActionActor): Promise<GroupCoordinationLane | null>;
@@ -87,6 +99,7 @@ export async function dispatchGroupAction(
   action: GroupAction,
   ports: GroupCoordinationPorts,
 ): Promise<GroupAction> {
+  if (['completed', 'superseded', 'revoked'].includes(action.state)) return action;
   const resource = await ports.resolve(action.proposal.workId),
     owner = action.proposal.observed.owner;
   if (
@@ -138,6 +151,15 @@ export async function dispatchGroupAction(
       }),
     );
   } catch (error) {
+    if (error instanceof GroupCoordinationBlocked)
+      return resultAction(
+        await ports.command({
+          kind: 'complete',
+          operationId: action.actionId,
+          actionId: action.actionId,
+          outcome: error.outcome,
+        }),
+      );
     await ports.command({
       kind: 'uncertain',
       operationId: phaseId(action.actionId, 2),
@@ -237,7 +259,7 @@ export function groupCoordinationTools(
           workId: work.workId,
           expectedRevision: work.revision,
           action: 'stop',
-          origin: (await origin(), work.latest.origin),
+          origin: await origin(),
         });
       },
     ),
@@ -251,9 +273,8 @@ export function groupCoordinationTools(
         const c = groupActionCommandSchema.parse(raw);
         if (c.kind !== 'propose') throw new Error('Proposal required.');
         // Origin comes from verified native source/shared goal, not model-selected evidence.
-        await origin(); // Exact current Work grant is required.
-        const resource = await ports.resolve(c.workId);
-        return ports.command({ ...c, origin: resource.work.latest.origin });
+        const causal = await origin(); // Exact current Work grant is required.
+        return ports.command({ ...c, origin: causal });
       },
     ),
     tool(
@@ -264,6 +285,8 @@ export function groupCoordinationTools(
         const c = groupActionCommandSchema.parse(raw);
         if (c.kind !== 'confirm') throw new Error('Confirmation required.');
         await origin(); // A native Ask turn cannot acquire Work authority.
+        if (c.override)
+          throw new Error('A competing override requires human confirmation in the group board.');
         return ports.command(c);
       },
     ),

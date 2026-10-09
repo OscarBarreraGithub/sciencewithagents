@@ -37,6 +37,22 @@ export const groupNativeGitViewSchema = z.strictObject({
   dirty: z.boolean(),
   busy: z.boolean(),
   message: z.string().max(1000),
+  localEdits: z
+    .array(
+      z.strictObject({
+        taskId: z.uuid().nullable(),
+        label: z.string().max(200),
+        state: z.enum(['clean', 'changed', 'unavailable']),
+        changed: z.number().int().nonnegative(),
+        withheld: z.number().int().nonnegative(),
+        truncated: z.boolean(),
+        files: z
+          .array(z.strictObject({ path: z.string().max(512), status: z.string().max(2) }))
+          .max(16),
+      }),
+    )
+    .max(51)
+    .default([]),
   tasks: z
     .array(
       z.strictObject({

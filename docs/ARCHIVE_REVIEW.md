@@ -8,6 +8,13 @@ archiving never calls the native provider's archive action. This is separate fro
 a project manager. Saved-text search still includes archived app chats and available shared
 native transcripts. Shared archives use provider/thread identity rather than an editor window,
 and keep a bounded title/caption so they can be listed and restored while the editor is offline.
+The server retains provider/thread identity and display metadata (never transcripts, drafts or
+window IDs) for the 2,000 most recently listed shared threads, so a first archive works offline
+and after restart. A thread offline since before that record existed is recognized from this
+computer's own queued-message provenance or Codex's own record of that exact thread: its
+server's metadata, or else a read-only lookup in Codex's local thread index. Labels are never
+invented: if they cannot be read, the request is refused as retryable and nothing is saved, so
+the same request succeeds later. Unknown identities are refused.
 Full native history still requires its original source to be available.
 
 `GET /api/conversations/visibility` pages saved visibility metadata (up to 100 rows, with an

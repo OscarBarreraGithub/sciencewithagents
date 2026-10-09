@@ -8,6 +8,8 @@ Read README.md, docs/STATUS.md and docs/DECISIONS.md before architectural change
 Use docs/README.md to find technical references; docs/FEATURES.md describes delivered
 behavior and docs/DESIGN.md preserves interface requirements. Update the relevant guide
 when behavior changes. Keep current status separate from historical verification.
+Before maintenance takeovers or release work, read docs/FAILURE_REVIEW.md and apply its
+lessons about instruction provenance, bounded work, host lifecycle and acceptance evidence.
 
 Preserve native agent tools, skills, hooks and permissions. QUARK observes and supervises
 work; do not rebuild provider capabilities as a tool-by-tool restriction framework.

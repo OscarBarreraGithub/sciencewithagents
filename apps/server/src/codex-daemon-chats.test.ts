@@ -817,3 +817,44 @@ it.each(['timeout', 'network'] as const)(
     expect(f.mutations()).toEqual([]);
   },
 );
+
+it('reads stored metadata for one exact thread without loading turns or starting work', async () => {
+  const f = fixture();
+  const stored = (id: string, extra: Record<string, unknown>) =>
+    f.state.threads.set(id, {
+      ...f.thread,
+      id,
+      name: '',
+      updatedAt: 1760000000,
+      ...extra,
+    } as Thread);
+  stored('editor-thread', {
+    source: 'vscode',
+    cwd: '/fixture/agent-dock',
+    preview: 'Summarize Agent Dock vision',
+  });
+  stored('terminal-thread', { source: 'cli', name: 'Terminal session' });
+  expect(await f.chats.metadata('editor-thread')).toEqual({
+    source: 'vscode',
+    label: 'agent-dock',
+    title: 'Summarize Agent Dock vision',
+    lastActivityAt: '2025-10-09T08:53:20.000Z',
+  });
+  expect(await f.chats.metadata('terminal-thread')).toMatchObject({
+    source: 'codex-daemon',
+    label: 'Codex on this computer',
+    title: 'Terminal session',
+  });
+  await expect(f.chats.metadata('missing-thread')).rejects.toThrow();
+  expect(
+    f
+      .frames()
+      .filter((frame) => !frame.method.startsWith('initialize'))
+      .map((frame) => [frame.method, frame.params.includeTurns]),
+  ).toEqual([
+    ['thread/read', false],
+    ['thread/read', false],
+    ['thread/read', false],
+  ]);
+  expect(f.mutations()).toHaveLength(0);
+});

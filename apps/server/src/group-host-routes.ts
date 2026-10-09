@@ -9,6 +9,7 @@ import { HostedPublicationError } from './group-publication-host-transport.js';
 import { registerGroupActionsRoutes } from './group-actions-routes.js';
 import { registerGroupFeatureReading } from './group-features-reading.js';
 import { groupHostNativeGit } from './group-host-native-git.js';
+import { groupHostActivity } from './group-native-activity.js';
 /** Registration deliberately requires an auth predicate even on loopback. */
 export function registerGroupHostRoutes(
   app: FastifyInstance,
@@ -26,6 +27,10 @@ export function registerGroupHostRoutes(
   registerGroupActionsRoutes(
     app,
     {
+      confirmHuman: async (handle, command) => {
+        const result = await host.confirmAction(handle, command);
+        return groupFeatureCoordination(host)?.after(result, command) ?? result;
+      },
       authenticatedContext: async (handle) => {
         const context = await host.actionContext(handle);
         return {
@@ -58,6 +63,26 @@ export function registerGroupHostRoutes(
     status: (v: unknown) => host.status(v),
     feed: (v: unknown) => host.feed(v),
     original: (v: unknown) => host.original(v),
+    'activity-status': (v: unknown) => {
+      const activity = groupHostActivity(host);
+      if (!activity)
+        throw new GroupHostError(
+          503,
+          'GROUP_ACTIVITY_UNAVAILABLE',
+          'Native shared activity is unavailable on this computer.',
+        );
+      return activity.status(host, v);
+    },
+    'activity-original': (v: unknown) => {
+      const activity = groupHostActivity(host);
+      if (!activity)
+        throw new GroupHostError(
+          503,
+          'GROUP_ACTIVITY_UNAVAILABLE',
+          'Native shared activity is unavailable on this computer.',
+        );
+      return activity.original(host, v);
+    },
     'catch-up': (v: unknown) => host.catchUp(v),
     invite: (v: unknown) => host.invite(v),
     pending: (v: unknown) => host.pending(v),
@@ -87,6 +112,7 @@ export function registerGroupHostRoutes(
       return git.request(v);
     },
     'document-offer': (v: unknown) => host.documentOffer(v),
+    'hosted-export': (v: unknown) => host.exportHostedArchive(v),
   };
   for (const [name, fn] of Object.entries(actions))
     app.post(

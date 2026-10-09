@@ -44,6 +44,8 @@ Counts describe database records, not proof that all provider context was retain
 Not included:
 
 - Project repositories, unsaved project changes or task worktree files.
+- Groups journals, membership configuration, report copies and shared workspaces;
+  use the separate [Groups recovery runbook](GROUP_RECOVERY.md).
 - Codex/Claude's original session files, exact provider caches or hidden reasoning.
 - VS Code mirror transcripts or drafts that exist only in a browser/editor.
 - Provider sign-in files, external credentials, tunnel tokens, host/source-backup

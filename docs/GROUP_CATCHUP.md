@@ -1,9 +1,25 @@
-# Private incremental catch-up and evidence
+# Shared evidence questions and retained private catch-up
 
-The normal Groups host mounts authenticated catch-up/query routes, the React view and the
-private native query capability through `GroupFeatureReading`. The verified source adapter
-reads current authorized group-service evidence. Local route/browser checks do not prove
-real provider, deployed hosting or two-installed-computer acceptance; see [Status](STATUS.md#groups).
+Normal native Groups exposes `dock_group_evidence_query` and `dock_group_evidence_original`
+to the Group manager, including read-only Ask. These tools read authenticated shared sources;
+they do not publish, launch work or open a private conversation. A new query indexes at most
+16 additional shared event headers and verifies typed facts before committing each page.
+An exact query ID pins its watermark and index revision for retry and continuation. Original
+bodies are separately paged with a whole-body SHA-256 check. Missing facts and incomplete
+coverage remain explicit.
+
+A completed shared `offline_changes` query advances only this manager's local reading
+position; it does not acknowledge a retained private aside. Result pages contain at most eight
+records and 256 KiB of encoded JSON, including escaping; smaller pages retain exact continuation
+identities. Each new query is incremental, rather than an unbounded history read.
+
+The earlier private-aside catch-up controls are absent from the normal native journey. Their
+saved histories, routes and stores remain separate. The following private snapshot protocol is
+a technical reference for those retained records, not a production acceptance claim for that
+superseded interface. Local fixtures do not prove real-provider, creator-deployed service or
+two-installed-computer acceptance; see [Status](STATUS.md#groups).
+
+## Retained private snapshot protocol
 
 `GroupCatchupStore` stores last-read by group/member/installation/enrollment, independently
 of shared/private session. It resumes the saved snapshot rather than starting at zero. Pages
@@ -48,8 +64,9 @@ query, prompt or result. The read modules have no shared-event/outbox or executi
   `/api/groups/catchup/start`, `/page`, `/ack`, `/api/groups/evidence/query` and `/original`.
   `resolve(handle)` must call the existing authenticated host context resolver, never
   deserialize a scope. Retain owner/paired-device authentication and protected enrollment checks.
-- `GroupCatchup({ handle, onClose, members? })` replaces the old catch-up excerpt action in
-  normal Groups. `members` contains authenticated display identities, not authority grants.
+- `GroupCatchup({ handle, onClose, members? })` is the retained private snapshot component.
+  Normal native Groups uses the manager evidence tools. `members` contains authenticated
+  display identities, not authority grants.
 - `GroupEvidenceIndex(path, sourcePort)` provides `ingestVerifiedShared(reader,eventId)`,
   `observePage(reader,events)`, `pageEvidence(reader,events)` and
   `query(reader,query,limit,continuation,catchup,queryId)`. Ingest uses hosted remote sequence;
@@ -58,7 +75,7 @@ query, prompt or result. The read modules have no shared-event/outbox or executi
   `GROUP_PRIVATE_EVIDENCE_TOOL` includes name, description and JSON input schema. Bind `resolve`
   to the persisted owning private context; never use model-supplied membership or global history.
 
-Private read stores have finite retained capacity: 128 member-enrollments, 512 snapshots per
+Read stores have finite retained capacity: 128 member-enrollments, 512 snapshots per
 member, 8192 delivered pages, 8192 indexed shared records, 4096 query requests/continuations,
 and a 64 MiB SQLite page limit for each store. Exhaustion refuses new work without resetting
 last-read or deleting uncertain identities; exact retained retries remain available. These local

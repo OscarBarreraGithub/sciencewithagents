@@ -44,6 +44,7 @@ import {
 } from './slurm-command.js';
 import type { RemoteScriptReader } from './slurm-remote-script.js';
 import { Conflict, Missing, type Store } from './store.js';
+import { toolInputSchema } from './tool-schema.js';
 import { usageSummary } from './usage.js';
 
 const prefix = 'slurm-review:';
@@ -138,7 +139,7 @@ export const slurmReviewToolDefinition = {
   name: 'dock_slurm_review',
   description:
     'Request the owner-configured policy review of a proposed sbatch/salloc/srun submission, or read one saved result with {reviewId}. Pass the exact command you will run (including any ssh alias wrapper). When the host cannot read the script (remote file, generated, loop or piped), include scriptContent with its exact text. Returns immediately: a pending review ends with a report to you; finish or continue other work instead of polling. A changed command, script, policy or native limit needs a new review. This is a policy review, not a guarantee; native Slurm remains authoritative. Never submits or cancels jobs.',
-  inputSchema: z.toJSONSchema(slurmReviewToolSchema),
+  inputSchema: toolInputSchema(slurmReviewToolSchema),
   deferLoading: false,
 };
 export const slurmReviewToolRoles = ['manager', 'planner', 'implementer', 'researcher'] as const;

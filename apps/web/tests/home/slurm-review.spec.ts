@@ -415,9 +415,15 @@ test('partial reviewer draft survives reload and cannot save until account and n
   await area(page).getByRole('button', { name: 'Save review settings' }).click();
   await expect(area(page)).toContainText('Check the model, rules and numeric limits');
   expect(requests).toEqual([]);
-  await area(page).getByLabel('Default account', { exact: true }).fill('fixture_lab');
+  const account = area(page).getByLabel('Default account', { exact: true });
+  // Linux iPhone WebKit previously acknowledged an offscreen fill while retaining
+  // the invalid value. Exercise the visible, focused correction a person makes.
+  await account.click();
+  await account.fill('fixture_lab');
+  await expect(account).toHaveValue('fixture_lab');
   await area(page).getByLabel('Approval lasts (minutes)').fill('60');
   await area(page).getByLabel('Allowed partitions', { exact: true }).fill('test');
+  await expect(account).toHaveValue('fixture_lab');
   await area(page).getByRole('button', { name: 'Save review settings' }).click();
   await expect.poll(() => requests.length).toBe(1);
   expect(requests[0]).toMatchObject({

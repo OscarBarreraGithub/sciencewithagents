@@ -26,6 +26,7 @@ export interface GroupDocumentReaderProps {
 }
 const Scope = createContext<string | null>(null);
 const SharedTarget = createContext<string | null>(null);
+export const useGroupDocumentScope = () => useContext(Scope);
 /** Normal GroupChat owner wraps Conversation with this scope, never with synthetic Store.agent IDs. */
 export function GroupDocumentScope({
   handle,
@@ -194,6 +195,15 @@ export function GroupDocumentGrant({
         Allow the selected report and only the supporting files you check. A private report stays in
         this aside.
       </p>
+      {offer.files.some((file) => file.kind === 'tex') &&
+        !offer.files.some((file) => file.kind === 'pdf') && (
+          <p>
+            Need a PDF? Ask your Group manager with Work to create it in the group workspace and
+            link both the PDF and matching LaTeX source in its final reply. Open that new reply,
+            select the PDF and check its source and supporting files. Reading can open this source
+            now.
+          </p>
+        )}
       {offer.files
         .filter((f) => f.handle !== entry)
         .map((f) => (

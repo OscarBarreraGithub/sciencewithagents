@@ -64,6 +64,17 @@ test('native Groups management saves a blank GitHub username and retries its exa
     dirty: false,
     busy: false,
     message: 'Shared files are ready. Automatic sync is off.',
+    localEdits: [
+      {
+        taskId: null,
+        label: 'Group workspace',
+        state: 'changed',
+        changed: 2,
+        withheld: 1,
+        truncated: false,
+        files: [{ path: 'chapters/unfinished.tex', status: ' M' }],
+      },
+    ],
     tasks: [],
     preview: null,
   };
@@ -106,6 +117,7 @@ test('native Groups management saves a blank GitHub username and retries its exa
   ).toBeHidden();
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
   const panel = page.getByRole('region', { name: 'Shared GitHub workspace', exact: true });
+  await expect(panel).toHaveCount(1);
   await expect(
     panel.getByRole('heading', { name: 'Shared files on GitHub', exact: true }),
   ).toBeVisible();
@@ -114,6 +126,11 @@ test('native Groups management saves a blank GitHub username and retries its exa
     view.repository!,
   );
   const username = panel.getByLabel('Your GitHub username (optional)', { exact: true });
+  await panel.getByText('Unfinished files on this computer', { exact: true }).click();
+  await expect(panel.getByText('chapters/unfinished.tex', { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText('1 private or runtime names withheld.', { exact: true }),
+  ).toBeVisible();
   const automaticSync = panel.getByLabel('Automatic sync', { exact: true });
   await expect(username).toHaveValue('');
   await automaticSync.check();
@@ -131,6 +148,7 @@ test('native Groups management saves a blank GitHub username and retries its exa
     page.getByRole('heading', { name: 'Native files River', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await expect(panel).toHaveCount(1);
   await expect(username).toHaveValue('');
   await expect(automaticSync).toBeChecked();
   await expect(retry).toBeVisible();
@@ -160,4 +178,118 @@ test('native Groups management saves a blank GitHub username and retries its exa
   await page.screenshot({
     path: join(root, 'data/normal-groups', `${test.info().project.name}-native-git-manage.png`),
   });
+});
+test('creator can retry a changed hosted snapshot and see a verified private archive in Manage', async ({
+  page,
+}) => {
+  const archiveId = '99999999-9999-4999-8999-999999999999';
+  let attempts = 0;
+  const keys: string[] = [];
+  await page.route('**/api/groups/hosted-export', async (route) => {
+    const request = route.request().postDataJSON();
+    expect(Object.keys(request)).toEqual(['handle', 'key']);
+    keys.push(request.key);
+    if (++attempts === 1) {
+      await route.fulfill({
+        status: 503,
+        json: {
+          code: 'GROUP_EXPORT_UNAVAILABLE',
+          error: 'The group changed during export. Choose a quiet window and start a fresh export.',
+        },
+      });
+      return;
+    }
+    if (attempts === 2) {
+      await route.abort('failed');
+      return;
+    }
+    if (attempts === 4) {
+      await route.fulfill({
+        status: 503,
+        json: {
+          code: 'GROUP_EXPORT_HELD',
+          error: 'An interrupted private archive needs inspection. Its bytes were preserved.',
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        archiveId,
+        groupId: '88888888-8888-4888-8888-888888888888',
+        pages: 8,
+        rows: 144,
+        bytes: 65536,
+        sha256: 'a'.repeat(64),
+        createdAt: new Date().toISOString(),
+      },
+    });
+  });
+  const [name, ...parts] = connection.cookie.split('=');
+  await page
+    .context()
+    .addCookies([
+      { name, value: parts.join('='), url: connection.origin, httpOnly: true, sameSite: 'Strict' },
+    ]);
+  await page.goto(`${connection.origin}/#/home`);
+  await page.goto(`${connection.origin}/#/chats/groups`);
+  await page.getByRole('button', { name: 'New group', exact: true }).click();
+  await page.getByLabel('Your display name', { exact: true }).fill('Creator');
+  await page.getByLabel('Project name', { exact: true }).fill('Private archive River');
+  await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Private archive River', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  const summary = page.locator('summary').filter({ hasText: 'Private hosted backup' });
+  await expect(summary).toHaveCount(1);
+  await summary.click();
+  const exportButton = page.getByRole('button', { name: 'Export hosted data', exact: true });
+  await exportButton.click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'The group changed during export' }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await expect(summary).toHaveCount(1);
+  await summary.click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'An export acknowledgement is pending' }),
+  ).toBeVisible();
+  await exportButton.click();
+  await expect.poll(() => attempts).toBe(2);
+  await expect(exportButton).toBeEnabled();
+  await page.reload();
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await expect(summary).toHaveCount(1);
+  await summary.click();
+  await exportButton.click();
+  await expect(
+    page.getByRole('status').filter({ hasText: `Verified private archive ${archiveId}` }),
+  ).toBeVisible();
+  expect(attempts).toBe(3);
+  expect(new Set(keys).size).toBe(1);
+  await page.reload();
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await expect(summary).toHaveCount(1);
+  await summary.click();
+  await expect(
+    page.getByRole('status').filter({ hasText: `Verified private archive ${archiveId}` }),
+  ).toBeVisible();
+  expect(attempts).toBe(3);
+  await page.getByRole('button', { name: 'Export another snapshot', exact: true }).click();
+  const fresh = page.getByRole('button', {
+    name: 'Keep held archive and export a fresh snapshot',
+    exact: true,
+  });
+  await expect(fresh).toBeVisible();
+  await fresh.click();
+  await expect(
+    page.getByRole('button', { name: 'Export another snapshot', exact: true }),
+  ).toBeVisible();
+  expect(attempts).toBe(5);
+  expect(keys[3]).not.toBe(keys[2]);
+  expect(keys[4]).not.toBe(keys[3]);
+  const dialog = page.getByRole('dialog');
+  expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
 });

@@ -544,7 +544,12 @@ export function claudeArguments(options: ClaudeSessionOptions): string[] {
     options.tools.some((tool) => !coordinationName.test(tool.name))
   )
     throw new Error('Invalid coordination tool catalog.');
-  for (const tool of options.tools) jsonObject.parse(tool.inputSchema);
+  // Claude drops the whole dock MCP server when one input schema lacks an object root.
+  for (const tool of options.tools)
+    if (jsonObject.parse(tool.inputSchema).type !== 'object')
+      throw new Error(
+        `Invalid coordination tool catalog: ${tool.name} input schema needs a top-level object type.`,
+      );
   if (
     (options.writableDirectories ?? []).length > 4 ||
     (options.writableDirectories ?? []).some(

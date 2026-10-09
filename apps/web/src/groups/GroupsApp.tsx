@@ -1,4 +1,5 @@
 import { GroupReports } from './GroupReports';
+import { GroupHostedExport } from './GroupHostedExport';
 import { GroupSetupPrompt } from './GroupSetupPrompt';
 import { GroupJoinReceipt } from './GroupJoinReceipt';
 import { GroupGitPanel } from './GroupGitPanel';
@@ -605,22 +606,35 @@ export function GroupsApp({
                 </details>
                 {selected.native.executionMode === 'host' && (
                   <GroupNativeGitPanel
-                    key={selected.shared.handle}
+                    key={`native-git:${selected.shared.handle}`}
                     handle={selected.shared.handle}
                   />
                 )}
+                <details className="group-host-members group-host-actions">
+                  <summary>Shared work and actions</summary>
+                  <GroupActionsBoard
+                    key={`actions:${selected.shared.handle}`}
+                    handle={selected.shared.handle}
+                    actor={selected.member}
+                  />
+                </details>
                 {selected.native.executionMode !== 'host' && (
                   <>
-                    <details className="group-host-members group-host-actions">
-                      <summary>Shared work and actions</summary>
-                      <GroupActionsBoard
-                        key={selected.shared.handle}
-                        handle={selected.shared.handle}
-                      />
-                    </details>
-                    <GroupGitPanel key={selected.shared.handle} handle={selected.shared.handle} />
-                    <GroupReports key={selected.shared.handle} handle={selected.shared.handle} />
+                    <GroupGitPanel
+                      key={`git:${selected.shared.handle}`}
+                      handle={selected.shared.handle}
+                    />
                   </>
+                )}
+                <GroupReports
+                  key={`reports:${selected.shared.handle}`}
+                  handle={selected.shared.handle}
+                />
+                {creatorHandle && (
+                  <GroupHostedExport
+                    key={`hosted-export:${creatorHandle}`}
+                    handle={creatorHandle}
+                  />
                 )}
                 <details className="group-host-members">
                   <summary>Shared feed agent</summary>

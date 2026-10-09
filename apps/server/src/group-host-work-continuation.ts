@@ -2,6 +2,7 @@ import { groupContextSchema } from '@dock/shared';
 import { z } from 'zod';
 import { Conflict, type Store, type PrivateRun } from './store.js';
 import { publicationCanonical } from './group-publication-protocol.js';
+import { captureGroupRunTransition } from './group-native-activity-producers.js';
 
 export const groupHostTurnSchema = z.object({
   requestId: z.uuid(),
@@ -62,6 +63,7 @@ export function inheritGroupHostWork(
     // Read-only reviewers/researchers retain their ordinary assigned permission.
     permission: receiver.role === 'manager' ? 'workspace-write' : receiver.permission,
   });
+  captureGroupRunTransition(store, target.id, `run:${target.id}:queued`);
 }
 /** Exact durable request family; no project-wide/most-recent-agent lookup. */
 export function groupHostWorkFamily(store: Store, original: PrivateRun) {

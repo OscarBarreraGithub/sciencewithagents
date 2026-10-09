@@ -16,6 +16,14 @@ import {
 import type { Runtime } from './runtime.js';
 import { GroupCatchupError } from './group-catchup-context.js';
 import { groupFeatureEvidence } from './group-feature-evidence.js';
+import {
+  createGroupEvidenceOriginal,
+  GROUP_EVIDENCE_ORIGINAL_TOOL,
+} from './group-evidence-original.js';
+import {
+  createGroupSharedEvidenceQuery,
+  GROUP_SHARED_EVIDENCE_TOOL,
+} from './group-evidence-shared.js';
 
 const readers = new WeakMap<GroupHost, GroupFeatureReading>();
 export function groupFeatureReading(host: GroupHost) {
@@ -98,7 +106,7 @@ export function registerGroupReadingCapabilities(runtime: Runtime, host: GroupHo
       ? [
           {
             ...GROUP_PRIVATE_EVIDENCE_TOOL,
-            invoke: async (raw) => {
+            invoke: async (raw: unknown) => {
               const reading = readers.get(host);
               if (!reading) throw new Error('Authenticated group reading is unavailable.');
               const query = createGroupPrivateEvidenceQuery({
@@ -106,11 +114,45 @@ export function registerGroupReadingCapabilities(runtime: Runtime, host: GroupHo
                 evidence: reading.evidence,
                 catchup: reading.catchup,
               });
-              return { content: [{ type: 'text', text: JSON.stringify(await query(raw)) }] };
+              return {
+                content: [{ type: 'text' as const, text: JSON.stringify(await query(raw)) }],
+              };
             },
           },
         ]
       : [];
   registerGroupNativeCapabilities(runtime, 'private-history', tools);
-  registerGroupHostEvidence(runtime, tools);
+  registerGroupHostEvidence(runtime, (context) => [
+    {
+      ...GROUP_EVIDENCE_ORIGINAL_TOOL,
+      invoke: async (raw) => ({
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              await createGroupEvidenceOriginal(() => host.nativeFeatureContext(context))(raw),
+            ),
+          },
+        ],
+      }),
+    },
+    ...(context.visibility === 'private'
+      ? tools(context)
+      : [
+          {
+            ...GROUP_SHARED_EVIDENCE_TOOL,
+            invoke: async (raw: unknown) => {
+              const reading = readers.get(host);
+              if (!reading) throw new Error('Authenticated group reading is unavailable.');
+              const query = createGroupSharedEvidenceQuery({
+                resolve: () => host.nativeFeatureContext(context),
+                evidence: reading.evidence,
+              });
+              return {
+                content: [{ type: 'text' as const, text: JSON.stringify(await query(raw)) }],
+              };
+            },
+          },
+        ]),
+  ]);
 }

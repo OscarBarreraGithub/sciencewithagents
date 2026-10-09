@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   groupActionActorSchema,
+  groupActionLifecycleOperationId,
   type GroupActionActor,
   type GroupActionCommand,
   type GroupAction,
@@ -60,6 +61,18 @@ function setup(file = ':memory:') {
       return who;
     },
     admitMutation: () => {},
+    accountStorage: (operation) => operation(),
+    membership: (a) => (active.has(a.installationId) ? 'active' : 'revoked'),
+    reserveLifecycle: () => {},
+    releaseLifecycle: () => {},
+    requireHumanConfirmation: (p, c, a) => ({
+      receiptId: p.proposalId,
+      proposalId: p.proposalId,
+      revision: c.expectedRevision,
+      operationId: c.operationId,
+      confirmedBy: a,
+      at: p.at,
+    }),
     requireActive: (a) => {
       if (!active.has(a.installationId)) throw new GroupActionsAccessDenied();
     },
@@ -138,6 +151,7 @@ function setup(file = ':memory:') {
     work,
     propose,
     confirmed,
+    access,
     sql,
     get db() {
       return db;
@@ -254,13 +268,24 @@ describe('authoritative shared actions', () => {
     ).toMatchObject({ error: 'denied' });
     const a = s.confirmed('start', 0);
     expect(
-      s.execute({ kind: 'claim', operationId: randomUUID(), actionId: a.actionId }, s.other),
+      s.execute(
+        {
+          kind: 'claim',
+          operationId: groupActionLifecycleOperationId(a.actionId, 'claim'),
+          actionId: a.actionId,
+        },
+        s.other,
+      ),
     ).toMatchObject({ error: 'denied' });
   });
   it('fresh owner CAS rejects superseded dispatch and requester revocation even on claim replay', () => {
     const s = setup(),
       a = s.confirmed('start', 0, s.other);
-    const c = { kind: 'claim' as const, operationId: randomUUID(), actionId: a.actionId };
+    const c = {
+      kind: 'claim' as const,
+      operationId: groupActionLifecycleOperationId(a.actionId, 'claim'),
+      actionId: a.actionId,
+    };
     s.ok(c);
     s.active.delete(s.other.installationId);
     expect(s.execute(c)).toMatchObject({ error: 'denied' });
@@ -270,14 +295,26 @@ describe('authoritative shared actions', () => {
       a = s.confirmed('start', 0);
     s.confirmed('stop', 1, s.other);
     expect(
-      s.execute({ kind: 'claim', operationId: randomUUID(), actionId: a.actionId }),
+      s.execute({
+        kind: 'claim',
+        operationId: groupActionLifecycleOperationId(a.actionId, 'claim'),
+        actionId: a.actionId,
+      }),
     ).toMatchObject({ error: 'stale' });
   });
   it('uncertain dispatch blocks competing confirmation atomically until reconciled', () => {
     const s = setup(),
       a = s.confirmed('start', 0);
-    s.ok({ kind: 'claim', operationId: randomUUID(), actionId: a.actionId });
-    s.ok({ kind: 'uncertain', operationId: randomUUID(), actionId: a.actionId });
+    s.ok({
+      kind: 'claim',
+      operationId: groupActionLifecycleOperationId(a.actionId, 'claim'),
+      actionId: a.actionId,
+    });
+    s.ok({
+      kind: 'uncertain',
+      operationId: groupActionLifecycleOperationId(a.actionId, 'uncertain'),
+      actionId: a.actionId,
+    });
     const p = s.propose('stop', 1, s.other);
     expect(
       s.execute(
@@ -461,6 +498,7 @@ it('private native catalog has shared board only; authenticated route denies pri
   registerGroupActionsRoutes(
     app,
     {
+      confirmHuman: async (_handle, c) => s.execute(c),
       authenticatedContext: async () => ({
         visibility: 'private',
         revalidate: async () => {},
@@ -525,6 +563,12 @@ it('same-storage service derives actor from current enrollment and revocation ga
     credentialHash: async (_, c) => (c === credential ? 'bound-hash' : 'missing'),
     probeDelivery: () => {},
     admitMutation: () => {},
+    accountStorage: (operation) => operation(),
+    reserveLifecycle: () => {},
+    releaseLifecycle: () => {},
+    verifyCommittedSource: () => {
+      throw new GroupActionsAccessDenied();
+    },
     verifyManager: () => {
       throw new GroupActionsAccessDenied();
     },
@@ -559,6 +603,62 @@ it('same-storage service derives actor from current enrollment and revocation ga
     .run(s.owner.installationId);
   expect(await service.execute(raw)).toMatchObject({ error: 'denied' });
   expect(await service.execute({ ...raw, actor: s.other })).toMatchObject({ error: 'invalid' });
+});
+it('authenticated owner and paired confirmation use the protected proof lane and reject browser-supplied proof fields', async () => {
+  const app = Fastify(),
+    s = setup(),
+    p = s.propose('start', 0);
+  let humanCalls = 0,
+    commandCalls = 0;
+  registerGroupActionsRoutes(
+    app,
+    {
+      authenticatedContext: async () => ({
+        visibility: 'shared',
+        revalidate: async () => {},
+        command: async (c) => {
+          commandCalls++;
+          return s.execute(c);
+        },
+      }),
+      confirmHuman: async (_handle, c) => {
+        humanCalls++;
+        return s.execute(c);
+      },
+    },
+    (request) => ['owner', 'paired'].includes(String(request.headers.authorization)),
+  );
+  const handle = randomUUID(),
+    command = {
+      kind: 'confirm',
+      operationId: randomUUID(),
+      proposalId: p.proposalId,
+      expectedRevision: 0,
+      override: false,
+    };
+  for (const authorization of ['owner', 'paired']) {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/groups/actions',
+      headers: { authorization },
+      payload: { handle, command },
+    });
+    expect(response.json()).toMatchObject({ ok: true, value: { kind: 'action' } });
+  }
+  expect(humanCalls).toBe(2);
+  expect(commandCalls).toBe(0);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/groups/actions',
+        headers: { authorization: 'owner' },
+        payload: { handle, command: { ...command, humanConfirmationId: randomUUID() } },
+      })
+    ).statusCode,
+  ).toBe(400);
+  expect(humanCalls).toBe(2);
+  await app.close();
 });
 it('normal native tool adapter reuses typed task/worker ports with stable causal keys', async () => {
   const s = setup(),
@@ -633,6 +733,7 @@ it('autonomous proposals preserve manager/shared-goal origin and original owner 
     managerId: s.work.managerId,
   };
   const access: GroupActionsAuthorityAccess = {
+    ...s.access(s.owner),
     authorize: () => s.owner,
     requireActive: () => {},
     admitMutation: () => {},
@@ -672,6 +773,50 @@ it('autonomous proposals preserve manager/shared-goal origin and original owner 
       },
     },
   });
+  const evidence = s.ok({ kind: 'evidence', after: 0, limit: 25 });
+  if (evidence.kind !== 'evidence') throw new Error('evidence');
+  const source = evidence.records.at(-1)!;
+  expect(source).toMatchObject({
+    kind: 'proposal',
+    instructionEventId: null,
+    autonomousEventId: origin.eventId,
+    facts: {
+      autonomous: true,
+      instructionIds: [],
+      originalIds: {
+        instructionEventId: null,
+        sharedGoalId: s.work.sharedGoalId,
+        managerId: s.work.managerId,
+        taskId: s.work.taskId,
+      },
+    },
+  });
+  expect(JSON.parse(source.originalJson).origin).toEqual(origin);
+});
+it('asynchronous or repeated trusted accounting hooks roll back all mutation and receipt writes', () => {
+  const s = setup(),
+    authority = new GroupActionsAuthority(s.sql, s.owner.groupId);
+  const before = s.sql.rows('SELECT * FROM ga_events ORDER BY position');
+  const command = {
+    kind: 'instruction' as const,
+    operationId: randomUUID(),
+    text: 'Must roll back.',
+  };
+  const asyncAccounting = <T>(operation: () => T): T => Promise.resolve(operation()) as T;
+  expect(
+    authority.execute(command, { ...s.access(s.owner), accountStorage: asyncAccounting }),
+  ).toEqual({ ok: false, error: 'unavailable' });
+  expect(s.sql.rows('SELECT * FROM ga_events ORDER BY position')).toEqual(before);
+  expect(
+    authority.execute(command, {
+      ...s.access(s.owner),
+      accountStorage: <T>(operation: () => T) => {
+        operation();
+        return operation();
+      },
+    }),
+  ).toEqual({ ok: false, error: 'unavailable' });
+  expect(s.sql.rows('SELECT * FROM ga_events ORDER BY position')).toEqual(before);
 });
 it('bounded immutable causal evidence retains exact instruction text and action/task/worker outcome links', async () => {
   const s = setup(),
@@ -722,13 +867,12 @@ it('exact authenticated work read reaches beyond fifty snapshot rows and reflect
   const result = authority.execute(
     { kind: 'work', workId: target.workId },
     {
+      ...f.access(f.owner),
       authorize: () => f.owner,
       admitMutation: () => {
         throw new Error('Read must not require mutation admission');
       },
-      requireActive: () => {
-        throw new Error('Unused');
-      },
+      requireActive: () => {},
       verifyOrigin: () => {
         throw new Error('Unused');
       },

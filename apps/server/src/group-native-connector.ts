@@ -91,6 +91,9 @@ export function registerGroupNativeCapabilities(
     throw new GroupIsolationBlocked('Scoped capability owner already registered.');
   slots.set(kind, factory);
   capabilities.set(runtime, slots);
+  return () => {
+    if (slots.get(kind) === factory) slots.delete(kind);
+  };
 }
 export const groupNativeHostRouteSchema = z.strictObject({
   projectId: z.uuid(),

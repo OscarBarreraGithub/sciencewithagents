@@ -30,19 +30,28 @@ import { MEMBERSHIP_CAPACITY as C } from './capacity.js';
 import {
   GroupActionsService,
   groupActionEnvelopeSchema,
+  groupActionRetainedEnvelopeSchema,
 } from '@dock/shared/dist/group-actions-service.js';
 import {
   GroupActionsCapacityExceeded,
+  GroupActionsStorageLimit,
   type GroupActionsSql,
 } from '@dock/shared/dist/group-actions-authority.js';
 import {
   verifyGroupOwnedTask,
   verifyGroupManager,
+  verifyGroupCommittedSource,
 } from '@dock/shared/dist/group-actions-attestation.js';
 import type { GroupActionResult } from '@dock/shared/dist/group-actions.js';
 import { GroupPromotionHost, GroupPromotionHostCapacity } from './group-promotion-host.js';
 import type { GroupPromotionHostResult } from '@dock/shared/dist/group-promotion-host.js';
 import { verifyWorkerBetaAdmission } from './group-beta-admission.js';
+import { GroupActionsStorage } from './group-actions-storage.js';
+import { exportHostedGroup } from './group-hosted-export.js';
+import {
+  groupExportEnvelopeSchema,
+  type GroupExportResult,
+} from '@dock/shared/dist/group-hosted-export.js';
 
 type Enrollment = {
   position: number;
@@ -76,6 +85,100 @@ export class GroupMembership extends DurableObject<Env> {
       ctx.storage.sql.exec(SCHEMA).toArray();
     });
     this.deliveryStorage = new DeliveryStorage(ctx.storage);
+  }
+  /** Existing setup capability AND exact initialized enrollment. This is not a
+   * membership role change, and joining credentials cannot inspect secret hashes. */
+  async exportHosted(input: unknown): Promise<GroupExportResult> {
+    const parsed = groupExportEnvelopeSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, error: 'invalid' };
+    const { groupId, credential, setupCapability, betaAdmission, request } = parsed.data;
+    try {
+      if (!hostingEnvironment(this.env) || !this.ctx.id.equals(this.env.GROUPS.idFromName(groupId)))
+        return { ok: false, error: 'denied' };
+      const [hash, setupDigest, beta] = await Promise.all([
+        capabilityHash(groupId, 'installation', credential),
+        setupHash(setupCapability),
+        betaAdmission === undefined
+          ? undefined
+          : verifyWorkerBetaAdmission(betaAdmission, this.env),
+      ]);
+      if (
+        beta
+          ? beta.payload.groupId !== groupId ||
+            !equalHash(setupDigest, beta.payload.createCapabilityHash)
+          : !equalHash(setupDigest, this.env.GROUP_SETUP_HASH)
+      )
+        return { ok: false, error: 'denied' };
+      const creator = () => {
+        // Export must not use delivery's write probe or initialize feature DDL.
+        const tables = this.rows<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('delivery_control','delivery_revocations')",
+        );
+        if (
+          tables.some((row) => row.name === 'delivery_control') &&
+          this.rows<{ blocked: number }>(
+            'SELECT blocked FROM delivery_control WHERE singleton=1',
+          )[0]?.blocked
+        )
+          throw new Error('export-unavailable');
+        if (
+          tables.some((row) => row.name === 'delivery_revocations') &&
+          this.rows("SELECT target_id FROM delivery_revocations WHERE state='open' LIMIT 1").length
+        )
+          throw new Error('export-unavailable');
+        const meta = this.rows<Metadata>('SELECT * FROM metadata WHERE singleton=1')[0];
+        const first = this.rows<Enrollment>(
+          'SELECT * FROM enrollments ORDER BY position LIMIT 1',
+        )[0];
+        const audit = this.rows<{ kind: string; actor_installation_id: string }>(
+          'SELECT kind,actor_installation_id FROM audit ORDER BY sequence LIMIT 1',
+        )[0];
+        const receipt = this.rows<{ operation_id: string; response: string }>(
+          'SELECT operation_id,response FROM receipts WHERE credential_hash=? ORDER BY rowid LIMIT 1',
+          hash,
+        )[0];
+        if (
+          meta?.group_id !== groupId ||
+          !first ||
+          first.credential_hash !== hash ||
+          first.state !== 'active' ||
+          audit?.kind !== 'initialize' ||
+          audit.actor_installation_id !== first.installation_id ||
+          !receipt
+        )
+          throw new Error('export-denied');
+        const saved = membershipReplySchema.parse(JSON.parse(receipt.response));
+        if (
+          saved.kind !== 'identity' ||
+          saved.identity.groupId !== groupId ||
+          saved.identity.installationId !== first.installation_id ||
+          saved.identity.memberId !== first.member_id
+        )
+          throw new Error('export-denied');
+        return receipt.operation_id;
+      };
+      const operationId = creator();
+      if (
+        (await creationGroupId(setupDigest, operationId)) !== groupId ||
+        (beta && beta.payload.createOperationId !== operationId)
+      )
+        return { ok: false, error: 'denied' };
+      return exportHostedGroup(
+        this.ctx.storage,
+        groupId,
+        request,
+        () => {
+          if (creator() !== operationId) throw new Error('export-denied');
+        },
+        String(this.env.HOSTING_MODE) === 'local-test',
+      );
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof Error && error.message === 'export-denied' ? 'denied' : 'unavailable',
+      };
+    }
   }
 
   async deliver(input: DeliveryEnvelope): Promise<DeliveryResult> {
@@ -181,7 +284,21 @@ export class GroupMembership extends DurableObject<Env> {
   /** Same object, membership ledger, SQL transaction and normal-write reserve
    * as delivery. No independent feature database or enrollment cache. */
   async actions(input: unknown): Promise<GroupActionResult> {
-    const parsed = groupActionEnvelopeSchema.safeParse(input);
+    return this.actionRequest(input, 'command');
+  }
+  async actionsConfirm(input: unknown): Promise<GroupActionResult> {
+    return this.actionRequest(input, 'human');
+  }
+  async actionsReconcile(input: unknown): Promise<GroupActionResult> {
+    return this.actionRequest(input, 'retained');
+  }
+  private async actionRequest(
+    input: unknown,
+    mode: 'command' | 'human' | 'retained',
+  ): Promise<GroupActionResult> {
+    const parsed = (
+      mode === 'retained' ? groupActionRetainedEnvelopeSchema : groupActionEnvelopeSchema
+    ).safeParse(input);
     if (!parsed.success) return { ok: false, error: 'invalid' };
     const groupId = parsed.data.groupId;
     if (!hostingEnvironment(this.env) || !this.ctx.id.equals(this.env.GROUPS.idFromName(groupId)))
@@ -190,6 +307,7 @@ export class GroupMembership extends DurableObject<Env> {
       if (!this.rows('SELECT singleton FROM metadata WHERE singleton=1')[0])
         return { ok: false, error: 'denied' };
       if (!this.actionsService) {
+        const accounting = new GroupActionsStorage(this.ctx.storage);
         const sql: GroupActionsSql = {
           rows: <T>(query: string, ...bindings: (string | number | null)[]) =>
             this.ctx.storage.sql.exec(query, ...bindings).toArray() as T[],
@@ -210,6 +328,10 @@ export class GroupMembership extends DurableObject<Env> {
           hostingEnabled: () => hostingEnvironment(this.env),
           matchesObject: (id) => this.ctx.id.equals(this.env.GROUPS.idFromName(id)),
           probeDelivery: () => this.deliveryStorage.probe(),
+          accountStorage: (operation, intent) => accounting.account(operation, intent),
+          reserveLifecycle: (...args) => accounting.reserve(...args),
+          releaseLifecycle: (id) => accounting.release(id),
+          verifyCommittedSource: (event, author) => verifyGroupCommittedSource(sql, event, author),
           admitMutation: () => {
             const now = Date.now(),
               day = Math.floor(now / 86_400_000);
@@ -231,13 +353,18 @@ export class GroupMembership extends DurableObject<Env> {
           verifyManager: (origin, actor, work) => verifyGroupManager(sql, origin, actor, work),
         });
       }
-      const result = await this.actionsService.execute(parsed.data);
+      const result =
+        mode === 'human'
+          ? await this.actionsService.confirmHuman(parsed.data)
+          : mode === 'retained'
+            ? await this.actionsService.reconcile(parsed.data)
+            : await this.actionsService.execute(parsed.data);
       await this.ctx.storage.sync();
       return result;
     } catch (error) {
       return {
         ok: false,
-        error: error instanceof GroupActionsCapacityExceeded ? 'limit' : 'unavailable',
+        error: error instanceof GroupActionsStorageLimit ? 'limit' : 'unavailable',
       };
     }
   }

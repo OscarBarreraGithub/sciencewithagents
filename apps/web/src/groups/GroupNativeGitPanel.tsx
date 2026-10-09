@@ -147,6 +147,40 @@ export function GroupNativeGitPanel({
       {view?.dirty && (
         <p>Uncommitted files are preserved. Finish and review the task before sharing.</p>
       )}
+      {!!view?.localEdits.length && (
+        <details>
+          <summary>Unfinished files on this computer</summary>
+          <p>
+            This local status includes task workspaces. File contents stay local until review and
+            sharing.
+          </p>
+          <ul>
+            {view.localEdits.map((workspace) => (
+              <li key={workspace.taskId ?? 'group'}>
+                <strong>{workspace.label}</strong> ·{' '}
+                {workspace.state === 'unavailable'
+                  ? 'status unavailable'
+                  : workspace.changed
+                    ? `${workspace.changed} changed`
+                    : 'clean'}
+                {!!workspace.withheld && (
+                  <p>{workspace.withheld} private or runtime names withheld.</p>
+                )}
+                {!!workspace.files.length && (
+                  <ul>
+                    {workspace.files.map((file) => (
+                      <li key={file.path}>
+                        <code>{file.path}</code> · {file.status === '??' ? 'new file' : 'edited'}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {workspace.truncated && <p>Showing the first 16 file names.</p>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {view?.busy && (
         <p>
           Shared agents are active. Fetching is safe; applying or switching waits for their work to

@@ -27,6 +27,7 @@ import {
   type TokenUsageSnapshot,
 } from '@dock/shared';
 import { z } from 'zod';
+import { captureGroupQuarkTransition } from './group-native-activity-producers.js';
 import { Store, Conflict, type PrivateRun } from './store.js';
 import { readCapacity, readClaudeCapacityAffinity, capacityMaxAge } from './capacity.js';
 import type { Pulsar } from './pulsar.js';
@@ -1400,7 +1401,8 @@ export class Quark {
       if (old) {
         const next = { ...old, cause, reason };
         this.store.setSetting(`quark:hold:${run.id}`, next);
-        this.store.event('quark.pause_changed', a.projectId, a.id, next);
+        const event = this.store.event('quark.pause_changed', a.projectId, a.id, next);
+        captureGroupQuarkTransition(this.store, run.id, `quark:${event.id}`, 'held', cause);
         return next;
       }
       const value = quotaHoldSchema.parse({
@@ -1415,7 +1417,8 @@ export class Quark {
         error: null,
       });
       this.store.setSetting(`quark:hold:${run.id}`, value);
-      this.store.event('quark.paused', a.projectId, a.id, value);
+      const event = this.store.event('quark.paused', a.projectId, a.id, value);
+      captureGroupQuarkTransition(this.store, run.id, `quark:${event.id}`, 'held', cause);
       return value;
     };
     return withinTransaction ? save() : this.store.transaction(save);
@@ -1623,7 +1626,12 @@ export class Quark {
         `${automatic ? 'QUARK has verified fresh capacity and the provider confirmed its stop' : 'The owner resumed this saved conversation'}. Inspect retained progress and uncertain actions before continuing. Do not repeat side effects merely because a turn was interrupted.`,
         'resume',
       );
-    this.store.event('quark.resumed', a.projectId, a.id, { runId, automatic, cause: h.cause });
+    const event = this.store.event('quark.resumed', a.projectId, a.id, {
+      runId,
+      automatic,
+      cause: h.cause,
+    });
+    captureGroupQuarkTransition(this.store, runId, `quark:${event.id}`, 'resumed', h.cause);
     this.store.setSetting(`quark:recovery:${a.id}`, {
       runId,
       at: stamp(this.clock()),

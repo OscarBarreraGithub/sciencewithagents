@@ -217,6 +217,14 @@ and model choices remain. Active work is never discarded by an inactivity timer.
 
 ## Groups
 
+**Release readiness:** the native Groups candidate now connects shared actions/reports,
+activity evidence, unfinished-file awareness and local/hosted recovery. Local checks and
+independent source reviews prepare it for joint testing; they do not certify production.
+Independent creator/member installation, real-provider/remote-Git collaboration, larger/interrupted deployed
+backups and public Linux CI remain acceptance gates.
+See [Groups release readiness](GROUP_RELEASE_READINESS.md) and
+[manager lessons](FAILURE_REVIEW.md).
+
 **Current v1 implementation:** Groups uses ordinary host-native agents with the
 existing Codex/Claude sign-in. The shared journey lives under **Chats → Groups**, with
 **Group chat** for everyone’s messages and **Group manager** for the owner’s agent. Previously
@@ -259,10 +267,23 @@ and separate-computer acceptance of this new lane remains pending. Native Groups
 a scoped setup prompt, member/request branches, independent task review, exact apply and
 opt-in sync of reviewed committed work. Clean default checkouts fast-forward; dirty, active
 and divergent work is preserved. Repository creation, sign-in and collaborator access use
-the external setup agent; joining a group alone grants no GitHub access. Protected Git export,
-isolated report capture and the older confirmed-action board depend on the retained isolated
-adapter and are not presented as available in local mode. Native Work still has ordinary
-provider tools.
+the external setup agent; joining a group alone grants no GitHub access. The native shared-action board routes confirmed work through its original manager, task
+worktrees, independent review and exact application. Ask cannot create execution authority.
+Native report captures retain immutable source/assets/PDF bytes; explicit grants control
+sharing and revocation through the existing reader. Git awareness also reports bounded local
+unfinished changes without staging or publishing them. Scoped activity receipts connect original
+instructions to manager/worker/job/file outcomes; evidence tools read incremental shared
+records and exact originals, retaining gaps or unavailable final output explicitly.
+The [local archive](GROUP_RECOVERY.md) and [creator-hosted export](GROUP_HOSTED_RECOVERY.md)
+provide separate private, verified recovery material; neither automatically restores or
+replays native work. Retained isolated adapters and histories remain separate.
+
+**Maintainer activation, 2026-10-08:** the reviewed candidate is installed and the existing
+creator Worker is updated. Baseline project/conversation/task identities, queued requests,
+model/QUARK choices, group enrollment and phone trust/configuration were preserved. Both
+listeners remain available with authentication required. Four existing creator groups produced
+small hosted archives with matching offline verification; this does not establish capacity,
+concurrent-change recovery or a new person's installation. No native input was replayed.
 
 **Current Chats integration checks:** focused browser checks cover desktop, 412×915,
 360×800 and 915×412, including larger text, two-host message arrival, invitation recovery,

@@ -7,13 +7,17 @@ import {
   type GroupContext,
 } from '@dock/shared';
 import {
+  groupActionSchema,
   groupActionResultSchema,
   type GroupAction,
   type GroupActionActor,
   type GroupActionOrigin,
   type GroupActionWork,
+  type GroupActionRetainedReceipt,
 } from '@dock/shared/dist/group-actions.js';
 import type { Runtime } from './runtime.js';
+import { captureGroupManagerAction } from './group-native-activity-producers.js';
+import { GroupCoordinationBlocked } from './group-coordination.js';
 import type {
   GroupCoordinationLane,
   GroupCoordinationOutcome,
@@ -23,10 +27,12 @@ import type {
 
 export interface GroupCoordinationNativePort {
   identity(context: GroupContext): { managerId: string; agentId: string; requestId: string | null };
+  bindTask?(context: GroupContext, taskId: string, sharedGoalId: string): void;
   delegate(
     context: GroupContext,
     actionId: string,
     input: z.infer<typeof delegateSchema>,
+    causal?: GroupAction,
   ): Promise<{ workerId: string; runId: string }>;
   inspect(context: GroupContext, actionId: string): { workerId: string; runId: string } | null;
 }
@@ -41,6 +47,9 @@ export interface GroupCoordinationHostPort {
   owner: GroupActionActor;
   command: GroupCoordinationPorts['command'];
   revalidate(): Promise<void>;
+  reconcile?(
+    receipt: GroupActionRetainedReceipt,
+  ): Promise<import('@dock/shared/dist/group-actions.js').GroupActionResult>;
   publishOwnedTask(
     key: string,
     binding: GroupOwnedTaskBinding,
@@ -132,6 +141,7 @@ export function createGroupCoordinationRuntime(
       sharedGoalId: origin.kind === 'autonomous' ? origin.sharedGoalId : origin.eventId,
       title: task.title,
     };
+    native.bindTask?.(context, taskId, binding.sharedGoalId);
     const publication = await host.publishOwnedTask(
       groupCoordinationId(key, 'attestation'),
       binding,
@@ -170,24 +180,119 @@ export function createGroupCoordinationRuntime(
           instruction: task.goal,
         },
       stop: old?.stop ?? { agentId: a.id, reason: 'Shared owner stop' },
+      ...(old?.stopRunId ? { stopRunId: old.stopRunId } : {}),
     };
     store.setSetting(`${prefix}work:${work.workId}`, r);
     return work;
   };
   const receiptKey = (id: string) => `${prefix}action:${id}`;
+  const recoverLegacyStopRun = (r: GroupCoordinationResource, requireProof = false) => {
+    if ((r.stopRunId && !requireProof) || r.stop.agentId === r.work.managerId) return;
+    const missing = () => {
+      throw new Error('Exact legacy Start run cannot be proven; inspect its retained receipt.');
+    };
+    const rows = store.db
+      .prepare(
+        `SELECT key,value FROM settings WHERE key >= ? AND key < ?
+         AND json_extract(value,'$.kind')='start' AND json_extract(value,'$.taskId')=?
+         AND json_extract(value,'$.outcome.status')='started'
+         AND json_extract(value,'$.outcome.workerId')=? LIMIT 2`,
+      )
+      .all(`${prefix}action:`, `${prefix}action;`, r.work.taskId, r.stop.agentId);
+    if (rows.length !== 1) return missing();
+    const row = rows[0]!,
+      actionId = String(row.key).slice(receiptKey('').length),
+      receipt = z
+        .object({
+          workId: z.uuid().optional(),
+          outcome: groupActionSchema.shape.outcome.unwrap(),
+        })
+        .safeParse(JSON.parse(String(row.value))),
+      child = z
+        .object({
+          contextId: z.uuid(),
+          sharedContextId: z.uuid(),
+          managerId: z.uuid(),
+          taskId: z.uuid(),
+        })
+        .safeParse(store.getSetting(`group:native-child:${r.stop.agentId}`));
+    if (
+      !receipt.success ||
+      !receipt.data.outcome.jobId ||
+      receipt.data.outcome.taskId !== r.work.taskId ||
+      (receipt.data.workId && receipt.data.workId !== r.work.workId) ||
+      store.getSetting(`${prefix}worker:${r.stop.agentId}`) !== r.work.workId ||
+      !child.success ||
+      child.data.sharedContextId !== context.sessionId ||
+      child.data.managerId !== r.work.managerId ||
+      child.data.taskId !== r.work.taskId ||
+      store.getSetting(`group:native-request:${receipt.data.outcome.jobId}`) !== actionId
+    )
+      return missing();
+    const worker = store.agent(r.stop.agentId),
+      run = store.run(receipt.data.outcome.jobId);
+    if (
+      worker.parentId !== r.work.managerId ||
+      worker.taskId !== r.work.taskId ||
+      run.agentId !== worker.id ||
+      (r.stopRunId !== undefined && r.stopRunId !== run.id)
+    )
+      return missing();
+    r.stopRunId = run.id;
+    store.setSetting(`${prefix}work:${r.work.workId}`, r);
+  };
+  const recordActivity = (
+    r: GroupCoordinationResource,
+    causal: GroupAction,
+    outcome: GroupCoordinationOutcome | null,
+  ) => {
+    const origin = store.db
+      .prepare('SELECT result FROM operations WHERE key=?')
+      .get(`group:host-coordination-task:${r.work.taskId}:${r.work.sharedGoalId}`);
+    if (!origin) return;
+    const requestId = z
+        .object({ requestId: z.uuid() })
+        .parse(JSON.parse(String(origin.result))).requestId,
+      original = store.db.prepare('SELECT id FROM runs WHERE key=?').get(requestId);
+    if (original) {
+      const retained =
+        outcome?.status === 'blocked'
+          ? store.operation(
+              `group:activity-blocked:${causal.actionId}`,
+              { action: causal },
+              () => ({ taskId: r.work.taskId, causal, outcome }),
+            )
+          : null;
+      captureGroupManagerAction(store, String(original.id), causal, retained?.outcome ?? outcome);
+    }
+  };
   const inspect: GroupCoordinationLane['inspect'] = async (id) => {
     const saved = store.getSetting(receiptKey(id)) as {
       input: string;
       outcome?: GroupCoordinationOutcome;
       kind: 'start' | 'stop';
       taskId: string;
+      workId?: string;
       workerId?: string;
       runId?: string;
+      causal?: GroupAction;
     } | null;
-    if (saved?.outcome) return { state: 'completed', outcome: saved.outcome };
+    if (saved?.outcome) {
+      if (saved.workId && saved.causal)
+        recordActivity(resource(saved.workId), saved.causal, saved.outcome);
+      return { state: 'completed', outcome: saved.outcome };
+    }
     if (!saved) return { state: 'absent' };
     const child = native.inspect(context, id);
     if (saved.kind === 'start' && child) {
+      if (saved.workId) {
+        const r = resource(saved.workId);
+        if (r.work.taskId !== saved.taskId) throw new Error('Recovered action task changed.');
+        r.stop = { agentId: child.workerId, reason: 'Shared owner stop' };
+        r.stopRunId = child.runId;
+        store.setSetting(`${prefix}work:${r.work.workId}`, r);
+        store.setSetting(`${prefix}worker:${child.workerId}`, r.work.workId);
+      }
       const outcome: GroupCoordinationOutcome = {
         taskId: saved.taskId,
         workerId: child.workerId,
@@ -197,6 +302,8 @@ export function createGroupCoordinationRuntime(
         message: 'Original owner native worker queued under QUARK in the shared group boundary.',
       };
       store.setSetting(receiptKey(id), { ...saved, outcome });
+      if (saved.workId && saved.causal)
+        recordActivity(resource(saved.workId), saved.causal, outcome);
       return { state: 'completed', outcome };
     }
     if (saved.kind === 'start' && !child) return { state: 'absent' }; // authoritative Store: no queued native effect
@@ -215,6 +322,8 @@ export function createGroupCoordinationRuntime(
           message: 'Exact original worker turn is stopped; no retargeting.',
         };
         store.setSetting(receiptKey(id), { ...saved, outcome });
+        if (saved.workId && saved.causal)
+          recordActivity(resource(saved.workId), saved.causal, outcome);
         return { state: 'completed', outcome };
       }
     }
@@ -236,29 +345,61 @@ export function createGroupCoordinationRuntime(
       !sameOwner(causal.proposal.observed.owner, host.owner)
     )
       throw new Error('Action/resource binding changed.');
+    if (kind === 'stop') recoverLegacyStopRun(r);
     const old = store.getSetting(receiptKey(id)) as {
       input: string;
       outcome?: GroupCoordinationOutcome;
+      kind?: 'start' | 'stop';
+      taskId?: string;
+      workerId?: string;
+      runId?: string;
     } | null;
-    const fingerprint = JSON.stringify({
+    const fingerprintInput = {
       kind,
       input,
       taskId: r.work.taskId,
       managerId: r.work.managerId,
+    };
+    const fingerprint = JSON.stringify({
+      ...fingerprintInput,
+      ...(kind === 'stop' ? { stopRunId: r.stopRunId ?? null } : {}),
     });
     if (old) {
-      if (old.input !== fingerprint) throw new Error('Action retry changed input.');
+      if (old.input !== fingerprint) {
+        if (
+          kind !== 'stop' ||
+          old.kind !== 'stop' ||
+          old.taskId !== r.work.taskId ||
+          old.workerId !== r.stop.agentId ||
+          !r.stopRunId ||
+          old.runId !== r.stopRunId ||
+          old.input !== JSON.stringify(fingerprintInput)
+        )
+          throw new Error('Action retry changed input.');
+        // Older uncertain Stop receipts predate stopRunId in the fingerprint.
+        // Accept their exact saved input only with independently retained Start
+        // proof; inspect the original Stop without rewriting or replaying it.
+        recoverLegacyStopRun(r, true);
+      }
       const status = await inspect(id);
       if (status.state === 'completed') return status.outcome;
       if (status.state === 'pending')
         throw new Error('Existing action outcome is uncertain; inspect same receipt.');
     }
+    let entered = false;
     const apply = async (runId?: string) => {
+      entered = true;
       await revalidate();
       if (kind === 'start') manager(runId);
       else originalManager();
       // Start persists after admission; exact Stop requires no usage/resource admission.
-      store.setSetting(receiptKey(id), { input: fingerprint, kind, taskId: r.work.taskId });
+      store.setSetting(receiptKey(id), {
+        input: fingerprint,
+        kind,
+        taskId: r.work.taskId,
+        workId: r.work.workId,
+        causal,
+      });
       store.event('group.action_intent', store.task(r.work.taskId).projectId, r.work.managerId, {
         actionId: id,
         workId: r.work.workId,
@@ -268,8 +409,9 @@ export function createGroupCoordinationRuntime(
       let outcome: GroupCoordinationOutcome;
       if (kind === 'start') {
         const v = delegateSchema.parse(input),
-          child = await native.delegate(context, id, v);
+          child = await native.delegate(context, id, v, causal);
         r.stop = { agentId: child.workerId, reason: 'Shared owner stop' };
+        r.stopRunId = child.runId;
         store.setSetting(`${prefix}work:${r.work.workId}`, r);
         store.setSetting(`${prefix}worker:${child.workerId}`, r.work.workId);
         outcome = {
@@ -281,52 +423,94 @@ export function createGroupCoordinationRuntime(
           message: 'Original owner native worker queued under QUARK in the shared group boundary.',
         };
       } else {
-        const v = pauseWorkerSchema.parse(input),
-          worker = store.agent(v.agentId);
-        if (
-          worker.parentId !== r.work.managerId ||
-          worker.taskId !== r.work.taskId ||
-          !store.getSetting(`group:native-child:${worker.id}`)
-        )
-          throw new Error('Worker is outside the native group boundary.');
-        const run = store.runs(['running', 'queued']).find((x) => x.agentId === worker.id);
-        store.setSetting(receiptKey(id), {
-          input: fingerprint,
-          kind,
-          taskId: r.work.taskId,
-          workerId: worker.id,
-          ...(run ? { runId: run.id } : {}),
-        });
-        if (run)
+        const v = pauseWorkerSchema.parse(input);
+        if (v.agentId !== r.stop.agentId)
+          throw new Error('Stop worker differs from the retained Start receipt.');
+        if (v.agentId === r.work.managerId) {
+          outcome = {
+            taskId: r.work.taskId,
+            workerId: null,
+            outcomeId: groupCoordinationId(id, 'outcome'),
+            status: 'stopped',
+            message: 'No worker has been started for this shared work.',
+          };
+        } else {
+          const worker = store.agent(v.agentId);
+          if (
+            worker.parentId !== r.work.managerId ||
+            worker.taskId !== r.work.taskId ||
+            (!store.getSetting(`group:native-child:${worker.id}`) &&
+              !store.getSetting(`group:host-native-agent:${worker.id}`))
+          )
+            throw new Error('Worker is outside the native group boundary.');
+          if (!r.stopRunId)
+            throw new Error('Exact Start run is unavailable; reconcile its original receipt.');
+          const run = store.run(r.stopRunId);
+          if (run.agentId !== worker.id)
+            throw new Error('Stop run differs from the retained Start worker.');
+          store.setSetting(receiptKey(id), {
+            input: fingerprint,
+            kind,
+            taskId: r.work.taskId,
+            workId: r.work.workId,
+            causal,
+            workerId: worker.id,
+            runId: run.id,
+          });
           await runtime.stopGroupCoordinationWorker(
             worker.id,
             run.id,
             `Shared owner stop: ${v.reason}`,
           );
-        outcome = {
-          taskId: r.work.taskId,
-          workerId: worker.id,
-          outcomeId: groupCoordinationId(id, 'outcome'),
-          ...(run ? { jobId: run.id } : {}),
-          status: 'stopped',
-          message: 'Original owner native worker stopped; owned namespace closure verified.',
-        };
+          outcome = {
+            taskId: r.work.taskId,
+            workerId: worker.id,
+            outcomeId: groupCoordinationId(id, 'outcome'),
+            jobId: run.id,
+            status: 'stopped',
+            message: 'Original owner native worker stopped; owned namespace closure verified.',
+          };
+        }
       }
-      store.setSetting(receiptKey(id), {
-        input: fingerprint,
-        kind,
-        taskId: r.work.taskId,
-        outcome,
-      });
-      store.event('group.action_outcome', store.task(r.work.taskId).projectId, r.work.managerId, {
-        actionId: id,
-        outcome,
+      store.transaction(() => {
+        store.setSetting(receiptKey(id), {
+          input: fingerprint,
+          kind,
+          taskId: r.work.taskId,
+          workId: r.work.workId,
+          outcome,
+          causal,
+        });
+        store.event('group.action_outcome', store.task(r.work.taskId).projectId, r.work.managerId, {
+          actionId: id,
+          outcome,
+        });
+        recordActivity(r, causal, outcome);
       });
       return outcome;
     };
-    return kind === 'start'
-      ? runtime.withGroupCoordinationControl(r.work.managerId, id, apply)
-      : runtime.withGroupCoordinationStopControl(r.work.managerId, apply);
+    try {
+      return await (kind === 'start'
+        ? runtime.withGroupCoordinationControl(r.work.managerId, id, apply)
+        : runtime.withGroupCoordinationStopControl(r.work.managerId, apply));
+    } catch (error) {
+      if (!entered) {
+        const outcome: GroupCoordinationOutcome = {
+          taskId: r.work.taskId,
+          workerId: null,
+          outcomeId: groupCoordinationId(id, 'outcome'),
+          status: 'blocked',
+          message:
+            error instanceof Error
+              ? error.message.slice(0, 2000)
+              : 'Original owner admission held.',
+        };
+        recordActivity(r, causal, outcome);
+        throw new GroupCoordinationBlocked(outcome);
+      }
+      recordActivity(r, causal, error instanceof GroupCoordinationBlocked ? error.outcome : null);
+      throw error;
+    }
   };
   const lane: GroupCoordinationLane = {
     owner: host.owner,
@@ -335,6 +519,41 @@ export function createGroupCoordinationRuntime(
     pauseWorker: (id, input, causal) => effect(id, 'stop', input, causal),
   };
   return {
+    retained: async (action) => {
+      if (!host.reconcile || !['pending-owner', 'dispatching', 'uncertain'].includes(action.state))
+        return null;
+      const r = resource(action.proposal.workId);
+      if (
+        !sameOwner(action.proposal.observed.owner, host.owner) ||
+        r.work.taskId !== action.proposal.observed.taskId ||
+        r.work.managerId !== action.proposal.observed.managerId
+      )
+        throw new Error('Original retained action binding changed.');
+      const receipt = await inspect(action.actionId);
+      if (receipt.state === 'pending') return null;
+      const outcome =
+        receipt.state === 'completed'
+          ? receipt.outcome
+          : {
+              taskId: r.work.taskId,
+              workerId: null,
+              outcomeId: groupCoordinationId(action.actionId, 'retained-absent'),
+              status: 'blocked' as const,
+              message:
+                'Original owner journal proves no native effect; retained action closed without executing work.',
+            };
+      const result = await host.reconcile({
+        receiptId: groupCoordinationId(action.actionId, 'retained-receipt'),
+        actionId: action.actionId,
+        revision: action.revision,
+        owner: host.owner,
+        effect:
+          receipt.state === 'completed' && outcome.status !== 'blocked' ? 'completed' : 'absent',
+        outcome,
+      });
+      if (!result.ok || result.value.kind !== 'action') return null;
+      return result.value.action;
+    },
     command: host.command,
     revalidate,
     resolve: async (id) => refresh(id),

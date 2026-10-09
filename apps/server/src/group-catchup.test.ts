@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import {
   groupEntityIdSchema,
@@ -13,6 +13,7 @@ import {
 } from '@dock/shared';
 import {
   groupEvidenceQuerySchema,
+  GROUP_EVIDENCE_LIMITS,
   type GroupEvidenceFacts,
 } from '@dock/shared/dist/group-evidence.js';
 import { groupCatchupAckRequestSchema } from '@dock/shared/dist/group-catchup.js';
@@ -21,6 +22,8 @@ import { GroupCatchupStore } from './group-catchup.js';
 import { GroupEvidenceIndex } from './group-evidence.js';
 import { registerGroupCatchupRoutes } from './group-catchup-routes.js';
 import { createGroupPrivateEvidenceQuery } from './group-evidence-private.js';
+import { createGroupSharedEvidenceQuery } from './group-evidence-shared.js';
+import { createGroupEvidenceOriginal } from './group-evidence-original.js';
 import type { GroupCatchupReader } from './group-catchup-context.js';
 
 let dir: string, repo: GroupEventRepository, store: GroupCatchupStore, index: GroupEvidenceIndex;
@@ -109,6 +112,148 @@ const newIndex = () =>
   });
 const acknowledge = (p: Awaited<ReturnType<GroupCatchupStore['start']>>, r = reader) =>
   store.acknowledge(r, p.snapshotId, p.pageId, p.acknowledgementId);
+
+it('escaped shared evidence pages stay byte-bounded and resume the exact snapshot after restart', async () => {
+  for (let i = 0; i < 8; i++) {
+    const event = append();
+    facts.set(
+      event.eventId,
+      sourceFacts(event, {
+        paths: Array.from({ length: 16 }, (_, p) => `file-${p}/` + '\u0001'.repeat(500)),
+      }),
+    );
+  }
+  const input = {
+    queryId: randomUUID(),
+    query: { type: 'offline_changes' as const },
+    limit: 8,
+    continuation: null as string | null,
+  };
+  let query = createGroupSharedEvidenceQuery({ resolve: async () => reader, evidence: index });
+  const first = await query(input);
+  expect(first.records.length).toBeGreaterThan(0);
+  expect(first.records.length).toBeLessThan(8);
+  expect(Buffer.byteLength(JSON.stringify(first))).toBeLessThanOrEqual(
+    GROUP_EVIDENCE_LIMITS.pageBytes,
+  );
+  expect(first.continuation).not.toBeNull();
+  expect(await query(input)).toEqual(first);
+  index.close();
+  index = newIndex();
+  query = createGroupSharedEvidenceQuery({ resolve: async () => reader, evidence: index });
+  const ids = first.records.map((record) => record.event.eventId);
+  let cursor = first.continuation;
+  while (cursor) {
+    const next = await query({ ...input, continuation: cursor });
+    expect(Buffer.byteLength(JSON.stringify(next))).toBeLessThanOrEqual(
+      GROUP_EVIDENCE_LIMITS.pageBytes,
+    );
+    ids.push(...next.records.map((record) => record.event.eventId));
+    cursor = next.continuation;
+  }
+  expect(ids.length).toBe(8);
+  expect(new Set(ids).size).toBe(8);
+});
+
+it('shared native evidence indexes bounded authenticated originals and advances only its own completed offline query', async () => {
+  const original = Array.from({ length: 19 }, () => append());
+  append('Finding', aside); // Never included in the shared source/index.
+  const query = createGroupSharedEvidenceQuery({ resolve: async () => reader, evidence: index });
+  const input = {
+    queryId: randomUUID(),
+    query: { type: 'offline_changes' as const },
+    limit: 8,
+    continuation: null as string | null,
+  };
+  const first = await query(input);
+  expect(first.records.map((r) => r.event.eventId)).toEqual(
+    original.slice(0, 8).map((e) => e.eventId),
+  );
+  expect(first.watermark).toBe(16);
+  expect(first.unknown.join(' ')).toContain('incomplete beyond position 16');
+  expect(await index.sharedAcknowledged(reader)).toBe(0);
+  expect(await query(input)).toEqual(first);
+  input.continuation = first.continuation;
+  const second = await query(input);
+  expect(second.records.map((r) => r.event.eventId)).toEqual(
+    original.slice(8, 16).map((e) => e.eventId),
+  );
+  expect(second.continuation).toBeNull();
+  expect(await index.sharedAcknowledged(reader)).toBe(16);
+  expect(await store.acknowledged(privateReader)).toBe(0);
+  expect(await index.sharedAcknowledged(makeReader(bobAside))).toBe(0);
+  index.close();
+  index = newIndex();
+  const restored = createGroupSharedEvidenceQuery({ resolve: async () => reader, evidence: index });
+  expect(await restored(input)).toEqual(second);
+  const third = await restored({ ...input, queryId: randomUUID(), continuation: null });
+  expect(third.records.map((r) => r.event.eventId)).toEqual(
+    original.slice(16).map((e) => e.eventId),
+  );
+  expect(await index.sharedAcknowledged(reader)).toBe(19);
+  await expect(
+    createGroupSharedEvidenceQuery({ resolve: async () => privateReader, evidence: index })({
+      ...input,
+      queryId: randomUUID(),
+      continuation: null,
+    }),
+  ).rejects.toThrow('shared Group manager');
+  repo.revokeMember(alice.groupId, alice.memberId);
+  await expect(restored(input)).rejects.toThrow();
+});
+it('shared refresh retries a failed page and enriches late facts without rewriting an earlier pinned query', async () => {
+  const events = Array.from({ length: 3 }, () => append());
+  const read = index.source!.readVerifiedShared.bind(index.source);
+  let fail = true;
+  vi.spyOn(index.source!, 'readVerifiedShared').mockImplementation(async (scope, id) => {
+    if (id === events[1]!.eventId && fail) {
+      fail = false;
+      throw new Error('offline');
+    }
+    return read(scope, id);
+  });
+  const query = createGroupSharedEvidenceQuery({ resolve: async () => reader, evidence: index });
+  const input = {
+    queryId: randomUUID(),
+    query: { type: 'who_decided' as const, eventId: events[0]!.eventId },
+    limit: 8,
+    continuation: null,
+  };
+  await expect(query(input)).rejects.toThrow('offline');
+  const pinned = await query(input);
+  expect(pinned.watermark).toBe(3);
+  expect(pinned.records[0]!.facts).toBeNull();
+  facts.set(events[0]!.eventId, sourceFacts(events[0]!));
+  expect(await query(input)).toEqual(pinned);
+  const enriched = await query({ ...input, queryId: randomUUID() });
+  expect(enriched.records[0]!.facts).toEqual(sourceFacts(events[0]!));
+  expect(await query(input)).toEqual(pinned);
+});
+it('native original expansion preserves exact text and refuses private bodies and invalid offsets', async () => {
+  const event = append(),
+    privateEvent = append('Finding', aside);
+  const tool = createGroupEvidenceOriginal(async () => reader);
+  const original = await reader.original(event.eventId);
+  let offset = 0,
+    collected = '',
+    hash: string | undefined;
+  do {
+    const page = await tool({ eventId: event.eventId, offset, limit: 3 });
+    collected += page.text;
+    if (hash) expect(page.sha256).toBe(hash);
+    hash = page.sha256;
+    if (page.nextOffset === null) break;
+    expect(page.nextOffset).toBeGreaterThan(offset);
+    offset = page.nextOffset;
+  } while (true);
+  expect(collected).toBe(original.text);
+  await expect(tool({ eventId: privateEvent.eventId, offset: 0, limit: 12000 })).rejects.toThrow();
+  await expect(
+    tool({ eventId: event.eventId, offset: original.text.length + 1, limit: 3 }),
+  ).rejects.toThrow('offset');
+  repo.revokeMember(alice.groupId, alice.memberId);
+  await expect(tool({ eventId: event.eventId, offset: 0, limit: 12000 })).rejects.toThrow();
+});
 beforeEach(() => {
   mkdirSync(resolve('data/group-catchup-tests'), { recursive: true });
   dir = mkdtempSync(resolve('data/group-catchup-tests/case-'));

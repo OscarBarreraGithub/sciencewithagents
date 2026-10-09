@@ -3,7 +3,7 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import { DocumentLink } from './Documents';
-import { GroupDocumentLink } from './groups/GroupDocumentLink';
+import { GroupDocumentLink, useGroupDocumentScope } from './groups/GroupDocumentLink';
 import { groupDocumentReference } from '@dock/shared/dist/group-documents.js';
 import { prepareChatMath } from './chatMath';
 import 'katex/dist/katex.min.css';
@@ -31,6 +31,7 @@ export const ChatMarkdown = memo(
     report?: boolean;
     entry?: { agentId: string; id: string };
   }) {
+    const groupScope = useGroupDocumentScope();
     const prepared = useMemo(
       () =>
         prepareChatMath(
@@ -68,12 +69,25 @@ export const ChatMarkdown = memo(
           components={{
             a: ({ href, children }) => {
               const fileId = href ? chatFileId(href) : null;
-              if (fileId) return <ChatFileCard key={fileId} id={fileId} />;
+              if (fileId)
+                return groupScope ? (
+                  <span>{children}</span>
+                ) : (
+                  <ChatFileCard key={fileId} id={fileId} />
+                );
               if (href && groupDocumentReference(href))
                 return report ? (
                   <span>{children}</span>
                 ) : (
                   <GroupDocumentLink href={href}>{children}</GroupDocumentLink>
+                );
+              if (groupScope)
+                return !report && href && /^(https?:|mailto:)/i.test(href) ? (
+                  <a href={href} target="_blank" rel="noreferrer">
+                    {children}
+                  </a>
+                ) : (
+                  <span>{children}</span>
                 );
               return report ? (
                 <span>{children}</span>
@@ -92,7 +106,7 @@ export const ChatMarkdown = memo(
             },
             img: ({ src, alt, ...props }) => {
               const id = typeof src === 'string' ? chatImageId(src) : null;
-              return id ? (
+              return id && !groupScope ? (
                 <ImagePreview
                   className="chat-uploaded-image"
                   src={apiUrl(`/chat-images/${id}`)}

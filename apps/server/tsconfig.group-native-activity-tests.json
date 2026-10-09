@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": [
+    "src/group-native-activity*.ts",
+    "src/group-native-host-runtime.test.ts",
+    "src/group-host.test.ts"
+  ],
+  "exclude": []
+}

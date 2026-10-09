@@ -1,4 +1,5 @@
 import { promptTextLimit, latestConversationActivity } from '@dock/shared';
+import { captureGroupRunTransition } from './group-native-activity-producers.js';
 import { requireQueueHold } from './queue-hold.js';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
@@ -809,13 +810,24 @@ export class Store extends EventEmitter {
     return runSchema.parse(next);
   }
   updateRun(id: string, changes: Partial<PrivateRun>) {
-    const value = { ...this.run(id), ...changes, id };
-    this.db
-      .prepare('UPDATE runs SET status=?,body=? WHERE id=?')
-      .run(value.status, JSON.stringify(value), id);
-    const a = this.agent(value.agentId);
-    this.event(`run.${value.status}`, a.projectId, a.id, runSchema.parse(value));
-    return value;
+    const previous = this.run(id),
+      value = { ...previous, ...changes, id };
+    this.db.exec('SAVEPOINT group_activity_run_transition');
+    try {
+      this.db
+        .prepare('UPDATE runs SET status=?,body=? WHERE id=?')
+        .run(value.status, JSON.stringify(value), id);
+      const a = this.agent(value.agentId);
+      const event = this.event(`run.${value.status}`, a.projectId, a.id, runSchema.parse(value));
+      if (previous.status !== value.status) captureGroupRunTransition(this, id, `run:${event.id}`);
+      this.db.exec('RELEASE group_activity_run_transition');
+      return value;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO group_activity_run_transition; RELEASE group_activity_run_transition',
+      );
+      throw error;
+    }
   }
   entry(value: Entry) {
     entrySchema.parse(value);

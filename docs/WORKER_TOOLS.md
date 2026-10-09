@@ -62,6 +62,8 @@ in an active unattended native turn, allowing reviewers to record `dock_review` 
 plan mode. Native ask rules and user-interaction requirements remain effective; this grants no
 file-write or external-MCP approval. An actual Opus reviewer resumed and recorded a scoped `changes_requested` verdict in the
 2026-10-01 beta check; the follow-up correction retained its independent review requirement.
+A completed implementer turn whose checkpoint is the exact reviewed commit keeps that verdict,
+including a blocking `changes_requested`; any changed commit clears it for a new review.
 A hook's successful admission returns no tool permission grant.
 Before acknowledging a stopped active turn and releasing its reservation, QUARK closes the
 owned provider process group: a native turn interruption alone can leave a tool command running.
@@ -113,6 +115,10 @@ not proof that the tool is signed in or will succeed in a later task worktree.
 
 ## Manager contract
 
+Before taking over maintenance or preparing a release, read the
+[maintenance failure review](FAILURE_REVIEW.md). Preserve instruction provenance, use
+bounded outcomes, and separate source checks from installed and running acceptance.
+
 Managers keep independent owner asks in durable work items; steering adds or corrects work
 unless the owner cancels or replaces it. Notes remain the owner's. The turn overview shows
 at most 60 unresolved items and reports `workItemsPage.omitted` and `nextCursor`.
@@ -131,7 +137,14 @@ oversized summary leaves the saved item and original source unchanged. Shorten t
 summary and retry; never truncate the original message or claim triage before saving succeeds.
 Delivery remains queued/running/failed/cancelled for normal sends; steering is submitted or
 uncertain. Uncertain input is retained without automatic native replay. Sources stay owned
-by their receiving manager. Work-item revisions and append-only events preserve provenance.
+by their receiving manager. Peer reports, worker replies and manager messages are not owner
+sources; a rejected reference is named in the error, and that evidence belongs in work-item
+detail or checkpoints. Work-item revisions and append-only events preserve provenance.
+Reconciliation handoffs (owner "Prepare updated changes" or manager `dock_apply` reconcile)
+reach the manager as native user input but appear as **App notification**, never owner
+sources; their guidance asks for owner confirmation only under human apply review. Older
+handoffs are labeled from their exact `reconcile:` run key with text unchanged; links saved
+earlier stay on their items, but new links to them are rejected.
 Changing a work item's source set clears its old disposition unless the manager explicitly
 renews whole-message triage; reordering the same sources does not clear it.
 Use `dock_inspect {workItems:{cursor:"…"}}` to continue, following each `nextCursor` until
