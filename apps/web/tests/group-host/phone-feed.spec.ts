@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Route } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -237,10 +237,69 @@ test('hosted phone reads without a companion and retains exact human retries wit
     await expect(page.getByRole('heading', { name: 'Phone acceptance' })).toBeVisible();
     await expect(page.locator('#saved-request-note')).toContainText('could not be read');
     await expect(page.getByLabel('Message to the group')).toBeDisabled();
-    await page.getByRole('button', { name: 'Refresh messages' }).click();
-    await expect(page.locator('#saved-request-note')).toContainText('could not be read');
-    await page.getByRole('button', { name: 'Stop retrying saved message' }).click();
+    const stopRetrying = page.getByRole('button', { name: 'Stop retrying saved message' });
+    await expect(stopRetrying).toBeEnabled();
+    let releaseRefresh!: () => void;
+    let refreshHeld = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    let refreshIntercepted = false;
+    const holdRefresh = async (route: Route) => {
+      const input = route.request().postDataJSON() as { kind: string };
+      if (input.kind === 'feed') {
+        refreshIntercepted = true;
+        await refreshHeld;
+      }
+      await route.continue();
+    };
+    await page.route('**/v1/phone/*', holdRefresh);
+    try {
+      await page.getByRole('button', { name: 'Refresh messages' }).click();
+      await expect.poll(() => refreshIntercepted).toBe(true);
+      await expect(page.locator('#saved-request-note')).toContainText('could not be read');
+      await expect(stopRetrying).toBeDisabled();
+      // Disabled controls still retain their guard against programmatic handler dispatch.
+      await page.evaluate(() => {
+        const remove = document.getElementById('remove') as HTMLButtonElement;
+        remove.onclick?.call(remove, new PointerEvent('click'));
+      });
+      expect(
+        await page.evaluate(() =>
+          localStorage.getItem('swa:phone-post:' + location.pathname.split('/')[2]),
+        ),
+      ).toBe('{not-json');
+    } finally {
+      releaseRefresh();
+      await page.unrouteAll({ behavior: 'wait' });
+    }
+    await expect(stopRetrying).toBeEnabled();
+    await stopRetrying.click();
     await expect(page.getByLabel('Message to the group')).toBeEnabled();
+    const typingDraft = page.getByLabel('Message to the group');
+    await typingDraft.fill('Typing through a background refresh');
+    refreshIntercepted = false;
+    refreshHeld = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    await page.route('**/v1/phone/*', holdRefresh);
+    try {
+      // Start a read without moving focus, as the periodic background refresh does.
+      await page.evaluate(() => document.getElementById('refresh')!.click());
+      await expect.poll(() => refreshIntercepted).toBe(true);
+      await expect(typingDraft).toBeEnabled();
+      await expect(typingDraft).toBeFocused();
+      await expect(page.locator('#send')).toBeDisabled();
+      await typingDraft.fill('Typing through a background refresh still works');
+      expect(
+        await page.evaluate(() =>
+          localStorage.getItem('swa:phone-draft:' + location.pathname.split('/')[2]),
+        ),
+      ).toBe('Typing through a background refresh still works');
+    } finally {
+      releaseRefresh();
+      await page.unrouteAll({ behavior: 'wait' });
+    }
+    await expect(typingDraft).toHaveValue('Typing through a background refresh still works');
     let release: (() => void) | undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -265,7 +324,7 @@ test('hosted phone reads without a companion and retains exact human retries wit
     // Exercise the guards even when a browser extension dispatches handlers on disabled controls.
     await page.evaluate(() => {
       const remove = document.getElementById('remove') as HTMLButtonElement;
-      remove.onclick?.call(remove, new MouseEvent('click'));
+      remove.onclick?.call(remove, new PointerEvent('click'));
       const draft = document.getElementById('draft') as HTMLTextAreaElement;
       draft.value = 'Second unsent draft must survive the first receipt.';
       draft.dispatchEvent(new Event('input'));

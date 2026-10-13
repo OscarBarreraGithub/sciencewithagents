@@ -25,8 +25,11 @@ request** retries that exact request after reload. An expired link needs an expl
 link. On the phone, a failed send retains the exact message/key before delivery. **Retry
 saved message** checks that original message. **Stop retrying saved message** stops further
 retries; an accepted message remains shared. Unsent drafts and saved requests stay in that
-phone browser’s local storage. While a send is in flight, the send/retry/reset controls are
-disabled; its acknowledgement clears only that exact saved message and matching draft. An
+phone browser’s local storage. During a send, connection check or feed refresh, the
+send/retry/reset controls are disabled until that request finishes. Background reads keep
+an unsent draft editable and preserve typing focus; a saved or unreadable request holds
+the composer until it is resolved. A send
+acknowledgement clears only that exact saved message and matching draft. An
 unreadable saved request keeps its recovery explanation visible after connection/refresh.
 Temporary claim refusals, including a capacity limit, preserve the original claim for
 **Check phone connection**; they do not discard the link secret. Clearing browser storage

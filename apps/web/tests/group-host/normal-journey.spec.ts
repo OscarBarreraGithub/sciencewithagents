@@ -356,56 +356,63 @@ test('saved consent is reachable from Group chat and native coordination refusal
   const requestId = randomUUID(),
     key = randomUUID();
   let cancelled = false;
-  await page.route('**/api/groups/chat', async (route) => {
-    const response = await route.fetch(),
-      value = await response.json();
-    value.nativeRequests = [
-      {
-        key,
-        requestId,
-        text: 'Retained request needing consent',
-        intent: 'work',
-        resultId: null,
-        state: cancelled ? 'cancelled' : 'pending-consent',
-        message: 'Retained request.',
-        delivery: 'pending',
-      },
-    ];
-    await route.fulfill({ response, json: value });
-  });
-  const commands: unknown[] = [];
-  await page.route('**/api/groups/native-owner', async (route) => {
-    const input = route.request().postDataJSON();
-    commands.push(input);
-    if (input.action === 'reject') cancelled = true;
-    await route.fulfill({
-      json: {
-        executionMode: 'host',
-        managedCoordination: false,
-        hostEnabled: true,
-        configured: true,
-        productionReady: true,
-        provider: 'codex',
-        setupId: null,
-        state: cancelled ? 'stopped' : 'authenticated',
-        message: 'Retained native access.',
-      },
+  try {
+    await page.route('**/api/groups/chat', async (route) => {
+      const response = await route.fetch(),
+        value = await response.json();
+      value.nativeRequests = [
+        {
+          key,
+          requestId,
+          text: 'Retained request needing consent',
+          intent: 'work',
+          resultId: null,
+          state: cancelled ? 'cancelled' : 'pending-consent',
+          message: 'Retained request.',
+          delivery: 'pending',
+        },
+      ];
+      await route.fulfill({ response, json: value });
     });
-  });
-  await page.reload();
-  await expect(page.getByRole('tab', { name: 'Group chat', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  const dialog = page.getByRole('dialog', { name: 'Manage group', exact: true });
-  await expect(dialog).toBeVisible();
-  await expect(
-    dialog.getByRole('button', { name: 'Continue this request', exact: true }),
-  ).toBeVisible();
-  await expect(dialog.getByText('Review proposed shared actions', { exact: true })).toHaveCount(0);
-  await dialog.getByRole('button', { name: 'Cancel this request', exact: true }).click();
-  expect(commands).toContainEqual(expect.objectContaining({ action: 'reject', requestId }));
-  expect((await fixtureCommand('inspect')).synthesisRequests).toBe(0);
+    const commands: unknown[] = [];
+    await page.route('**/api/groups/native-owner', async (route) => {
+      const input = route.request().postDataJSON();
+      commands.push(input);
+      if (input.action === 'reject') cancelled = true;
+      await route.fulfill({
+        json: {
+          executionMode: 'host',
+          managedCoordination: false,
+          hostEnabled: true,
+          configured: true,
+          productionReady: true,
+          provider: 'codex',
+          setupId: null,
+          state: cancelled ? 'stopped' : 'authenticated',
+          message: 'Retained native access.',
+        },
+      });
+    });
+    await page.reload();
+    await expect(page.getByRole('tab', { name: 'Group chat', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    const dialog = page.getByRole('dialog', { name: 'Manage group', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Continue this request', exact: true }),
+    ).toBeVisible();
+    await expect(dialog.getByText('Review proposed shared actions', { exact: true })).toHaveCount(
+      0,
+    );
+    await dialog.getByRole('button', { name: 'Cancel this request', exact: true }).click();
+    expect(commands).toContainEqual(expect.objectContaining({ action: 'reject', requestId }));
+    expect((await fixtureCommand('inspect')).synthesisRequests).toBe(0);
+  } finally {
+    // Drain this test's live chat reads before its page and request context close.
+    await page.unrouteAll({ behavior: 'wait' });
+  }
 });
 async function capture(page: Page, label: string) {
   await page.screenshot({
