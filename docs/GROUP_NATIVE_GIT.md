@@ -1,5 +1,10 @@
 # Shared files in native Groups
 
+**Temporary Groups-only branch:** use [its native setup](GROUPS_ONLY.md#files-with-your-existing-claude).
+The shared verifier, raw history scan and external-checkpoint engine are reused. Background
+sync fetches and publishes approved refs; checkout changes remain in ordinary native Git.
+App-owned Work sections below describe retained full-SWA behavior on main.
+
 Group messages use the creator's Cloudflare service. Shared files use a separate GitHub
 repository. Joining a group does not grant access to that repository.
 

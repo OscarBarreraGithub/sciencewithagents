@@ -1,11 +1,18 @@
 import {
+  GroupWorkspaceChoices,
+  groupWorkspaceKey,
+  assertGroupWorkspaceFolder,
+  workspaceChoiceSchema,
+  type WorkspaceChoice,
+} from './group-workspace-choices.js';
+import {
   groupHostTurnSchema,
   groupHostWorkFamily,
   groupHostStopKey,
 } from './group-host-work-continuation.js';
 import { createGroupHostCoordination } from './group-coordination-runtime-host.js';
 import type { GroupCoordinationNativePort } from './group-coordination-runtime.js';
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -49,16 +56,7 @@ const bindingSchema = z.strictObject({
   workspaceChoiceKey: z.uuid().optional(),
 });
 type Binding = z.infer<typeof bindingSchema>;
-const workspaceChoiceSchema = z.strictObject({
-  key: z.uuid(),
-  revision: z.number().int().positive().safe(),
-  selection: z.strictObject({
-    key: z.uuid(),
-    root: z.string().max(4096),
-    identity: z.string().max(100),
-  }),
-});
-type WorkspaceChoice = z.infer<typeof workspaceChoiceSchema>;
+
 export type GroupHostNativeWorkspace = Omit<
   Binding,
   'projectId' | 'agentId' | 'provider' | 'executionMode'
@@ -69,7 +67,6 @@ export type GroupHostNativeWorkspace = Omit<
   executionMode?: Binding['executionMode'];
 };
 type SavedRequest = { request_id: string; binding_key: string; input: string; prompt: string };
-const hash = (v: string) => createHash('sha256').update(v).digest('hex');
 const notice =
   'Runs on this computer with your existing provider sign-in and native tools. Work can access files, commands and network as your user. Your already-shared messages also receive bounded background feed summaries and labels using your saved bulk model. Private conversations stay separate; this is not a sandbox.';
 export type GroupHostNativeCompletion = {
@@ -226,36 +223,10 @@ export function createGroupHostNativeConnector(
       },
       causalRefs: [],
     });
-  const keyFor = (anchor: GroupContext, enrollment: string, workspaceChoiceKey?: string) =>
-    hash(
-      publicationCanonical({
-        anchor,
-        enrollment,
-        ...(workspaceChoiceKey ? { workspaceChoiceKey } : {}),
-      }),
-    );
-  const choiceFor = (anchor: GroupContext, enrollment: string): WorkspaceChoice | null => {
-    const row = db
-      .prepare('SELECT body FROM hnr_workspaces WHERE anchor_key=? ORDER BY revision DESC LIMIT 1')
-      .get(keyFor(anchor, enrollment));
-    return row ? workspaceChoiceSchema.parse(JSON.parse(String(row.body))) : null;
-  };
-  const assertFolder = (selection: WorkspaceChoice['selection']) => {
-    try {
-      const stat = lstatSync(selection.root);
-      if (
-        !stat.isDirectory() ||
-        stat.isSymbolicLink() ||
-        realpathSync(selection.root) !== selection.root ||
-        `${stat.dev}:${stat.ino}` !== selection.identity
-      )
-        throw Error('Changed');
-    } catch {
-      throw new Conflict(
-        'The chosen group folder changed or is unavailable. Its saved work was preserved; choose it again.',
-      );
-    }
-  };
+  const keyFor = groupWorkspaceKey;
+  const choices = new GroupWorkspaceChoices(db);
+  const choiceFor = (anchor: GroupContext, enrollment: string) => choices.get(anchor, enrollment);
+  const assertFolder = assertGroupWorkspaceFolder;
   const assertBindingFolder = (binding: Binding) => {
     if (!binding.workspaceChoiceKey) return;
     const row = db
@@ -984,62 +955,8 @@ export function createGroupHostNativeConnector(
     workspace(raw, enrollment, change) {
       const anchor = sharedAnchor(raw, enrollment);
       if (!change) return folderView(anchor, enrollment, choiceFor(anchor, enrollment));
-      z.uuid().parse(change.key);
-      z.number().int().nonnegative().safe().parse(change.revision);
-      if ('selectionKey' in change) z.uuid().parse(change.selectionKey);
-      const prior = db.prepare('SELECT input,body FROM hnr_workspaces WHERE key=?').get(change.key);
-      if (prior) {
-        const saved = workspaceChoiceSchema.parse(JSON.parse(String(prior.body)));
-        const selection =
-          'selection' in change
-            ? workspaceChoiceSchema.shape.selection.parse(change.selection)
-            : saved.selection;
-        const exact = publicationCanonical({
-          anchor,
-          enrollment,
-          key: change.key,
-          revision: change.revision,
-          selection,
-        });
-        if (
-          ('selectionKey' in change && change.selectionKey !== saved.selection.key) ||
-          prior.input !== exact
-        )
-          throw new Conflict('Retry the exact saved group folder selection.');
-        return folderView(anchor, enrollment, saved);
-      }
-      const current = choiceFor(anchor, enrollment);
-      if ((current?.revision ?? 0) !== change.revision)
-        throw new Conflict('The shared folder selection changed. Refresh before choosing again.');
-      const selection = workspaceChoiceSchema.shape.selection.parse(
-        'selection' in change ? change.selection : change.resolveSelection(),
-      );
-      if ('selectionKey' in change && selection.key !== change.selectionKey)
-        throw new Conflict('Saved folder selection changed. Choose it again.');
-      const exact = publicationCanonical({
-        anchor,
-        enrollment,
-        key: change.key,
-        revision: change.revision,
-        selection,
-      });
-      assertFolder(selection);
-      switchIdle(anchor, enrollment, selection.root);
-      if (Number(db.prepare('SELECT count(*) n FROM hnr_workspaces').get()!.n) >= 2048)
-        throw new Conflict(
-          'Retained group folder-selection history is full; files and original bindings remain preserved.',
-        );
-      const choice = workspaceChoiceSchema.parse({
-        key: change.key,
-        revision: change.revision + 1,
-        selection,
-      });
-      db.prepare('INSERT INTO hnr_workspaces VALUES (?,?,?,?,?)').run(
-        keyFor(anchor, enrollment),
-        change.key,
-        exact,
-        JSON.stringify(choice),
-        choice.revision,
+      const choice = choices.select(anchor, enrollment, change, (root) =>
+        switchIdle(anchor, enrollment, root),
       );
       return folderView(anchor, enrollment, choice);
     },

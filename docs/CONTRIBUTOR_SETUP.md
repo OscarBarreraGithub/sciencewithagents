@@ -1,5 +1,7 @@
 # Agent-led setup from a clone
 
+**Temporary `groups-only` beta:** ready for joint beta testing, contingent on exact final independent approval and publication. Follow [Groups-only setup and updates](GROUPS_ONLY.md) first and check [current beta limits](STATUS.md). Human Groups needs no provider installation. Full-SWA instructions below apply when using main.
+
 For the person: clone/open this repository with your coding agent and ask it to follow this
 guide; the [README setup prompt](../README.md#set-up) is the canonical copyable request.
 Your agent handles the technical steps below. You complete your own account sign-ins when

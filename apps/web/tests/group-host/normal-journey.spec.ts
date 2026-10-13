@@ -87,11 +87,13 @@ async function enter(page: Page, host: HostConnection = connection) {
   await page.goto(`${host.origin}/#/home`);
   await page.locator('a[href="#/chats"]').first().click();
   await page.getByRole('button', { name: 'Groups', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
+  await page.locator('.groups-category-navigation > summary').click();
   await expect(page.getByRole('button', { name: 'Groups', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
+  await page.locator('.groups-category-navigation > summary').click();
 }
 async function create(page: Page, name: string) {
   await page.getByRole('button', { name: 'New group', exact: true }).click();
@@ -754,7 +756,7 @@ test('Groups presentation retains a failed create, reads shared messages and res
   await expect(draft).toHaveValue('Saved for later: compare the second observation.');
   for (const control of await page
     .locator(
-      '.groups-workspace-heading button, .groups-workspace-heading summary, .groups-tabs button, .group-mode-button',
+      '.groups-workspace-heading button:visible, .groups-workspace-heading summary:visible, .groups-tabs button:visible',
     )
     .all()) {
     const box = await control.boundingBox();

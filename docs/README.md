@@ -5,6 +5,8 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 
 ## Setup and everyday use
 
+- [Temporary Groups-only branch](GROUPS_ONLY.md)
+
 - [Install with your coding agent](CONTRIBUTOR_SETUP.md)
 - [Open the app and connect VS Code](LOCAL_ACCESS.md)
 - [Cloudflare phone setup prompt](PHONE_SETUP.md) and [pairing workflow](PHONE_WORKFLOW.md)

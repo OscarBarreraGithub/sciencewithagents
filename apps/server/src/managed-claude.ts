@@ -1,14 +1,10 @@
+import { claudeModelCatalog } from './claude-model-catalog.js';
 import { isSlurmReviewer } from './slurm-review.js';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ZodError } from 'zod';
-import {
-  providerDefaultEffort,
-  claudeSignInStatusSchema,
-  signInRequestSchema,
-  type Model,
-} from '@dock/shared';
+import { claudeSignInStatusSchema, signInRequestSchema, type Model } from '@dock/shared';
 import { openClaudeSignIn } from './claude-sign-in.js';
 import type { DynamicTool } from './codex.js';
 import { Conflict, Store, type PrivateAgent } from './store.js';
@@ -120,48 +116,7 @@ export class ManagedClaude {
         }),
     );
     if (this.stopped) throw new Conflict('sciencewithagents is stopping.');
-    // Effort is optional native metadata, not a prerequisite for model access.
-    // Unreported/unsupported levels leave the provider's own behavior untouched.
-    this.catalog = discovered.models.map((model) => ({
-      id: model.value,
-      label: model.displayName,
-      isDefault: model.value === 'default',
-      efforts: [
-        ...new Set([
-          ...(model.supportsEffort !== false ? (model.supportedEffortLevels ?? []) : []),
-          providerDefaultEffort,
-        ]),
-      ],
-    }));
-    // Keep rolling aliases, and also expose provider-reported concrete IDs for exact pins.
-    // Never invent release identifiers or turn a context-size alias into a different variant.
-    for (const native of discovered.models) {
-      if (
-        !native.resolvedModel ||
-        native.value.includes('[') ||
-        !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/.test(native.resolvedModel) ||
-        this.catalog.some((model) => model.id === native.resolvedModel)
-      )
-        continue;
-      const labelled =
-        discovered.models.find(
-          (model) =>
-            model.resolvedModel === native.resolvedModel &&
-            model.value !== 'default' &&
-            !model.value.includes('['),
-        ) ?? native;
-      const alias = this.catalog.find((model) => model.id === labelled.value)!;
-      this.catalog.push({
-        ...alias,
-        id: native.resolvedModel,
-        label: `${labelled.displayName} (exact version)`,
-        isDefault: false,
-      });
-    }
-    if (!this.catalog.length)
-      throw new Conflict(
-        'This Claude installation did not report usable model settings. Nothing was started.',
-      );
+    this.catalog = claudeModelCatalog(discovered.models);
     return this.catalog;
   }
   get(agentId: string) {

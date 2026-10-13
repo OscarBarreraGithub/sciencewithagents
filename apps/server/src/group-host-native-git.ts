@@ -1,7 +1,9 @@
+import { initializeGroupGitStorage } from './group-git-storage.js';
+import { GroupGitRepository } from './group-git-repository.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import {
@@ -26,19 +28,13 @@ import { Conflict, Missing } from './store.js';
 import { integrationPreview, integrate } from './workspaces.js';
 import { groupSharingGit as git, groupGitHistory } from './group-sharing-git.js';
 import { groupNativePrivatePath } from './group-native-private-path.js';
-import {
-  assertGroupGitBlob,
-  assertGroupGitMetadata,
-  groupProjectDataAllowed,
-  GROUP_NATIVE_GIT_FILE_LIMITS,
-} from './group-native-git-files.js';
+import { groupProjectDataAllowed } from './group-native-git-files.js';
 
 type Binding = GroupHostNativeWorkspace;
 type Settings = { githubUsername: string; autoSync: boolean };
 const adapters = new WeakMap<GroupHost, GroupHostNativeGit>();
 export const groupHostNativeGit = (host: GroupHost) => adapters.get(host);
 const defaults: Settings = { githubUsername: '', autoSync: false };
-const oid = /^[a-f0-9]{40,64}$/;
 const nativePreviewIdentitySchema = groupNativeCommitPreviewSchema.omit({
   files: true,
   patch: true,
@@ -63,6 +59,7 @@ export class GroupHostNativeGit {
   private readonly starting = new Map<string, { requestId: string; until: number }>();
   private background?: Promise<void>;
   private externalFiles?: GroupExternalFiles;
+  private readonly repositoryAccess: GroupGitRepository;
   constructor(
     readonly host: GroupHost,
     private readonly runtime: Runtime,
@@ -71,28 +68,8 @@ export class GroupHostNativeGit {
     /** Internal fixture seam; no browser/config can replace native access verification. */
     private readonly verifyPrivateAccess?: (cwd: string, origin: string) => Promise<void>,
   ) {
-    host.db.exec(`
-      CREATE TABLE IF NOT EXISTS gng_settings(handle TEXT NOT NULL,key TEXT PRIMARY KEY,input TEXT NOT NULL,body TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS gng_baselines(handle TEXT NOT NULL,origin TEXT NOT NULL,oid TEXT NOT NULL,PRIMARY KEY(handle,oid));
-      CREATE TABLE IF NOT EXISTS gng_operations(key TEXT PRIMARY KEY,input TEXT NOT NULL,result TEXT);
-      CREATE TABLE IF NOT EXISTS gng_applies(key TEXT PRIMARY KEY,body TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS gng_repositories(handle TEXT PRIMARY KEY,origin TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS gng_connections(handle TEXT NOT NULL,scope_key TEXT NOT NULL,origin TEXT NOT NULL,key TEXT PRIMARY KEY,UNIQUE(handle,scope_key,origin));
-      CREATE TABLE IF NOT EXISTS gng_native_previews(id TEXT PRIMARY KEY,scope_key TEXT NOT NULL,origin TEXT NOT NULL,fingerprint TEXT NOT NULL,body TEXT NOT NULL,UNIQUE(scope_key,origin,fingerprint));
-      CREATE INDEX IF NOT EXISTS gng_native_previews_head ON gng_native_previews(scope_key,origin,json_extract(body,'$.preview.head'),json_extract(body,'$.preview.branch'));
-      CREATE TABLE IF NOT EXISTS gng_native_reviews(key TEXT PRIMARY KEY,preview_id TEXT NOT NULL UNIQUE,body TEXT NOT NULL);
-      CREATE TRIGGER IF NOT EXISTS gng_native_previews_immutable BEFORE UPDATE ON gng_native_previews BEGIN SELECT RAISE(ABORT,'retained native commit preview'); END;
-      CREATE TRIGGER IF NOT EXISTS gng_native_previews_retain BEFORE DELETE ON gng_native_previews BEGIN SELECT RAISE(ABORT,'retained native commit preview'); END;
-      CREATE TRIGGER IF NOT EXISTS gng_native_reviews_immutable BEFORE UPDATE ON gng_native_reviews BEGIN SELECT RAISE(ABORT,'retained owner review'); END;
-      CREATE TRIGGER IF NOT EXISTS gng_native_reviews_retain BEFORE DELETE ON gng_native_reviews BEGIN SELECT RAISE(ABORT,'retained owner review'); END;
-      CREATE TRIGGER IF NOT EXISTS gng_connections_immutable BEFORE UPDATE ON gng_connections BEGIN SELECT RAISE(ABORT,'retained verified Git connection'); END;
-      CREATE TRIGGER IF NOT EXISTS gng_connections_retain BEFORE DELETE ON gng_connections BEGIN SELECT RAISE(ABORT,'retained verified Git connection'); END;
-      CREATE TRIGGER IF NOT EXISTS gng_settings_immutable BEFORE UPDATE ON gng_settings BEGIN SELECT RAISE(ABORT,'retained Git settings'); END;
-      CREATE TRIGGER IF NOT EXISTS gng_baselines_immutable BEFORE UPDATE ON gng_baselines BEGIN SELECT RAISE(ABORT,'retained Git baseline'); END;
-      CREATE TRIGGER IF NOT EXISTS gng_operations_identity BEFORE UPDATE OF key,input ON gng_operations BEGIN SELECT RAISE(ABORT,'retained Git operation'); END;
-      CREATE TRIGGER IF NOT EXISTS gng_applies_immutable BEFORE UPDATE ON gng_applies BEGIN SELECT RAISE(ABORT,'retained exact Git preview'); END;
-      CREATE TRIGGER IF NOT EXISTS gng_repositories_immutable BEFORE UPDATE ON gng_repositories BEGIN SELECT RAISE(ABORT,'retained Git remote'); END;
-    `);
+    initializeGroupGitStorage(host.db);
+    this.repositoryAccess = new GroupGitRepository(host.db, () => runtime.dataDir, localFixture);
     adapters.set(host, this);
   }
   private scopeKey(binding: Binding) {
@@ -232,39 +209,7 @@ export class GroupHostNativeGit {
       );
   }
   private async privateAccess(cwd: string, origin: string, requireWrite = false) {
-    const label = origin
-      .replace(/^git@github\.com:/, 'https://github.com/')
-      .replace(/\.git\/?$/, '')
-      .replace(/\/$/, '');
-    if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(label))
-      throw new Conflict('Connect the chosen folder to the intended private GitHub repository.');
-    try {
-      const { stdout } = await exec(
-        'gh',
-        ['repo', 'view', label, '--json', 'nameWithOwner,isPrivate,viewerPermission'],
-        {
-          cwd,
-          timeout: 10_000,
-          maxBuffer: 16_384,
-          env: { ...process.env, GH_PROMPT_DISABLED: '1' },
-        },
-      );
-      const result = z
-        .object({
-          nameWithOwner: z.string().max(300),
-          isPrivate: z.literal(true),
-          viewerPermission: z.enum(['READ', 'TRIAGE', 'WRITE', 'MAINTAIN', 'ADMIN']),
-        })
-        .parse(JSON.parse(stdout));
-      if (`https://github.com/${result.nameWithOwner}`.toLowerCase() !== label.toLowerCase())
-        throw Error('Repository changed');
-      if (requireWrite && !['WRITE', 'MAINTAIN', 'ADMIN'].includes(result.viewerPermission))
-        throw Error('Write access required');
-    } catch {
-      throw new Conflict(
-        'Verify native GitHub sign-in and access to this intended private repository with your setup agent, then retry the same saved connection.',
-      );
-    }
+    return this.repositoryAccess.privateAccess(cwd, origin, requireWrite);
   }
   private busy(binding: Binding, ownRequest?: string) {
     if (groupsConversationHold(this.host, this.runtime.dataDir, binding.enrollmentHandle))
@@ -332,57 +277,10 @@ export class GroupHostNativeGit {
       : fallback;
   }
   private async optional(cwd: string, args: string[]) {
-    try {
-      return await git(cwd, args);
-    } catch {
-      return '';
-    }
+    return this.repositoryAccess.optional(cwd, args);
   }
   private async repository(binding: Binding) {
-    const cwd = binding.cwd;
-    if (!existsSync(join(cwd, '.git'))) return null;
-    if (
-      realpathSync(cwd) !== resolve(cwd) ||
-      lstatSync(join(cwd, '.git')).isSymbolicLink() ||
-      (await git(cwd, ['rev-parse', '--show-toplevel'])) !== cwd
-    )
-      throw new Conflict('The saved shared repository needs repair; its files were preserved.');
-    const origin = await this.optional(cwd, ['remote', 'get-url', 'origin']);
-    if (!origin) return null; // Local task worktrees do not require GitHub or a remote.
-    const https = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/;
-    const ssh = /^git@github\.com:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?$/;
-    if (!https.test(origin) && !ssh.test(origin) && !(this.localFixture && origin.startsWith('/')))
-      throw new Conflict(
-        'Connect the shared workspace to its intended GitHub repository with your setup agent.',
-      );
-    const canonical = (url: string) =>
-      url
-        .replace(/^git@github\.com:/, 'https://github.com/')
-        .replace(/\/$/, '')
-        .replace(/\.git$/, '')
-        .toLowerCase();
-    const pushes = (await git(cwd, ['remote', 'get-url', '--push', '--all', 'origin']))
-      .split('\n')
-      .filter(Boolean);
-    if (pushes.length !== 1 || canonical(pushes[0]!) !== canonical(origin))
-      throw new Conflict(
-        'The fetch and push destinations differ. Ask your setup agent to reconcile them before syncing.',
-      );
-    const retained = this.host.db
-      .prepare('SELECT origin FROM gng_repositories WHERE handle=?')
-      .get(this.scopeKey(binding));
-    if (retained && retained.origin !== origin)
-      throw new Conflict(
-        'The repository remote changed. Ask your setup agent to reconcile it before syncing.',
-      );
-    this.host.db
-      .prepare('INSERT OR IGNORE INTO gng_repositories VALUES (?,?)')
-      .run(this.scopeKey(binding), origin);
-    return {
-      cwd,
-      origin,
-      label: origin.replace(/^git@github\.com:/, 'https://github.com/').replace(/\.git\/?$/, ''),
-    };
+    return this.repositoryAccess.repository({ cwd: binding.cwd, scopeKey: this.scopeKey(binding) });
   }
   private async lock<T>(cwd: string, body: () => Promise<T>): Promise<T> {
     const prior = this.active.get(cwd);
@@ -395,42 +293,20 @@ export class GroupHostNativeGit {
     }
   }
   private baseline(binding: Binding, origin: string, head: string) {
-    if (!oid.test(head)) throw new Conflict('A valid shared commit is required.');
-    this.host.db
-      .prepare('INSERT OR IGNORE INTO gng_baselines VALUES (?,?,?)')
-      .run(this.scopeKey(binding), origin, head);
+    return this.repositoryAccess.baseline(
+      { cwd: binding.cwd, scopeKey: this.scopeKey(binding) },
+      origin,
+      head,
+    );
   }
   private async ancestor(cwd: string, older: string, newer: string) {
-    try {
-      await git(cwd, ['merge-base', '--is-ancestor', older, newer]);
-      return true;
-    } catch (error) {
-      if ((error as { code?: number }).code === 1) return false;
-      throw error;
-    }
+    return this.repositoryAccess.ancestor(cwd, older, newer);
   }
   private async fetchDefault(binding: Binding, repo: { cwd: string; origin: string }) {
-    const remote = await git(repo.cwd, ['ls-remote', '--symref', 'origin', 'HEAD']);
-    const main = /^ref: refs\/heads\/([^\s]+)\s+HEAD$/m.exec(remote)?.[1] ?? 'main';
-    if (!/^[A-Za-z0-9][A-Za-z0-9_./-]{0,200}$/.test(main) || main.includes('..'))
-      throw new Conflict('The remote default branch needs inspection.');
-    const remoteHead = /^([a-f0-9]{40,64})\s+HEAD$/m.exec(remote)?.[1] ?? null;
-    if (remoteHead) {
-      await git(repo.cwd, [
-        'fetch',
-        '--no-tags',
-        '--no-prune',
-        '--no-prune-tags',
-        '--no-recurse-submodules',
-        'origin',
-        `refs/heads/${main}`,
-      ]);
-      const fetched = await git(repo.cwd, ['rev-parse', 'FETCH_HEAD']);
-      if (fetched !== remoteHead)
-        throw new Conflict('The remote advanced during sync. Retry safely.');
-      this.baseline(binding, repo.origin, fetched);
-    }
-    return { main, remoteHead };
+    return this.repositoryAccess.fetchDefault(
+      { cwd: binding.cwd, scopeKey: this.scopeKey(binding) },
+      repo,
+    );
   }
   private reviewed(binding: Binding, head: string): string | null {
     const baselines = new Set(
@@ -725,67 +601,7 @@ export class GroupHostNativeGit {
   }
   /** Scan every newly published checkpoint, including files deleted by a later commit. */
   private async shareable(cwd: string, base: string, head: string) {
-    const allowProjectData = groupProjectDataAllowed(cwd, this.runtime.dataDir);
-    const scanned = new Set<string>();
-    const allFiles = new Set<string>();
-    const commits = (await git(cwd, ['rev-list', '--max-count=129', `${base}..${head}`]))
-      .split('\n')
-      .filter(Boolean);
-    if (commits.length > 128)
-      throw new Conflict('This publication needs a bounded history review with your setup agent.');
-    const metadata = await git(cwd, [
-      'log',
-      '--no-mailmap',
-      '--format=fuller',
-      '--no-color',
-      `${base}..${head}`,
-      '--',
-    ]);
-    if (Buffer.byteLength(metadata) > 131072)
-      throw new Conflict('Prepare a smaller checkpoint for the exact 128 KiB metadata review.');
-    assertGroupGitMetadata(metadata);
-    let count = 0,
-      bytes = 0;
-    for (const commit of commits) {
-      const names = (
-        await git(cwd, [
-          'diff-tree',
-          '--root',
-          '-m',
-          '--no-commit-id',
-          '--name-only',
-          '-r',
-          '-z',
-          commit,
-        ])
-      )
-        .split('\0')
-        .filter(Boolean);
-      for (const name of names) {
-        allFiles.add(name);
-        if (++count > 1000)
-          throw new Conflict('This publication exceeds the shared file review limit.');
-        if (groupNativePrivatePath(name, allowProjectData))
-          throw new Conflict(
-            'Publication stopped at a likely private or runtime file. Inspect the shared task locally.',
-          );
-        const type = await this.optional(cwd, ['cat-file', '-t', `${commit}:${name}`]);
-        if (!type) continue; // Deleted in this checkpoint.
-        if (type !== 'blob')
-          throw new Conflict('Publication needs inspection of non-file content.');
-        const blob = await git(cwd, ['rev-parse', '--verify', `${commit}:${name}`]);
-        if (scanned.has(blob)) continue;
-        const size = Number(await git(cwd, ['cat-file', '-s', blob]));
-        bytes += size;
-        if (bytes > GROUP_NATIVE_GIT_FILE_LIMITS.scanBytes)
-          throw new Conflict(
-            'This sync exceeds 512 MiB of changed files. No files were sent; ask your setup agent to review smaller checkpoints.',
-          );
-        await assertGroupGitBlob(cwd, blob, size);
-        scanned.add(blob);
-      }
-    }
-    return { files: [...allFiles] };
+    return this.repositoryAccess.shareable(cwd, base, head);
   }
   private workBranch(context: GroupContext, requestId: string) {
     const member = createHash('sha256')

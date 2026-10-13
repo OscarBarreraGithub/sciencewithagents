@@ -429,6 +429,8 @@ test('Read-only is server-enforced, retains editable drafts and exact mode retry
   );
   await draft.fill('Retained while reading · λ');
   await saved;
+  if (!(await page.getByRole('dialog', { name: 'Manage group', exact: true }).isVisible()))
+    await page.getByRole('button', { name: 'Manage', exact: true }).click();
   await page.getByRole('button', { name: 'Contribution mode: Contribute', exact: true }).click();
   let dialog = page.getByRole('dialog', {
     name: 'Contribution mode on this computer',
@@ -442,15 +444,20 @@ test('Read-only is server-enforced, retains editable drafts and exact mode retry
   ).toBeVisible();
   await page.reload();
   expect(operations).toHaveLength(1);
+  await expect(draft).toHaveValue('Retained while reading · λ');
+  await draft.fill('Edited without contributing · γ');
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
   const mode = page.getByRole('button', {
     name: 'Contribution mode: Read-only, saved change pending',
     exact: true,
   });
   await expect(mode).toBeVisible();
   expect((await mode.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  await expect(draft).toHaveValue('Retained while reading · λ');
-  await draft.fill('Edited without contributing · γ');
-  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+  expect((await mode.boundingBox())!.width).toBeGreaterThanOrEqual(44);
+  expect(
+    await mode.evaluate((element) => parseFloat(getComputedStyle(element).fontSize)),
+  ).toBeGreaterThanOrEqual(16);
   const handle = new URL(page.url()).hash.split('/').at(-1)!;
   const opened = await page.request.post(`${connection.origin}/api/groups/open`, {
     headers: { Origin: connection.origin },
@@ -490,6 +497,10 @@ test('Read-only is server-enforced, retains editable drafts and exact mode retry
   await expect(
     page.getByRole('button', { name: 'Contribution mode: Contribute', exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole('dialog', { name: 'Manage group', exact: true })
+    .getByRole('button', { name: 'Done', exact: true })
+    .click();
   await expect(draft).toHaveValue('Edited without contributing · γ');
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   expect(operations[2]).toMatchObject({ handle, revision: 1, mode: 'contribute' });
@@ -510,6 +521,8 @@ test('mode retry acknowledges the original receipt while showing a later saved s
   });
   await enter(page);
   await create(page, 'Current Meadow');
+  if (!(await page.getByRole('dialog', { name: 'Manage group', exact: true }).isVisible()))
+    await page.getByRole('button', { name: 'Manage', exact: true }).click();
   await page.getByRole('button', { name: 'Contribution mode: Contribute', exact: true }).click();
   let dialog = page.getByRole('dialog', {
     name: 'Contribution mode on this computer',
@@ -525,6 +538,7 @@ test('mode retry acknowledges the original receipt while showing a later saved s
   });
   expect(later.ok()).toBe(true);
   await page.reload();
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
   await page
     .getByRole('button', {
       name: 'Contribution mode: Contribute, saved change pending',
@@ -539,6 +553,8 @@ test('mode retry acknowledges the original receipt while showing a later saved s
   await expect(
     page.getByRole('button', { name: 'Contribution mode: Contribute', exact: true }),
   ).toBeVisible();
+  if (!(await page.getByRole('dialog', { name: 'Manage group', exact: true }).isVisible()))
+    await page.getByRole('button', { name: 'Manage', exact: true }).click();
   await page.getByRole('button', { name: 'Contribution mode: Contribute', exact: true }).click();
   await dialog.getByRole('button', { name: 'Read-only', exact: true }).click();
   await expect(dialog).toHaveCount(0);

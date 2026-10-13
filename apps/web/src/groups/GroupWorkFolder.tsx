@@ -1,3 +1,4 @@
+import { groupsOnlyGitPrompt } from './groups-only-setup';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   projectConnectionSchema,
@@ -37,11 +38,13 @@ export function GroupWorkFolder({
   connection,
   onOpen,
   onBound,
+  externalOnly = false,
 }: {
   handle?: string;
   connection?: ReactNode;
   onOpen?: () => void;
   onBound?: () => void;
+  externalOnly?: boolean;
 }) {
   const scope = prefix(),
     bindingStorage = `${scope}:${handle}:bind`,
@@ -192,7 +195,9 @@ export function GroupWorkFolder({
   );
   const path = selection?.workspacePath ?? workspace?.workspacePath;
   const prompt = path
-    ? groupGitHubSetupPromptForFolder(path, Boolean(selection?.workspacePath))
+    ? externalOnly
+      ? `${groupsOnlyGitPrompt}\nThe app validated this chosen folder: ${JSON.stringify(path)}. Bind its saved selection in Manage.`
+      : groupGitHubSetupPromptForFolder(path, Boolean(selection?.workspacePath))
     : '';
   return (
     <details

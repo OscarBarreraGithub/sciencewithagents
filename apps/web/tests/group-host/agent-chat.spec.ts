@@ -73,7 +73,7 @@ async function enter(page: Page) {
   await page.goto(`${connection.origin}/#/home`);
   await page.locator('a[href="#/chats"]').first().click();
   await page.getByRole('button', { name: 'Groups', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
 }
 async function create(page: Page, name: string) {
   await page.getByRole('button', { name: 'New group', exact: true }).click();

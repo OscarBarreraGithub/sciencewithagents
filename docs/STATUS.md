@@ -1,7 +1,47 @@
 # Current status
 
-The 2026-10-12 dark interface candidate unifies the full app's navigation, controls and
-conversation surfaces with shared React Aria primitives. Groups opens on the shared
+**Temporary Groups-only beta, 2026-10-13:** ready for joint beta testing, contingent on
+independent approval of the exact final candidate and publication of the `groups-only` branch.
+This is a temporary branch of the same repository. The existing launcher opens Groups with
+human chat, durable retries, private drafts, invitations, read-only mode, local removal/restore,
+shared report reading and optional summaries from one selected existing Claude Code conversation.
+Human reading and transport make no model call; summaries use allowance. Groups startup does
+not start personal chats, QUARK, managers, editor bridges or terminal hosting. Full SWA source,
+accounts, files, records and saved settings remain retained.
+
+Shared folders/private Git use the person's own native setup and account. Automatic sync
+fetches safely and publishes only exact owner-approved immutable checkpoints; it never changes
+the active native checkout. Existing phone pairing and the standalone hosted group feed remain
+available. See [setup, files, updates and return to main](GROUPS_ONLY.md).
+
+**Verified source evidence:** all 20 Groups browser cases passed across desktop, 412×915,
+360×800, 915×412 and iPhone WebKit emulation. Eight full-SWA workspace/queue/draft regressions
+passed across desktop and WebKit. Builds and focused fixtures cover fresh authenticated
+first-run/no-provider startup, the existing launcher, real owned Worker human messaging,
+optional plugin hooks, immutable Git publication and full SWA → Groups → full SWA retention
+using synthetic data with saved scheduling paused. This is focused source verification.
+Live private GitHub access, two people on independent installations and physical-phone
+acceptance remain joint beta tasks. Returning to main requires checking saved scheduling
+and queued work before reopening.
+
+New selected-Claude PDF/TeX capture into the shared reader and a finite archive workflow
+remain follow-ons. Existing report reading and ordinary Git sharing of committed report files
+are supported; Git sharing does not create hosted report-capture receipts.
+
+## Historical full-SWA and earlier Groups checks
+
+The entries below describe earlier candidates and their verification limits. Use the current
+Groups-only scope and evidence above for this temporary branch.
+
+The 2026-10-13 Groups workspace uses a narrow sidebar, compact group rows, author-labelled
+messages and an integrated composer. Setup, invitations, contribution mode and local removal
+remain in explicit dialogs. It changes Groups presentation only; Home, projects and QUARK
+retain their existing layouts. Verify the installed revision for each computer; source and
+browser checks do not establish independent two-person or physical-phone acceptance.
+[Interface system](UI_SYSTEM.md).
+
+**Historical checks of the earlier interface candidate:** shared React Aria primitives
+cover application controls. Groups opens on the shared
 conversation, with the optional native connection under **Your Claude Code** and management
 in its own panel. Saved SWA agent controls remain accessible. Lost Stop acknowledgements
 retain an exact retry through reload, and delayed feed loading preserves reading position.

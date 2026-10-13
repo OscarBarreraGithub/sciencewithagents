@@ -740,6 +740,8 @@ export function GroupChat({
         <Conversation
           key={slot.context.sessionId}
           promptNavigation={false}
+          messageQueue={false}
+          messageLayout={mode === 'group' ? 'group' : undefined}
           agent={chat.detail.agent}
           intro={
             mode

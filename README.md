@@ -1,5 +1,36 @@
 # sciencewithagents
 
+**Temporary `groups-only` beta:** ready for joint beta testing, contingent on exact final independent approval and publication. Follow [Groups-only setup and updates](docs/GROUPS_ONLY.md) first. Human Groups needs no provider installation. Full-SWA instructions below apply when using main.
+
+This branch opens **Groups**: a shared feed, human composer, invitations, local removal,
+optional connection to your existing Claude Code, and reviewed private Git checkpoints.
+Human reading and messages need Node 24+ and Git, with no model call or provider installation.
+The creator hosts the shared service in their own Cloudflare account; members join by invitation.
+Optional Claude summaries use allowance. This is a temporary branch of the same repository.
+
+For the published branch, give your ordinary setup agent this prompt:
+
+```text
+Use the groups-only branch of my existing sciencewithagents installation from
+https://github.com/OscarBarreraGithub/sciencewithagents. Follow docs/GROUPS_ONLY.md first.
+Preserve my launcher, private data, accounts, source changes, files, port and running work.
+Keep a source/data recovery copy and inspect active/queued work before switching. Wait for
+an idle checkpoint and use my existing launcher to stop only this installation. Switch to
+the reviewed groups-only branch, install pinned dependencies with pnpm install --frozen-lockfile,
+build and reopen with the same launcher. Preserve saved QUARK/model settings. Keep groups-only
+for subsequent updates; never silently switch to main. Do not install another application
+or start QUARK/managers. Human chat requires no agent provider. Use the creator's service/invitation;
+do not deploy another Worker as a member. Connect my existing Claude through the optional
+Groups plugin only when requested; explain summaries and allowance. For shared files,
+follow the native folder/private Git setup in docs/GROUPS_ONLY.md. Report unverified steps.
+```
+
+[Groups-only setup, files and return to main](docs/GROUPS_ONLY.md) ·
+[Existing Claude connection](docs/GROUPS_CLAUDE.md) · [Current source status](docs/STATUS.md)
+
+<details>
+<summary>Full SWA on main: setup and features</summary>
+
 Organize Codex and Claude chats from your computer or phone. Use native agent conversations,
 start a persistent agent in a folder, or connect an existing tmux/Herdr session. Saved prompts
 and optional managed project teams share the same interface. QUARK advises native work and
@@ -239,3 +270,5 @@ and running the app; switching views does not move running jobs between computer
 [Native sessions and folder Start](docs/NATIVE_CONNECTIONS.md) ·
 [Features](docs/FEATURES.md) · [Setup details](docs/CONTRIBUTOR_SETUP.md) ·
 [Documentation](docs/README.md) · [MIT licence](LICENSE)
+
+</details>

@@ -1,5 +1,7 @@
 # Update an existing installation
 
+**Temporary `groups-only` beta:** ready for joint beta testing, contingent on exact final independent approval and publication. Follow [Groups-only setup and updates](GROUPS_ONLY.md) first and check [current beta limits](STATUS.md). Human Groups needs no provider installation. Full-SWA instructions below apply when using main.
+
 Open **Settings → App updates** (also under **? → Check for updates**). The selected computer
 checks the public GitHub source without using a model or changing its working files.
 Choose **Update with an agent** to prepare a verified database recovery copy and assign one

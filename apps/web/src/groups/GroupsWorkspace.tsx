@@ -39,28 +39,29 @@ function Workspace(props: GroupsWorkspaceProps) {
   return (
     <main className="groups-workspace">
       <header className="groups-workspace-heading">
-        <Button className="secondary" onPress={onBack} aria-label="Back to groups">
+        <Button
+          className="secondary groups-thread-back"
+          onPress={onBack}
+          aria-label="Back to groups"
+        >
           <ArrowLeft size={20} aria-hidden="true" />
         </Button>
-        <div>
-          <h1>
+        <div className="groups-thread-title">
+          <h1 tabIndex={-1}>
             <DisplayName value={group.name} />
           </h1>
-        </div>
-        {props.onManage && (
-          <Button className="secondary" aria-label="Manage" onPress={props.onManage}>
-            <MoreHorizontal size={20} aria-hidden="true" />
-          </Button>
-        )}
-        {props.onInvite && (
-          <Button className="secondary" aria-label="Invite people" onPress={props.onInvite}>
-            <UserPlus size={20} aria-hidden="true" />
-          </Button>
-        )}
-        <div className="groups-heading-meta">
-          <details className="groups-member-list">
+          <details
+            className="groups-member-list"
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape' || !event.currentTarget.open) return;
+              event.currentTarget.open = false;
+              event.currentTarget.querySelector('summary')?.focus();
+              event.stopPropagation();
+            }}
+          >
             <summary>
               {props.members.length} {props.members.length === 1 ? 'member' : 'members'}
+              {props.readOnly && ' · Read-only'}
             </summary>
             <ul>
               {props.members.map((member) => (
@@ -70,6 +71,18 @@ function Workspace(props: GroupsWorkspaceProps) {
               ))}
             </ul>
           </details>
+        </div>
+        <div className="groups-thread-actions">
+          {props.onInvite && (
+            <Button className="secondary" aria-label="Invite people" onPress={props.onInvite}>
+              <UserPlus size={18} aria-hidden="true" />
+            </Button>
+          )}
+          {props.onManage && (
+            <Button className="secondary" aria-label="Manage" onPress={props.onManage}>
+              <MoreHorizontal size={18} aria-hidden="true" />
+            </Button>
+          )}
           {props.contributionControl && (
             <div className="groups-actions group-contribution-control">
               {props.contributionControl}

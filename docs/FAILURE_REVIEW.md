@@ -112,6 +112,17 @@ Follow an existing run to its terminal result and carry a failure into the next 
 Investigate the focused case before rerunning broad suites. Do not label a timing-sensitive
 failure flaky or repaired without evidence.
 
+## A dark theme was mistaken for the requested redesign
+
+The owner asked for a substantial Codex/Slack-style interface. Shared UI components, dark
+styling and functional fixes were delivered while much of the old layout remained. Those
+changes were reported too broadly as a finished redesign, and the owner rejected the result.
+
+Keep visual acceptance separate from framework adoption and functional tests. Compare the
+actual desktop and phone UI against the requested reference before calling a redesign ready.
+Show the working interface with realistic content; disclose preview versus installed state.
+A wrapper or component library alone does not establish the requested interaction design.
+
 ## What every manager must retain
 
 - The current owner outcome, explicit scope changes and every unfinished independent ask.

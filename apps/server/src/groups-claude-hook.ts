@@ -8,6 +8,7 @@ const hookSchema = z.object({
   prompt: z.string().optional(),
   last_assistant_message: z.string().optional(),
   agent_id: z.string().optional(),
+  cwd: z.unknown().optional(),
 });
 /** Additive native hooks; never read a transcript, launch a model or block a turn. */
 export async function runGroupsHook(dataDirectory: string) {
@@ -26,7 +27,10 @@ export async function runGroupsHook(dataDirectory: string) {
     journal = new GroupsConversationJournal(dataDirectory);
   try {
     if (input.agent_id) return;
-    journal.registerSession(input.session_id);
+    journal.registerSession(
+      input.session_id,
+      typeof input.cwd === 'string' && input.cwd.length <= 4096 ? input.cwd : undefined,
+    );
     const selected = journal
       .selections()
       .filter((value) => value.enabled && value.sessionId === input.session_id);

@@ -1,0 +1,18 @@
+.entry-recovery {
+  max-width: 36rem;
+  margin: 10dvh auto;
+  padding: 24px;
+  background: var(--surface-1);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.entry-recovery p {
+  margin: 16px 0;
+  font-size: 16px;
+}
+.entry-recovery button {
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: 16px;
+}

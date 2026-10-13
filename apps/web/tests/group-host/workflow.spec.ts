@@ -88,11 +88,13 @@ async function enter(page: Page, host: HostConnection = connection) {
   await page.goto(`${host.origin}/#/home`);
   await page.locator('a[href="#/chats"]').first().click();
   await page.getByRole('button', { name: 'Groups', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
+  await page.locator('.groups-category-navigation > summary').click();
   await expect(page.getByRole('button', { name: 'Groups', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
+  await page.locator('.groups-category-navigation > summary').click();
 }
 async function create(page: Page, name: string) {
   await page.getByRole('button', { name: 'New group', exact: true }).click();
@@ -222,6 +224,7 @@ test('Chats filters groups, opens legacy routes and preserves shared drafts plus
       .getByRole('navigation', { name: 'Group conversations' })
       .getByRole('button', { name: /Normal River/ }),
   ).toBeVisible();
+  await page.locator('.groups-category-navigation > summary').click();
   await page.getByRole('button', { name: 'All', exact: true }).click();
   expect(new URL(page.url()).hash).toBe('#/chats');
   await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
@@ -229,10 +232,12 @@ test('Chats filters groups, opens legacy routes and preserves shared drafts plus
     'true',
   );
   await page.goto(`${connection.origin}/#/groups`);
+  await page.locator('.groups-category-navigation > summary').click();
   await expect(page.getByRole('button', { name: 'Groups', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
+  await page.locator('.groups-category-navigation > summary').click();
   await page.goto(`${connection.origin}/#/groups/${group.group.handle}`);
   await expect(page.getByRole('heading', { name: 'Normal River', exact: true })).toBeVisible();
   await expect(input).toHaveValue('SHARED-UNSENT-DRAFT');

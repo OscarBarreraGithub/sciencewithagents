@@ -1,3 +1,4 @@
+import { groupsOnlyGitPrompt } from './groups-only-setup';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -19,12 +20,14 @@ export function GroupNativeGitPanel({
   connectionTarget,
   advancedTarget,
   refreshKey = 0,
+  externalOnly = false,
 }: {
   handle: string;
   request?: (input: GroupNativeGitRequest) => Promise<unknown>;
   connectionTarget?: HTMLDivElement | null;
   advancedTarget?: HTMLDivElement | null;
   refreshKey?: number;
+  externalOnly?: boolean;
 }) {
   const [view, setView] = useState<GroupNativeGitView | null>(null);
   const [username, setUsername] = useState('');
@@ -272,7 +275,7 @@ export function GroupNativeGitPanel({
   }, [refreshKey]);
   const mutable = !busy && !pending;
   const preview = view?.preview;
-  const setupPrompt = `${groupGitHubSetupPromptForFolder(view?.workspacePath ?? '(choose the intended work folder first)', false)}\nCurrent GitHub repository: ${JSON.stringify(view?.repository ?? '(ask me which intended private repository to connect)')}.`;
+  const setupPrompt = `${externalOnly ? groupsOnlyGitPrompt + '\nChosen folder: ' + JSON.stringify(view?.workspacePath ?? '(choose it in Manage)') : groupGitHubSetupPromptForFolder(view?.workspacePath ?? '(choose the intended work folder first)', false)}\nCurrent GitHub repository: ${JSON.stringify(view?.repository ?? '(ask me which intended private repository to connect)')}.`;
   const nativeFiles = (view?.nativeReviewAvailable ||
     nativeReview ||
     pending?.action === 'approve-native' ||
@@ -493,7 +496,9 @@ export function GroupNativeGitPanel({
       {view?.busy && (
         <p>
           {view.busyReason === 'external-claude'
-            ? 'Your external Claude conversation may still be using this folder. Git fetch continues; checkout changes wait for your closure confirmation.'
+            ? externalOnly
+              ? 'Your selected Claude may still use this folder. Fetch and exact approved checkpoint publication preserve its working files; changing the folder waits for closure.'
+              : 'Your external Claude conversation may still be using this folder. Git fetch continues; checkout changes wait for your closure confirmation.'
             : 'Shared agents are active. Fetching is safe; applying or switching waits for their work to settle.'}
         </p>
       )}
@@ -529,8 +534,9 @@ export function GroupNativeGitPanel({
               Confirm Claude and its jobs are closed
             </button>
             <p>
-              Clean, idle Git sync can then resume. Before resuming external work, select the
-              conversation again to protect its folder.
+              {externalOnly
+                ? 'You can then choose another folder. Sync keeps checkout changes in native Git. Select the conversation again before proposing new checkpoints.'
+                : 'Clean, idle Git sync can then resume. Before resuming external work, select the conversation again to protect its folder.'}
             </p>
           </section>
         ) : (

@@ -47,6 +47,7 @@ export type GroupChatSlot = {
   content: ReactNode | ((mode: GroupChatMode) => ReactNode);
 };
 export type GroupsWorkspaceProps = {
+  readOnly?: boolean;
   agentTabTitle?: string;
   contributionControl?: ReactNode;
   onInvite?: () => void;

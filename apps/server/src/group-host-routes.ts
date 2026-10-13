@@ -1,3 +1,5 @@
+import type { GroupWorkspacePort } from './group-workspace-choices.js';
+import type { GroupHostNativeGit } from './group-host-native-git.js';
 import { registerGroupReportRoutes } from './group-document-sharing.js';
 import { groupFeatureGit } from './group-feature-git.js';
 import { groupFeatureDocuments } from './group-feature-documents.js';
@@ -28,6 +30,10 @@ export function registerGroupHostRoutes(
   folders?: FolderConnections,
   humanReviewAuthenticated: (request: FastifyRequest) => boolean = () => false,
   conversationSharing?: GroupsConversationWorker,
+  ports?: {
+    workspace: GroupWorkspacePort;
+    git: Pick<GroupHostNativeGit, 'request' | 'externalRequest' | 'assertWorkspaceIdle'>;
+  },
 ) {
   const documents = groupFeatureDocuments(host);
   if (documents) {
@@ -97,7 +103,7 @@ export function registerGroupHostRoutes(
     },
     workspace: (raw: unknown) => {
       const input = groupWorkspaceInputSchema.parse(raw);
-      const native = host.native as Partial<GroupHostNativeRuntime>;
+      const native = ports?.workspace ?? (host.native as Partial<GroupHostNativeRuntime>);
       if (!native.workspace)
         throw new GroupHostError(
           503,
@@ -117,7 +123,7 @@ export function registerGroupHostRoutes(
               'GROUP_FOLDER_CHOOSER_UNAVAILABLE',
               'Open the folder chooser on this computer.',
             );
-          groupHostNativeGit(host)?.assertWorkspaceIdle(scope.handle);
+          if (!ports) groupHostNativeGit(host)?.assertWorkspaceIdle(scope.handle);
           return folders.sharedSelection(input.selectionKey);
         },
       });
@@ -163,7 +169,7 @@ export function registerGroupHostRoutes(
     'feed-writer': (v: unknown) => host.configurePromotion(v),
     'native-owner': (v: unknown) => host.nativeOwnerControl(v),
     'native-git': (v: unknown, request: FastifyRequest) => {
-      const git = groupHostNativeGit(host);
+      const git = ports?.git ?? groupHostNativeGit(host);
       if (!git)
         throw new GroupHostError(
           503,
@@ -173,7 +179,7 @@ export function registerGroupHostRoutes(
       return git.request(v, humanReviewAuthenticated(request));
     },
     files: (v: unknown, request: FastifyRequest) => {
-      const git = groupHostNativeGit(host);
+      const git = ports?.git ?? groupHostNativeGit(host);
       if (!git)
         throw new GroupHostError(
           503,

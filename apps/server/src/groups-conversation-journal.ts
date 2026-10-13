@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
-import { constants, openSync, closeSync, fstatSync, lstatSync } from 'node:fs';
+import { constants, openSync, closeSync, fstatSync, lstatSync, realpathSync } from 'node:fs';
 import { z } from 'zod';
 import {
   groupConversationSelectionSchema,
@@ -57,6 +57,12 @@ export class GroupsConversationJournal {
     }
     this.db = new DatabaseSync(file);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=500;
+      CREATE TABLE IF NOT EXISTS gc_session_folder_capacity(id INTEGER PRIMARY KEY CHECK(id=1));
+      CREATE TRIGGER IF NOT EXISTS gc_session_folder_capacity_retain BEFORE DELETE ON gc_session_folder_capacity BEGIN SELECT RAISE(ABORT,'retained folder capacity refusal'); END;
+      CREATE TRIGGER IF NOT EXISTS gc_session_folder_capacity_immutable BEFORE UPDATE ON gc_session_folder_capacity BEGIN SELECT RAISE(ABORT,'immutable folder capacity refusal'); END;
+      CREATE TABLE IF NOT EXISTS gc_session_folders(seq INTEGER PRIMARY KEY,session_id TEXT NOT NULL,cwd TEXT NOT NULL,identity TEXT NOT NULL);
+      CREATE TRIGGER IF NOT EXISTS gc_session_folders_retain BEFORE DELETE ON gc_session_folders BEGIN SELECT RAISE(ABORT,'retained native folder observation'); END;
+      CREATE TRIGGER IF NOT EXISTS gc_session_folders_immutable BEFORE UPDATE ON gc_session_folders BEGIN SELECT RAISE(ABORT,'immutable native folder observation'); END;
       CREATE TABLE IF NOT EXISTS gc_selections(seq INTEGER PRIMARY KEY, key TEXT UNIQUE NOT NULL, handle TEXT NOT NULL, input TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS gc_prompts(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, text TEXT NOT NULL, selection_seq INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS gc_jobs(id TEXT PRIMARY KEY, fingerprint TEXT UNIQUE NOT NULL, handle TEXT NOT NULL, session_id TEXT NOT NULL, generation INTEGER NOT NULL, text TEXT NOT NULL);
@@ -96,9 +102,50 @@ export class GroupsConversationJournal {
   close() {
     this.db.close();
   }
-  registerSession(sessionId: string) {
+  registerSession(sessionId: string, cwd?: string) {
     groupConversationIdSchema.parse(sessionId);
     this.db.prepare('INSERT OR IGNORE INTO gc_sessions VALUES(?,?)').run(sessionId, Date.now());
+    this.observeFolder(sessionId, cwd);
+  }
+  observeFolder(sessionId: string, cwd?: string) {
+    groupConversationIdSchema.parse(sessionId);
+    let root = '',
+      identity = '';
+    try {
+      if (cwd) {
+        root = realpathSync(cwd);
+        const stat = lstatSync(root);
+        if (!stat.isDirectory()) throw new Error('Unavailable');
+        identity = `${stat.dev}:${stat.ino}`;
+      }
+    } catch {
+      root = '';
+      identity = '';
+    }
+    const prior = this.db
+      .prepare(
+        'SELECT cwd,identity FROM gc_session_folders WHERE session_id=? ORDER BY seq DESC LIMIT 1',
+      )
+      .get(sessionId);
+    if (prior?.cwd === root && prior.identity === identity) return;
+    if (Number(this.db.prepare('SELECT count(*) n FROM gc_session_folders').get()!.n) >= 2048) {
+      this.db.prepare('INSERT OR IGNORE INTO gc_session_folder_capacity VALUES(1)').run();
+      return;
+    }
+    this.db
+      .prepare('INSERT INTO gc_session_folders(session_id,cwd,identity) VALUES(?,?,?)')
+      .run(sessionId, root, identity);
+  }
+  sessionFolder(sessionId: string): { cwd: string; identity: string } | null {
+    if (this.db.prepare('SELECT 1 FROM gc_session_folder_capacity').get()) return null;
+    const row = this.db
+      .prepare(
+        'SELECT cwd,identity FROM gc_session_folders WHERE session_id=? ORDER BY seq DESC LIMIT 1',
+      )
+      .get(sessionId);
+    return row && row.cwd && row.identity
+      ? { cwd: String(row.cwd), identity: String(row.identity) }
+      : null;
   }
   selections(): ConversationSelection[] {
     return this.db

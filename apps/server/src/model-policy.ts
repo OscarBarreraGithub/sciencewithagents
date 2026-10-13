@@ -47,7 +47,9 @@ export class ModelPolicy {
     private store: Store,
     private discover: (provider: ProviderId) => Promise<Model[]>,
     private clock = Date.now,
+    options: { initializeDefaults?: boolean } = {},
   ) {
+    if (options.initializeDefaults === false) return;
     // Preserve the only old per-task model preference without touching conversations.
     const old = store.getSetting('resources:settings') as { model?: string } | undefined;
     if (!store.getSetting(key) && old?.model === 'terra') {

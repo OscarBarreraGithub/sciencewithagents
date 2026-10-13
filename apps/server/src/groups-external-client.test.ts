@@ -151,6 +151,38 @@ it('runs the packaged hooks with durable selection and restores context after a 
     expect(journal.jobs()).toHaveLength(1);
     expect(journal.jobs()[0].text).toContain('Chosen final reply');
     expect(JSON.stringify(journal.jobs())).not.toContain('Private subagent');
+    await hook({ session_id: sessionId, hook_event_name: 'SessionStart', cwd: root });
+    expect(journal.sessionFolder(sessionId)?.cwd).toBe(root);
+    const beforeProof = journal.db.prepare('SELECT count(*) n FROM gc_session_folders').get()!.n;
+    await hook({
+      session_id: sessionId,
+      hook_event_name: 'UserPromptSubmit',
+      agent_id: 'worker',
+      cwd: join(root, 'missing'),
+      prompt: 'Subagent folder must not enroll',
+    });
+    expect(journal.sessionFolder(sessionId)?.cwd).toBe(root);
+    expect(journal.db.prepare('SELECT count(*) n FROM gc_session_folders').get()!.n).toBe(
+      beforeProof,
+    );
+    await hook({
+      session_id: sessionId,
+      hook_event_name: 'UserPromptSubmit',
+      prompt: 'Selected prompt with missing folder',
+    });
+    expect(journal.sessionFolder(sessionId)).toBeNull();
+    await hook({
+      session_id: sessionId,
+      hook_event_name: 'Stop',
+      cwd: join(root, 'not-present'),
+      last_assistant_message: 'Selected final with invalid folder still journals',
+    });
+    expect(journal.sessionFolder(sessionId)).toBeNull();
+    expect(
+      journal
+        .jobs()
+        .some((job) => job.text.includes('Selected final with invalid folder still journals')),
+    ).toBe(true);
   } finally {
     journal.close();
     rmSync(root, { recursive: true, force: true });

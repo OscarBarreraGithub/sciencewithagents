@@ -1,8 +1,16 @@
 # Groups with your existing Claude Code
 
+**Temporary `groups-only` beta:** ready for joint beta testing, contingent on exact final independent approval and publication. Follow [Groups-only setup and updates](GROUPS_ONLY.md) first and check [current beta limits](STATUS.md). Human Groups needs no provider installation. Full-SWA instructions below apply when using main.
+
 Keep full SWA. The optional `plugins/groups` plugin connects your ordinary Claude Code
 conversation to Groups; it creates no manager and does not contact QUARK. Group members
 use their own Claude accounts. Group hosting stays with its creator's Cloudflare account.
+
+On the temporary `groups-only` branch, follow [thin folder/Git setup](GROUPS_ONLY.md#files-with-your-existing-claude).
+Native hooks keep a private session/folder proof for file publication; reload the plugin at an
+idle checkpoint after a build. Missing/invalid proof refuses file publication while summaries
+continue. The branch fetches and publishes approved immutable commits without mutating the
+native checkout. New report capture remains unsupported; existing report reading is retained.
 
 ## Setup agent
 

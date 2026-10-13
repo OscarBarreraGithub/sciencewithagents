@@ -36,6 +36,8 @@ may be published, without modifying the native checkout. Read receipts with
 `groups_files_status`; uncommitted or later changes are not included. Group membership
 does not supply GitHub collaborator access. Never claim that a proposal uploaded files.
 
-If setup is missing, follow `docs/GROUPS_CLAUDE.md` in the owner's SWA checkout. Keep full
-SWA, its installations, accounts and running work. Use the creator's own Cloudflare service;
+If setup is missing, follow `docs/GROUPS_CLAUDE.md` in the owner's SWA checkout. Keep existing installations, accounts and running work. On the temporary groups-only branch,
+follow docs/GROUPS_ONLY.md; it keeps full SWA records/source without starting managers or QUARK.
+Reload native hooks at an idle checkpoint after an update so the selected session has a current
+private folder proof. Missing/invalid proof refuses file publication while summaries can continue. Use the creator's own Cloudflare service;
 members join it. Never install a login service, buy capacity or change a plan automatically.

@@ -4,7 +4,7 @@ import type { GroupsLandingProps } from './types';
 import { DisplayName } from './DisplayName';
 import { Modal } from '../Modal';
 import { Button } from '../ui/Button';
-import { Plus, Settings2, Users } from 'lucide-react';
+import { Hash, Plus, Settings2, Users } from 'lucide-react';
 import './groups.css';
 import './groups-list.css';
 
@@ -92,9 +92,14 @@ export function GroupsLanding({
   return (
     <div className="groups-chat-list">
       <div className="groups-list-actions">
-        <Button className="flow-button primary" variant="primary" onPress={() => setMode('create')}>
+        <Button
+          className="flow-button primary groups-new-button"
+          variant="primary"
+          aria-label="New group"
+          onPress={() => setMode('create')}
+        >
           <Plus size={18} aria-hidden="true" />
-          New group
+          <span>New group</span>
         </Button>
         <Button className="flow-button" onPress={() => setMode('join')}>
           Join group
@@ -134,7 +139,7 @@ export function GroupsLanding({
                   onClick={() => onOpen(group.id)}
                 >
                   <span className="chat-row-icon manager" aria-hidden="true">
-                    <Users size={20} />
+                    <Hash size={17} />
                   </span>
                   <span className="chat-row-text">
                     <strong>

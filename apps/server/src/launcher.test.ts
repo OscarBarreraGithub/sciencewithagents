@@ -692,11 +692,11 @@ describe('manual app launcher ownership', () => {
     await eventually(() => JSON.parse(readFileSync(statePath, 'utf8')).status === 'stopped');
   });
 
-  it('launches the real compiled empty app and stops it without creating an agent or model turn', async () => {
+  it('launches the real compiled Groups app and stops it without creating an agent or model turn', async () => {
     const value = await fixture(true);
     expect(await command(value, 'launch')).toBe('owned');
     const origin = `http://127.0.0.1:${value.port}`;
-    expect((await fetch(`${origin}/api/snapshot`)).status).toBe(401);
+    expect((await fetch(`${origin}/api/groups`)).status).toBe(401);
     const read = async (path: string) =>
       (
         await fetch(origin + path, {
@@ -710,12 +710,21 @@ describe('manual app launcher ownership', () => {
           },
         })
       ).json();
-    const snapshot = await read('/api/snapshot');
-    expect(snapshot.agents).toEqual([]);
-    expect(snapshot.projects).toEqual([]);
-    const pacing = await read('/api/pulsar');
-    expect(pacing.policy.enabled).toBe(false);
-    expect(pacing.jobs).toEqual([]);
+    expect(await read('/api/distribution')).toEqual({ distribution: 'groups-only' });
+    const groups = await read('/api/groups');
+    expect(groups.groups).toEqual([]);
+    expect(groups.native.available).toBe(false);
+    for (const path of ['/api/snapshot', '/api/pulsar', '/api/frontdesk']) {
+      const authorization = await ownerAuthorization(
+        join(value.root, 'data'),
+        value.port,
+        'GET',
+        path,
+      );
+      expect(
+        (await fetch(origin + path, { headers: { Authorization: authorization! } })).status,
+      ).toBe(404);
+    }
     expect(await command(value, 'stop')).toBe('stopped');
     await eventually(() => absent(value.port));
     expect(existsSync(join(value.root, 'data/server.lock'))).toBe(false);

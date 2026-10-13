@@ -19,11 +19,19 @@ primary actions. Adjacent secondary controls, including three-dot menus, share o
 Use at least 44 CSS pixels for action targets and 16 pixels for setup/control text. Keep
 visible keyboard focus, sufficient text contrast and reduced-motion support.
 
-On desktop, Groups keeps its conversation list beside the selected thread. On phones the
-list and thread are separate views, with an anchored composer and one message scroller.
-Group chat is the shared conversation; Your Claude Code contains the optional native
-connection. Management and saved SWA agent controls stay available through explicit entries.
-The wider app retains Chats, Apps, QUARK, reports, computer settings and advanced controls.
+The 2026-10-13 Groups workspace slice replaces the rejected theme-only layout. Desktop uses
+one narrow sidebar for global destinations, conversation categories, compact group rows and
+computer/allowance utilities. The main canvas has a title/member header, understated Group
+chat / Your Claude Code tabs, continuous author-labelled messages and one anchored composer
+with integrated Send/Notepad and saved-draft state. Contribution mode and other management
+remain in Manage; read-only status stays visible in the header. Navigation makes no model call.
+Desktop navigation can use 34–44 pixel rows and 13–15 pixel secondary text; setup and input
+text stays at least 16 pixels. Phone actions retain 44 pixel targets, with separate list/thread
+views and no bottom bar. Home, projects and QUARK keep their existing layouts.
+Keep this slice focused on the Groups experience. The user's existing Claude Code conversation
+remains the agent through the optional Groups plugin. Broader agent-interface and Herdr work
+are separate. Functional checks and independent code review do not establish visual acceptance
+or prove which revision another computer has installed.
 
 ## Research and packaging
 

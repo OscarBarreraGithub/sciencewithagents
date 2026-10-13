@@ -326,7 +326,9 @@ export function Conversation({
   channel,
   promptNavigation = true,
   recovery = true,
+  messageQueue = true,
   displayOnly = false,
+  messageLayout,
 }: {
   agent: Agent;
   detail: AgentDetail | null;
@@ -342,8 +344,12 @@ export function Conversation({
   /** Custom group feeds do not use the retained agent history route. */
   promptNavigation?: boolean;
   recovery?: boolean;
+  /** Scoped feeds own their delivery receipts and do not use the app-agent queue. */
+  messageQueue?: boolean;
   /** Saved text can be read while live controls reconnect. */
   displayOnly?: boolean;
+  /** Shared human conversations use author identity rather than an agent avatar. */
+  messageLayout?: 'group';
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -695,7 +701,17 @@ export function Conversation({
                 key={entry.id}
               >
                 <div className="message-avatar">
-                  {entry.kind === 'user' ? (
+                  {messageLayout === 'group' ? (
+                    <span className="group-author-avatar" aria-hidden="true">
+                      {entry.title
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((part) => Array.from(part)[0])
+                        .join('')
+                        .toLocaleUpperCase()}
+                    </span>
+                  ) : entry.kind === 'user' ? (
                     <span className="user-avatar">You</span>
                   ) : (
                     <Avatar role={agent.role} small />
@@ -704,7 +720,7 @@ export function Conversation({
                 <div className="message-body">
                   <div className="message-heading">
                     <strong>{entry.title}</strong>
-                    {entry.kind === 'message' && (
+                    {entry.kind === 'message' && messageLayout !== 'group' && (
                       <span className="handoff-label">TEAM MESSAGE</span>
                     )}
                     {delivery && (
@@ -720,7 +736,7 @@ export function Conversation({
                         {delivery}
                       </span>
                     )}
-                    <time>{time(entry.createdAt)}</time>
+                    <time dateTime={entry.createdAt}>{time(entry.createdAt)}</time>
                   </div>
                   <div className="markdown">
                     {renderMessageContent?.(entry) ?? (
@@ -749,7 +765,7 @@ export function Conversation({
             )}
         </div>
       </div>
-      <AppMessageQueue agent={agent} runs={data?.runs ?? []} />
+      {messageQueue && <AppMessageQueue agent={agent} runs={data?.runs ?? []} />}
     </>
   );
 }
@@ -819,7 +835,7 @@ export function Composer({
   extraTools?: ReactNode;
 }) {
   const messageText = (value: string) => (preserveWhitespace ? value : value.trim());
-  const managedDraft = useSharedDraft(draftOverride ? null : workspace, agent.id);
+  const managedDraft = useSharedDraft(workspace, agent.id, !draftOverride);
   const sourceDraft = draftOverride ?? managedDraft;
   useEffect(() => {
     if (sourceDraft.ready) onDraftReady?.(sourceDraft);
@@ -847,7 +863,7 @@ export function Composer({
   const receiptStorage = draftOverride ? sessionStorage : localStorage;
   const scope = useRef(apiScope()).current;
   const [legacyBackup, setLegacyBackup] = useState<string | null>(() =>
-    localStorage.getItem(`${storageKey}:legacy`),
+    draftOverride ? null : localStorage.getItem(`${storageKey}:legacy`),
   );
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -914,7 +930,7 @@ export function Composer({
     const restore = () => {
       try {
         // Migrate only the local host's older storage. Never copy it into another account's host.
-        if (apiScope() === 'local') {
+        if (!draftOverride && apiScope() === 'local') {
           const legacyKey = `dock:draft:${agent.id}`;
           const oldDraft = localStorage.getItem(legacyKey);
           if (oldDraft !== null && !localStorage.getItem(`${storageKey}:legacy-migrated`)) {

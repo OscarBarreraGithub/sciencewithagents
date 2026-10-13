@@ -278,10 +278,15 @@ export type SharedDraft = Omit<ReturnType<typeof useSharedDraft>, 'rejectedDraft
 };
 
 /** Per-browser CAS drafts. A remote update never replaces unsaved local typing. */
-export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: string) {
+export function useSharedDraft(
+  workspace: WorkspaceSnapshot | null,
+  agentId: string,
+  enabled = true,
+) {
   const scope = useRef(apiScope()).current;
   const storageKey = `dock:${scope}:workspace:draft:${agentId}`;
   const [rejectedDraft, setRejectedDraft] = useState<string | null>(() => {
+    if (!enabled) return null;
     try {
       const saved = JSON.parse(
         localStorage.getItem(`${storageKey}:rejected-save`) ?? 'null',
@@ -292,11 +297,13 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
     }
   });
   const request = (path: string, body?: unknown) => {
+    if (!enabled) throw new Error('This conversation uses its own draft service.');
     if (apiScope() !== scope)
       throw new Error('The selected computer changed. Your draft stays on its original computer.');
     return api(path, body);
   };
   const [text, updateText] = useState(() => {
+    if (!enabled) return '';
     try {
       return String(
         (JSON.parse(localStorage.getItem(storageKey) ?? 'null') as { text: string } | null)?.text ??
@@ -322,6 +329,7 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
   const path = `/workspace/${clientId}/drafts/${agentId}`;
 
   const persist = () => {
+    if (!enabled) return;
     localStorage.setItem(
       storageKey,
       JSON.stringify({ text: textRef.current, baseRevision: own.current?.own.revision ?? 0 }),
@@ -413,7 +421,7 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
   };
   useEffect(() => {
     alive.current = true;
-    if (!clientId || !agentId) return;
+    if (!enabled || !clientId || !agentId) return;
     void refresh(true).catch((reason) => {
       if (alive.current) setError(message(reason));
     });
@@ -425,7 +433,7 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
       clearInterval(timer);
     };
     // Composer must be keyed by host and agent; workspace list refreshes are not draft resets.
-  }, [clientId, hostId, agentId]);
+  }, [enabled, clientId, hostId, agentId]);
 
   const token = (): WorkspaceDraftSubmission | null => {
     const draft = own.current?.own;
@@ -522,12 +530,12 @@ export function useSharedDraft(workspace: WorkspaceSnapshot | null, agentId: str
     return inFlight.current;
   };
   useEffect(() => {
-    if (!state || conflict || (!dirty.current && !pending.current)) return;
+    if (!enabled || !state || conflict || (!dirty.current && !pending.current)) return;
     const timer = window.setTimeout(() => {
       void flush().catch(() => {});
     }, 600);
     return () => clearTimeout(timer);
-  }, [text, Boolean(state), conflict]);
+  }, [enabled, text, Boolean(state), conflict]);
 
   const copyDraft = async (source: WorkspaceDraft) => {
     if (!own.current || blocked.current)

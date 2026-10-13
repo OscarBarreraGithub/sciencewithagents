@@ -117,10 +117,14 @@ export function GroupsApp({
   route,
   listHeader,
   query,
+  sidebarFooter,
+  groupsOnly = false,
 }: {
   route: string;
+  groupsOnly?: boolean;
   listHeader?: ReactNode;
   query?: string;
+  sidebarFooter?: ReactNode;
 }) {
   const [setupOpen, setSetupOpen] = useState(false);
   useEffect(observeGroupUpdates, []);
@@ -165,7 +169,8 @@ export function GroupsApp({
   // Older hosts omit this capability. Only an exact current-context refusal
   // hides the legacy managed execution controls.
   const managedActionsAvailable =
-    managedCoordination?.handle !== sharedHandle || managedCoordination?.available !== false;
+    !groupsOnly &&
+    (managedCoordination?.handle !== sharedHandle || managedCoordination?.available !== false);
   const [error, setError] = useState('');
   const [listError, setListError] = useState('');
   const listRead = useRef<AbortController | null>(null);
@@ -538,6 +543,7 @@ export function GroupsApp({
             </button>
           </div>
         )}
+        {sidebarFooter}
       </aside>
       <div className="chat-pane">
         <div className="group-host-root">
@@ -589,6 +595,14 @@ export function GroupsApp({
                   </button>
                 </div>
                 {controlsOpen && error && <p role="alert">{error}</p>}
+                <div className="groups-management-mode">
+                  <p>Contribution mode</p>
+                  <GroupContributionMode
+                    key={`local-mode:${selected.group.handle}`}
+                    group={localGroup ?? selected.group}
+                    refresh={refreshLocalList}
+                  />
+                </div>
                 <div className="group-local-visibility">
                   <GroupLocalVisibility
                     key={`local-visibility:${selected.group.handle}`}
@@ -675,8 +689,11 @@ export function GroupsApp({
                       )}
                       <p>
                         They give this invitation to their setup agent, then open{' '}
-                        <strong>Chats → Groups → Join group</strong> in their own app. The same link
-                        can invite multiple people. No confirmation code or approval is needed.
+                        <strong>
+                          {groupsOnly ? 'Groups → Join group' : 'Chats → Groups → Join group'}
+                        </strong>{' '}
+                        in their own app. The same link can invite multiple people. No confirmation
+                        code or approval is needed.
                       </p>
                     </>
                   )}
@@ -710,9 +727,10 @@ export function GroupsApp({
                       </button>
                     ))}
                 </details>
-                {selected.native.executionMode === 'host' && (
+                {(groupsOnly || selected.native.executionMode === 'host') && (
                   <GroupWorkFolder
                     key={`work-folder:${selected.shared.handle}`}
+                    externalOnly={groupsOnly}
                     handle={selected.shared.handle}
                     onOpen={() => setGitLoaded(true)}
                     onBound={() => {
@@ -722,21 +740,23 @@ export function GroupsApp({
                     connection={<div ref={setGitConnectionTarget} />}
                   />
                 )}
-                {selected.native.executionMode === 'host' && (gitLoaded || advancedLoaded) && (
-                  <GroupNativeGitPanel
-                    key={`native-git:${selected.shared.handle}`}
-                    handle={selected.shared.handle}
-                    connectionTarget={gitConnectionTarget}
-                    advancedTarget={gitAdvancedTarget}
-                    refreshKey={gitRevision}
-                  />
-                )}
+                {(groupsOnly || selected.native.executionMode === 'host') &&
+                  (gitLoaded || advancedLoaded) && (
+                    <GroupNativeGitPanel
+                      key={`native-git:${selected.shared.handle}`}
+                      handle={selected.shared.handle}
+                      connectionTarget={gitConnectionTarget}
+                      advancedTarget={gitAdvancedTarget}
+                      refreshKey={gitRevision}
+                      externalOnly={groupsOnly}
+                    />
+                  )}
                 <GroupPhonePanel
                   handle={selected.shared.handle}
                   readOnly={localGroup?.local?.mode === 'read-only'}
                 />
                 <div ref={setNativeControlsTarget} />
-                {selected.native.executionMode === 'host' && controlsOpen && (
+                {(groupsOnly || selected.native.executionMode === 'host') && controlsOpen && (
                   <GroupExternalFilesPanel
                     key={`external-files:${selected.shared.handle}`}
                     handle={selected.shared.handle}
@@ -760,7 +780,7 @@ export function GroupsApp({
                       {localReceiptStorage && (
                         <GroupLocalReceiptStorage storage={localReceiptStorage} />
                       )}
-                      {selected.native.executionMode === 'host' && (
+                      {(groupsOnly || selected.native.executionMode === 'host') && (
                         <details className="group-host-members">
                           <summary>Git sync and reviewed changes</summary>
                           <div ref={setGitAdvancedTarget} />
@@ -780,7 +800,7 @@ export function GroupsApp({
                           />
                         </details>
                       )}
-                      {selected.native.executionMode !== 'host' && (
+                      {!groupsOnly && selected.native.executionMode !== 'host' && (
                         <>
                           <GroupGitPanel
                             key={`git:${selected.shared.handle}`}
@@ -798,45 +818,47 @@ export function GroupsApp({
                           handle={creatorHandle}
                         />
                       )}
-                      <details className="group-host-members">
-                        <summary>Summary computer for older activity</summary>
-                        <p>
-                          Shared messages and reports arrive without this setting. This optional
-                          older workflow summarizes retained activity on the selected computer and
-                          uses that person’s provider allowance. It is separate from per-member
-                          message summaries.
-                        </p>
-                        <p role="status">{selected.feedWriter?.message}</p>
-                        {selected.feedWriter?.canSelect && (
-                          <button
-                            disabled={busy}
-                            onClick={() =>
-                              void act(async () => {
-                                const operation = pending(
-                                  `feed-writer:${selected.group.handle}`,
-                                  {},
-                                );
-                                await request('feed-writer', {
-                                  handle: selected.shared.handle,
-                                  key: operation.key,
-                                });
-                                operation.clear();
-                                setFeedWriterNotice(
-                                  'This computer is the shared feed writer. Summaries wait while its agent is unavailable.',
-                                );
-                                setSelected(
-                                  contracts.groupHostOpenSchema.parse(
-                                    await request('open', { handle: selected.group.handle }),
-                                  ),
-                                );
-                              })
-                            }
-                          >
-                            Use my agent to summarize older activity
-                          </button>
-                        )}
-                        {feedWriterNotice && <p role="status">{feedWriterNotice}</p>}
-                      </details>
+                      {!groupsOnly && (
+                        <details className="group-host-members">
+                          <summary>Summary computer for older activity</summary>
+                          <p>
+                            Shared messages and reports arrive without this setting. This optional
+                            older workflow summarizes retained activity on the selected computer and
+                            uses that person’s provider allowance. It is separate from per-member
+                            message summaries.
+                          </p>
+                          <p role="status">{selected.feedWriter?.message}</p>
+                          {selected.feedWriter?.canSelect && (
+                            <button
+                              disabled={busy}
+                              onClick={() =>
+                                void act(async () => {
+                                  const operation = pending(
+                                    `feed-writer:${selected.group.handle}`,
+                                    {},
+                                  );
+                                  await request('feed-writer', {
+                                    handle: selected.shared.handle,
+                                    key: operation.key,
+                                  });
+                                  operation.clear();
+                                  setFeedWriterNotice(
+                                    'This computer is the shared feed writer. Summaries wait while its agent is unavailable.',
+                                  );
+                                  setSelected(
+                                    contracts.groupHostOpenSchema.parse(
+                                      await request('open', { handle: selected.group.handle }),
+                                    ),
+                                  );
+                                })
+                              }
+                            >
+                              Use my agent to summarize older activity
+                            </button>
+                          )}
+                          {feedWriterNotice && <p role="status">{feedWriterNotice}</p>}
+                        </details>
+                      )}
                     </>
                   )}
                 </details>
@@ -844,13 +866,7 @@ export function GroupsApp({
               <div className="group-host-workspace">
                 <GroupsWorkspace
                   agentTabTitle="Your Claude Code"
-                  contributionControl={
-                    <GroupContributionMode
-                      key={`local-mode:${selected.group.handle}`}
-                      group={localGroup ?? selected.group}
-                      refresh={refreshLocalList}
-                    />
-                  }
+                  readOnly={localGroup?.local?.mode === 'read-only'}
                   onManage={() => setControlsOpen(true)}
                   onInvite={
                     creatorHandle
@@ -883,18 +899,20 @@ export function GroupsApp({
                           key={selected.group.handle}
                           handle={selected.group.handle}
                           legacy={
-                            <GroupConversation
-                              mode="manager"
-                              sharedFeed={{ loadPage, loadOriginal, members: selected.members }}
-                              slot={selected.shared}
-                              readOnly={localGroup?.local?.mode === 'read-only'}
-                              executionMode={selected.native.executionMode}
-                              sharedHandle={selected.shared.handle}
-                              onChanged={changed}
-                              onManagedCoordination={ownerCoordinationChanged}
-                              nativeControlsTarget={nativeControlsTarget}
-                              onAuthorizationRequired={authorizationRequired}
-                            />
+                            groupsOnly ? undefined : (
+                              <GroupConversation
+                                mode="manager"
+                                sharedFeed={{ loadPage, loadOriginal, members: selected.members }}
+                                slot={selected.shared}
+                                readOnly={localGroup?.local?.mode === 'read-only'}
+                                executionMode={selected.native.executionMode}
+                                sharedHandle={selected.shared.handle}
+                                onChanged={changed}
+                                onManagedCoordination={ownerCoordinationChanged}
+                                nativeControlsTarget={nativeControlsTarget}
+                                onAuthorizationRequired={authorizationRequired}
+                              />
+                            )
                           }
                         />
                       ) : (
@@ -934,7 +952,10 @@ export function GroupsApp({
         >
           {error && <p role="alert">{error}</p>}
           {joinNotice && <p role="status">{joinNotice}</p>}
-          <GroupSetupPrompt folderSetup={<GroupWorkFolder />} />
+          <GroupSetupPrompt
+            groupsOnly={groupsOnly}
+            folderSetup={<GroupWorkFolder externalOnly={groupsOnly} />}
+          />
           {hasPendingSetup() && (
             <details className="group-host-recovery">
               <summary>Recover an interrupted request</summary>

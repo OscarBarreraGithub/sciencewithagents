@@ -33,7 +33,7 @@ type Identity = Pick<
   ExternalFileScope,
   'handle' | 'cwd' | 'scopeKey' | 'origin' | 'sessionId' | 'generation' | 'author'
 >;
-const identity = (s: ExternalFileScope): Identity => ({
+const identity = (s: Identity): Identity => ({
   handle: s.handle,
   cwd: s.cwd,
   scopeKey: s.scopeKey,
@@ -134,19 +134,22 @@ export class GroupExternalFiles {
       .run(id, JSON.stringify(body));
   }
   private view(
-    scope: ExternalFileScope,
+    scope: Identity | null,
     preview: GroupExternalFilePreview | null = null,
+    retainedHandle = scope?.handle,
+    allowRetry = true,
   ): GroupExternalFilesView {
     const rows = this.db
       .prepare('SELECT id,body FROM gex_proposals WHERE handle=? ORDER BY rowid DESC LIMIT 20')
-      .all(scope.handle);
+      .all(retainedHandle!);
     return groupExternalFilesViewSchema.parse({
       preview,
       proposals: rows.map((row) => {
-        const saved = this.saved(String(row.id), scope.handle),
+        const saved = this.saved(String(row.id), retainedHandle!),
           decision = this.decision(String(row.id)),
           phase = this.phase(String(row.id)),
-          identityChanged = JSON.stringify(identity(scope)) !== JSON.stringify(saved.identity),
+          identityChanged =
+            !scope || JSON.stringify(identity(scope)) !== JSON.stringify(saved.identity),
           stale =
             identityChanged &&
             (!decision || (decision.kind === 'approved' && phase.state === 'approved'));
@@ -168,10 +171,20 @@ export class GroupExternalFiles {
               : decision?.kind === 'approved'
                 ? phase.message
                 : 'Claude proposed this committed checkpoint. Review it before sharing.',
-          retryable: !identityChanged && decision?.kind === 'approved' && phase.failures > 0,
+          retryable:
+            allowRetry && !identityChanged && decision?.kind === 'approved' && phase.failures > 0,
         };
       }),
     });
+  }
+  /** Membership-authenticated local inspection; grants no approval or transport authority. */
+  readRetained(handle: string, current: Identity | null, previewId?: string, allowRetry = false) {
+    return this.view(
+      current,
+      previewId ? this.saved(previewId, handle).preview : null,
+      handle,
+      allowRetry,
+    );
   }
   async request(raw: unknown, humanReview = false): Promise<GroupExternalFilesView> {
     const input = groupExternalFilesRequestSchema.parse(raw);

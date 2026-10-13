@@ -3,6 +3,16 @@
 Current decisions, updated 2026-10-09. Implementation gaps belong in [Status](STATUS.md),
 not in another build plan. Detailed interface requirements are in [Design](DESIGN.md).
 
+## Temporary Groups-only distribution
+
+The 2026-10-13 owner choice is a temporary `groups-only` branch of this same repository.
+Keep full SWA source, records, settings, native plugin configuration and launcher ownership.
+The branch default starts a separate authenticated Groups bootstrap and shell without Runtime,
+QUARK, managers, editor bridges or terminal hosting. Members switch and rebuild their own
+installation through an external native setup agent; there is no second application or automatic
+main update. Returning to main must preserve saved identities and pending work.
+See [branch setup](GROUPS_ONLY.md) and Status for unresolved adapter and acceptance work.
+
 ## Groups alongside ordinary Claude Code
 
 The 2026-10-12 owner direction keeps full SWA and makes Groups available to an existing

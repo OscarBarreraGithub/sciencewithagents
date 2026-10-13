@@ -1,3 +1,4 @@
+import { quarkSettingsSchema } from '@dock/shared';
 import { modelFixture } from './model-policy.fixture.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -76,22 +77,26 @@ function calls(root: string): { pid: number; args: string[] }[] {
 }
 function launch(value: ReturnType<typeof fixture>, port: number, delayed = false) {
   const owned = fixtures.find((item) => item.root === value.root)!;
-  owned.child = spawn(process.execPath, [join(repoRoot, 'apps/server/dist/main.js')], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      DOCK_DATA_DIR: value.root,
-      DOCK_PORT: String(port),
-      DOCK_CODEX_BIN: value.binary,
-      DOCK_CLAUDE_BIN: join(value.root, 'no-claude'),
-      DOCK_CODEXBAR_BIN: join(value.root, 'no-reader'),
-      DOCK_CLOUDFLARED_BIN: value.binary,
-      DOCK_STARTUP_CALLS: join(value.root, 'calls.jsonl'),
-      DOCK_STARTUP_DELAY: delayed ? '600' : '0',
-      DOCK_LAUNCHER_LIFETIME: '1',
+  owned.child = spawn(
+    process.execPath,
+    [join(repoRoot, 'apps/server/dist/main.js'), '--full-swa'],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        DOCK_DATA_DIR: value.root,
+        DOCK_PORT: String(port),
+        DOCK_CODEX_BIN: value.binary,
+        DOCK_CLAUDE_BIN: join(value.root, 'no-claude'),
+        DOCK_CODEXBAR_BIN: join(value.root, 'no-reader'),
+        DOCK_CLOUDFLARED_BIN: value.binary,
+        DOCK_STARTUP_CALLS: join(value.root, 'calls.jsonl'),
+        DOCK_STARTUP_DELAY: delayed ? '600' : '0',
+        DOCK_LAUNCHER_LIFETIME: '1',
+      },
+      stdio: ['pipe', 'ignore', 'pipe'],
     },
-    stdio: ['pipe', 'ignore', 'pipe'],
-  });
+  );
   let diagnostics = '';
   owned.child.stderr!.on('data', (chunk) => {
     diagnostics += String(chunk).slice(0, 2048);
@@ -311,3 +316,89 @@ describe('main startup safety', () => {
     }
   });
 });
+
+it('preserves paused synthetic full-SWA records across full -> Groups -> full with the same private data', async () => {
+  const value = fixture(),
+    port = await unusedPort();
+  const settings = new Store(join(value.root, 'dock.sqlite'));
+  settings.setSetting('scheduler:settings', { paused: true, maxConcurrent: 4 });
+  settings.setSetting(
+    'quark:settings',
+    quarkSettingsSchema.parse({ bufferPercent: 3, cacheEnabled: false, maxNudgesPerAgentDay: 1 }),
+  );
+  const modelPolicy = settings.getSetting('model-policy');
+  settings.close();
+  rmSync(value.binary);
+  const first = launch(value, port);
+  const health = async () => {
+    await expect
+      .poll(
+        async () =>
+          await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(500) })
+            .then((res) => res.status)
+            .catch(() => 0),
+        { timeout: 10000 },
+      )
+      .toBe(200);
+  };
+  await health().catch((error) => {
+    throw new Error(`${String(error)} ${first.diagnostics()}`);
+  });
+  first.child!.stdin!.end();
+  await first.finished;
+  const disk = new Store(join(value.root, 'dock.sqlite'));
+  const baseline = {
+    projects: disk.projects().map((p) => p.id),
+    agents: disk.agents().map((a) => a.id),
+    runs: disk.runs(),
+    scheduler: disk.getSetting('scheduler:settings'),
+    modelPolicy: disk.getSetting('model-policy'),
+  };
+  disk.close();
+  const group = spawn(process.execPath, [join(repoRoot, 'apps/server/dist/main.js')], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      DOCK_DATA_DIR: value.root,
+      DOCK_PORT: String(port),
+      DOCK_CODEX_BIN: join(value.root, 'missing-codex'),
+      DOCK_CLAUDE_BIN: join(value.root, 'missing-claude'),
+      DOCK_LAUNCHER_LIFETIME: '1',
+      DOCK_CLUSTER_BOOTSTRAP_FILE: '',
+    },
+    stdio: ['pipe', 'ignore', 'pipe'],
+  });
+  group.stderr!.resume();
+  const groupEnded = new Promise<void>((done) => group.once('exit', () => done()));
+  try {
+    await health();
+    expect(
+      await fetch(`http://127.0.0.1:${port}/api/distribution`).then((res) => res.json()),
+    ).toEqual({ distribution: 'groups-only' });
+  } finally {
+    group.stdin!.end();
+    await groupEnded;
+  }
+  const second = launch(value, port);
+  await health();
+  second.child!.stdin!.end();
+  await second.finished;
+  const final = new Store(join(value.root, 'dock.sqlite'));
+  try {
+    expect({
+      projects: final.projects().map((p) => p.id),
+      agents: final.agents().map((a) => a.id),
+      runs: final.runs(),
+      scheduler: final.getSetting('scheduler:settings'),
+      modelPolicy: final.getSetting('model-policy'),
+    }).toEqual(baseline);
+    expect(final.getSetting('model-policy')).toEqual(modelPolicy);
+    expect(final.getSetting('quark:settings')).toEqual(
+      quarkSettingsSchema.parse({ bufferPercent: 3, cacheEnabled: false, maxNudgesPerAgentDay: 1 }),
+    );
+  } finally {
+    final.close();
+  }
+  expect(existsSync(join(value.root, 'server.lock'))).toBe(false);
+  expect(calls(value.root)).toEqual([]);
+}, 30000);

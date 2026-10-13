@@ -3,11 +3,12 @@ import type { CachedConversation, SavedCopy } from '../read-cache';
 import { agentName } from '../agentName';
 import { managedExecution } from '../execution-mode';
 import { GroupsApp } from '../groups/GroupsApp';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
   ArrowUpRight,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FolderOpen,
@@ -189,31 +190,50 @@ function TaskLink({ task }: { task: Task }) {
   );
 }
 
-export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }) {
+export type GroupsChrome = { navigation: ReactNode; utilities: ReactNode };
+
+export function WorkspaceFlow({
+  route,
+  data,
+  groupsChrome,
+}: {
+  route: string;
+  data: HomeData;
+  groupsChrome?: GroupsChrome;
+}) {
   const [page, target] = route.split('/');
   const state = data.snapshot.data;
   const [adding, setAdding] = useState<'task' | 'manager' | null>(null);
+  const LoadingBody = groupsChrome ? 'div' : Fragment;
   useEffect(() => {
     setAdding(null);
   }, [page, target]);
   if (!state)
     return (
-      <section className="flow-page">
-        <FlowHeading label="YOUR WORKSPACE" title="Workspace">
-          Projects and conversations stay on this computer.
-        </FlowHeading>
-        <FlowEmpty
-          title={data.snapshot.error ? 'The computer is unavailable' : 'Opening your workspace…'}
-        >
-          {data.snapshot.error ? (
-            <button className="flow-button" onClick={data.snapshot.retry}>
-              Try again
-            </button>
-          ) : (
-            'Your saved work will appear here.'
-          )}
-        </FlowEmpty>
-        {page === 'chat' && data.snapshot.error && <RetainedDraft agentId={target} />}
+      <section className={`flow-page${groupsChrome ? ' groups-workspace-loading' : ''}`}>
+        {groupsChrome && (
+          <aside className="chat-list" aria-label="Conversations">
+            {groupsChrome.navigation}
+            {groupsChrome.utilities}
+          </aside>
+        )}
+        <LoadingBody>
+          <FlowHeading label="YOUR WORKSPACE" title="Workspace">
+            Projects and conversations stay on this computer.
+          </FlowHeading>
+          <FlowEmpty
+            title={data.snapshot.error ? 'The computer is unavailable' : 'Opening your workspace…'}
+          >
+            {data.snapshot.error ? (
+              <button className="flow-button" onClick={data.snapshot.retry}>
+                Try again
+              </button>
+            ) : (
+              'Your saved work will appear here.'
+            )}
+          </FlowEmpty>
+          {page === 'chat' && data.snapshot.error && <RetainedDraft agentId={target} />}
+        </LoadingBody>
       </section>
     );
   const refresh = () => {
@@ -221,7 +241,15 @@ export function WorkspaceFlow({ route, data }: { route: string; data: HomeData }
     window.dispatchEvent(new Event('swa:refresh-home'));
   };
   if (page === 'chat' || page === 'chats' || page === 'managers')
-    return <MainChat route={route} data={data} state={state} refresh={refresh} />;
+    return (
+      <MainChat
+        route={route}
+        data={data}
+        state={state}
+        refresh={refresh}
+        groupsChrome={groupsChrome}
+      />
+    );
   if (page === 'new' && target === 'native')
     return (
       <NativeRunnerStartPage
@@ -1299,11 +1327,13 @@ function MainChat({
   data,
   state,
   refresh,
+  groupsChrome,
 }: {
   route: string;
   data: HomeData;
   state: Snapshot;
   refresh: () => void;
+  groupsChrome?: GroupsChrome;
 }) {
   const parts = route.split('/');
   const page = parts[0];
@@ -1616,11 +1646,19 @@ function MainChat({
       <GroupsApp
         route={route}
         query={query}
+        sidebarFooter={groupsChrome?.utilities}
         listHeader={
           <>
+            {groupsChrome?.navigation}
+            <details className="groups-category-navigation">
+              <summary>
+                Browse conversations <ChevronDown size={16} aria-hidden="true" />
+              </summary>
+              {chatFilters}
+            </details>
             <div className="chat-list-head">
               <ListTitle className="chat-list-title" tabIndex={-1}>
-                Chats
+                Groups
               </ListTitle>
             </div>
             <label className="flow-search chat-search">
@@ -1633,7 +1671,6 @@ function MainChat({
                 onChange={(event) => setQuery(event.target.value)}
               />
             </label>
-            {chatFilters}
           </>
         }
       />

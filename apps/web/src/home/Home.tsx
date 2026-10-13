@@ -335,6 +335,7 @@ export function Home() {
     return () => window.removeEventListener('hashchange', replaceAlias);
   }, []);
   const page = currentRoute.split('/')[0]!;
+  const groupsWorkspace = page === 'chats' && currentRoute.split('/')[1] === 'groups';
   const [now, setNow] = useState(Date.now);
   const [dialog, setDialog] = useState<'help' | 'phone' | 'issue' | null>(null);
   const main = useRef<HTMLElement>(null);
@@ -400,7 +401,7 @@ export function Home() {
   return (
     <Navigation.Provider value={back}>
       <div
-        className="home-shell"
+        className={`home-shell${groupsWorkspace ? ' groups-shell' : ''}`}
         data-page={page}
         style={
           visible
@@ -428,79 +429,83 @@ export function Home() {
         >
           Skip to content
         </a>
-        <header className="home-header">
-          <div className="home-header-inner">
-            {page !== 'home' && <BackLink />}
-            <a className="home-brand" href={href('home')} aria-label="sciencewithagents home">
-              <Mark />
-              {page === 'home' && (
-                <span>
-                  science<span className="home-brand-light">with</span>agents
-                </span>
+        {!groupsWorkspace && (
+          <header className="home-header">
+            <div className="home-header-inner">
+              {page !== 'home' && <BackLink />}
+              <a className="home-brand" href={href('home')} aria-label="sciencewithagents home">
+                <Mark />
+                {page === 'home' && (
+                  <span>
+                    science<span className="home-brand-light">with</span>agents
+                  </span>
+                )}
+              </a>
+              {page !== 'home' && (
+                <nav className="home-desktop-nav" aria-label="Main navigation">
+                  {nav.map((item) => (
+                    <a
+                      key={item.key}
+                      href={href(item.key)}
+                      aria-current={active === item.key ? 'page' : undefined}
+                    >
+                      <item.icon size={18} aria-hidden="true" />
+                      {item.label}
+                    </a>
+                  ))}
+                </nav>
               )}
-            </a>
-            {page !== 'home' && (
-              <nav className="home-desktop-nav" aria-label="Main navigation">
-                {nav.map((item) => (
-                  <a
-                    key={item.key}
-                    href={href(item.key)}
-                    aria-current={active === item.key ? 'page' : undefined}
+              {!mobile && (
+                <div className="home-header-status" aria-label="Allowance">
+                  <Allowances data={data} now={now} />
+                </div>
+              )}
+              <div className="home-header-actions">
+                {apiCluster() && (
+                  <Button
+                    type="button"
+                    className="home-icon-button"
+                    aria-label="Return to controller"
+                    onPress={() => leaveClusterProject()}
                   >
-                    <item.icon size={18} aria-hidden="true" />
-                    {item.label}
-                  </a>
-                ))}
-              </nav>
-            )}
-            {!mobile && (
-              <div className="home-header-status" aria-label="Allowance">
-                <Allowances data={data} now={now} />
-              </div>
-            )}
-            <div className="home-header-actions">
-              {apiCluster() && (
+                    <ArrowLeft size={20} />
+                  </Button>
+                )}
                 <Button
                   type="button"
                   className="home-icon-button"
-                  aria-label="Return to controller"
-                  onPress={() => leaveClusterProject()}
+                  aria-label="Help and setup"
+                  aria-haspopup="dialog"
+                  onPress={() => setDialog('help')}
                 >
-                  <ArrowLeft size={20} />
+                  <CircleHelp size={20} />
                 </Button>
-              )}
-              <Button
-                type="button"
-                className="home-icon-button"
-                aria-label="Help and setup"
-                aria-haspopup="dialog"
-                onPress={() => setDialog('help')}
-              >
-                <CircleHelp size={20} />
-              </Button>
 
-              <a href={href('settings')} className="home-icon-button" aria-label="Settings">
-                <Settings2 size={19} />
-              </a>
+                <a href={href('settings')} className="home-icon-button" aria-label="Settings">
+                  <Settings2 size={19} />
+                </a>
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
+        )}
         <AppUpdate />
-        <div className="home-topline">
-          <ComputerLink data={data} />
-          {page === 'home' && !mobile && <HomeOrb size={20} />}
-          <Button
-            type="button"
-            className={`home-phone tone-${phoneTone}`}
-            aria-haspopup="dialog"
-            aria-label={`Phone access: ${phoneText}. Open phone setup and devices`}
-            onPress={() => setDialog('phone')}
-          >
-            <Smartphone size={16} aria-hidden="true" />
-            <span>Phone:</span>
-            <strong>{phoneText}</strong>
-          </Button>
-        </div>
+        {!groupsWorkspace && (
+          <div className="home-topline">
+            <ComputerLink data={data} />
+            {page === 'home' && !mobile && <HomeOrb size={20} />}
+            <Button
+              type="button"
+              className={`home-phone tone-${phoneTone}`}
+              aria-haspopup="dialog"
+              aria-label={`Phone access: ${phoneText}. Open phone setup and devices`}
+              onPress={() => setDialog('phone')}
+            >
+              <Smartphone size={16} aria-hidden="true" />
+              <span>Phone:</span>
+              <strong>{phoneText}</strong>
+            </Button>
+          </div>
+        )}
         <main className="home-content" id="home-content" ref={main}>
           {data.snapshot.data?.schedulingError && (
             <p className="home-error" role="status">
@@ -534,7 +539,86 @@ export function Home() {
           ) : page === 'latex' ? (
             <LatexApp initialId={currentRoute.split('/')[1]} />
           ) : flowPages.has(page) ? (
-            <WorkspaceFlow route={currentRoute} data={data} />
+            <WorkspaceFlow
+              route={currentRoute}
+              data={data}
+              groupsChrome={
+                groupsWorkspace
+                  ? {
+                      navigation: (
+                        <>
+                          <div className="groups-brand-row">
+                            <a
+                              className="home-brand"
+                              href={href('home')}
+                              aria-label="sciencewithagents home"
+                            >
+                              <Mark />
+                              <span>sciencewithagents</span>
+                            </a>
+                            <BackLink />
+                          </div>
+                          <nav className="groups-global-nav" aria-label="Main navigation">
+                            {nav.map((item) => (
+                              <a
+                                key={item.key}
+                                href={href(item.key)}
+                                aria-current={active === item.key ? 'page' : undefined}
+                              >
+                                <item.icon size={17} aria-hidden="true" />
+                                {item.label}
+                              </a>
+                            ))}
+                          </nav>
+                        </>
+                      ),
+                      utilities: (
+                        <div className="groups-sidebar-utilities">
+                          <ComputerLink data={data} />
+                          <div className="groups-sidebar-allowances" aria-label="Allowance">
+                            <Allowances data={data} now={now} />
+                          </div>
+                          <div className="groups-utility-actions">
+                            {apiCluster() && (
+                              <Button
+                                aria-label="Return to controller"
+                                onPress={() => leaveClusterProject()}
+                              >
+                                <ArrowLeft size={18} />
+                              </Button>
+                            )}
+                            <span className="groups-utility-tooltip" title={`Phone: ${phoneText}`}>
+                              <Button
+                                aria-label={`Phone access: ${phoneText}. Open phone setup and devices`}
+                                aria-haspopup="dialog"
+                                onPress={() => setDialog('phone')}
+                              >
+                                <Smartphone size={18} aria-hidden="true" />
+                                <span
+                                  className={`groups-phone-status tone-${phoneTone}`}
+                                  aria-hidden="true"
+                                />
+                              </Button>
+                            </span>
+                            <span className="groups-utility-tooltip" title="Help and setup">
+                              <Button
+                                aria-label="Help and setup"
+                                aria-haspopup="dialog"
+                                onPress={() => setDialog('help')}
+                              >
+                                <CircleHelp size={18} aria-hidden="true" />
+                              </Button>
+                            </span>
+                            <a href={href('settings')} aria-label="Settings" title="Settings">
+                              <Settings2 size={18} />
+                            </a>
+                          </div>
+                        </div>
+                      ),
+                    }
+                  : undefined
+              }
+            />
           ) : activityPages.has(page) ? (
             <ActivityFlow currentRoute={currentRoute} data={data} />
           ) : page === 'advanced' ? (

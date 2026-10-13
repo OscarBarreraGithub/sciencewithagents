@@ -1,3 +1,9 @@
+import {
+  groupsOnlyCreatorPrompt,
+  groupsOnlyJoinPrompt,
+  groupsOnlyPhonePrompt,
+  groupsOnlyGitPrompt,
+} from './groups-only-setup';
 import { useRef, useState, type ReactNode } from 'react';
 import { Check, Copy } from 'lucide-react';
 import '../setup-prompt.css';
@@ -196,7 +202,13 @@ function CopyPrompt({
   );
 }
 
-export function GroupSetupPrompt({ folderSetup }: { folderSetup?: ReactNode }) {
+export function GroupSetupPrompt({
+  folderSetup,
+  groupsOnly = false,
+}: {
+  folderSetup?: ReactNode;
+  groupsOnly?: boolean;
+}) {
   const [kind, setKind] = useState('creator');
   const selected = prompts.find((prompt) => prompt.kind === kind)!;
   const phone = prompts.find((prompt) => prompt.kind === 'phone')!;
@@ -237,7 +249,15 @@ export function GroupSetupPrompt({ folderSetup }: { folderSetup?: ReactNode }) {
             key={selected.kind}
             label={selected.label}
             button={selected.button}
-            text={selected.text}
+            text={
+              groupsOnly
+                ? selected.kind === 'creator'
+                  ? groupsOnlyCreatorPrompt
+                  : selected.kind === 'member'
+                    ? groupsOnlyJoinPrompt
+                    : groupsOnlyGitPrompt
+                : selected.text
+            }
           />
         )}
       </section>
@@ -262,10 +282,15 @@ export function GroupSetupPrompt({ folderSetup }: { folderSetup?: ReactNode }) {
       <details className="group-host-status">
         <summary>Optional phone access</summary>
         <p>
-          Groups works between computers without a phone or tunnel. If you want phone access, set up
-          your own authenticated connection and pair that device separately.
+          {groupsOnly
+            ? 'Pair the direct hosted group feed from Manage. It can read while this computer is closed.'
+            : 'Groups works between computers without a phone or tunnel. If you want phone access, set up your own authenticated connection and pair that device separately.'}
         </p>
-        <CopyPrompt label={phone.label} button={phone.button} text={phone.text} />
+        <CopyPrompt
+          label={phone.label}
+          button={phone.button}
+          text={groupsOnly ? groupsOnlyPhonePrompt : phone.text}
+        />
       </details>
     </section>
   );
