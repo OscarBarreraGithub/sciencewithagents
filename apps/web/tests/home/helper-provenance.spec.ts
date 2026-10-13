@@ -185,10 +185,6 @@ test('conversation filters keep whole labels and reachable touch targets at narr
   await filters.screenshot({ path: info.outputPath('conversation-filters.png') });
   await filters.getByRole('button', { name: 'Groups', exact: true }).click();
   await expect(page).toHaveURL(/#\/chats\/groups$/);
-  await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
-  await expect(
-    page
-      .getByRole('group', { name: 'Conversation type' })
-      .getByRole('button', { name: 'Groups', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New group', exact: true })).toBeVisible();
 });

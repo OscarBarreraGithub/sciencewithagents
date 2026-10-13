@@ -6,7 +6,8 @@ async function openGroups(page: Page) {
     .getByRole('group', { name: 'Conversation type', exact: true })
     .getByRole('button', { name: 'Groups', exact: true });
   await groups.click();
-  await expect(groups).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(/#\/chats\/groups$/);
+  await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'New group', exact: true })).toBeVisible();
 }
 

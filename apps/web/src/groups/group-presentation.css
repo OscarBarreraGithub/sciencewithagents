@@ -208,8 +208,8 @@
   color: var(--ink);
 }
 .home-shell.groups-shell .groups-list-actions .groups-setup-button {
-  flex: 0 0 36px;
-  min-width: 36px;
+  flex: 0 0 44px;
+  min-width: 44px;
 }
 .home-shell.groups-shell .groups-list-actions .groups-new-button {
   flex: 0 0 44px;
@@ -552,7 +552,7 @@
   color: var(--muted);
 }
 .home-shell.groups-shell .group-chat .markdown {
-  font-size: max(16px, 1rem);
+  font-size: var(--group-reading-size);
   line-height: 1.6;
 }
 .home-shell.groups-shell .group-chat .conversation-date {
@@ -596,7 +596,7 @@
   min-height: 44px;
   max-height: min(180px, calc(var(--home-visible-height, 100dvh) * 0.25));
   padding: 8px 6px;
-  font-size: max(16px, 1rem);
+  font-size: var(--group-reading-size);
   line-height: 1.5;
   background: transparent;
   border: 0;

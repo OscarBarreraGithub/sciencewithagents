@@ -136,7 +136,7 @@
 }
 .config-slider input[type='range'] {
   width: 100%;
-  min-height: 44px;
+  min-height: 48px;
   margin: 0;
   accent-color: var(--home-blue);
 }

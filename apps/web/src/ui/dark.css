@@ -1092,15 +1092,13 @@ body {
 
 /* Keep each chat category visible, including Groups, without a clipped last tab. */
 .home-shell .chat-filters {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
 }
 .home-shell .chat-filters button {
-  grid-column: span 2;
-  padding-inline: 6px;
-}
-.home-shell .chat-filters button:nth-child(n + 4) {
-  grid-column: span 3;
+  flex: 1 0 auto;
+  min-width: 44px;
+  padding-inline: 8px;
 }
 .home-shell .quark-workspace {
   --q-muted: var(--muted);

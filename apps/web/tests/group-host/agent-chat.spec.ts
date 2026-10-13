@@ -248,6 +248,17 @@ test('My group agent keeps exact agent retries across human-tab switches, shared
   const reply =
     'Your group reply stays visible while sharing is pending. You can keep talking here.';
   const replyId = randomUUID();
+  // Retained history must exceed the reading pane even on a tall desktop.
+  // Three short messages can legitimately fit after presentation changes.
+  const readingHistory = Array.from({ length: 16 }, (_, index) => ({
+    id: randomUUID(),
+    runId: null,
+    kind: 'user',
+    title: 'You',
+    text: `Earlier retained question ${index + 1}: explain the shared scientific result and the evidence behind it.`,
+    status: 'complete',
+    createdAt: new Date().toISOString(),
+  }));
   let completedReads = 0;
   await page.route('**/api/groups/chat', async (route) => {
     const response = await route.fetch();
@@ -257,7 +268,10 @@ test('My group agent keeps exact agent retries across human-tab switches, shared
       receipt.state = 'completed';
       receipt.delivery = 'pending';
       receipt.message = 'Native reply retained. Shared feed delivery is pending.';
-      if (++completedReads >= 2)
+      if (++completedReads >= 2) {
+        value.detail.entries.push(
+          ...readingHistory.map((entry) => ({ ...entry, agentId: value.detail.agent.id })),
+        );
         value.detail.entries.push({
           id: replyId,
           agentId: value.detail.agent.id,
@@ -268,6 +282,7 @@ test('My group agent keeps exact agent retries across human-tab switches, shared
           status: 'complete',
           createdAt: new Date().toISOString(),
         });
+      }
     }
     await route.fulfill({ response, json: value });
   });

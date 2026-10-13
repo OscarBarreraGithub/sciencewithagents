@@ -328,8 +328,10 @@ for (const capability of ['direct', 'legacy', 'managed'] as const) {
     await page.screenshot({
       path: `../../data/group-capability/${info.project.name}-${capability}.png`,
     });
+    await expect(
+      manage.getByRole('button', { name: 'Contribution mode: Contribute' }),
+    ).toBeVisible();
     await manage.getByRole('button', { name: 'Done', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Contribution mode: Contribute' })).toBeVisible();
     await page.getByRole('tab', { name: 'Group chat', exact: true }).click();
     await expect(page.getByText(original, { exact: true })).toBeVisible();
     await page.getByRole('tab', { name: 'Your Claude Code', exact: true }).click();
