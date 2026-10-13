@@ -60,7 +60,9 @@ async function fits(page: Page) {
 }
 
 async function inspect(page: Page, route: string) {
-  await expect(page.locator('main h1').first()).toBeVisible();
+  // PhoneGate also has a main heading while its connection status loads.
+  // Measure only after the actual Home content panel and its heading have mounted.
+  await expect(page.locator('.home-content h1').first()).toBeVisible();
   if (route === 'models') {
     await expect(page.getByRole('group', { name: 'Providers in your defaults' })).toBeVisible();
     await expectModelFormLayout(page);
