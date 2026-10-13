@@ -8,6 +8,9 @@ on the computer. Never send passwords or codes through chat.
 
 Private GitHub backup and phone access through your own Cloudflare Workers Free account
 are optional choices; local use needs neither.
+For Groups alongside an existing Claude Code conversation, use the optional
+[Claude Groups plugin guide](GROUPS_CLAUDE.md). Keep full SWA and existing native workflows;
+do not create another manager or enable QUARK for that path.
 New phone setup uses a free `workers.dev` address without an owned domain. The phone never
 requires a GitHub or Cloudflare account login. Preserve working domain connections.
 

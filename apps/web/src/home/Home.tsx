@@ -30,7 +30,8 @@ import {
   type ProviderCapacity,
 } from '@dock/shared';
 import { apiScope, apiComputer, apiCluster, leaveClusterProject } from '../api';
-import { Modal } from '../Modal';
+import { Button } from '../ui/Button';
+import { Dialog } from '../ui/Dialog';
 import { PhoneSettings } from '../PhoneAccess';
 import { useHomeData, useReading, type HomeData } from './useHomeData';
 import './home.css';
@@ -400,6 +401,7 @@ export function Home() {
     <Navigation.Provider value={back}>
       <div
         className="home-shell"
+        data-page={page}
         style={
           visible
             ? ({
@@ -445,6 +447,7 @@ export function Home() {
                     href={href(item.key)}
                     aria-current={active === item.key ? 'page' : undefined}
                   >
+                    <item.icon size={18} aria-hidden="true" />
                     {item.label}
                   </a>
                 ))}
@@ -457,25 +460,24 @@ export function Home() {
             )}
             <div className="home-header-actions">
               {apiCluster() && (
-                <button
+                <Button
                   type="button"
                   className="home-icon-button"
                   aria-label="Return to controller"
-                  title="Return to controller"
-                  onClick={() => leaveClusterProject()}
+                  onPress={() => leaveClusterProject()}
                 >
                   <ArrowLeft size={20} />
-                </button>
+                </Button>
               )}
-              <button
+              <Button
                 type="button"
                 className="home-icon-button"
                 aria-label="Help and setup"
                 aria-haspopup="dialog"
-                onClick={() => setDialog('help')}
+                onPress={() => setDialog('help')}
               >
                 <CircleHelp size={20} />
-              </button>
+              </Button>
 
               <a href={href('settings')} className="home-icon-button" aria-label="Settings">
                 <Settings2 size={19} />
@@ -487,17 +489,17 @@ export function Home() {
         <div className="home-topline">
           <ComputerLink data={data} />
           {page === 'home' && !mobile && <HomeOrb size={20} />}
-          <button
+          <Button
             type="button"
             className={`home-phone tone-${phoneTone}`}
             aria-haspopup="dialog"
             aria-label={`Phone access: ${phoneText}. Open phone setup and devices`}
-            onClick={() => setDialog('phone')}
+            onPress={() => setDialog('phone')}
           >
             <Smartphone size={16} aria-hidden="true" />
             <span>Phone:</span>
             <strong>{phoneText}</strong>
-          </button>
+          </Button>
         </div>
         <main className="home-content" id="home-content" ref={main}>
           {data.snapshot.data?.schedulingError && (
@@ -560,12 +562,12 @@ export function Home() {
           )}
         </main>
         {dialog === 'help' && (
-          <Modal title="Help and setup" close={() => setDialog(null)} className="home-help-dialog">
+          <Dialog title="Help and setup" close={() => setDialog(null)} className="home-help-dialog">
             <div className="home-help" onClickCapture={closeOnLink}>
               <section>
-                <button type="button" className="setup-link" onClick={() => setDialog('issue')}>
+                <Button type="button" className="setup-link" onPress={() => setDialog('issue')}>
                   Report a problem on GitHub
-                </button>
+                </Button>
                 <p>Open a public GitHub draft that you review and submit to the maintainers.</p>
               </section>
               <section>
@@ -578,9 +580,9 @@ export function Home() {
               <section>
                 <h3>App display</h3>
                 <p>Reload to load the latest interface. Work running on your computer continues.</p>
-                <button type="button" className="setup-link" onClick={() => location.reload()}>
+                <Button type="button" className="setup-link" onPress={() => location.reload()}>
                   Reload app
-                </button>
+                </Button>
               </section>
               <section>
                 <h3>Check this computer</h3>
@@ -592,16 +594,16 @@ export function Home() {
               <section>
                 <h3>Phone access</h3>
                 <p>Pair a phone or manage paired devices. Existing pairing is kept.</p>
-                <button type="button" className="setup-link" onClick={() => setDialog('phone')}>
+                <Button type="button" className="setup-link" onPress={() => setDialog('phone')}>
                   Open phone access <ArrowRight size={16} />
-                </button>
+                </Button>
               </section>
               <section>
                 <h3>Accounts for apps that publish online</h3>
                 <SetupGuide computer={selectedHost(data)} />
               </section>
             </div>
-          </Modal>
+          </Dialog>
         )}
         {dialog === 'issue' && (
           <IssueReport key={apiScope()} page={currentRoute} close={() => setDialog(null)} />

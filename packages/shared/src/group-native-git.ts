@@ -22,6 +22,12 @@ export const groupNativeGitRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ ...selected, action: z.literal('connect'), key: z.uuid() }),
   z.strictObject({
     ...selected,
+    action: z.literal('confirm-external-closed'),
+    key: z.uuid(),
+    generation: z.number().int().positive(),
+  }),
+  z.strictObject({
+    ...selected,
     action: z.literal('configure'),
     key: z.uuid(),
     githubUsername: z
@@ -59,6 +65,8 @@ export const groupNativeGitViewSchema = z.strictObject({
   connected: z.boolean().optional(),
   dirty: z.boolean(),
   busy: z.boolean(),
+  busyReason: z.enum(['external-claude', 'managed-work']).optional(),
+  externalClosureGeneration: z.number().int().positive().optional(),
   message: z.string().max(1000),
   localEdits: z
     .array(

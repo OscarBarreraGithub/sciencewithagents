@@ -1,13 +1,19 @@
 # Groups presentation and synthetic preview
 
-The normal app has **Group chat** and **My group agent** tabs. The latter uses the current
-member’s own provider account and allowance. **Setup** offers readable creator, member and
-shared-file choices; phone pairing remains optional. **Manage** keeps invitations and local
-agent access visible, with **Remove from my app** directly below the dialog heading.
-Setup and management disclosure rows use readable bordered controls. **Advanced** holds
-managed task review, sync settings, shared proposals, older report lookup and creator backups.
-Advanced content loads once on first opening and stays mounted when collapsed. Exact pending/error
-request controls describe the specific request.
+The normal app opens at **Chats → Groups**, with the list beside the selected conversation
+on desktop and separate list/detail views on phones. **Group chat** is the shared human
+conversation. **Your Claude Code** contains the optional connection to the native conversation
+the person already uses: current sharing status and **Stop automatic sharing** come first,
+with the setup prompt below. Opening this view does not start a model. **Saved SWA group agent**
+retains the older agent's requests and history behind an explicit disclosure.
+
+**Setup** offers readable creator, member and shared-file choices; phone pairing remains
+optional. **Manage** keeps invitations and local agent access available, with **Remove from my
+app** directly below the dialog heading. Setup and management disclosure rows use readable
+bordered controls. **Advanced** holds managed task review, sync settings, shared proposals,
+older report lookup and creator backups. Advanced content loads once on first opening and
+stays mounted when collapsed. Exact pending/error controls describe the specific request;
+retrying a group read or connection-status read never repeats a sharing action.
 
 Validated shared report notifications show **Open report** and a collapsed exact original.
 Completed own replies expose their report offer only through the exact retained result/source
@@ -32,6 +38,12 @@ If the saved display is missing or corrupt, the request stays retained and appro
 a receipt-only recovery path is not yet available. These file controls make no model call. Older
 hosts and managed task review keep their existing controls.
 
+**Manage → Read this group on your phone** creates an owner-reviewed, one-use connection
+link with read-only as the default. Optional human posting is a separate grant; the list
+provides Revoke. Link/revoke requests retain their exact identities after uncertain replies.
+The hosted phone page keeps expanded messages and scroll position during idle refresh and
+clears its visible feed when authorization is denied. [Phone behavior and limits](GROUP_PHONE_FEED.md).
+
 **Remove from my app** hides the local list entry while preserving membership, work, history and drafts.
 **Removed groups** offers restore and exact interrupted-change recovery. The visible contribution selector reflects
 the host’s saved Read-only/Contribute mode; drafts stay editable and new sends follow that
@@ -40,7 +52,7 @@ last-reported local receipt usage, separate from cloud or physical disk storage.
 visibility controls make no model call.
 
 The reusable presentation components have a synthetic preview alongside the normal
-**Home → Groups** integration. Preview data does not exercise native execution, authenticated
+**Chats → Groups** integration. Preview data does not exercise native execution, authenticated
 hosting or publication. Use [Group workflow](GROUP_WORKFLOW.md) for the real entry.
 
 `apps/web/src/groups` exports typed landing and workspace components. The landing lists

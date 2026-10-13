@@ -32,12 +32,12 @@ body:has(.home-shell) {
   overscroll-behavior-y: contain;
 }
 .home-shell {
-  --home-paper: #faf8f4;
-  --home-white: #fffefb;
-  --home-ink: #1f2330;
-  --home-muted: #5d6270;
-  --home-line: #e6e0d5;
-  --home-blue: #3f55d6;
+  --home-paper: var(--surface-0);
+  --home-white: var(--surface-1);
+  --home-ink: var(--ink);
+  --home-muted: var(--muted);
+  --home-line: var(--line);
+  --home-blue: var(--accent);
   display: flex;
   flex-direction: column;
   height: 100dvh;

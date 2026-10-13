@@ -17,7 +17,7 @@ body:has(.group-fixture-root) {
   flex-shrink: 0;
   padding: 6px 12px;
   border-bottom: 1px solid var(--line);
-  background: #eeeee5;
+  background: var(--soft);
   font-size: 0.8rem;
 }
 .group-fixture-status summary {
@@ -50,11 +50,11 @@ body:has(.group-fixture-root) {
   margin: 0;
   padding: 6px 12px;
   overflow-wrap: anywhere;
-  background: #e8ece8;
+  background: var(--soft);
 }
 .group-fixture-cue.private {
-  background: #f2e8da;
-  border-left: 4px solid #866137;
+  background: var(--soft);
+  border-left: 4px solid var(--accent);
 }
 .group-fixture-error {
   margin: 0;

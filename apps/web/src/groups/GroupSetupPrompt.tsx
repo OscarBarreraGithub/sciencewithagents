@@ -31,8 +31,13 @@ messages in both directions and recovery after reconnect before claiming complet
 Use each member's own Codex or Claude sign-in and native tools. Follow
 docs/CONTRIBUTOR_SETUP.md to install their chosen CLI if missing or update its existing
 installation, then verify its version and model discovery. A desktop app alone is not enough. Explain
-Local agent access before I enable it. Group chat shows everyone’s shared messages. My group agent uses my own account and allowance for shared work.
-Previously saved private histories remain private and are not part of this view. Do not publish private history, drafts or files automatically.
+the optional Claude Groups plugin in docs/GROUPS_CLAUDE.md. Keep full SWA. Group chat shows
+everyone’s shared messages without a model call. Your Claude Code connects my existing
+conversation; only an explicitly selected conversation may automatically share new
+prompts/final replies through the separate bulk-policy summarizer. Explain allowance and
+Stop sharing. Do not create a new SWA manager or connect this path to QUARK.
+Previously saved private histories remain private. Do not publish previous private history,
+unselected conversations, raw transcripts, drafts or files automatically.
 Phone access is optional and not a prerequisite for Groups. If I ask for it, use the separate Cloudflare phone prompt and MY OWN Cloudflare
 Tunnel account, with authenticated device pairing; Groups hosting is separate from
 phone access to my computer. GitHub is optional for shared code/files and backups:
@@ -55,7 +60,8 @@ lifetime, ask for a fresh invitation from the same creator after configuring the
 Open Chats → Groups → Join group. The invitation grants membership directly, without a confirmation code or separate approval. Use my own Codex or Claude sign-in and native tools.
 Follow docs/CONTRIBUTOR_SETUP.md to install my chosen CLI if missing or update its
 existing installation, then verify its version and model discovery.
-Explain Group chat, My group agent and Local agent access; verify messages in both
+Explain Group chat and Your Claude Code, following docs/GROUPS_CLAUDE.md without a new
+SWA manager or QUARK dependency; verify human messages in both
 directions after joining. Ask whether this group uses a shared GitHub repository; if so,
 use the GitHub setup prompt to verify my own account access and connect its shared workspace.
 Optional phone access uses my own Cloudflare Tunnel and paired
@@ -81,11 +87,14 @@ Explain collaborator invitations and have each member accept access through thei
 Connect only this group's selected work folder to the same repository on each computer.
 Verify my own access and private remote identity before marking it connected. Do not change
 repository visibility without my separate authorization. Explain verified automatic sync
-for reviewed, applied commits, and the Advanced pause control; preserve any existing saved
-pause. New Work requests use member/request branches;
-workers change task worktrees and an independent reviewer checks each committed result.
-Apply the exact reviewed preview under the saved project review policy. Sync fetches remote
-changes and fast-forwards clean branches; it pushes reviewed applied commits without force.
+for reviewed checkpoints, and the Advanced pause control; preserve any existing saved pause.
+For my usual Claude Code, follow docs/GROUPS_CLAUDE.md: use native Git to commit intended
+changes, groups_files_propose with the immutable SHA, then my exact owner review in Manage.
+No SWA Work request or extra manager is needed. Approved refs publish without changing
+my working folder; later edits require fresh review. Existing app-owned Work retains
+member/request branches and its native owner or independent task-review policy.
+Sync fetches remote changes and fast-forwards clean idle branches only after external
+closure is confirmed; it pushes exact reviewed commits without force.
 Preserve dirty work and divergent branches and resolve conflicts through a reviewed change.
 Do not claim that joining a group grants GitHub access, that uncommitted files are synced,
 or that the app merges every branch automatically. Verify a reviewed change can reach the

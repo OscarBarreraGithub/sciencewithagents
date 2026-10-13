@@ -6,6 +6,11 @@ import type { ClusterRuntimeIdle } from './cluster-runtime-idle.js';
 import { CoordinationReviews } from './coordination-reviews.js';
 import { promptBodyLimit, promptTextLimit } from '@dock/shared';
 import { registerGroupHostRoutes } from './group-host-routes.js';
+import {
+  groupsConversationWorker,
+  GroupsConversationWorker,
+  claudeGroupsSummary,
+} from './groups-conversation-worker.js';
 import type { GroupHost } from './group-host.js';
 import { registerGroupFixtureRoutes, type GroupFixtureHost } from './group-fixture-host.js';
 import { fixtureRouteAllowed } from './development-fixture.js';
@@ -929,6 +934,20 @@ export async function createServer(
   if (options.groupHost) {
     if (options.groupFixture || runtime.fixture || options.demo)
       throw new Error('Normal Groups host cannot use a demo or fixture runtime.');
+    const conversationSharing = groupsConversationWorker(
+      options.groupHost,
+      () =>
+        new GroupsConversationWorker(
+          options.groupHost!,
+          runtime.dataDir,
+          claudeGroupsSummary(
+            runtime.modelPolicy,
+            process.env.DOCK_CLAUDE_BIN ?? 'claude',
+            repoRoot,
+          ),
+        ),
+    );
+    if (!options.remote) conversationSharing?.start();
     registerGroupHostRoutes(
       app,
       options.groupHost,
@@ -949,6 +968,7 @@ export async function createServer(
             browserOrigins.has(request.headers.origin) &&
             browserOrigins.has(`http://${request.headers.host}`) &&
             !!options.localAccess.browser(request.headers.cookie)),
+      conversationSharing,
     );
   }
   if (options.groupFixture) {

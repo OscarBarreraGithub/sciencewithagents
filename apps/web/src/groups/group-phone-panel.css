@@ -1,0 +1,108 @@
+.group-phone-panel {
+  font-size: max(16px, 1rem);
+  line-height: 1.5;
+  padding: 16px;
+  border: 1px solid var(--line, #343c49);
+  border-radius: 14px;
+  background: var(--surface-1, #171a20);
+}
+.group-phone-panel h3 {
+  margin: 0 0 8px;
+  font-size: 1.125rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.group-phone-panel h3 svg {
+  flex: none;
+  color: var(--accent);
+}
+.group-phone-panel p {
+  overflow-wrap: anywhere;
+}
+.group-phone-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}
+.group-phone-panel input:not([type='checkbox']),
+.group-phone-panel button {
+  font: inherit;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line, #343c49);
+  background: var(--surface-2, #20242d);
+  color: var(--ink, #eef0f5);
+  padding: 10px 12px;
+}
+.group-phone-panel button {
+  cursor: pointer;
+  max-width: 100%;
+  white-space: normal;
+}
+.group-phone-panel .ui-button-primary {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  color: #fff;
+}
+.group-phone-panel button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.group-phone-panel :focus-visible {
+  outline: 2px solid #a7b5ff;
+  outline-offset: 2px;
+}
+.group-phone-panel .group-phone-check {
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
+}
+.group-phone-check input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.group-phone-controls,
+.group-phone-saved {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.group-phone-saved p {
+  flex-basis: 100%;
+}
+.group-phone-link {
+  margin: 16px 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.group-phone-link > svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+.group-phone-devices {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+.group-phone-devices li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--line, #343c49);
+  padding: 12px 0;
+}
+.group-phone-devices li > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+.group-phone-devices li > button {
+  flex: none;
+}

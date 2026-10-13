@@ -43,6 +43,32 @@ handoffs to settle. A replaced or unavailable folder fails closed rather than ad
 
 ## Work, review and sync
 
+With the optional existing-Claude Groups plugin, selecting an external conversation holds
+checkout changes while Git fetch continues. Stop automatic sharing, close that conversation
+and check all its jobs, including remote jobs, then confirm closure in Manage → Advanced →
+Git sync and reviewed changes. Only the authenticated app owner can confirm the exact
+stopped selection; a native agent cannot. A new sharing selection reapplies the hold.
+Select the conversation again before resuming external work in this synced folder.
+Ordinary Claude can propose a committed SHA with `groups_files_propose`, without an app-owned
+Work request. Manage → Files from your Claude shows every new commit and all changed paths,
+including files deleted in later commits. Inspect all binary versions in native Git history
+and approve the exact display. Native agent credentials cannot attest this approval.
+Verified automatic sync pushes only that immutable checkpoint to its generated member ref,
+and advances the remote default only by a non-forced fast-forward. The native working folder
+and local branches remain unchanged, including during live/dirty work. Later changes need
+another proposal/review. A small model-free group message names the published checkpoint.
+Existing membership, contribution, folder, private-repository and native sign-in checks
+still apply. Stop/reselection makes pending older proposals stale; they do not publish.
+Git or announcement failures retain the exact SHA/ref/message ID, back off and stop after
+eight failures. Retry this file checkpoint rechecks its original owner approval.
+Review and credential inspection use the raw objects Git transports, including original
+author/committer identities; native `.mailmap` and replacement refs remain unchanged.
+Older displays that differ from raw history require a fresh review. If the remote default
+history was removed or rewound past the reviewed base, publication stops before pushing;
+ask Claude to inspect the current shared history and make a fresh proposal.
+
+The workflow below describes retained app-owned Group Work.
+
 An explicit shared **Work** request starts on a member/request branch. **Ask** does not start
 this file-writing workflow. Existing managed sessions retain task worktrees, independent
 review and exact apply previews; the project's human-review setting still applies.
@@ -91,8 +117,9 @@ integration. No force-push, reset, rebase or branch deletion is part of automati
 
 Only committed changes approved through the relevant review path are automatically published.
 This is not folder mirroring or automatic merging of arbitrary branches. The app checks outgoing checkpoints
-for likely private/runtime files and recognizable credentials; these checks do not replace
-review. Private chats, drafts, provider credentials and conversation databases stay outside
+for likely private/runtime files and recognizable credentials, including commit metadata.
+New native previews include full commit messages, authors and committers in the fingerprinted
+history; inspect these details as well as every binary version. These checks do not replace review. Private chats, drafts, provider credentials and conversation databases stay outside
 the shared repository.
 
 ## Recovery
@@ -116,3 +143,10 @@ automatic idle checks do not append operations. Publication checks allow regular
 512 MiB of distinct outgoing blobs per pass. They also bound a publication to 128
 commits and 1000 changed-path entries across those commits. Larger batches need smaller reviewed
 checkpoints; paid Git LFS is not enabled. These checks do not establish unlimited storage.
+
+### Groups without file proposals
+
+Opening Manage reads file proposals for the authenticated group only. A group with no
+retained proposals shows an empty state without requiring a work folder, repository or
+selected Claude conversation, even if another group has shared files. Retained checkpoints
+keep their setup/authority checks; setup failures are visible and do not erase receipts.

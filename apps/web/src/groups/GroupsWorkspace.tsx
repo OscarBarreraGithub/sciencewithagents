@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
+import { ArrowLeft, MessageCircle, MoreHorizontal, Terminal, UserPlus } from 'lucide-react';
 import { DisplayName } from './DisplayName';
+import { Button } from '../ui/Button';
 import type { GroupChatMode, GroupsWorkspaceProps } from './types';
 import './groups.css';
 
@@ -37,13 +39,25 @@ function Workspace(props: GroupsWorkspaceProps) {
   return (
     <main className="groups-workspace">
       <header className="groups-workspace-heading">
-        <button className="secondary" onClick={onBack} aria-label="Back to groups">
-          ←
-        </button>
+        <Button className="secondary" onPress={onBack} aria-label="Back to groups">
+          <ArrowLeft size={20} aria-hidden="true" />
+        </Button>
         <div>
           <h1>
             <DisplayName value={group.name} />
           </h1>
+        </div>
+        {props.onManage && (
+          <Button className="secondary" aria-label="Manage" onPress={props.onManage}>
+            <MoreHorizontal size={20} aria-hidden="true" />
+          </Button>
+        )}
+        {props.onInvite && (
+          <Button className="secondary" aria-label="Invite people" onPress={props.onInvite}>
+            <UserPlus size={20} aria-hidden="true" />
+          </Button>
+        )}
+        <div className="groups-heading-meta">
           <details className="groups-member-list">
             <summary>
               {props.members.length} {props.members.length === 1 ? 'member' : 'members'}
@@ -56,22 +70,12 @@ function Workspace(props: GroupsWorkspaceProps) {
               ))}
             </ul>
           </details>
+          {props.contributionControl && (
+            <div className="groups-actions group-contribution-control">
+              {props.contributionControl}
+            </div>
+          )}
         </div>
-        {props.onManage && (
-          <button
-            className="secondary"
-            aria-label="Manage"
-            title="Manage group"
-            onClick={props.onManage}
-          >
-            ⋯
-          </button>
-        )}
-        {props.onInvite && (
-          <button className="secondary" aria-label="Invite people" onClick={props.onInvite}>
-            Invite
-          </button>
-        )}
       </header>
       <div className="groups-navigation">
         <div
@@ -102,6 +106,7 @@ function Workspace(props: GroupsWorkspaceProps) {
             aria-controls="groups-chat-panel"
             onClick={() => select('group')}
           >
+            <MessageCircle size={17} aria-hidden="true" />
             Group chat
           </button>
           <button
@@ -113,14 +118,10 @@ function Workspace(props: GroupsWorkspaceProps) {
             aria-controls="groups-chat-panel"
             onClick={() => select('manager')}
           >
-            My group agent
+            <Terminal size={17} aria-hidden="true" />
+            {props.agentTabTitle ?? 'My group agent'}
           </button>
         </div>
-        {props.contributionControl && (
-          <div className="groups-actions group-contribution-control">
-            {props.contributionControl}
-          </div>
-        )}
       </div>
       <div className="groups-columns">
         <section

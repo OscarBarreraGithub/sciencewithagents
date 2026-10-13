@@ -30,9 +30,10 @@ are not an account-wide quota reservation or billing guarantee.
 2. Members: give the external setup agent the creator's invitation privately, then choose
    **Join group** in the app. No code exchange or separate creator approval.
 3. Enable native local agents when ready. Verify one shared message in each direction.
-4. For phone access, use the separate [Cloudflare phone setup](CLOUDFLARE_SETUP.md), in your
-   own account, and authenticated device pairing. Groups delivery and phone access to the
-   running computer are separate services.
+4. For group messages while the computer is closed, use the optional [hosted Groups phone
+   view](GROUP_PHONE_FEED.md) after the matching Worker update. Full phone access to agents
+   and local files still uses separate [Cloudflare phone setup](CLOUDFLARE_SETUP.md) and an
+   awake computer; the group-only phone view cannot run agents.
 5. GitHub is optional for code/files and backup; it is not a Groups messaging prerequisite.
    If wanted, sign in, choose the repository/visibility and accept collaborator invitations.
 

@@ -1,0 +1,11 @@
+{
+  "name": "sciencewithagents-local",
+  "owner": { "name": "ScienceWithAgents" },
+  "plugins": [
+    {
+      "name": "swa-groups",
+      "source": "./plugins/groups",
+      "description": "Connect a selected ordinary Claude Code conversation to SWA Groups."
+    }
+  ]
+}

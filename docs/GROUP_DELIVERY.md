@@ -85,26 +85,33 @@ copies. See [document contracts](GROUP_DOCUMENTS.md) for local capture/compiler 
 
 ## Capacity and recovery
 
-| Guard                                                   | Bound                                                               |
-| ------------------------------------------------------- | ------------------------------------------------------------------- |
-| Retained feed operations / registered messages          | 2,048 / 4,096 per group                                             |
-| Active feed staging                                     | 64 per authenticated enrollment; revoked staging excluded           |
-| Logical feed storage                                    | 16 MiB, including source/header/chunk/receipt accounting            |
-| Shared physical delivery allocation                     | 64 MiB cumulative positive SQLite growth, including document tables |
-| Normal membership / aggregate normal-write fence        | 16 MiB / 80 MiB                                                     |
-| Feed original / chunk                                   | 1 MiB / 16 KiB; at most 64 chunks                                   |
-| Feed / expansion page                                   | 8 headers / 4 chunks                                                |
-| Shared documents actual + reserved / incomplete uploads | 32 MiB / 8                                                          |
-| Document chunk / manifest page                          | 48 KiB binary / 4 entries                                           |
-| Daily document upload / read budget                     | 64 MiB / 128 MiB; metadata/wire responses also count                |
-| HTTP body / decoded response                            | Approximately 100 KB / at most 512,000 B                            |
-| Host I/O / body deadline                                | 5 seconds; caller abort honored                                     |
+| Guard                                                   | Bound                                                                  |
+| ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Retained feed operations / registered messages          | Byte admission; no separate lifetime row cutoff                        |
+| Active feed staging                                     | 64 per authenticated enrollment; revoked staging excluded              |
+| Logical feed/action/promotion storage                   | 128 MiB, including retained metadata and reserved completion           |
+| Shared physical feature allocation                      | 512 MiB cumulative positive SQLite growth plus future reservations     |
+| Normal membership / aggregate normal-write fence        | 16 MiB / 528 MiB; retained recovery has a separate revocation envelope |
+| Feed original / chunk                                   | 1 MiB / 16 KiB; at most 64 chunks                                      |
+| Feed / expansion page                                   | 8 headers / 4 chunks                                                   |
+| Shared documents actual + reserved / incomplete uploads | 256 MiB / 8                                                            |
+| Document chunk / manifest page                          | 48 KiB binary / 4 entries                                              |
+| Daily document upload / read budget                     | 64 MiB / 128 MiB; metadata/wire responses also count                   |
+| HTTP body / decoded response                            | Approximately 100 KB / at most 512,000 B                               |
+| Host I/O / body deadline                                | 5 seconds; caller abort honored                                        |
 
 Pre/post capacity checks roll back refused effects. Feed writes do not consume membership's
-operation/day counters; document publication begins use existing membership admission.
-Document completed history has no separate lifetime count cutoff; actual retained bytes and
-metadata still consume capacity. Incomplete/abandoned data is not automatically deleted.
-Capacity refuses new work while retaining original IDs and acknowledged results.
+operation/day counters. Shared feature transitions use a separate 1,000/day guard;
+ordinary human original sends are outside that guard. True normal membership mutations
+retain their own 500/day admission.
+Feed and document completed history have no separate lifetime row cutoff; actual retained
+bytes and metadata still consume capacity. The legacy feed `operations`/`sources` constants
+are not current lifetime admission fences. Incomplete/abandoned data is not automatically deleted.
+Capacity refuses new work while retaining original IDs and acknowledged results. Current
+account quotas, measured workload examples and remaining finite-retention limitations are
+documented in [hosting capacity](GROUP_HOSTING.md#practical-shared-capacity-and-daily-costs).
+A hosted export preserves history; it does not free the live database. Private Git contains
+project files, not an automatic archive of group messages.
 
 The normal-write fence protects membership's separately derived revocation reserve.
 Revocation bypasses ordinary admission. Every non-revoke operation, including reads/replay,

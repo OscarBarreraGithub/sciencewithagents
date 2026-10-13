@@ -53,6 +53,8 @@ import {
   type GroupExportResult,
 } from '@dock/shared/dist/group-hosted-export.js';
 import { z } from 'zod';
+import { GroupPhone } from './group-phone.js';
+import type { GroupPhoneResult } from '@dock/shared/dist/group-phone.js';
 import { GroupFeatureStorage, GroupFeatureStorageLimit } from './group-feature-storage.js';
 import { groupUpdateSchema, GROUP_UPDATE_LIMITS } from '@dock/shared/dist/group-updates.js';
 
@@ -87,6 +89,7 @@ export class GroupMembership extends DurableObject<Env> {
   private actionsService?: GroupActionsService;
   private promotionService?: GroupPromotionHost;
   private documentsService?: GroupDocumentTransport;
+  private phoneService?: GroupPhone;
   private readonly exportCatalogue = new GroupExportCatalogue();
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -343,6 +346,55 @@ export class GroupMembership extends DurableObject<Env> {
     )
       this.invalidate();
     return result;
+  }
+  private phones() {
+    this.phoneService ??= new GroupPhone(
+      this.ctx,
+      this.env,
+      this.deliveryStorage,
+      () => {
+        const now = Date.now(),
+          day = Math.floor(now / 86400000);
+        try {
+          this.admitFeature(now);
+        } catch (error) {
+          if (error instanceof Rejection && error.code === 'limit')
+            throw new GroupFeatureStorageLimit();
+          throw error;
+        }
+        this.ctx.storage.sql
+          .exec(
+            'UPDATE delivery_feature_daily SET mutations=CASE WHEN day=? THEN mutations+1 ELSE 1 END,day=? WHERE singleton=1',
+            day,
+            day,
+          )
+          .toArray();
+      },
+      () => this.invalidate(),
+    );
+    return this.phoneService;
+  }
+  async phoneManage(input: unknown): Promise<GroupPhoneResult> {
+    try {
+      if (!this.rows('SELECT singleton FROM metadata WHERE singleton=1').length)
+        return { ok: false, error: 'denied' };
+      const result = await this.phones().manage(input);
+      await this.ctx.storage.sync();
+      return result;
+    } catch {
+      return { ok: false, error: 'unavailable' };
+    }
+  }
+  async phone(input: unknown): Promise<GroupPhoneResult> {
+    try {
+      if (!this.rows('SELECT singleton FROM metadata WHERE singleton=1').length)
+        return { ok: false, error: 'denied' };
+      const result = await this.phones().request(input);
+      await this.ctx.storage.sync();
+      return result;
+    } catch {
+      return { ok: false, error: 'unavailable' };
+    }
   }
 
   async documents(input: unknown): Promise<DocumentTransportResult> {

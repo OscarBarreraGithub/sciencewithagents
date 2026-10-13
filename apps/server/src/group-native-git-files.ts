@@ -10,6 +10,12 @@ export const GROUP_NATIVE_GIT_FILE_LIMITS = {
 } as const;
 const credential =
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-(?:proj-)?[A-Za-z0-9_-]{32,}|AKIA[A-Z0-9]{16})\b/;
+export function assertGroupGitMetadata(text: string) {
+  if (credential.test(text))
+    throw new Conflict(
+      'Publication stopped at a likely credential in commit metadata. No credential was sent.',
+    );
+}
 
 /** A project's data folder is distinct from the app's private runtime storage.
  * Legacy internal workspaces retain the stricter publication-name policy. */
@@ -39,11 +45,15 @@ export async function assertGroupGitBlob(cwd: string, oid: string, expectedBytes
   )
     throw new Conflict('Shared files must be smaller than 100 MiB each. No files were sent.');
   await new Promise<void>((resolveScan, reject) => {
-    const child = spawn('git', ['-c', 'core.hooksPath=/dev/null', 'cat-file', 'blob', oid], {
-      cwd,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      'git',
+      ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null', 'cat-file', 'blob', oid],
+      {
+        cwd,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
     let bytes = 0,
       overlap = '',
       failure: Conflict | undefined;

@@ -33,6 +33,7 @@ export function GroupNativeGitPanel({
   const [error, setError] = useState('');
   const [nativeReview, setNativeReview] = useState<GroupNativeCommitPreview | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [closureAcknowledged, setClosureAcknowledged] = useState(false);
   const [reviewRecorded, setReviewRecorded] = useState(false);
   const [pending, setPending] = useState<GroupNativeGitRequest | null>(null);
   const generation = useRef(0);
@@ -151,6 +152,7 @@ export function GroupNativeGitPanel({
       if (changed && input.action !== 'approve-native') {
         sessionStorage.removeItem(storageKey);
         setPending(null);
+        if (input.action === 'confirm-external-closed') setClosureAcknowledged(false);
       }
       if (input.action === 'connect') {
         const currentView = groupNativeGitViewSchema.parse(
@@ -490,10 +492,52 @@ export function GroupNativeGitPanel({
       )}
       {view?.busy && (
         <p>
-          Shared agents are active. Fetching is safe; applying or switching waits for their work to
-          settle.
+          {view.busyReason === 'external-claude'
+            ? 'Your external Claude conversation may still be using this folder. Git fetch continues; checkout changes wait for your closure confirmation.'
+            : 'Shared agents are active. Fetching is safe; applying or switching waits for their work to settle.'}
         </p>
       )}
+      {view?.busyReason === 'external-claude' &&
+        (view.externalClosureGeneration ? (
+          <section className="group-external-closure" aria-label="Confirm external Claude closure">
+            <p>
+              Automatic sharing is stopped. Check the native conversation and all jobs it started,
+              including remote jobs, before releasing this folder.
+            </p>
+            <label>
+              <input
+                type="checkbox"
+                checked={closureAcknowledged}
+                onChange={(event) => setClosureAcknowledged(event.target.checked)}
+              />
+              I closed the Claude conversation and checked that none of its jobs still uses this
+              folder.
+            </label>
+            <button
+              type="button"
+              className="secondary"
+              disabled={!mutable || !closureAcknowledged}
+              onClick={() =>
+                void control({
+                  action: 'confirm-external-closed',
+                  handle,
+                  key: crypto.randomUUID(),
+                  generation: view.externalClosureGeneration!,
+                })
+              }
+            >
+              Confirm Claude and its jobs are closed
+            </button>
+            <p>
+              Clean, idle Git sync can then resume. Before resuming external work, select the
+              conversation again to protect its folder.
+            </p>
+          </section>
+        ) : (
+          <p>
+            Stop automatic sharing in Your Claude Code first. This does not stop Claude or its jobs.
+          </p>
+        ))}
       <form
         onSubmit={(event) => {
           event.preventDefault();

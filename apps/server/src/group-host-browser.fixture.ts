@@ -35,6 +35,7 @@ const closers: (() => Promise<void>)[] = [];
 let closing = false;
 const controlledAgent = process.argv.includes('--controlled-agent');
 const promotionControl = process.argv.includes('--promotion-control');
+const phoneControl = process.argv.includes('--phone-control');
 let primaryHost: GroupHost | undefined,
   loseCommit = false,
   lostAcknowledgements = 0,
@@ -294,6 +295,20 @@ try {
   const primary = await launchInstallation('primary'),
     secondary = await launchInstallation('secondary'),
     unconfigured = await launchInstallation('unconfigured', false);
+  if (phoneControl) {
+    // Owned test pipe only. Keep the hosted Worker alive after closing all
+    // companion apps, so phone acceptance cannot accidentally depend on them.
+    const input = createInterface({ input: process.stdin });
+    closers.push(async () => input.close());
+    void (async () => {
+      for await (const line of input) {
+        const command = JSON.parse(line) as { id: string; kind: string };
+        if (command.kind !== 'close-companions') throw new Error('Unknown phone fixture command');
+        for (const closeInstallation of closers.splice(0).reverse()) await closeInstallation();
+        process.stdout.write(JSON.stringify({ id: command.id, companionsClosed: true }) + '\n');
+      }
+    })().catch(() => void close().then(() => process.exit(1)));
+  }
   if (promotionControl) {
     // Private parent-test pipe: use the existing lifecycle, no HTTP/runtime API or timer edits.
     const input = createInterface({ input: process.stdin });

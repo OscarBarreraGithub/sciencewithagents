@@ -134,3 +134,16 @@
   outline: 2px solid var(--accent, #d95735);
   outline-offset: 2px;
 }
+.group-host-controls .group-git-panel .group-external-closure label {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  min-height: 44px;
+  cursor: pointer;
+}
+.group-host-controls .group-git-panel .group-external-closure input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  margin: 3px 0 0;
+  padding: 0;
+}

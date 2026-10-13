@@ -133,6 +133,22 @@ test('LaTeX app browses, zooms, navigates pages, survives build errors and reope
   const files = page.getByRole('region', { name: 'Files on this computer' });
   await files.getByRole('button', { name: /Thermal report/ }).click();
   const reader = await rendered(page);
+  // Dark application chrome must never invert the original scientific document.
+  const originalColors = await reader
+    .locator('.page canvas')
+    .first()
+    .evaluate((element) => {
+      const canvas = element as HTMLCanvasElement;
+      const pixel = Array.from(canvas.getContext('2d')!.getImageData(4, 4, 1, 1).data);
+      const filters: string[] = [];
+      for (let ancestor: Element | null = canvas; ancestor; ancestor = ancestor.parentElement) {
+        const filter = getComputedStyle(ancestor).filter;
+        if (filter !== 'none') filters.push(filter);
+      }
+      return { pixel, filters };
+    });
+  expect(originalColors.filters).toEqual([]);
+  expect(originalColors.pixel.slice(0, 3).every((channel) => channel >= 245)).toBe(true);
   for (const value of ['1', '2', '3', 'page-width', 'page-fit']) {
     await reader.getByLabel('Page fit').selectOption(value);
     await expect(reader.locator('.page canvas').first()).toBeVisible();

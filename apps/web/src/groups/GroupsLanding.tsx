@@ -3,7 +3,8 @@ import { groupDisplayNameSchema } from '@dock/shared';
 import type { GroupsLandingProps } from './types';
 import { DisplayName } from './DisplayName';
 import { Modal } from '../Modal';
-import { Users } from 'lucide-react';
+import { Button } from '../ui/Button';
+import { Plus, Settings2, Users } from 'lucide-react';
 import './groups.css';
 import './groups-list.css';
 
@@ -91,21 +92,21 @@ export function GroupsLanding({
   return (
     <div className="groups-chat-list">
       <div className="groups-list-actions">
-        <button className="flow-button primary" onClick={() => setMode('create')}>
+        <Button className="flow-button primary" variant="primary" onPress={() => setMode('create')}>
+          <Plus size={18} aria-hidden="true" />
           New group
-        </button>
-        <button className="flow-button" onClick={() => setMode('join')}>
+        </Button>
+        <Button className="flow-button" onPress={() => setMode('join')}>
           Join group
-        </button>
+        </Button>
         {onSetup && (
-          <button
-            className="flow-button"
+          <Button
+            className="flow-button groups-setup-button"
             aria-label="Group setup"
-            title="Group setup"
-            onClick={onSetup}
+            onPress={onSetup}
           >
-            Setup
-          </button>
+            <Settings2 size={18} aria-hidden="true" />
+          </Button>
         )}
       </div>
       {joinReceipt}
@@ -133,7 +134,7 @@ export function GroupsLanding({
                   onClick={() => onOpen(group.id)}
                 >
                   <span className="chat-row-icon manager" aria-hidden="true">
-                    <Users size={17} />
+                    <Users size={20} />
                   </span>
                   <span className="chat-row-text">
                     <strong>
@@ -146,9 +147,11 @@ export function GroupsLanding({
                 </button>
               ))}
             {!groups.value.length && (
-              <p className="chat-list-empty">
-                No shared chats yet. Join with an invitation or create a group.
-              </p>
+              <div className="chat-list-empty groups-list-empty">
+                <Users size={28} aria-hidden="true" />
+                <strong>No groups yet</strong>
+                <p>Start a shared conversation, or join with an invitation.</p>
+              </div>
             )}
             {!!groups.value.length &&
               !groups.value.some((group) =>

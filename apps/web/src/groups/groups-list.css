@@ -143,9 +143,16 @@
   border-bottom: 1px solid var(--line);
 }
 .group-setup-choice .setup-prompt-head button {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
   background: var(--paper);
   color: var(--ink);
   border-color: var(--line);
+}
+.group-setup-choice .setup-prompt-head button svg {
+  flex-shrink: 0;
 }
 .group-setup-choice .setup-prompt-status {
   color: var(--ink);

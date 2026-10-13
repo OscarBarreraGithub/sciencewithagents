@@ -9,6 +9,7 @@ import { localRequestProof } from '@dock/shared/dist/local-authorization.js';
 import type { GroupScope } from '@dock/shared';
 import type { GroupCatchupReader } from './group-catchup-context.js';
 import { groupFeatureReading } from './group-features-reading.js';
+import { groupsConversationWorker } from './groups-conversation-worker.js';
 import { GroupHost } from './group-host.js';
 import { LocalAccess, prepareLocalAccess } from './local-access.js';
 import { PhoneAccess, phoneConfigSchema } from './phone-access.js';
@@ -130,6 +131,8 @@ it('shares reading stores across authenticated entries, failed phone starts, ret
     const local = await entry(false);
     const localAddress = await local.listen({ host: '127.0.0.1', port: 0 });
     const reading = groupFeatureReading(host);
+    const sharing = groupsConversationWorker(host)!;
+    expect(sharing).toBeDefined();
     const member = host.events.createGroup('Listener check');
     const context = host.events.createContext({
       groupId: member.groupId,
@@ -166,6 +169,8 @@ it('shares reading stores across authenticated entries, failed phone starts, ret
     };
     const saved = await reading.catchup.start(reader);
     const assertStoresOpen = async () => {
+      expect(groupsConversationWorker(host)).toBe(sharing);
+      expect(sharing.journal.selections()).toEqual([]);
       expect(groupFeatureReading(host)).toBe(reading);
       expect((await reading.catchup.start(reader)).snapshotId).toBe(saved.snapshotId);
       expect(reading.evidence.queryPlan({ type: 'offline_changes' }).length).toBeGreaterThan(0);

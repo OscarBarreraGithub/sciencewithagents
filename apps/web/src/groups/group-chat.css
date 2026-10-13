@@ -12,11 +12,11 @@
   margin: 0;
   padding: 6px 12px;
   overflow-wrap: anywhere;
-  background: #e8ece8;
+  background: var(--soft);
 }
 .group-chat-cue.private {
-  background: #f2e8da;
-  border-left: 4px solid #866137;
+  background: var(--soft);
+  border-left: 4px solid var(--accent);
 }
 .group-chat-error {
   margin: 0;

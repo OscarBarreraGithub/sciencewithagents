@@ -6,6 +6,27 @@
   height: 100%;
   overflow: auto;
 }
+.group-claude-connection {
+  padding: 16px;
+  overflow: auto;
+  font-size: 1rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.group-claude-connection button {
+  min-height: 44px;
+  padding: 8px 12px;
+  margin-block: 6px;
+}
+.group-claude-connection details > summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding-block: 10px;
+}
+.group-claude-connection pre {
+  font: inherit;
+  white-space: pre-wrap;
+}
 .group-host-root > .groups-landing {
   width: 100%;
   flex: 0 0 auto;

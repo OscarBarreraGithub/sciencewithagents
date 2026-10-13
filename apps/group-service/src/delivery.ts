@@ -772,6 +772,28 @@ CREATE TRIGGER IF NOT EXISTS delivery_pending_complete AFTER UPDATE OF state ON 
     ctx: DurableObjectState,
     env: Env,
   ): Promise<DeliveryResult> {
+    return this.run(input, ctx, env);
+  }
+  /** Internal phone adapter only. The DO supplies the retained enrollment hash
+   * and a fresh synchronous device check; no public route accepts this authority. */
+  async forPhone(
+    input: { groupId: string; command: DeliveryCommand },
+    enrollmentHash: string,
+    current: () => boolean,
+    ctx: DurableObjectState,
+    env: Env,
+  ): Promise<DeliveryResult> {
+    return this.run({ ...input, credential: '0'.repeat(64) }, ctx, env, {
+      hash: enrollmentHash,
+      current,
+    });
+  }
+  private async run(
+    input: DeliveryEnvelope,
+    ctx: DurableObjectState,
+    env: Env,
+    phone?: { hash: string; current(): boolean },
+  ): Promise<DeliveryResult> {
     try {
       if (!hostingEnvironment(env)) return { ok: false, error: 'hosting_disabled' };
       if (new TextEncoder().encode(JSON.stringify(input)).length > L.bodyBytes + 256)
@@ -780,9 +802,10 @@ CREATE TRIGGER IF NOT EXISTS delivery_pending_complete AFTER UPDATE OF state ON 
       if (!parsed.success) deny('invalid');
       const { groupId, credential, command } = parsed.data;
       if (!ctx.id.equals(env.GROUPS.idFromName(groupId))) deny('denied');
-      const hash = await capabilityHash(groupId, 'installation', credential);
+      const hash = phone ? phone.hash : await capabilityHash(groupId, 'installation', credential);
       this.recover();
       const result = ctx.storage.transactionSync(() => {
+        if (phone && !phone.current()) deny('denied');
         const meta = this.rows<{ group_id: string }>(
           'SELECT group_id FROM metadata WHERE singleton=1',
         )[0];

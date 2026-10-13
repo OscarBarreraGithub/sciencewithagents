@@ -14,12 +14,22 @@ other members. Each member keeps their own agent, provider sign-in and local wor
 | Share a report                                | Explicitly selected, captured file bytes and their immutable manifest are uploaded to the hosted report tables                                                      | None for transport; creating the report with Work uses allowance                             |
 | Copy a setup prompt                           | The prompt is copied locally. The setup agent uses the person's own accounts when they submit it                                                                    | Copying uses none; running the agent uses allowance                                          |
 
+The optional **Your Claude Code** connection has a different sharing input: only new
+prompts and final replies from the selected native conversation enter a private local
+journal. A separate bulk-model helper turns those exchanges into compact updates. Only
+the generated update is published to the group, not the raw conversation, tools or files.
+The hooks retain bounded pending exchanges while SWA is closed; SWA must be running to
+summarize/deliver them. Other conversations and subagents are excluded. This summary uses
+allowance; downloading existing updates does not. See [the Claude workflow](GROUPS_CLAUDE.md).
+
 ## Database contents
 
 The hosted SQLite database contains membership and invitation records, credential hashes,
 revocation evidence, exact shared message/source identities and original chunks, delivery
 receipts, summaries, shared action proposals and selected report manifests/file chunks.
-A summary is an additional view of its sources; it does not automatically erase them.
+For already-shared originals, a summary is an additional view and does not erase its
+sources. Selected-Claude automatic updates use private local inputs instead: the hosted
+original is the generated update itself, and those private inputs are not uploaded.
 No private conversation is uploaded merely because someone joins or reads the group.
 The Worker never receives the member's provider sign-in or starts their native agent.
 

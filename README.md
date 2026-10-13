@@ -70,6 +70,13 @@ Other people join that service by invitation; they do not need to deploy another
 There is no maintainer-issued setup code. GitHub is optional for sharing code, not required
 for group chat. See [Groups setup](docs/GROUP_WORKFLOW.md).
 
+**Use your existing Claude Code:** the optional [Groups plugin](docs/GROUPS_CLAUDE.md)
+connects one explicitly selected conversation and automatically shares compact updates from
+its new prompts/final replies using a separate bulk-policy model. Keep full SWA; no new
+manager or QUARK connection is required. Group downloads and human messages are model-free;
+summaries and reading group messages inside Claude use allowance. Saved SWA group-agent
+work remains available. See the guide for current file/phone acceptance limits.
+
 **Create a group — paste into your setup agent:**
 
 ```text
@@ -84,9 +91,12 @@ deploy the group service to MY Cloudflare account on Workers Free. Do not use th
 maintainer's service, require a beta code, buy a domain, or enable paid services.
 Handle deployment and private local configuration; leave account sign-in and account
 selection to me. Open Chats → Groups, help me create a group and invite another person, and
-explain Group chat (everyone’s messages) and My group agent (my agent’s shared work). Use native local agents, without Docker.
+explain Group chat (everyone’s messages) and Your Claude Code (connect my existing
+conversation). Follow docs/GROUPS_CLAUDE.md for its optional plugin; keep full SWA and
+existing native tools/permissions. Do not create a manager or tie this path to QUARK.
 Give me a short checklist of the remaining human steps. Verify Group chat messages in both
-directions and an Ask in My group agent once the other person joins. Report what remains untested.
+directions once the other person joins. Select automatic sharing only when I request it,
+explain the summary model/allowance and verify Stop sharing. Report what remains untested.
 ```
 
 **Join a group — send this prompt and the invitation privately to the new member:**
@@ -100,7 +110,8 @@ existing installation, then verify its version and model discovery.
 Configure the invitation's group service using the documented
 setup-agent process, without deploying a separate service or using the maintainer's
 account. Open Chats → Groups → Join group. The invitation grants membership;
-no confirmation code or separate approval is needed. Verify Group chat messaging and My group agent.
+no confirmation code or separate approval is needed. Verify Group chat messaging. Follow
+docs/GROUPS_CLAUDE.md to connect my existing Claude Code only when requested; keep full SWA.
 Keep phone access and GitHub optional; list only the human steps I still need to do.
 ```
 

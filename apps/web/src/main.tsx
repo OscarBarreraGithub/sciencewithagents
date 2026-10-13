@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { Home } from './home/Home';
 import { PhoneGate } from './PhoneAccess';
 import './styles.css';
+import './ui/dark.css';
 import { apiScope, selectComputer } from './api';
 import { readPairingCode } from './pairing-link';
 import { startClientCache } from './cache-bootstrap';

@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "groups": { "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/entry.mjs", "mcp"] }
+  }
+}

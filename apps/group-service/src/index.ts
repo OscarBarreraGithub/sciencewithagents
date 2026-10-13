@@ -38,6 +38,13 @@ import {
 import { verifyWorkerBetaAdmission, betaGroupMatches } from './group-beta-admission.js';
 import type { GroupBetaAdmissionPayload } from '@dock/shared/dist/group-beta-admission.js';
 import { invitationPage } from './invite-page.js';
+import { groupPhonePage } from './group-phone-page.js';
+import { phoneProof, phoneProofMatches } from './group-phone-routing.js';
+import {
+  groupPhoneCommandSchema,
+  groupPhoneManageCommandSchema,
+  type GroupPhoneResult,
+} from '@dock/shared/dist/group-phone.js';
 export { GroupMembership } from './membership.js';
 
 const headers = {
@@ -61,6 +68,7 @@ function reply(
     | DeliveryResult
     | GroupActionResult
     | GroupPromotionHostResult
+    | GroupPhoneResult
     | DocumentTransportResult,
 ): Response {
   return Response.json(result, { status: result.ok ? 200 : status[result.error], headers });
@@ -115,6 +123,88 @@ export default {
     // approved this exact HTTPS origin and supplied a separate protected capability.
     const local = localTestMode(env.HOSTING_MODE);
     if (!hostingEnvironment(env)) return reply({ ok: false, error: 'hosting_disabled' });
+    const phoneOrigin = local
+      ? url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
+      : url.protocol === 'https:' && url.origin === env.HOSTING_ORIGIN;
+    if (
+      phoneOrigin &&
+      /^\/groups\/[a-f0-9-]+$/.test(url.pathname) &&
+      groupIdSchema.safeParse(url.pathname.split('/')[2]).success &&
+      !url.search &&
+      !url.hash &&
+      (request.method === 'GET' || request.method === 'HEAD')
+    )
+      return groupPhonePage(request.method === 'HEAD');
+    const phoneRoute = /^\/v1\/phone\/([a-f0-9-]+)$/.exec(url.pathname);
+    if (phoneRoute) {
+      const id = groupIdSchema.safeParse(phoneRoute[1]);
+      if (
+        !phoneOrigin ||
+        !id.success ||
+        request.method !== 'POST' ||
+        url.search ||
+        url.hash ||
+        request.headers.get('Origin') !== url.origin ||
+        request.headers.get('Content-Type') !== 'application/json' ||
+        request.headers.has('Authorization') ||
+        request.headers.has('X-Hosting-Approval') ||
+        request.headers.has('X-Group-Admission') ||
+        request.headers.has('X-Group-Setup')
+      )
+        return reply({ ok: false, error: 'denied' });
+      try {
+        const command = groupPhoneCommandSchema.safeParse(await boundedBody(request, 65536));
+        if (!command.success) return reply({ ok: false, error: 'invalid' });
+        let credential: string | undefined;
+        const cookieName = `${local ? 'swa_test_group_' : '__Host-swa_group_'}${id.data}`;
+        if (command.data.kind === 'claim') {
+          if (
+            command.data.expiresAt <= Date.now() ||
+            command.data.expiresAt > Date.now() + 600000 ||
+            !(await phoneProofMatches(
+              env,
+              [
+                'pair',
+                id.data,
+                command.data.pairId,
+                command.data.pairSecret,
+                command.data.expiresAt,
+              ],
+              command.data.pairProof,
+            ))
+          )
+            return reply({ ok: false, error: 'denied' });
+        } else {
+          const cookies = (request.headers.get('Cookie') ?? '')
+            .split(';')
+            .map((s) => s.trim())
+            .filter((s) => s.startsWith(cookieName + '='));
+          const value =
+            cookies.length === 1
+              ? /^([a-f0-9]{64})\.([a-f0-9]{64})$/.exec(cookies[0]!.slice(cookieName.length + 1))
+              : null;
+          if (!value || !(await phoneProofMatches(env, ['device', id.data, value[1]!], value[2]!)))
+            return reply({ ok: false, error: 'denied' });
+          credential = value[1]!;
+        }
+        const result = await env.GROUPS.getByName(id.data).phone({
+          groupId: id.data,
+          command: command.data,
+          ...(credential ? { credential } : {}),
+        });
+        const response = reply(result);
+        if (result.ok && command.data.kind === 'claim') {
+          const proof = await phoneProof(env, ['device', id.data, command.data.deviceCredential]);
+          response.headers.set(
+            'Set-Cookie',
+            `${cookieName}=${command.data.deviceCredential}.${proof}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000${local ? '' : '; Secure'}`,
+          );
+        }
+        return response;
+      } catch {
+        return reply({ ok: false, error: 'unavailable' });
+      }
+    }
     // The public handoff is static: it never consumes capabilities or reaches a DO.
     // Its invitation stays in the browser fragment and is not part of this request.
     if (
@@ -193,6 +283,44 @@ export default {
     )
       return reply({ ok: false, error: 'invalid' });
     if (!credential.success) return reply({ ok: false, error: 'denied' });
+    const phonesRoute = /^\/v1\/groups\/([a-f0-9-]+)\/phones$/.exec(url.pathname);
+    if (phonesRoute) {
+      const id = groupIdSchema.safeParse(phonesRoute[1]);
+      if (
+        !id.success ||
+        !betaGroupMatches(beta, id.data) ||
+        request.headers.has('Origin') ||
+        request.headers.has('X-Group-Setup')
+      )
+        return reply({ ok: false, error: 'denied' });
+      try {
+        const command = groupPhoneManageCommandSchema.safeParse(await boundedBody(request, 8192));
+        if (!command.success) return reply({ ok: false, error: 'invalid' });
+        const result = await env.GROUPS.getByName(id.data).phoneManage({
+          groupId: id.data,
+          credential: credential.data,
+          command: command.data,
+        });
+        if (result.ok && command.data.kind === 'pair')
+          return reply({
+            ok: true,
+            value: {
+              pairId: command.data.operationId,
+              expiresAt: command.data.expiresAt,
+              pairProof: await phoneProof(env, [
+                'pair',
+                id.data,
+                command.data.operationId,
+                command.data.pairSecret,
+                command.data.expiresAt,
+              ]),
+            },
+          });
+        return reply(result);
+      } catch {
+        return reply({ ok: false, error: 'unavailable' });
+      }
+    }
     const exportRoute = /^\/v1\/groups\/([a-f0-9-]+)\/export$/.exec(url.pathname);
     if (exportRoute) {
       const id = groupIdSchema.safeParse(exportRoute[1]),

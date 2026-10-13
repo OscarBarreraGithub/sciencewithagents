@@ -312,6 +312,7 @@ function draftView(handle: string, request: GroupChatClient) {
 }
 
 export function GroupChat({
+  nativeAgentControls = true,
   slot,
   onChanged,
   onManagedCoordination,
@@ -323,6 +324,7 @@ export function GroupChat({
   mode,
   sharedFeed,
 }: {
+  nativeAgentControls?: boolean;
   slot: GroupHostSlot;
   onChanged: () => void;
   onManagedCoordination?: (available: boolean | undefined) => void;
@@ -445,8 +447,10 @@ export function GroupChat({
       if (refreshChat.current === stop.refresh) refreshChat.current = null;
     };
   }, [slot.handle, model, onChanged]);
+  const conversationReady =
+    Boolean(chat) && !refused && !groupMessages.revoked && !groupMessages.loading;
   useLayoutEffect(() => {
-    if (!chat) return;
+    if (!conversationReady) return;
     const element = container.current?.querySelector('.conversation');
     if (!element) return;
     const remember = () => {
@@ -461,7 +465,7 @@ export function GroupChat({
       cancelAnimationFrame(frame);
       element.removeEventListener('scroll', remember);
     };
-  }, [Boolean(chat), slot.handle]);
+  }, [conversationReady, slot.handle]);
   const recoverAgent = async (key: string, text: string, intent: 'ask' | 'work' = 'ask') => {
     setDeliveryBusy(true);
     try {
@@ -596,8 +600,13 @@ export function GroupChat({
     (receipt) => receipt.requestId === ownerControlRequestId,
   );
   const nativeOwner =
-    !fixture && !refused ? (
+    (nativeAgentControls || pendingAuthorization || executionMode === 'host') &&
+    !fixture &&
+    !refused ? (
       <GroupNativeOwner
+        showControls={
+          nativeAgentControls || Boolean(pendingAuthorization) || Boolean(ownerControlReceipt)
+        }
         key={slot.handle}
         handle={slot.handle}
         requestId={ownerControlRequestId}
@@ -727,7 +736,7 @@ export function GroupChat({
       ref={container}
     >
       {nativeControlsTarget ? createPortal(nativeOwner, nativeControlsTarget) : nativeOwner}
-      {!refused && !groupMessages.revoked && chat && conversationDetail ? (
+      {conversationReady && chat && conversationDetail ? (
         <Conversation
           key={slot.context.sessionId}
           promptNavigation={false}
@@ -782,7 +791,13 @@ export function GroupChat({
           }}
         />
       ) : (
-        <p role="status">Loading saved chat…</p>
+        <div className="group-chat-loading" role="status">
+          {refused || groupMessages.revoked
+            ? 'This group conversation is unavailable.'
+            : groupMessages.error
+              ? 'Shared messages could not load. Your draft is kept below.'
+              : 'Loading saved chat…'}
+        </div>
       )}
       {windowed && (
         <p className="group-chat-cue" role="status">

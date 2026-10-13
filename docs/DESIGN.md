@@ -4,6 +4,10 @@ Current product decisions, consolidated from the drawings and subsequent correct
 This is a behavior/design reference, not a completion checklist. See [Features](FEATURES.md)
 and [Status](STATUS.md) for implementation and gaps. Private drawings are not distributed.
 
+Application chrome and conversations are dark-only, with shared components and surface tokens.
+Original scientific PDFs, images and figures retain their source colors. See the
+[interface system](UI_SYSTEM.md) for the component and delivery choices.
+
 ## Controls
 
 - Actions must visibly look clickable: use a button surface or outline with padding, a clear
@@ -60,8 +64,15 @@ and [Status](STATUS.md) for implementation and gaps. Private drawings are not di
 - Distinguish project chats, VS Code chats and saved Misc conversations by provenance.
   All, Projects, VS Code, Misc and Groups are filters in the same Chats frame. Groups lists
   shared conversations beside the selected group on desktop, with list/detail navigation on phones.
-  A group has two tabs: Group chat for everyone’s shared messages, and My group agent for
-  the owner’s agent requests and shared work. No separate Groups page or private-chat controls.
+  A group has Group chat for shared human messages and Your Claude Code for connecting the
+  owner's existing native conversation, automatic-sharing status and Stop sharing. The older
+  SWA group agent remains under Saved SWA group agent; preserve its requests/history.
+  No separate Groups page or private-chat controls.
+  Ordinary Claude file proposals appear in Manage as **Files from your Claude**, with a
+  bounded immutable history preview, binary-version guidance and an explicit owner checkbox.
+  Interrupted approval retains its exact display/key across reload. Publishing an approved
+  SHA changes remote refs only; live/dirty native work stays in place. Stale proposals are
+  labelled earlier work, not a recurring red obligation. These controls make no model call.
   Keep setup, create/join and management in dialogs; preserve saved private history without
   publishing it. New invitations last seven days.
   App-created helpers/resource reports are not personal chats. Never delete their evidence

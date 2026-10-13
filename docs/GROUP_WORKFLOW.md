@@ -2,7 +2,9 @@
 
 Groups lives inside the ordinary Chats list. Each person keeps their own installation
 and provider account. Start at **Chats → Groups**, including from an authenticated paired phone or laptop. The selected
-computer must be awake, reachable and running the app.
+computer must be awake, reachable and running the app. The optional
+[direct hosted phone feed](GROUP_PHONE_FEED.md) reads group messages independently of that
+computer after its matching Worker update; it grants no agent or local-file access.
 
 This workflow is integrated into the normal app. [Status](STATUS.md#groups) separates
 installed/local checks from the remaining hosting,
@@ -218,6 +220,6 @@ Storage is bounded beta storage. New work can be refused at capacity without del
 originals or changing their retry identities. Membership has 64 active members; local setup
 retains at most 32 enrollments. Feed originals are at most 1 MiB, and native requests allow
 64 outstanding results within a 512 MiB logical journal envelope. Shared report transport
-has a separate 32 MiB actual-plus-pending allowance inside the existing service storage
-fence; a larger owner-local PDF can remain local. These application limits do not prove a
+has a separate 256 MiB actual-plus-pending allowance inside the shared 512 MiB physical
+feature allocation; a larger owner-local PDF can remain local. These application limits do not prove a
 provider quota, physical disk guarantee or Free hosting entitlement.

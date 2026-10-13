@@ -6,12 +6,23 @@ import {
 } from '@dock/shared/dist/group-document-transport.js';
 import { groupFeatureDocuments } from './group-feature-documents.js';
 import { GroupDocumentCaptureError } from './group-documents-native.js';
+import { groupsConversationWorker } from './groups-conversation-worker.js';
 import { groupDocumentOfferFailureMessages } from '@dock/shared/dist/group-documents.js';
 import {
   groupNativeActivitySchema,
   type GroupNativeActivity,
 } from '@dock/shared/dist/group-native-activity.js';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import {
+  groupPhoneHostRequestSchema,
+  groupPhoneHostViewSchema,
+  groupPhoneDevicesSchema,
+  type GroupPhoneHostView,
+} from '@dock/shared/dist/group-phone-host.js';
+import {
+  GROUP_PHONE_LIMITS,
+  groupPhoneManageCommandSchema,
+} from '@dock/shared/dist/group-phone.js';
 import { DatabaseSync } from 'node:sqlite';
 import {
   initializeGroupLocalReceiptCapacity,
@@ -280,6 +291,7 @@ export class GroupHost {
   private readonly betaConfiguration: ReturnType<typeof betaGroupServiceConfiguration> | null;
   private readonly explicitBetaDefault: boolean;
   async close() {
+    await groupsConversationWorker(this)?.close();
     this.updates.close();
     await this.promotion.close();
     await this.native.close?.();
@@ -1367,6 +1379,147 @@ export class GroupHost {
   async actionContextForEnrollment(enrollmentHandle: string) {
     const value = await this.active(enrollmentHandle);
     return this.actionContext(value.shared!.handle);
+  }
+  /** Owner-reviewed phone grants, distinct from native agent or Git authority. */
+  async phone(raw: unknown, humanReview = false): Promise<GroupPhoneHostView> {
+    const input = groupPhoneHostRequestSchema.parse(raw);
+    if (input.action !== 'status' && !humanReview)
+      throw new GroupHostError(
+        403,
+        'GROUP_PHONE_OWNER_REQUIRED',
+        'Pair or revoke phones in an authenticated owner browser or paired owner device.',
+      );
+    const feature = await this.authenticatedContext({ handle: input.handle });
+    if (feature.context.visibility !== 'shared' || !this.localVisible(input.handle))
+      throw new GroupHostError(
+        403,
+        'GROUP_PHONE_SHARED_REQUIRED',
+        'Open this group in Groups before pairing a phone.',
+      );
+    const { value } = await this.resolve(input.handle),
+      config = this.serviceFor(value);
+    if (!value.binding) throw unavailable();
+    if (input.action === 'pair' && input.allowPost) this.requireContribution(input.handle);
+    const command =
+      input.action === 'status'
+        ? { kind: 'list' as const }
+        : groupPhoneManageCommandSchema.parse(
+            this.intent(
+              input.action === 'revoke' ? `revoke:phone:${input.key}` : `phone:pair:${input.key}`,
+              { kind: 'phone', ...input, binding: value.binding, serviceHash: value.serviceHash },
+              () =>
+                input.action === 'pair'
+                  ? {
+                      kind: 'pair',
+                      operationId: input.key,
+                      pairSecret: randomBytes(32).toString('hex'),
+                      expiresAt: Date.now() + GROUP_PHONE_LIMITS.pairMs,
+                      label: input.label,
+                      allowPost: input.allowPost,
+                      binding: value.binding,
+                      memberId: value.identity.memberId,
+                    }
+                  : { kind: 'revoke', operationId: input.key, deviceId: input.deviceId },
+            ),
+          );
+    const call = async (body: unknown): Promise<unknown> => {
+      await feature.revalidate();
+      if (!this.localVisible(input.handle)) throw new Conflict('Group removed from this app.');
+      const current = await this.resolve(input.handle),
+        currentConfig = this.serviceFor(current.value);
+      if (
+        publicationCanonical(current.value.binding) !== publicationCanonical(value.binding) ||
+        current.value.serviceHash !== value.serviceHash
+      )
+        throw new Conflict('Group connection changed. Reopen the group.');
+      const response = await this.http(
+        `${config.endpoint.replace(/\/$/, '')}/v1/groups/${value.identity.groupId}/phones`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${current.value.credential}`,
+            ...this.serviceHeaders(current.value, false, currentConfig),
+          },
+          body: JSON.stringify(body),
+          redirect: 'error',
+          credentials: 'omit',
+          cache: 'no-store',
+          referrerPolicy: 'no-referrer',
+          signal: AbortSignal.timeout(5000),
+        },
+      ).catch(() => {
+        throw new GroupHostError(
+          503,
+          'GROUP_PHONE_UNAVAILABLE',
+          'The phone request could not be checked. Its exact saved identity is retained; check the saved request after reconnecting.',
+        );
+      });
+      if (response.status === 404)
+        throw new GroupHostError(
+          503,
+          'GROUP_PHONE_WORKER_UPDATE_REQUIRED',
+          'The creator’s Groups service needs the matching Worker update before phones can connect. Give the Groups setup prompt to the creator’s agent.',
+        );
+      const result = z
+        .discriminatedUnion('ok', [
+          z.strictObject({ ok: z.literal(true), value: z.unknown() }),
+          z.strictObject({
+            ok: z.literal(false),
+            error: z.enum([
+              'denied',
+              'invalid',
+              'conflict',
+              'limit',
+              'unavailable',
+              'hosting_disabled',
+            ]),
+          }),
+        ])
+        .parse(await this.bounded(response, 32768));
+      await feature.revalidate();
+      if (!this.localVisible(input.handle)) throw new Conflict('Group removed from this app.');
+      if (!result.ok)
+        throw new GroupHostError(
+          result.error === 'denied' ? 403 : result.error === 'conflict' ? 409 : 503,
+          'GROUP_PHONE_UNAVAILABLE',
+          result.error === 'limit'
+            ? 'This group cannot add another phone connection right now. Existing connections remain; revoke an unused phone or ask the creator to check free-service capacity.'
+            : 'Phone access is unavailable. Check the group connection and matching Worker version, then retry the saved request.',
+        );
+      return result.value;
+    };
+    const response = await call(command);
+    if (command.kind !== 'pair')
+      return groupPhoneHostViewSchema.parse({
+        ...groupPhoneDevicesSchema.parse(response),
+        link: null,
+        expiresAt: null,
+      });
+    const pair = z
+      .strictObject({
+        pairId: z.uuid(),
+        expiresAt: z.number().int().safe(),
+        pairProof: z.string().regex(/^[a-f0-9]{64}$/),
+      })
+      .parse(response);
+    if (pair.pairId !== command.operationId || pair.expiresAt !== command.expiresAt)
+      throw new Conflict(
+        'The phone link receipt did not match the saved request. Retry the same request.',
+      );
+    const link = new URL(`/groups/${value.identity.groupId}`, config.endpoint);
+    link.hash = new URLSearchParams({
+      id: pair.pairId,
+      pair: command.pairSecret,
+      proof: pair.pairProof,
+      expires: String(pair.expiresAt),
+    }).toString();
+    // A failed list read never changes the retained link request or permission.
+    return groupPhoneHostViewSchema.parse({
+      ...groupPhoneDevicesSchema.parse(await call({ kind: 'list' })),
+      link: link.toString(),
+      expiresAt: pair.expiresAt,
+    });
   }
   /** Background evidence is an immutable shared reading, not an execution port.
    * The service itself freshly checks active membership and its revoke/write

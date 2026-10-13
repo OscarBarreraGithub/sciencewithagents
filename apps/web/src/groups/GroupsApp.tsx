@@ -2,13 +2,17 @@ import { DisplayName } from './DisplayName';
 import { GroupReports } from './GroupReports';
 import { GroupHostedExport } from './GroupHostedExport';
 import { GroupWorkFolder } from './GroupWorkFolder';
+import { GroupPhonePanel } from './GroupPhonePanel';
 import { GroupLocalVisibility } from './GroupLocalVisibility';
 import { GroupContributionMode } from './GroupContributionMode';
 import { GroupLocalReceiptStorage } from './GroupLocalReceiptStorage';
 import { GroupSetupPrompt } from './GroupSetupPrompt';
+import { GroupClaudeConnection } from './GroupClaudeConnection';
 import { GroupJoinReceipt } from './GroupJoinReceipt';
+import { MessageCircle, RefreshCw } from 'lucide-react';
 import { GroupGitPanel } from './GroupGitPanel';
 import { GroupNativeGitPanel } from './GroupNativeGitPanel';
+import { GroupExternalFilesPanel } from './GroupExternalFilesPanel';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { groupFeedPageSchema, type GroupEvent, type GroupFeedQuery } from '@dock/shared';
 import * as contracts from '@dock/shared/dist/group-host.js';
@@ -29,6 +33,7 @@ import {
 } from './group-invitation';
 import type { GroupRead } from './types';
 import './group-host.css';
+import './group-presentation.css';
 import { GROUP_POLLING, startGroupPolling } from './group-polling';
 import { groupPollingUpdates, observeGroupUpdates } from './group-updates';
 const request = (path: string, body?: unknown, signal?: AbortSignal) =>
@@ -92,6 +97,7 @@ function GroupConversation({
   return (
     <GroupDocumentScope handle={slot.handle} sharedHandle={sharedHandle} readOnly={readOnly}>
       <GroupChat
+        nativeAgentControls={mode === 'manager'}
         slot={slot}
         mode={mode}
         sharedFeed={sharedFeed}
@@ -141,6 +147,7 @@ export function GroupsApp({
   const [newSetupCodeAllowed, setNewSetupCodeAllowed] = useState(false);
   const [native, setNative] = useState('Checking agent availability…');
   const [selected, setSelected] = useState<contracts.GroupHostOpen | null>(null);
+  const [openAttempt, setOpenAttempt] = useState(0);
   const [managedCoordination, setManagedCoordination] = useState<{
     handle: string;
     available: boolean | undefined;
@@ -278,7 +285,7 @@ export function GroupsApp({
     return () => {
       alive = false;
     };
-  }, [handle]);
+  }, [handle, openAttempt]);
   // Keep joined members current without launching a model or remounting chats.
   const localGroup =
     list?.find((group) => group.handle === selected?.group.handle) ?? selected?.group;
@@ -547,12 +554,23 @@ export function GroupsApp({
           {handle && !selected ? (
             <div className="chat-pane-empty">
               <p role="status">{error ? 'This group could not open.' : 'Opening group…'}</p>
-              <a href="#/chats/groups">Back to groups</a>
+              {error && (
+                <button
+                  className="flow-button"
+                  onClick={() => setOpenAttempt((value) => value + 1)}
+                >
+                  <RefreshCw size={18} aria-hidden="true" /> Retry opening group
+                </button>
+              )}
+              <a className="flow-button" href="#/chats/groups">
+                Back to groups
+              </a>
             </div>
           ) : !selected ? (
             <div className="chat-pane-empty">
+              <MessageCircle size={36} aria-hidden="true" />
               <h2>Choose a group</h2>
-              <p>Chat together, or ask your agent to move the shared work forward.</p>
+              <p>Messages, ideas and shared progress, all in one conversation.</p>
             </div>
           ) : (
             <>
@@ -713,7 +731,17 @@ export function GroupsApp({
                     refreshKey={gitRevision}
                   />
                 )}
+                <GroupPhonePanel
+                  handle={selected.shared.handle}
+                  readOnly={localGroup?.local?.mode === 'read-only'}
+                />
                 <div ref={setNativeControlsTarget} />
+                {selected.native.executionMode === 'host' && controlsOpen && (
+                  <GroupExternalFilesPanel
+                    key={`external-files:${selected.shared.handle}`}
+                    handle={selected.shared.handle}
+                  />
+                )}
                 <details
                   className="group-host-members group-host-advanced"
                   onToggle={(event) => {
@@ -815,6 +843,7 @@ export function GroupsApp({
               </dialog>
               <div className="group-host-workspace">
                 <GroupsWorkspace
+                  agentTabTitle="Your Claude Code"
                   contributionControl={
                     <GroupContributionMode
                       key={`local-mode:${selected.group.handle}`}
@@ -848,20 +877,40 @@ export function GroupsApp({
                     sessionId: selected.shared.context.sessionId,
                     visibility: 'shared',
                     draftIdentity: selected.shared.handle,
-                    content: (mode: GroupChatMode) => (
-                      <GroupConversation
-                        mode={mode}
-                        sharedFeed={{ loadPage, loadOriginal, members: selected.members }}
-                        slot={selected.shared}
-                        readOnly={localGroup?.local?.mode === 'read-only'}
-                        executionMode={selected.native.executionMode}
-                        sharedHandle={selected.shared.handle}
-                        onChanged={changed}
-                        onManagedCoordination={ownerCoordinationChanged}
-                        nativeControlsTarget={nativeControlsTarget}
-                        onAuthorizationRequired={authorizationRequired}
-                      />
-                    ),
+                    content: (mode: GroupChatMode) =>
+                      mode === 'manager' ? (
+                        <GroupClaudeConnection
+                          key={selected.group.handle}
+                          handle={selected.group.handle}
+                          legacy={
+                            <GroupConversation
+                              mode="manager"
+                              sharedFeed={{ loadPage, loadOriginal, members: selected.members }}
+                              slot={selected.shared}
+                              readOnly={localGroup?.local?.mode === 'read-only'}
+                              executionMode={selected.native.executionMode}
+                              sharedHandle={selected.shared.handle}
+                              onChanged={changed}
+                              onManagedCoordination={ownerCoordinationChanged}
+                              nativeControlsTarget={nativeControlsTarget}
+                              onAuthorizationRequired={authorizationRequired}
+                            />
+                          }
+                        />
+                      ) : (
+                        <GroupConversation
+                          mode={mode}
+                          sharedFeed={{ loadPage, loadOriginal, members: selected.members }}
+                          slot={selected.shared}
+                          readOnly={localGroup?.local?.mode === 'read-only'}
+                          executionMode={selected.native.executionMode}
+                          sharedHandle={selected.shared.handle}
+                          onChanged={changed}
+                          onManagedCoordination={ownerCoordinationChanged}
+                          nativeControlsTarget={nativeControlsTarget}
+                          onAuthorizationRequired={authorizationRequired}
+                        />
+                      ),
                   }}
                   privateAside={null}
                   loadPage={loadPage}

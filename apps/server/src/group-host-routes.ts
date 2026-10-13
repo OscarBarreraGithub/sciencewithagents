@@ -13,6 +13,13 @@ import { groupHostActivity } from './group-native-activity.js';
 import { groupWorkspaceInputSchema } from '@dock/shared/dist/group-workspace.js';
 import type { FolderConnections } from './folder-picker.js';
 import type { GroupHostNativeRuntime } from './group-native-host-runtime.js';
+import type { GroupsConversationWorker } from './groups-conversation-worker.js';
+import { GroupsConversationUnavailable } from './groups-conversation-worker.js';
+import { z } from 'zod';
+import {
+  groupConversationStopSchema,
+  groupConversationStatusSchema,
+} from '@dock/shared/dist/group-conversation-sharing.js';
 /** Registration deliberately requires an auth predicate even on loopback. */
 export function registerGroupHostRoutes(
   app: FastifyInstance,
@@ -20,6 +27,7 @@ export function registerGroupHostRoutes(
   authenticated: (request: FastifyRequest) => boolean,
   folders?: FolderConnections,
   humanReviewAuthenticated: (request: FastifyRequest) => boolean = () => false,
+  conversationSharing?: GroupsConversationWorker,
 ) {
   const documents = groupFeatureDocuments(host);
   if (documents) {
@@ -58,6 +66,35 @@ export function registerGroupHostRoutes(
   };
   app.get('/api/groups', { onRequest: guard }, async () => host.list());
   const actions: Record<string, (v: unknown, request: FastifyRequest) => unknown> = {
+    phone: (raw, request) => host.phone(raw, humanReviewAuthenticated(request)),
+    'conversation-sharing': async (raw: unknown) => {
+      if (!conversationSharing)
+        throw new GroupHostError(
+          503,
+          'GROUP_SHARING_UNAVAILABLE',
+          'Conversation sharing is unavailable. Update this computer’s SWA installation.',
+        );
+      const input = z
+        .discriminatedUnion('action', [
+          groupConversationStatusSchema.extend({ action: z.literal('status') }),
+          groupConversationStopSchema.extend({ action: z.literal('stop') }),
+          groupConversationStatusSchema.extend({ action: z.literal('activate') }),
+        ])
+        .parse(raw);
+      // Status has no private source text. Stopping remains possible while offline/revoked.
+      if (input.action === 'stop')
+        return conversationSharing.stop(
+          groupConversationStopSchema.parse({
+            handle: input.handle,
+            key: input.key,
+            generation: input.generation,
+            recoverOnly: input.recoverOnly,
+          }),
+        );
+      host.localSharedContext(input.handle);
+      if (input.action === 'activate') return conversationSharing.activate(input.handle);
+      return conversationSharing.status(input.handle);
+    },
     workspace: (raw: unknown) => {
       const input = groupWorkspaceInputSchema.parse(raw);
       const native = host.native as Partial<GroupHostNativeRuntime>;
@@ -135,6 +172,16 @@ export function registerGroupHostRoutes(
         );
       return git.request(v, humanReviewAuthenticated(request));
     },
+    files: (v: unknown, request: FastifyRequest) => {
+      const git = groupHostNativeGit(host);
+      if (!git)
+        throw new GroupHostError(
+          503,
+          'GROUP_NATIVE_GIT_UNAVAILABLE',
+          'Choose and connect your shared work folder first.',
+        );
+      return git.externalRequest(v, humanReviewAuthenticated(request));
+    },
     git: (v: unknown) => {
       const git = groupFeatureGit(host);
       if (!git)
@@ -156,6 +203,10 @@ export function registerGroupHostRoutes(
         try {
           return await fn(request.body, request);
         } catch (error) {
+          if (error instanceof GroupsConversationUnavailable)
+            return reply
+              .code(503)
+              .send({ code: 'GROUP_SHARING_UNAVAILABLE', error: error.message });
           if (error instanceof GroupHostError)
             return reply.code(error.status).send({ code: error.code, error: error.message });
           if (error instanceof HostedPublicationError)

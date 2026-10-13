@@ -17,6 +17,7 @@ import { localRequestProof, type LocalRole } from '@dock/shared/dist/local-autho
 import { Missing, Store } from './store.js';
 import { modelFixture } from './model-policy.fixture.js';
 import { git, ensureWorktree, checkpointWorktree, integrationPreview } from './workspaces.js';
+import * as workspaces from './workspaces.js';
 
 let root: string, cwd: string, origin: string, store: Store, db: DatabaseSync;
 let adapter: GroupHostNativeGit, host: GroupHost, runtime: Runtime;
@@ -61,6 +62,8 @@ beforeEach(async () => {
     db,
     directory: root,
     localVisible: () => true,
+    localContributing: () => true,
+    send: vi.fn(async () => ({ delivery: 'complete' })),
     authenticatedContext: async ({ handle: selected }: { handle: string }) => {
       if (selected !== handle) throw new Error('Unknown saved member');
       return { context, enrollmentHandle: binding.enrollmentHandle, revalidate: async () => {} };
@@ -92,6 +95,452 @@ afterEach(async () => {
 });
 const sync = () => adapter.request({ action: 'sync', handle, key: randomUUID() });
 const status = () => adapter.request({ action: 'status', handle });
+async function externalCheckpoint() {
+  await seed();
+  vi.spyOn(
+    adapter as unknown as { privateAccess(cwd: string, origin: string): Promise<void> },
+    'privateAccess',
+  ).mockResolvedValue();
+  await adapter.request({ action: 'connect', handle, key: randomUUID() });
+  const { GroupsConversationJournal } = await import('./groups-conversation-journal.js');
+  const journal = new GroupsConversationJournal(root),
+    sessionId = randomUUID();
+  journal.registerSession(sessionId);
+  journal.select({ handle: binding.enrollmentHandle, sessionId, key: randomUUID() });
+  journal.close();
+  writeFileSync(join(cwd, 'external-result.txt'), 'A verified external result\n');
+  await git(cwd, ['add', 'external-result.txt']);
+  await git(cwd, ['commit', '-m', 'Ordinary Claude checkpoint']);
+  const head = await git(cwd, ['rev-parse', 'HEAD']),
+    key = randomUUID();
+  await adapter.externalRequest({ action: 'propose', handle, key, head });
+  const view = await adapter.externalRequest({ action: 'preview', handle, id: key });
+  return { head, key, preview: view.preview!, sessionId };
+}
+it('publishes only an exact owner-reviewed ordinary Claude SHA with live dirty checkout, later commits and no app Work receipt', async () => {
+  const { head, key, preview } = await externalCheckpoint();
+  const before = await git(root, ['--git-dir', origin, 'rev-parse', 'main']);
+  expect(before).not.toBe(head);
+  expect(preview.patch).toContain('A verified external result');
+  const approval = {
+    action: 'approve',
+    handle,
+    id: key,
+    key: randomUUID(),
+    fingerprint: preview.fingerprint,
+  };
+  await expect(adapter.externalRequest(approval)).rejects.toThrow('Native agents cannot attest');
+  writeFileSync(join(cwd, 'later-result.txt'), 'Later unreviewed result\n');
+  await git(cwd, ['add', 'later-result.txt']);
+  await git(cwd, ['commit', '-m', 'Later native work']);
+  const laterHead = await git(cwd, ['rev-parse', 'HEAD']);
+  writeFileSync(join(cwd, '.env'), 'PRIVATE_UNCOMMITTED=retained\n');
+  writeFileSync(join(cwd, 'external-result.txt'), 'More local work, still uncommitted\n');
+  expect((await status()).busyReason).toBe('external-claude');
+  const result = await adapter.externalRequest(approval, true);
+  expect(result.proposals[0].state).toBe('shared');
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(head);
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', preview.branch])).toBe(head);
+  expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(laterHead);
+  expect(await git(cwd, ['symbolic-ref', '--short', 'HEAD'])).toBe('main');
+  expect(readFileSync(join(cwd, 'external-result.txt'), 'utf8')).toContain('More local work');
+  expect(readFileSync(join(cwd, '.env'), 'utf8')).toContain('PRIVATE_UNCOMMITTED');
+  expect(store.runs()).toEqual([]);
+  expect(requests.size).toBe(0);
+  expect(host.send).toHaveBeenCalledWith(
+    expect.objectContaining({ key, text: expect.stringContaining(head) }),
+  );
+  const calls = vi.mocked(host.send).mock.calls.length;
+  await adapter.externalRequest(approval, true);
+  expect(vi.mocked(host.send).mock.calls.length).toBe(calls);
+  await expect(
+    adapter.externalRequest({ ...approval, fingerprint: '0'.repeat(64) }, true),
+  ).rejects.toThrow('original exact');
+});
+it('retains deleted intermediate binary paths and one exact proposal after concurrent ordinary-Claude retries', async () => {
+  await externalCheckpoint();
+  writeFileSync(join(cwd, 'intermediate-figure.bin'), Buffer.from([0, 1, 2, 3]));
+  await git(cwd, ['add', 'intermediate-figure.bin']);
+  await git(cwd, [
+    'commit',
+    '-m',
+    'Intermediate figure',
+    '-m',
+    'Exact middle commit body\n\nCo-Authored-By: Example Reviewer <reviewer@example.invalid>',
+  ]);
+  await git(cwd, ['rm', 'intermediate-figure.bin']);
+  await git(cwd, ['commit', '-m', 'Remove earlier figure']);
+  const input = {
+    action: 'propose',
+    handle,
+    key: randomUUID(),
+    head: await git(cwd, ['rev-parse', 'HEAD']),
+  };
+  await Promise.all([adapter.externalRequest(input), adapter.externalRequest(input)]);
+  const view = await adapter.externalRequest({ action: 'preview', handle, id: input.key });
+  expect(view.preview!.files).toContain('intermediate-figure.bin');
+  expect(view.preview!.patch).toContain('Intermediate figure');
+  expect(view.preview!.patch).toContain('Exact middle commit body');
+  expect(view.preview!.patch).toContain(
+    'Co-Authored-By: Example Reviewer <reviewer@example.invalid>',
+  );
+  expect(view.preview!.patch).toContain('Author:');
+  expect(view.preview!.patch).toContain('Commit:');
+  expect(view.preview!.patch).toContain('Remove earlier figure');
+  expect(db.prepare('SELECT count(*) n FROM gex_proposals WHERE id=?').get(input.key)!.n).toBe(1);
+  await adapter.externalRequest(
+    { action: 'reject', handle, id: input.key, key: randomUUID() },
+    true,
+  );
+  expect(host.send).not.toHaveBeenCalled();
+});
+it('refuses credentials in ordinary-Claude intermediate commit metadata even when absent from all file blobs', async () => {
+  await externalCheckpoint();
+  const before = await git(root, ['--git-dir', origin, 'rev-parse', 'main']);
+  await git(cwd, [
+    'commit',
+    '--allow-empty',
+    '-m',
+    'Secret only in commit body',
+    '-m',
+    'sk-' + 'a'.repeat(40),
+  ]);
+  await git(cwd, ['commit', '--allow-empty', '-m', 'Later clean metadata']);
+  await expect(
+    adapter.externalRequest({
+      action: 'propose',
+      handle,
+      key: randomUUID(),
+      head: await git(cwd, ['rev-parse', 'HEAD']),
+    }),
+  ).rejects.toThrow('credential in commit metadata');
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(before);
+  expect(host.send).not.toHaveBeenCalled();
+});
+it('reviews raw commit authors despite an uncommitted mailmap and preserves native author mapping', async () => {
+  const { head } = await externalCheckpoint();
+  await git(cwd, ['config', 'log.mailmap', 'true']);
+  writeFileSync(
+    join(cwd, '.mailmap'),
+    'Mapped Owner <mapped@example.invalid> Fixture <fixture@example.invalid>\n',
+  );
+  expect(await git(cwd, ['log', '-1', '--format=fuller', head])).toContain(
+    'mapped@example.invalid',
+  );
+  const key = randomUUID();
+  await adapter.externalRequest({ action: 'propose', handle, key, head });
+  const view = await adapter.externalRequest({ action: 'preview', handle, id: key });
+  expect(view.preview!.patch).toContain('Fixture <fixture@example.invalid>');
+  expect(view.preview!.patch).not.toContain('mapped@example.invalid');
+  expect(await git(cwd, ['log', '-1', '--format=fuller', head])).toContain(
+    'mapped@example.invalid',
+  );
+});
+it('refuses raw credential-like author metadata hidden by a working-folder mailmap', async () => {
+  await externalCheckpoint();
+  const secret = 'ghp_' + 'a'.repeat(36),
+    email = `${secret}@example.invalid`;
+  await git(cwd, ['config', 'user.email', email]);
+  await git(cwd, ['commit', '--allow-empty', '-m', 'Hidden raw identity']);
+  const head = await git(cwd, ['rev-parse', 'HEAD']);
+  await git(cwd, ['config', 'log.mailmap', 'true']);
+  writeFileSync(
+    join(cwd, '.mailmap'),
+    `Mapped Owner <mapped@example.invalid> Fixture <${email}>\n`,
+  );
+  expect(await git(cwd, ['log', '-1', '--format=fuller', head])).not.toContain(secret);
+  await expect(
+    adapter.externalRequest({ action: 'propose', handle, key: randomUUID(), head }),
+  ).rejects.toThrow('credential in commit metadata');
+  expect(host.send).not.toHaveBeenCalled();
+});
+it('scans the transported commit tree despite a benign replacement commit', async () => {
+  const { head: parent } = await externalCheckpoint();
+  writeFileSync(join(cwd, 'private-result.txt'), 'ghp_' + 'b'.repeat(36));
+  await git(cwd, ['add', 'private-result.txt']);
+  await git(cwd, ['commit', '-m', 'Raw private checkpoint']);
+  const head = await git(cwd, ['rev-parse', 'HEAD']);
+  const replacement = await git(cwd, [
+    'commit-tree',
+    await git(cwd, ['rev-parse', `${parent}^{tree}`]),
+    '-p',
+    parent,
+    '-m',
+    'Virtual safe checkpoint',
+  ]);
+  await git(cwd, ['replace', head, replacement]);
+  expect(await git(cwd, ['ls-tree', '-r', head])).not.toContain('private-result.txt');
+  await expect(
+    adapter.externalRequest({ action: 'propose', handle, key: randomUUID(), head }),
+  ).rejects.toThrow('likely credential');
+  expect(await git(cwd, ['replace', '-l'])).toContain(head);
+  expect(host.send).not.toHaveBeenCalled();
+});
+it('scans the transported blob despite a same-size benign replacement blob', async () => {
+  await externalCheckpoint();
+  const secret = 'ghp_' + 'c'.repeat(36);
+  writeFileSync(join(cwd, 'private-result.txt'), secret);
+  await git(cwd, ['add', 'private-result.txt']);
+  await git(cwd, ['commit', '-m', 'Raw private blob']);
+  const head = await git(cwd, ['rev-parse', 'HEAD']);
+  const blob = await git(cwd, ['rev-parse', `${head}:private-result.txt`]);
+  writeFileSync(join(cwd, 'benign-blob.txt'), 'x'.repeat(secret.length));
+  const replacement = await git(cwd, ['hash-object', '-w', 'benign-blob.txt']);
+  await git(cwd, ['replace', blob, replacement]);
+  expect(await git(cwd, ['cat-file', 'blob', blob])).toBe('x'.repeat(secret.length));
+  await expect(
+    adapter.externalRequest({ action: 'propose', handle, key: randomUUID(), head }),
+  ).rejects.toThrow('likely credential');
+  expect(await git(cwd, ['replace', '-l'])).toContain(blob);
+  expect(host.send).not.toHaveBeenCalled();
+});
+it('refuses an older retained mailmapped proposal before approval or already-approved publication', async () => {
+  const { head } = await externalCheckpoint();
+  await git(cwd, ['config', 'log.mailmap', 'true']);
+  writeFileSync(
+    join(cwd, '.mailmap'),
+    'Mapped Owner <mapped@example.invalid> Fixture <fixture@example.invalid>\n',
+  );
+  const realGit = workspaces.git;
+  const oldDisplay = vi.spyOn(workspaces, 'git').mockImplementation((dir, args) =>
+    realGit(
+      dir,
+      args.filter((arg) => arg !== '--no-mailmap'),
+    ),
+  );
+  const key = randomUUID();
+  await adapter.externalRequest({ action: 'propose', handle, key, head });
+  const view = await adapter.externalRequest({ action: 'preview', handle, id: key });
+  oldDisplay.mockRestore();
+  expect(view.preview!.patch).toContain('mapped@example.invalid');
+  const approval = {
+    action: 'approve',
+    handle,
+    id: key,
+    key: randomUUID(),
+    fingerprint: view.preview!.fingerprint,
+  };
+  await expect(adapter.externalRequest(approval, true)).rejects.toThrow('raw committed history');
+  // A previous release may already have recorded approval; its immutable receipt must remain,
+  // but a background/retry publication must recheck the exact raw display before any push.
+  db.prepare('INSERT INTO gex_decisions VALUES(?,?,?,?,?)').run(
+    randomUUID(),
+    key,
+    '{}',
+    'approved',
+    'Legacy owner approval',
+  );
+  const retry = await adapter.externalRequest(
+    { action: 'retry', handle, id: key, key: randomUUID() },
+    true,
+  );
+  expect(retry.proposals.find((p) => p.id === key)).toMatchObject({
+    state: 'approved',
+    retryable: true,
+  });
+  expect(retry.proposals.find((p) => p.id === key)!.message).toContain('raw committed history');
+  expect(await git(cwd, ['ls-remote', origin, `refs/heads/${view.preview!.branch}`])).toBe('');
+  expect(host.send).not.toHaveBeenCalled();
+});
+it.each(['rewound', 'removed'])(
+  'refuses a checkpoint when reviewed remote history was %s before publication',
+  async (change) => {
+    const { key, preview } = await externalCheckpoint();
+    const original = preview.base;
+    await adapter.externalRequest(
+      { action: 'approve', handle, id: key, key: randomUUID(), fingerprint: preview.fingerprint },
+      true,
+    );
+    writeFileSync(join(cwd, 'next-result.txt'), 'Next reviewed result\n');
+    await git(cwd, ['add', 'next-result.txt']);
+    await git(cwd, ['commit', '-m', 'Next checkpoint']);
+    const nextKey = randomUUID(),
+      head = await git(cwd, ['rev-parse', 'HEAD']);
+    await adapter.externalRequest({ action: 'propose', handle, key: nextKey, head });
+    const next = (await adapter.externalRequest({ action: 'preview', handle, id: nextKey }))
+      .preview!;
+    expect(next.base).toBe(preview.head);
+    await git(root, [
+      '--git-dir',
+      origin,
+      'update-ref',
+      ...(change === 'removed' ? ['-d', 'refs/heads/main'] : ['refs/heads/main', original]),
+    ]);
+    const calls = vi.mocked(host.send).mock.calls.length;
+    const result = await adapter.externalRequest(
+      { action: 'approve', handle, id: nextKey, key: randomUUID(), fingerprint: next.fingerprint },
+      true,
+    );
+    expect(result.proposals.find((p) => p.id === nextKey)).toMatchObject({
+      state: 'approved',
+      retryable: true,
+    });
+    expect(await git(cwd, ['ls-remote', origin, `refs/heads/${next.branch}`])).toBe('');
+    expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(head);
+    expect(vi.mocked(host.send).mock.calls.length).toBe(calls);
+  },
+);
+it('preserves divergent peer history and publishes the reviewed ordinary-Claude checkpoint on its own ref', async () => {
+  const { head, key, preview } = await externalCheckpoint();
+  const peer = await remoteAdvance('peer-checkpoint');
+  const result = await adapter.externalRequest(
+    { action: 'approve', handle, id: key, key: randomUUID(), fingerprint: preview.fingerprint },
+    true,
+  );
+  expect(result.proposals[0].state).toBe('branch-shared');
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(peer);
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', preview.branch])).toBe(head);
+  expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(head);
+});
+it('retains exact ordinary-Claude file approval and retries only its group announcement across restart after a lost reply', async () => {
+  const { key, preview } = await externalCheckpoint();
+  vi.mocked(host.send).mockRejectedValueOnce(new Error('Owned lost delivery acknowledgement'));
+  const approval = {
+    action: 'approve',
+    handle,
+    id: key,
+    key: randomUUID(),
+    fingerprint: preview.fingerprint,
+  };
+  const first = await adapter.externalRequest(approval, true);
+  expect(first.proposals[0]).toMatchObject({ state: 'shared', retryable: true });
+  const sent = vi.mocked(host.send).mock.calls[0][0];
+  const connector = (adapter as unknown as { connector: GroupHostNativeRuntime }).connector;
+  await adapter.close();
+  db.close();
+  db = new DatabaseSync(join(root, 'host.sqlite'));
+  host = { ...host, db } as GroupHost;
+  adapter = new GroupHostNativeGit(host, runtime, connector, true);
+  expect((await adapter.externalRequest({ action: 'status', handle })).proposals[0]).toMatchObject({
+    state: 'shared',
+    retryable: true,
+  });
+  const retry = { action: 'retry', handle, id: key, key: randomUUID() };
+  expect((await adapter.externalRequest(retry)).proposals[0]).toMatchObject({
+    state: 'shared',
+    retryable: false,
+  });
+  expect(vi.mocked(host.send).mock.calls[1][0]).toEqual(sent);
+  const calls = vi.mocked(host.send).mock.calls.length;
+  await adapter.externalRequest(retry);
+  expect(vi.mocked(host.send).mock.calls.length).toBe(calls);
+  expect(() => db.prepare('DELETE FROM gex_proposals').run()).toThrow('retained');
+});
+it('announces a confirmed ordinary-Claude checkpoint ref when the default rejects its push', async () => {
+  const { head, key, preview } = await externalCheckpoint();
+  const originalGit = workspaces.git;
+  const refuse = vi.spyOn(workspaces, 'git').mockImplementation((dir, args) => {
+    if (args.includes('push') && args.includes(`${head}:refs/heads/main`))
+      return Promise.reject(new Error('Owned simulated remote default policy refusal'));
+    return originalGit(dir, args);
+  });
+  const approval = {
+    action: 'approve',
+    handle,
+    id: key,
+    key: randomUUID(),
+    fingerprint: preview.fingerprint,
+  };
+  const result = await adapter.externalRequest(approval, true);
+  expect(result.proposals[0]).toMatchObject({ state: 'branch-shared', retryable: false });
+  expect(result.proposals[0].message).toContain('default branch could not be updated');
+  expect(await originalGit(root, ['--git-dir', origin, 'rev-parse', preview.branch])).toBe(head);
+  expect(host.send).toHaveBeenCalledTimes(1);
+  refuse.mockRestore();
+});
+it('recognizes a reviewed ordinary-Claude SHA already in later shared default history without overwriting the peer', async () => {
+  const { head, key, preview } = await externalCheckpoint();
+  await git(cwd, ['push', 'origin', `${head}:main`]);
+  const laterPeer = await remoteAdvance('later-peer-after-reviewed-commit');
+  const result = await adapter.externalRequest(
+    { action: 'approve', handle, id: key, key: randomUUID(), fingerprint: preview.fingerprint },
+    true,
+  );
+  expect(result.proposals[0]).toMatchObject({ state: 'shared', retryable: false });
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(laterPeer);
+  expect(host.send).toHaveBeenCalledTimes(1);
+});
+it('keeps ordinary-Claude proposals unpublished after refusal, reselection or an unreviewed secret-bearing intermediate commit', async () => {
+  const { key, preview } = await externalCheckpoint();
+  const baseline = await git(root, ['--git-dir', origin, 'rev-parse', 'main']);
+  const approval = {
+    action: 'approve',
+    handle,
+    id: key,
+    key: randomUUID(),
+    fingerprint: '0'.repeat(64),
+  };
+  await expect(adapter.externalRequest(approval, true)).rejects.toThrow('display changed');
+  await expect(
+    adapter.externalRequest({ ...approval, fingerprint: preview.fingerprint }, true),
+  ).rejects.toThrow('original exact');
+  const { GroupsConversationJournal } = await import('./groups-conversation-journal.js');
+  const journal = new GroupsConversationJournal(root),
+    next = randomUUID();
+  journal.registerSession(next);
+  journal.select({ handle: binding.enrollmentHandle, sessionId: next, key: randomUUID() });
+  journal.close();
+  await expect(
+    adapter.externalRequest(
+      { ...approval, key: randomUUID(), fingerprint: preview.fingerprint },
+      true,
+    ),
+  ).rejects.toThrow('conversation, folder or repository changed');
+  writeFileSync(join(cwd, 'temporary.txt'), 'sk-' + 'a'.repeat(40));
+  await git(cwd, ['add', 'temporary.txt']);
+  await git(cwd, ['commit', '-m', 'Temporary private credential']);
+  await git(cwd, ['rm', 'temporary.txt']);
+  await git(cwd, ['commit', '-m', 'Remove private credential']);
+  await expect(
+    adapter.externalRequest({
+      action: 'propose',
+      handle,
+      key: randomUUID(),
+      head: await git(cwd, ['rev-parse', 'HEAD']),
+    }),
+  ).rejects.toThrow('likely credential');
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(baseline);
+  expect(host.send).not.toHaveBeenCalled();
+});
+it('holds external Claude checkouts after Stop until exact owner closure, then applies clean fetched changes', async () => {
+  await seed();
+  const { GroupsConversationJournal } = await import('./groups-conversation-journal.js');
+  const journal = new GroupsConversationJournal(runtime.dataDir);
+  try {
+    const sessionId = randomUUID();
+    journal.registerSession(sessionId);
+    journal.select({ handle: binding.enrollmentHandle, sessionId, key: randomUUID() });
+    expect(await status()).toMatchObject({ busy: true, busyReason: 'external-claude' });
+    const head = await git(cwd, ['rev-parse', 'HEAD']);
+    const remote = await remoteAdvance('external-shared-result');
+    expect((await sync()).message).toContain('External Claude may still be using');
+    expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(head);
+    journal.stop({ handle: binding.enrollmentHandle, key: randomUUID() });
+    expect((await status()).busy).toBe(true);
+    const generation = journal.selection(binding.enrollmentHandle)!.generation;
+    const confirmation = {
+      action: 'confirm-external-closed',
+      handle,
+      key: randomUUID(),
+      generation,
+    };
+    await expect(adapter.request(confirmation)).rejects.toThrow('Native agents cannot confirm');
+    await expect(
+      adapter.request({ ...confirmation, generation: generation - 1 }, true),
+    ).rejects.toThrow('current conversation');
+    expect((await adapter.request(confirmation, true)).busy).toBe(false);
+    expect((await adapter.request(confirmation, true)).busy).toBe(false);
+    await sync();
+    expect(await git(cwd, ['rev-parse', 'HEAD'])).toBe(remote);
+    journal.select({ handle: binding.enrollmentHandle, sessionId, key: randomUUID() });
+    expect((await status()).busy).toBe(true);
+    await adapter.request(confirmation, true);
+    expect((await status()).busy).toBe(true);
+    expect(() => journal.db.prepare('DELETE FROM gc_closures').run()).toThrow('retained');
+  } finally {
+    journal.close();
+  }
+});
 async function nativeCheckpoint() {
   const base = await seed();
   const project = store.register(cwd, 'Native Group fixture', '', 'codex', randomUUID(), 'direct');
@@ -154,6 +603,76 @@ it('shares native committed Group work only after exact owner preview approval, 
   expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(checkpoint.head);
   expect(store.runs().length).toBe(runs);
   expect(store.tasks()).toEqual([]);
+});
+it('refuses an older retained native Work author display and offers a fresh raw preview', async () => {
+  await nativeCheckpoint();
+  await git(cwd, ['config', 'log.mailmap', 'true']);
+  writeFileSync(
+    join(cwd, '.mailmap'),
+    'Mapped Owner <mapped@example.invalid> Fixture <fixture@example.invalid>\n',
+  );
+  await git(cwd, ['add', '.mailmap']);
+  await git(cwd, ['commit', '-m', 'Native author mapping']);
+  const realGit = workspaces.git;
+  const oldDisplay = vi.spyOn(workspaces, 'git').mockImplementation((dir, args) =>
+    realGit(
+      dir,
+      args.filter((arg) => arg !== '--no-mailmap'),
+    ),
+  );
+  const old = (await adapter.request({ action: 'preview-native', handle })).nativePreview!;
+  oldDisplay.mockRestore();
+  expect(old.patch).toContain('Author:     Mapped Owner <mapped@example.invalid>');
+  await expect(
+    adapter.request(
+      {
+        action: 'approve-native',
+        handle,
+        key: randomUUID(),
+        previewId: old.id,
+        fingerprint: old.fingerprint,
+      },
+      true,
+    ),
+  ).rejects.toThrow('raw committed history');
+  expect(Number(db.prepare('SELECT count(*) n FROM gng_native_reviews').get()!.n)).toBe(0);
+  const fresh = (await adapter.request({ action: 'preview-native', handle })).nativePreview!;
+  expect(fresh.fingerprint).not.toBe(old.fingerprint);
+  expect(fresh.patch).toContain('Author:     Fixture <fixture@example.invalid>');
+  expect(await git(cwd, ['log', '-1', '--format=fuller'])).toContain('mapped@example.invalid');
+});
+it('withholds a previously approved native Work mailmapped display during automatic sync', async () => {
+  const checkpoint = await nativeCheckpoint();
+  await git(cwd, ['config', 'log.mailmap', 'true']);
+  writeFileSync(
+    join(cwd, '.mailmap'),
+    'Mapped Owner <mapped@example.invalid> Fixture <fixture@example.invalid>\n',
+  );
+  await git(cwd, ['add', '.mailmap']);
+  await git(cwd, ['commit', '-m', 'Native author mapping']);
+  const realGit = workspaces.git;
+  const oldDisplay = vi.spyOn(workspaces, 'git').mockImplementation((dir, args) =>
+    realGit(
+      dir,
+      args.filter((arg) => arg !== '--no-mailmap'),
+    ),
+  );
+  const old = (await adapter.request({ action: 'preview-native', handle })).nativePreview!;
+  await adapter.request(
+    {
+      action: 'approve-native',
+      handle,
+      key: randomUUID(),
+      previewId: old.id,
+      fingerprint: old.fingerprint,
+    },
+    true,
+  );
+  oldDisplay.mockRestore();
+  expect((await sync()).message).toContain('ready for review');
+  expect(await git(root, ['--git-dir', origin, 'rev-parse', 'main'])).toBe(checkpoint.base);
+  expect(await git(cwd, ['ls-remote', origin, `refs/heads/${old.branch}`])).toBe('');
+  expect(Number(db.prepare('SELECT count(*) n FROM gng_native_reviews').get()!.n)).toBe(1);
 });
 it('includes changes introduced only by a merge commit in the exact native owner preview', async () => {
   await nativeCheckpoint();
@@ -318,13 +837,13 @@ it('accepts actual browser and paired-device review while denying native owner/h
     groupHost: host,
     ownsRuntime: false,
   });
-  const cli = (role: LocalRole) => {
+  const cli = (role: LocalRole, selectedPath = url) => {
     const challenge = randomBytes(32).toString('hex'),
       proof = access.proof({ role, challenge });
     return {
       host: '127.0.0.1:4999',
       origin: 'http://127.0.0.1:4999',
-      authorization: `Dock ${role}.${proof.nonce}.${localRequestProof(access.configuration[role], 'http://127.0.0.1:4999', role, challenge, proof.nonce, 'POST', url)}`,
+      authorization: `Dock ${role}.${proof.nonce}.${localRequestProof(access.configuration[role], 'http://127.0.0.1:4999', role, challenge, proof.nonce, 'POST', selectedPath)}`,
     };
   };
   let remote: Awaited<ReturnType<typeof createServer>> | undefined;
@@ -405,6 +924,62 @@ it('accepts actual browser and paired-device review while denying native owner/h
     ).toBe(401);
     expect(Number(db.prepare('SELECT count(*) n FROM gng_native_reviews').get()!.n)).toBe(1);
     expect(launches).not.toHaveBeenCalled();
+    const { GroupsConversationJournal } = await import('./groups-conversation-journal.js');
+    const journal = new GroupsConversationJournal(root);
+    try {
+      const sessionId = randomUUID();
+      journal.registerSession(sessionId);
+      journal.select({ handle: binding.enrollmentHandle, sessionId, key: randomUUID() });
+      const stopped = journal.stop({ handle: binding.enrollmentHandle, key: randomUUID() });
+      const closure = {
+        action: 'confirm-external-closed',
+        handle,
+        key: randomUUID(),
+        generation: 'generation' in stopped ? stopped.generation : 0,
+      };
+      for (const role of ['owner', 'host'] as const) {
+        const refused = await app.inject({
+          method: 'POST',
+          url,
+          headers: cli(role),
+          payload: closure,
+        });
+        expect(refused.statusCode).toBe(409);
+        expect(refused.body).toContain('Native agents cannot confirm');
+      }
+      expect(journal.closurePending(binding.enrollmentHandle)).toBe(true);
+      const confirmed = await app.inject({ method: 'POST', url, headers, payload: closure });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      expect(journal.closurePending(binding.enrollmentHandle)).toBe(false);
+    } finally {
+      journal.close();
+    }
+    const { key: fileId, preview: filePreview } = await externalCheckpoint();
+    const fileInput = {
+      action: 'approve',
+      handle,
+      id: fileId,
+      key: randomUUID(),
+      fingerprint: filePreview.fingerprint,
+    };
+    for (const role of ['owner', 'host'] as const) {
+      const denied = await app.inject({
+        method: 'POST',
+        url: '/api/groups/files',
+        headers: cli(role, '/api/groups/files'),
+        payload: fileInput,
+      });
+      expect(denied.statusCode, denied.body).toBe(409);
+      expect(denied.body).toContain('Native agents cannot attest');
+    }
+    const fileAccepted = await app.inject({
+      method: 'POST',
+      url: '/api/groups/files',
+      headers,
+      payload: fileInput,
+    });
+    expect(fileAccepted.statusCode, fileAccepted.body).toBe(200);
+    expect(fileAccepted.json().proposals[0].state).toBe('shared');
   } finally {
     await remote?.close();
     await app.close();
@@ -1018,3 +1593,74 @@ it.each(['data/runtime-canary.txt', 'nested/data/runtime-canary.txt', '.env', 'n
     expect(await git(root, ['--git-dir', origin, 'ls-tree', '-r', '--name-only', 'main'])).toBe('');
   },
 );
+
+it('keeps untouched group file status optional after another enrollment proposes and the adapter restarts', async () => {
+  const untouched = randomUUID(),
+    enrollment = randomUUID();
+  const untouchedContext = {
+    ...context,
+    groupId: randomUUID(),
+    memberId: randomUUID(),
+    installationId: randomUUID(),
+  };
+  const authenticate = host.authenticatedContext.bind(host);
+  Object.assign(host, {
+    authenticatedContext: async (input: { handle: string }) =>
+      input.handle === untouched
+        ? { context: untouchedContext, enrollmentHandle: enrollment, revalidate: async () => {} }
+        : authenticate(input),
+  });
+  const connector = (adapter as unknown as { connector: GroupHostNativeRuntime }).connector;
+  const resolveContext = connector.resolveLocalContext.bind(connector);
+  connector.resolveLocalContext = (...args) =>
+    args[0].groupId === untouchedContext.groupId ? null : resolveContext(...args);
+  const empty = { proposals: [], preview: null };
+  await expect(adapter.externalRequest({ action: 'status', handle: untouched })).resolves.toEqual(
+    empty,
+  );
+  await expect(adapter.externalRequest({ action: 'status', handle: randomUUID() })).rejects.toThrow(
+    'Unknown saved member',
+  );
+  const proposal = await externalCheckpoint();
+  expect(db.prepare('SELECT count(*) n FROM gex_proposals').get()!.n).toBe(1);
+  expect(db.prepare('SELECT count(*) n FROM gex_proposals WHERE handle=?').get(enrollment)!.n).toBe(
+    0,
+  );
+  await expect(adapter.externalRequest({ action: 'status', handle: untouched })).resolves.toEqual(
+    empty,
+  );
+  Object.assign(host, { localContributing: (selected: string) => selected !== untouched });
+  await expect(adapter.externalRequest({ action: 'status', handle: untouched })).resolves.toEqual(
+    empty,
+  );
+  await expect(
+    adapter.externalRequest({
+      action: 'propose',
+      handle: untouched,
+      key: randomUUID(),
+      head: proposal.head,
+    }),
+  ).rejects.toThrow('Enable contribution');
+  untouchedContext.visibility = 'private';
+  await expect(adapter.externalRequest({ action: 'status', handle: untouched })).rejects.toThrow(
+    'visible shared group',
+  );
+  untouchedContext.visibility = 'shared';
+  Object.assign(host, { localVisible: (selected: string) => selected !== untouched });
+  await expect(adapter.externalRequest({ action: 'status', handle: untouched })).rejects.toThrow(
+    'visible shared group',
+  );
+  Object.assign(host, { localVisible: () => true });
+  await adapter.close();
+  adapter = new GroupHostNativeGit(host, runtime, connector, true);
+  await expect(adapter.externalRequest({ action: 'status', handle: untouched })).resolves.toEqual(
+    empty,
+  );
+  const view = await adapter.externalRequest({ action: 'status', handle });
+  expect(view.proposals[0].id).toBe(proposal.key);
+  connector.resolveLocalContext = () => null;
+  await expect(adapter.externalRequest({ action: 'status', handle })).rejects.toThrow(
+    'Choose the intended shared folder',
+  );
+  expect(db.prepare('SELECT count(*) n FROM gex_proposals').get()!.n).toBe(1);
+});

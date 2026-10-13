@@ -21,6 +21,7 @@
     "pdfjs-dist": "^6.4.299",
     "qrcode.react": "^4.2.0",
     "react": "^19.1.1",
+    "react-aria-components": "^1.22.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",

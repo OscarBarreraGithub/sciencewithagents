@@ -1,0 +1,7 @@
+{
+  "name": "swa-groups",
+  "version": "0.2.0",
+  "description": "Use your existing Claude Code conversation with Science with Agents Groups.",
+  "author": { "name": "Science with Agents" },
+  "license": "MIT"
+}

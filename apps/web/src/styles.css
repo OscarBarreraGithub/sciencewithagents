@@ -5,8 +5,9 @@
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
-  color: #303830;
-  background: #f6f5f2;
+  color-scheme: dark;
+  color: var(--ink);
+  background: var(--surface-0);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -17,13 +18,34 @@
   --text-body: 1.0625rem;
   --text-reading: 1.125rem;
   --text-lead: 1.25rem;
-  --paper: #fffefa;
-  --line: #e6e7df;
-  --muted: #899086;
-  --ink: #303830;
-  --accent: #d95735;
-  --soft: #f2f0e9;
-  --green: #66856b;
+  /* Dark-only semantic foundation, shared by native and current workspace views. */
+  --surface-0: #101216;
+  --surface-1: #171a20;
+  --surface-2: #20242d;
+  --surface-3: #2a303b;
+  --surface: var(--surface-1);
+  --paper: var(--surface-1);
+  --soft: var(--surface-2);
+  --line: #343c49;
+  --ink: #eef0f5;
+  --muted: #a4adbd;
+  --accent: #a7b5ff;
+  --accent-solid: #5365d9;
+  --accent-wash: #252e4d;
+  --green: #87d7b2;
+  --positive: #87d7b2;
+  --positive-wash: #1b352d;
+  --warning: #ebc17c;
+  --warning-wash: #392f20;
+  --danger: #f2a2a7;
+  --danger-wash: #3b252e;
+  --home-paper: var(--surface-0);
+  --home-white: var(--surface-1);
+  --home-ink: var(--ink);
+  --home-muted: var(--muted);
+  --home-line: var(--line);
+  --home-blue: var(--accent);
+  --shadow-popover: 0 18px 60px #0008;
 }
 * {
   box-sizing: border-box;
@@ -696,7 +718,7 @@ small {
 .markdown {
   font-size: var(--text-small);
   line-height: 1.75;
-  color: #56614d;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 .markdown p {
@@ -706,7 +728,7 @@ small {
   margin-bottom: 0;
 }
 .markdown strong {
-  color: #414d38;
+  color: var(--ink);
   font-weight: 600;
 }
 .markdown ul,
@@ -746,7 +768,7 @@ small {
   color: #7b8772;
 }
 .message.user .markdown {
-  color: #4a5343;
+  color: var(--ink);
 }
 .handoff-label {
   font-family: monospace;
@@ -2974,10 +2996,10 @@ form > .primary {
   min-height: 44px;
   min-width: 44px;
   padding: 5px 10px;
-  border: 1px solid #d8dce3;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
-  color: #34465c;
+  background: var(--surface-2);
+  color: var(--ink);
   font: inherit;
   font-size: var(--text-small);
   cursor: pointer;

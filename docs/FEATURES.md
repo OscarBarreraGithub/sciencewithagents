@@ -299,6 +299,11 @@ Shared-chat delivery checks remain read-only. A confirmed missing receipt offers
 retry of the original message; recorded uncertain deliveries remain held for inspection.
 Definite refusals release pending state and preserve edited drafts.
 
+The 2026-10-12 optional [hosted Groups phone candidate](GROUP_PHONE_FEED.md) adds direct
+read-only messages while the computer is closed, with optional model-free human posting.
+It requires the matching creator Worker update; source checks do not establish deployment
+or physical-phone acceptance. It cannot launch agents or approve files.
+
 ## Documents on a phone
 
 **Attach files** opens the device's file picker in chat and the first-project notepad. Attach

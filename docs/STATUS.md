@@ -1,7 +1,61 @@
 # Current status
 
-Checked 2026-10-09. **Beta: current workflows have been exercised with real Codex/Claude
-projects and desktop/phone browser checks.** This is not a claim that every device or
+The 2026-10-12 dark interface candidate unifies the full app's navigation, controls and
+conversation surfaces with shared React Aria primitives. Groups opens on the shared
+conversation, with the optional native connection under **Your Claude Code** and management
+in its own panel. Saved SWA agent controls remain accessible. Lost Stop acknowledgements
+retain an exact retry through reload, and delayed feed loading preserves reading position.
+Four-layout Chromium checks cover Groups journeys, dark application surfaces, enlarged text,
+first-run recovery and keyboard composers; iPhone WebKit emulation also covers app surfaces,
+first-run recovery, composers and original-color PDF reading. These are isolated source
+checks, not installation, physical-device or independent two-person acceptance. The existing
+browser and Mac launcher remain the delivery path. [Interface system](UI_SYSTEM.md).
+
+The 2026-10-12 Groups candidate adds an optional Claude Code plugin/local MCP adapter and
+selected-conversation background summaries without Dock manager or QUARK admission.
+Full SWA and saved group-agent work remain retained. New prompts/final replies from the
+chosen native conversation are journaled privately; other conversations/subagents are
+excluded. Selection survives native hook compaction/resume. Model calls use the central
+bulk policy, bounded batches and at-most-once attempts; delivery retries reuse saved
+summaries and UUIDs. The UI shows connection/sharing status and Stop sharing.
+External-Claude Git holds persist after Stop until the app owner confirms that the exact
+conversation and its jobs are closed in Manage. New selections reapply the hold; ordinary
+agent credentials cannot release it. Stopped/stale automatic summaries cannot be retried.
+Focused protocol, authenticated creator/member fixtures, synthetic hook compaction,
+shared-listener lifecycle, restart/retry and four-layout Chromium checks cover this source
+slice. A real two-turn native Claude conversation selected the plugin connection and produced
+one bulk Sonnet update published to an owned local Worker. The selection prompt and reply
+were excluded from journaling/publication; only the next selected prompt/reply produced a job.
+The original harness exited 1 after publication on an invalid peer-read query; its cleanup
+also reported a missing child-closure receipt. A separate model-free reconciliation verified
+the exact peer summary, absence of raw private markers from hosted values and cleanup without replaying native turns.
+The original failed run and its historical cleanup gap remain preserved.
+The follow-up external-files candidate lets ordinary selected Claude propose immutable
+commits without app Work receipts. Exact owner-approved checkpoints publish through native
+Git without changing a live/dirty checkout; divergence preserves the remote default.
+Owned Git, authenticated HTTP review, restart/lost-announcement and four-layout emulated
+browser checks cover that source; live private GitHub and two-person acceptance remain open.
+[Claude Groups](GROUPS_CLAUDE.md).
+
+The hosted-phone source candidate provides one-use pairing, revocation, a direct read-only
+feed and optional human posting through the existing group delivery ledger. Owned service,
+normal-host and browser fixtures cover lost acknowledgements, restart, native-agent denial,
+current membership and reading after companion shutdown. Installed versions without the
+matching app and Worker updates still require the running computer. Activation/deployment,
+physical-phone and independent-person acceptance remain pending. The finite-capacity
+archive workflow is unfinished. [Hosted phone feed](GROUP_PHONE_FEED.md).
+
+Actual native Opus 5.5 review approved the initial combined UI and required a raw Git
+metadata correction. Its follow-up approved the source beta corrections, including raw Git
+review and generation-bound Stop recovery, with no new blocker. Source publication does not
+activate the running app or deploy the matching Worker. Advanced app-owned native/managed
+Git ancestry and managed integration-preview replacement-ref gaps remain low-severity
+follow-ons under `SWA-GROUP-NATIVE-BASELINE-20261012`. Ordinary selected-Claude publication
+now checks its retained base against the current remote before pushing; raw publication
+scans remain enforced for advanced work.
+
+**Historical verification, 2026-10-09:** beta workflows were exercised with real Codex/Claude
+projects and desktop/phone browser checks. This is not a claim that every device or
 future provider version is certified. See [verification](VERIFICATION.md) and the
 [published-source CI](https://github.com/OscarBarreraGithub/sciencewithagents/actions).
 
@@ -258,11 +312,12 @@ and model choices remain. Active work is never discarded by an inactivity timer.
 
 ## Groups
 
-**Release readiness:** the native Groups candidate now connects shared actions/reports,
-activity evidence, unfinished-file awareness and local/hosted recovery. Local checks and
-independent source reviews prepare it for joint testing; they do not certify production.
-Independent creator/member installation, real-provider/remote-Git collaboration and larger/interrupted deployed
-backups remain acceptance gates. Check the matching published CI result separately.
+**Release readiness, 2026-10-12:** the candidate connects selected-Claude summaries,
+owner-reviewed file checkpoints, hosted phone reading and the dark interface while retaining
+shared actions/reports and local/hosted recovery. The current review and native-proof evidence
+is recorded above; source publication remains separate from running-app and Worker activation.
+Independent creator/member installation, live remote-Git collaboration, physical phones and
+larger/interrupted deployed backups remain acceptance gates. Check the matching public CI separately.
 See [Groups release readiness](GROUP_RELEASE_READINESS.md) and
 [manager lessons](FAILURE_REVIEW.md).
 
@@ -289,10 +344,10 @@ project resume retains a later explicit job Pause. Automatic-check toggles prese
 work, and settled model-setting retries cannot reconnect a later conversation. Focused source
 and emulated-browser checks cover these changes; see [verification](VERIFICATION.md).
 
-**Current v1 implementation:** Groups uses ordinary host-native agents with the
-existing Codex/Claude sign-in. The shared journey lives under **Chats → Groups**, with
-**Group chat** for everyone’s messages and **My group agent** for the owner’s agent. Previously
-saved private sessions, requests and drafts retain their separate publication boundaries. The owner enables native access on their
+**Retained app-owned workflow:** Groups keeps existing host-native agents with the
+owner's Codex/Claude sign-in under **Your Claude Code → Saved SWA group agent**.
+**Group chat** remains everyone's messages. Previously saved private sessions, requests
+and drafts retain their separate publication boundaries. The owner enables native access on their
 computer; incoming group messages do not authorize local work. Ask is read-only and Work
 explicitly authorizes native writing. This is not an operating-system sandbox. Docker and
 a separate Linux sign-in are not required. Existing isolated history is retained without

@@ -19,9 +19,11 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 - [Private Groups archive and staged recovery](GROUP_RECOVERY.md)
 - [Creator-hosted Groups backup and recovery policy](GROUP_HOSTED_RECOVERY.md)
 - [What Groups stores, syncs and charges to model allowance](GROUP_DATA.md)
+- [Direct hosted Groups phone feed](GROUP_PHONE_FEED.md)
 
 ## Technical references
 
+- [Interface system and dark UI](UI_SYSTEM.md)
 - [Operations and recovery](OPERATIONS.md), [troubleshooting](ORCHESTRATOR_TROUBLESHOOTING.md)
 - [Maintenance failures and manager lessons](FAILURE_REVIEW.md)
 - [Cloudflare phone setup](CLOUDFLARE_SETUP.md), [real-phone acceptance](PHONE_ACCEPTANCE.md)
@@ -41,6 +43,7 @@ are in [Features](FEATURES.md) and [Status](STATUS.md).
 - [Groups agents with existing native sign-in](GROUP_NATIVE_OWNER_SETUP.md)
 - [Native folder Start, terminal connections and direct chats](NATIVE_CONNECTIONS.md)
 - [Native Groups shared files, branches and reviewed sync](GROUP_NATIVE_GIT.md)
+- [Groups with your existing Claude Code and selected automatic sharing](GROUPS_CLAUDE.md)
 - [Persistent local Groups test workflow](GROUP_FIXTURE.md)
 - [Groups presentation and synthetic browser preview](GROUP_UI.md)
 - [Verification](VERIFICATION.md), [maintenance scripts](../scripts/README.md),

@@ -29,6 +29,7 @@ export function useGroupMessages(
   const [revoked, setRevoked] = useState(false);
   const [windowed, setWindowed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [loaded, setLoaded] = useState(false);
   const cache = useRef(new Map<string, SharedGroupMessage>());
   const position = useRef(0);
   const initialized = useRef(false);
@@ -131,7 +132,10 @@ export function useGroupMessages(
           if (!page.continuation || pages === 24) break;
           page = await pageAt(0, page.continuation);
         }
-        if (alive) setError('');
+        if (alive) {
+          setError('');
+          setLoaded(true);
+        }
         return changed;
       } catch (reason) {
         if (alive && !controller.signal.aborted)
@@ -159,5 +163,12 @@ export function useGroupMessages(
     loadOriginal,
     attempt,
   ]);
-  return { messages, error, revoked, windowed, retry: () => setAttempt((value) => value + 1) };
+  return {
+    messages,
+    error,
+    revoked,
+    windowed,
+    loading: active && Boolean(loadPage && loadOriginal) && !loaded && messages.length === 0,
+    retry: () => setAttempt((value) => value + 1),
+  };
 }

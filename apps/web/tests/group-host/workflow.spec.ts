@@ -111,7 +111,8 @@ async function chat(page: Page) {
 }
 async function manager(page: Page) {
   await expect(page.locator('.groups-workspace')).toBeVisible();
-  await page.getByRole('tab', { name: 'My group agent', exact: true }).click();
+  await page.getByRole('tab', { name: 'Your Claude Code', exact: true }).click();
+  await page.getByText('Saved SWA group agent', { exact: true }).click();
 }
 async function savedGroup(page: Page, host: HostConnection = connection) {
   const handle = new URL(page.url()).hash.split('/').at(-1)!;
@@ -176,7 +177,7 @@ test('Chats filters groups, opens legacy routes and preserves shared drafts plus
     }
   });
   await chat(page);
-  await expect(page.getByRole('tab')).toHaveText(['Group chat', 'My group agent']);
+  await expect(page.getByRole('tab')).toHaveText(['Group chat', 'Your Claude Code']);
   await expect(page.getByRole('combobox', { name: 'Send to', exact: true })).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: 'Agent request', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Private to you', exact: true })).toHaveCount(0);
@@ -618,7 +619,7 @@ test('invitation joins a second host, shares exact human bubbles and retries the
     ).toBe(true);
     await member.reload();
     await chat(member);
-    await expect(member.getByRole('tab')).toHaveText(['Group chat', 'My group agent']);
+    await expect(member.getByRole('tab')).toHaveText(['Group chat', 'Your Claude Code']);
     await expect(member.getByRole('combobox', { name: 'Send to', exact: true })).toHaveCount(0);
     const original =
       'SECOND-HOST-SHARED-EXACT\n' +

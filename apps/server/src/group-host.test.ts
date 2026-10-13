@@ -206,6 +206,7 @@ afterAll(async () => {
 async function installation(
   existing?: string,
   options: {
+    dataMode?: number;
     configured?: boolean;
     http?: typeof fetch;
     native?: GroupNativeConnector;
@@ -217,6 +218,7 @@ async function installation(
   } = {},
 ) {
   const directory = existing ?? mkdtempSync(join(root, 'installation-'));
+  if (options.dataMode) chmodSync(directory, options.dataMode);
   const appPort = await freePort();
   const store = new Store(join(directory, 'dock.sqlite'));
   let launches = 0;
@@ -293,7 +295,7 @@ async function installation(
     });
   };
   const get = (name: string, authorized = true) => {
-    const path = `/api/groups/${name}`;
+    const path = name ? `/api/groups/${name}` : '/api/groups';
     return app.inject({
       method: 'GET',
       url: path,
@@ -348,6 +350,323 @@ async function create(f: Awaited<ReturnType<typeof installation>>, name = 'River
   expect(response.statusCode, response.body).toBe(200);
   return { input, open: groupHostOpenSchema.parse(response.json()) };
 }
+it('owner phone pairing retains one exact link after lost acknowledgement and restart; native agents cannot grant access', async () => {
+  let lost = false;
+  const pairs: unknown[] = [];
+  const http: typeof fetch = async (target, options) => {
+    const url = new URL(String(target));
+    const input = options?.body ? (JSON.parse(String(options.body)) as { kind?: string }) : null;
+    const response = await fetch(target, options);
+    if (url.pathname.endsWith('/phones') && input?.kind === 'pair') {
+      pairs.push(input);
+      if (!lost) {
+        lost = true;
+        throw new Error('Owned fixture lost phone receipt');
+      }
+    }
+    return response;
+  };
+  const f = await installation(undefined, { http }),
+    { open } = await create(f, 'Phone group');
+  const humanPost = (installation: typeof f, body: unknown) => {
+    const ticket = installation.access.issueHandoff();
+    const cookie = installation.access.consumeHandoff(ticket.ticket)!.split(';')[0];
+    return installation.app.inject({
+      method: 'POST',
+      url: '/api/groups/phone',
+      headers: {
+        host: new URL(installation.access.browserOrigin).host,
+        origin: installation.access.browserOrigin,
+        cookie,
+        'content-type': 'application/json',
+      },
+      payload: body as Record<string, unknown>,
+    });
+  };
+  const input = {
+    action: 'pair',
+    handle: open.shared.handle,
+    key: randomUUID(),
+    label: 'Personal phone',
+    allowPost: true,
+  };
+  await expect(f.host.phone(input)).rejects.toMatchObject({ status: 403 });
+  expect(pairs).toHaveLength(0);
+  expect((await f.post('phone', input, false)).statusCode).toBe(401);
+  expect((await humanPost(f, input)).statusCode).toBeGreaterThanOrEqual(500);
+  await f.close();
+  const reopened = await installation(f.directory, { http });
+  const response = await humanPost(reopened, input);
+  expect(response.statusCode, response.body).toBe(200);
+  expect(pairs).toHaveLength(2);
+  expect(pairs[0]).toEqual(pairs[1]);
+  const view = response.json() as { link: string; expiresAt: number; devices: unknown[] },
+    link = new URL(view.link);
+  expect(link.origin).toBe(new URL(endpoint).origin);
+  expect(link.search).toBe('');
+  expect(link.pathname).toBe(`/groups/${open.group.id}`);
+  const fragment = new URLSearchParams(link.hash.slice(1)),
+    phoneOrigin = new URL(endpoint).origin;
+  const claim = {
+    kind: 'claim',
+    pairId: fragment.get('id'),
+    pairSecret: fragment.get('pair'),
+    pairProof: fragment.get('proof'),
+    expiresAt: Number(fragment.get('expires')),
+    key: randomUUID(),
+    deviceId: randomUUID(),
+    deviceCredential: secret(),
+  };
+  const phone = async (body: unknown, cookie?: string) =>
+    fetch(`${phoneOrigin}/v1/phone/${open.group.id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: phoneOrigin,
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  const connected = await phone(claim);
+  expect(connected.status).toBe(200);
+  const cookie = connected.headers.get('set-cookie')!.split(';')[0]!;
+  const human = { kind: 'post', key: randomUUID(), text: 'A human message from the phone.' };
+  expect((await phone(human, cookie)).status).toBe(200);
+  const feed = await reopened.post('feed', {
+    handle: open.shared.handle,
+    query: { visibility: 'shared', after: 0, limit: 20, cursor: null },
+  });
+  expect(feed.statusCode, feed.body).toBe(200);
+  expect(feed.json().entries).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        condensedText: human.text,
+        scope: expect.objectContaining({ memberId: open.member.memberId }),
+      }),
+    ]),
+  );
+  const devices = (
+    await reopened.post('phone', { action: 'status', handle: open.shared.handle })
+  ).json();
+  expect(devices.devices).toEqual([
+    { id: claim.deviceId, label: input.label, allowPost: true, state: 'active' },
+  ]);
+  const revoke = {
+    action: 'revoke',
+    handle: open.shared.handle,
+    key: randomUUID(),
+    deviceId: claim.deviceId,
+  };
+  expect((await humanPost(reopened, revoke)).statusCode).toBe(200);
+  expect((await humanPost(reopened, revoke)).statusCode).toBe(200);
+  expect((await phone({ kind: 'feed', before: null, since: 0 }, cookie)).status).toBe(403);
+  await expect(
+    reopened.host.phone({ ...input, key: randomUUID(), handle: open.private.handle }, true),
+  ).rejects.toMatchObject({ status: 403 });
+  reopened.host.localMode({
+    handle: open.group.handle,
+    key: randomUUID(),
+    revision: 0,
+    mode: 'read-only',
+  });
+  await expect(reopened.host.phone({ ...input, key: randomUUID() }, true)).rejects.toMatchObject({
+    code: 'GROUP_LOCAL_READ_ONLY',
+  });
+  const reading = await humanPost(reopened, { ...input, key: randomUUID(), allowPost: false });
+  expect(reading.statusCode, reading.body).toBe(200);
+});
+it('keeps full SWA available with legacy data permissions or a broken optional sharing journal', async () => {
+  const f = await installation(undefined, { dataMode: 0o775 });
+  const { open } = await create(f, 'Legacy data');
+  expect((await f.get('')).statusCode).toBe(200);
+  const file = join(f.directory, 'groups-conversations.sqlite');
+  expect(readdirSync(f.directory)).not.toContain('groups-conversations.sqlite');
+  expect(
+    (await f.post('conversation-sharing', { action: 'status', handle: open.group.handle })).json(),
+  ).toMatchObject({ selection: null });
+  writeFileSync(file, 'Retain this invalid optional file.', { mode: 0o600 });
+  await f.close();
+  const reopened = await installation(f.directory, { dataMode: 0o775 });
+  expect((await reopened.get('')).statusCode).toBe(200);
+  expect(
+    (await reopened.post('conversation-sharing', { action: 'status', handle: open.group.handle }))
+      .statusCode,
+  ).toBe(503);
+  expect(readFileSync(file, 'utf8')).toBe('Retain this invalid optional file.');
+}, 30000);
+
+it('authenticated Stop recovery preserves generation and legacy lookup through the host route', async () => {
+  const f = await installation(),
+    { open } = await create(f);
+  const { GroupsConversationJournal } = await import('./groups-conversation-journal.js');
+  const journal = new GroupsConversationJournal(f.directory),
+    handle = open.group.handle;
+  try {
+    const sessionId = randomUUID();
+    journal.registerSession(sessionId);
+    const a = journal.select({ handle, key: randomUUID(), sessionId });
+    const status = await f.post('conversation-sharing', { action: 'status', handle });
+    expect(status.json().selection.generation).toBe(a.generation);
+    const request = { action: 'stop', handle, key: randomUUID(), generation: a.generation };
+    const stopped = await f.post('conversation-sharing', request);
+    expect(stopped.json()).toMatchObject({ outcome: 'stopped', enabled: false });
+    const b = journal.select({ handle, key: randomUUID(), sessionId });
+    expect((await f.post('conversation-sharing', request)).json()).toEqual(stopped.json());
+    expect(journal.selection(handle)).toEqual(b);
+    expect(
+      (await f.post('conversation-sharing', { ...request, key: randomUUID() })).json(),
+    ).toMatchObject({ outcome: 'superseded' });
+    expect(
+      (
+        await f.post('conversation-sharing', {
+          action: 'stop',
+          handle,
+          key: randomUUID(),
+          recoverOnly: true,
+        })
+      ).json(),
+    ).toEqual({ outcome: 'unresolved' });
+    expect(journal.selection(handle)).toEqual(b);
+  } finally {
+    journal.close();
+  }
+});
+
+it('ordinary Claude tools create, invite, join and exchange shared messages without an app-managed provider turn', async () => {
+  const a = await installation(),
+    b = await installation();
+  await a.app.listen({ host: '127.0.0.1', port: a.appPort });
+  await b.app.listen({ host: '127.0.0.1', port: b.appPort });
+  const { GroupsExternalClient } = await import('./groups-external-client.js');
+  const creator = new GroupsExternalClient(a.directory),
+    member = new GroupsExternalClient(b.directory);
+  const created = (await creator.call('groups_create', {
+    key: randomUUID(),
+    projectName: 'Ordinary Claude group',
+    displayName: 'Creator',
+  })) as { group: { handle: string } };
+  expect(created).not.toHaveProperty('private');
+  expect(readdirSync(a.directory)).not.toContain('groups-conversations.sqlite');
+  const { GroupsConversationJournal } = await import('./groups-conversation-journal.js');
+  const registration = new GroupsConversationJournal(a.directory),
+    selectedSession = randomUUID();
+  registration.registerSession(selectedSession);
+  registration.close();
+  expect(
+    await creator.call('groups_select_conversation', {
+      handle: created.group.handle,
+      key: randomUUID(),
+      sessionId: selectedSession,
+    }),
+  ).toMatchObject({ selection: { enabled: true }, background: { selection: { enabled: true } } });
+  const canonical = new GroupsConversationJournal(a.directory);
+  expect(canonical.selection(created.group.handle)?.enabled).toBe(true);
+  canonical.close();
+  const invited = (await creator.call('groups_invite', {
+    handle: created.group.handle,
+    key: randomUUID(),
+  })) as { invitation: string };
+  const joined = (await member.call('groups_join', {
+    key: randomUUID(),
+    invitation: invited.invitation,
+    displayName: 'Member',
+  })) as { group: { handle: string } };
+  expect(joined).not.toHaveProperty('confirmation');
+  expect(proxyPath('POST', '/groups/conversation-sharing')).toBe(
+    '/api/groups/conversation-sharing',
+  );
+  const key = randomUUID(),
+    text = 'A selected update from my ordinary Claude.';
+  const receipt = await member.call('groups_post', { handle: joined.group.handle, key, text });
+  expect(receipt).toMatchObject({ delivery: 'complete' });
+  await member.call('groups_post', { handle: joined.group.handle, key, text });
+  const feed = await creator.call('groups_read', {
+    handle: created.group.handle,
+    query: { visibility: 'shared', after: 0, limit: 20, cursor: null },
+  });
+  expect(JSON.stringify(feed)).toContain(text);
+  expect(await member.call('groups_delivery', { handle: joined.group.handle, key })).toMatchObject({
+    delivery: 'complete',
+  });
+  await creator.call('groups_post', {
+    handle: created.group.handle,
+    key: randomUUID(),
+    text: 'The creator can respond too.',
+  });
+  expect(
+    JSON.stringify(
+      await member.call('groups_read', {
+        handle: joined.group.handle,
+        query: { visibility: 'shared', after: 0, limit: 20, cursor: null },
+      }),
+    ),
+  ).toContain('The creator can respond too.');
+  const pending = new GroupsConversationJournal(b.directory),
+    memberSession = randomUUID();
+  pending.registerSession(memberSession);
+  pending.select({ handle: joined.group.handle, sessionId: memberSession, key: randomUUID() });
+  pending.observe(memberSession, 'UserPromptSubmit', 'Selected private source');
+  pending.observe(memberSession, 'Stop', 'Selected reply');
+  const job = pending.jobs()[0];
+  pending.mark(job.id, {
+    state: 'unknown',
+    summary: 'A saved summary awaiting explicit delivery.',
+    model: 'controlled-test-model',
+    message: 'Lost delivery.',
+  });
+  pending.close();
+  expect(
+    await member.call('groups_delivery', { handle: joined.group.handle, key: job.id, retry: true }),
+  ).toMatchObject({ delivery: 'complete' });
+  const reopened = new GroupsConversationJournal(b.directory);
+  try {
+    expect(reopened.state(job.id).state).toBe('published');
+    reopened.observe(memberSession, 'UserPromptSubmit', 'A second selected source');
+    reopened.observe(memberSession, 'Stop', 'A second selected reply');
+    const stoppedJob = reopened.jobs().find((value) => value.id !== job.id)!;
+    reopened.mark(stoppedJob.id, {
+      state: 'ready',
+      summary: 'Must never be shared after Stop',
+      message: 'Prepared update.',
+    });
+    reopened.stop({ handle: joined.group.handle, key: randomUUID() });
+    await expect(
+      member.call('groups_delivery', {
+        handle: joined.group.handle,
+        key: stoppedJob.id,
+        retry: true,
+      }),
+    ).rejects.toThrow('sharing is stopped');
+    await expect(
+      member.call('groups_delivery', {
+        handle: joined.group.handle,
+        key: randomUUID(),
+        retry: true,
+      }),
+    ).rejects.toThrow();
+    expect(
+      JSON.stringify(
+        await creator.call('groups_read', {
+          handle: created.group.handle,
+          query: { visibility: 'shared', after: 0, limit: 20, cursor: null },
+        }),
+      ),
+    ).not.toContain('Must never be shared');
+    reopened.select({ handle: joined.group.handle, sessionId: memberSession, key: randomUUID() });
+    await expect(
+      member.call('groups_delivery', {
+        handle: joined.group.handle,
+        key: stoppedJob.id,
+        retry: true,
+      }),
+    ).rejects.toThrow('selection changed');
+    await expect(
+      member.call('groups_delivery', { handle: joined.group.handle, key: job.id, retry: true }),
+    ).rejects.toThrow('no undelivered summary');
+  } finally {
+    reopened.close();
+  }
+}, 30000);
 
 it('local byte admission preserves real send/draft retries beyond old row limits and refuses a new key before local effects', async () => {
   const f = await installation();

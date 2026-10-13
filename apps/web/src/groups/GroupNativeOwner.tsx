@@ -21,6 +21,7 @@ export function GroupNativeOwner({
   requestPendingConsent,
   requestState,
   requestText,
+  showControls = true,
 }: {
   handle: string;
   requestId?: string;
@@ -31,6 +32,7 @@ export function GroupNativeOwner({
   requestPendingConsent?: boolean;
   requestState?: NonNullable<GroupHostChat['nativeRequests']>[number]['state'];
   requestText?: string;
+  showControls?: boolean;
 }) {
   const [status, setStatus] = useState<GroupNativeOwnerStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -90,6 +92,7 @@ export function GroupNativeOwner({
     setConsent(false);
     void control('status');
   }, [handle, requestId]);
+  if (!showControls && !requestPendingConsent && !requestId) return null;
   if (hostMode)
     return (
       <details className="group-native-owner" open={Boolean(requestId)}>

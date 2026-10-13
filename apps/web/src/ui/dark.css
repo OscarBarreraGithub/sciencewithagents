@@ -1,0 +1,1208 @@
+/* Shared dark application surfaces. Original document pages and image pixels keep
+   their own colors; this sheet styles only the surrounding application chrome. */
+:root {
+  --home-surface: var(--surface-1);
+  accent-color: var(--accent-solid);
+  scrollbar-color: #505a6b var(--surface-0);
+}
+::selection {
+  background: #697fea66;
+  color: #fff;
+}
+body {
+  background: var(--surface-0);
+}
+
+/* Reusable React Aria controls, styled alongside native app controls. */
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: max(1rem, 16px);
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.ui-button[data-hovered] {
+  background: var(--surface-3);
+}
+.ui-button[data-pressed] {
+  background: var(--surface-0);
+}
+.ui-button[data-focus-visible] {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.ui-button[data-disabled],
+.ui-button[data-pending] {
+  opacity: 0.5;
+  cursor: default;
+}
+.ui-button-primary {
+  background: var(--accent-solid);
+  color: #fff;
+  border-color: var(--accent-solid);
+}
+.ui-button-primary[data-hovered] {
+  background: #6375e8;
+}
+.ui-button-quiet {
+  background: transparent;
+}
+.ui-icon-button {
+  padding: 10px;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+}
+.ui-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background: #080a10b8;
+  backdrop-filter: blur(5px);
+  overflow-y: auto;
+}
+.ui-dialog-modal {
+  width: min(660px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+}
+.ui-dialog {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-1);
+  color: var(--ink);
+  box-shadow: var(--shadow-popover);
+  outline: none;
+}
+.ui-dialog .modal-heading h2 {
+  color: var(--ink);
+}
+.ui-dialog p {
+  line-height: 1.6;
+}
+
+/* App-wide controls retain their existing events and layout contracts. */
+:root :is(input, textarea, select):not([type='range']):not([type='checkbox']):not([type='radio']) {
+  color: var(--ink);
+  background-color: var(--surface-0);
+  border-color: var(--line);
+  font-size: max(1rem, 16px);
+  caret-color: var(--accent);
+}
+:root :is(input, textarea)::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+:root :is(input, textarea, select):focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px #a7b5ff25;
+}
+:root
+  :is(
+    .primary,
+    .secondary,
+    .icon-button,
+    .task-button,
+    .flow-button,
+    .chat-tool,
+    .chat-icon-button,
+    .chat-small-button,
+    .setup-link
+  ) {
+  min-height: 44px;
+  border-radius: 9px;
+  font-size: max(1rem, 16px);
+}
+:root
+  :is(
+    .secondary,
+    .icon-button,
+    .flow-button,
+    .chat-tool,
+    .chat-icon-button,
+    .chat-small-button,
+    .setup-link
+  ) {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  box-shadow: none;
+}
+:root :is(.icon-button, .chat-icon-button) {
+  min-width: 44px;
+}
+:root
+  :is(
+    .secondary,
+    .icon-button,
+    .flow-button,
+    .chat-tool,
+    .chat-icon-button,
+    .chat-small-button,
+    .setup-link
+  ):hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: #566176;
+  color: var(--ink);
+}
+:root
+  :is(
+    .primary,
+    .flow-button.primary,
+    .chat-small-button.primary,
+    .send-button,
+    .model-primary,
+    .app-open:not(.quiet)
+  ) {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  color: #fff;
+  box-shadow: none;
+}
+:root :is(.primary, .flow-button.primary, .chat-small-button.primary):hover:not(:disabled) {
+  background: #6375e8;
+}
+:root :is(button, a, summary):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+:root :is(dialog, .popover, .settings-card, .flow-form-panel, .conversation-menu, .chat-new-menu) {
+  background: var(--surface-1);
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: var(--shadow-popover);
+}
+:root dialog::backdrop {
+  background: #080a10b8;
+  backdrop-filter: blur(5px);
+}
+:root :is(dialog p, dialog label, .modal-heading h2, .settings-card label) {
+  color: var(--ink);
+}
+:root :is(pre, .flow-form-panel pre, .provider-actions pre, .setup-prompt pre, .setup-prompt-text) {
+  background: var(--surface-0);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+/* The shell has a quiet frame and unmistakable navigation/control surfaces. */
+.home-shell {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+}
+.home-shell :is(h1, h2, h3) {
+  letter-spacing: -0.025em;
+}
+.home-shell .home-header {
+  background: var(--surface-1);
+}
+.home-shell .home-header-inner {
+  min-height: 72px;
+  gap: 18px;
+  padding-inline: 24px;
+}
+.home-shell .home-brand {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+.home-shell .home-desktop-nav {
+  gap: 5px;
+}
+.home-shell .home-desktop-nav a {
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+}
+.home-shell .home-desktop-nav a:hover {
+  background: var(--surface-2);
+}
+.home-shell .home-desktop-nav a[aria-current='page'] {
+  background: var(--accent-wash);
+  color: var(--accent);
+  border-color: #485887;
+}
+.home-shell .home-header-actions {
+  gap: 8px;
+}
+.home-shell .home-icon-button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+  padding: 10px;
+}
+.home-shell .home-icon-button:hover {
+  background: var(--surface-3);
+}
+.home-shell :is(.home-back, .home-phone, .home-chip, .home-allowance > summary) {
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  border-radius: 9px;
+}
+.home-shell
+  :is(.home-back, .home-phone, .home-computer, .home-chip, .home-allowance > summary):hover {
+  background: var(--surface-3);
+}
+.home-shell .home-topline {
+  padding-inline: 24px;
+  min-height: 48px;
+}
+.home-shell .home-content {
+  padding-inline: 24px;
+}
+.home-shell .home-popover {
+  background: var(--surface-2);
+  border-color: var(--line);
+  box-shadow: var(--shadow-popover);
+}
+.home-shell .home-allowance-track {
+  background: var(--surface-0);
+}
+.home-shell .home-allowance-track > i {
+  background: var(--accent);
+}
+.home-shell .home-allowance.is-stale .home-allowance-track > i {
+  background: var(--muted);
+}
+.home-shell
+  :is(.home-phone.tone-ok, .overview-fresh, .connection-check.tone-ok .connection-check-state) {
+  color: var(--positive);
+}
+.home-shell :is(.home-phone.tone-bad, .todo-error) {
+  color: var(--danger);
+}
+.home-shell :is(.home-connection-note, .home-allowance-warning) {
+  color: var(--warning);
+  background: var(--warning-wash);
+  border-color: #79603b;
+}
+.home-shell :is(.home-placeholder-return, .home-update) {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.home-shell .home-demo {
+  border-color: var(--line);
+  color: var(--muted);
+}
+.home-shell .home-skip {
+  background: var(--surface-2);
+}
+.home-shell .provider-actions :is(button, a) {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  border-radius: 8px;
+  margin-block: 2px;
+}
+.home-help .setup-link {
+  text-align: left;
+  justify-content: flex-start;
+  padding: 10px 14px;
+}
+.home-help > section + section {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+/* Home: three destinations, then evidence and notes, with attention at right. */
+.home-shell .overview {
+  padding-top: 14px;
+}
+.home-shell .overview-main {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr);
+  grid-template-rows: auto auto;
+  grid-template-areas: 'nav nav' 'resources todo';
+  min-height: 0;
+}
+.home-shell .overview-destinations {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto;
+  gap: 12px;
+}
+.home-shell .destination {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 188px;
+  padding: 22px;
+  border-radius: 14px;
+  box-shadow: none;
+  position: relative;
+}
+.home-shell .destination > svg {
+  position: absolute;
+  right: 18px;
+  top: 25px;
+}
+.home-shell .destination-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.home-shell .destination-icon svg {
+  width: 24px;
+  height: 24px;
+}
+.home-shell .destination-text strong {
+  font-size: 24px;
+}
+.home-shell .destination-text small {
+  font-size: 16px;
+  line-height: 1.5;
+}
+.home-shell .destination-apps .destination-icon {
+  background: var(--warning-wash);
+  color: var(--warning);
+}
+.home-shell .destination-quark .destination-icon {
+  background: var(--positive-wash);
+  color: var(--positive);
+}
+.home-shell .destination :is(.destination-text, strong) {
+  color: var(--ink);
+}
+.home-shell .destination > svg {
+  color: var(--muted);
+}
+.home-shell .overview-panel {
+  border-radius: 14px;
+  padding: 18px;
+}
+.home-shell .overview-count {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+.home-shell :is(.overview-count.is-active, .attention-project-count) {
+  background: var(--warning-wash);
+  color: var(--warning);
+  border-color: #79603b;
+}
+.home-shell :is(.attention-project, .todo-list > li) {
+  border-color: var(--line);
+}
+.home-shell
+  :is(
+    .attention-meta,
+    .attention-meta span:first-child,
+    .attention-detail,
+    .owner-work-board .todo-detail
+  ) {
+  color: var(--muted);
+}
+.home-shell .provider-mark-codex {
+  color: var(--ink);
+}
+.home-shell .resource-finding {
+  color: var(--warning);
+  background: var(--warning-wash);
+  border-color: var(--warning);
+}
+.home-shell .owner-work-board .todo-add {
+  background: var(--surface-0);
+  border-color: var(--line);
+}
+.home-shell .owner-work-board .todo-title-input {
+  border-color: var(--line);
+}
+.home-shell .owner-work-board .todo-list > li {
+  border-left-color: #52617d;
+}
+.home-shell .todo-add button,
+.home-shell .todo-send button[type='submit'] {
+  background: var(--accent-solid);
+  color: #fff;
+}
+.home-shell .todo-done {
+  color: var(--muted);
+}
+.home-shell .owner-board-tabs button[aria-pressed='true'] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+/* Lists, conversation chrome, and current/native message surfaces. */
+.home-shell
+  :is(
+    .flow-panel,
+    .flow-project-card,
+    .flow-chat-main,
+    .flow-search,
+    .chat-list-scroll,
+    .chat-pane,
+    .chat-item,
+    .chat-note-list li,
+    .chat-side,
+    .chat-visibility-status:not(:empty),
+    .activity-card,
+    .activity-total,
+    .activity-shortcuts a,
+    .connection-card,
+    .editor-conversation-frame,
+    .connection-page .mirror-home
+  ) {
+  background: var(--surface-1);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.home-shell .flow-heading {
+  margin-block: 12px 24px;
+}
+.home-shell .flow-heading h1 {
+  font-size: clamp(28px, 2.8vw, 36px);
+}
+.home-shell
+  :is(
+    .flow-prose p,
+    .chat-row-kind,
+    .chat-row-state,
+    .chat-item-text p,
+    .chat-note-list p,
+    .tool-group-body .tool-note
+  ) {
+  color: var(--muted);
+}
+.home-shell
+  :is(
+    .flow-avatar,
+    .flow-avatar.manager,
+    .chat-row-icon,
+    .chat-row-icon.vscode,
+    .chat-row-icon.misc
+  ) {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.home-shell .chat-row-icon.misc {
+  background: var(--warning-wash);
+  color: var(--warning);
+}
+.home-shell .flow-tabs {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 4px;
+  gap: 4px;
+}
+.home-shell .flow-tabs button {
+  min-height: 44px;
+  color: var(--muted);
+  border-radius: 7px;
+}
+.home-shell .flow-tabs button[aria-pressed='true'] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.home-shell .chat-list .chat-row:is(.vscode, .misc) {
+  background: transparent;
+}
+.home-shell .chat-list .chat-row:hover {
+  background: var(--surface-2);
+}
+.home-shell .chat-list .chat-row.selected {
+  background: var(--accent-wash);
+}
+.home-shell
+  :is(
+    .chat-new-option:hover,
+    .chat-new-option:focus-visible,
+    .chat-new-back:hover,
+    .conversation-menu-item:hover,
+    .conversation-menu-item:focus-visible
+  ) {
+  background: var(--surface-3);
+}
+.home-shell .chat-new-option > svg {
+  color: var(--accent);
+}
+.home-shell :is(.chat-new-option em, .flow-state, .worker-state, .chat-editor-status) {
+  color: var(--muted);
+  background: var(--surface-2);
+}
+.home-shell
+  :is(
+    .chat-tool[aria-pressed='true'],
+    .chat-quark-preference [role='switch'][aria-checked='true'],
+    .flow-state.running,
+    .flow-state.working,
+    .worker-state.running
+  ) {
+  color: var(--accent);
+  background: var(--accent-wash);
+}
+.home-shell :is(.flow-state.done, .flow-state.integrated) {
+  color: var(--positive);
+  background: var(--positive-wash);
+}
+.home-shell
+  :is(
+    .flow-state.waiting,
+    .flow-state.failed,
+    .worker-state.queued,
+    .worker-state.waiting,
+    .task-progress-item.held,
+    .task-progress-warning,
+    .flow-chat-notice,
+    .mirror-notice
+  ) {
+  color: var(--warning);
+  background: var(--warning-wash);
+  border-color: #79603b;
+}
+.home-shell :is(.worker-state.failed, .chat-panel-error, .tool-state.failed) {
+  color: var(--danger);
+}
+.home-shell .chat-editor-setup .connection-check,
+.home-shell .connection-check-state {
+  font-size: 16px;
+}
+.home-shell
+  :is(
+    .chat-pane .flow-chat-main,
+    .chat-pane .conversation,
+    .mirror-log,
+    .connection-page .mirror-log
+  ) {
+  background: var(--surface-0);
+}
+.home-shell
+  :is(
+    .chat-pane .message-body,
+    .chat-pane .thinking,
+    .mirror-message,
+    .mirror-activity-group-body
+  ) {
+  background: var(--surface-1);
+  border-color: var(--line);
+  color: var(--ink);
+  box-shadow: none;
+}
+.home-shell
+  :is(
+    .chat-pane .message.user .message-body,
+    .mirror-message.user,
+    .connection-page .mirror-message.user
+  ) {
+  background: var(--accent-wash);
+  border-color: #465785;
+  color: var(--ink);
+}
+.home-shell
+  :is(.chat-pane .conversation-date, .tool-group > summary, .mirror-activity-group > summary) {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--muted);
+}
+.home-shell
+  :is(
+    .chat-pane .message-heading time,
+    .tool-group-current,
+    .tool-group-body .tool-note > small,
+    .mirror-activity-current,
+    .mirror-activity-group
+  ) {
+  color: var(--muted);
+}
+.home-shell
+  :is(
+    .chat-pane .flow-chat-main .composer,
+    .mirror-composer,
+    .main-chat.has-selection .chat-pane-head
+  ) {
+  background: var(--surface-1);
+  border-color: var(--line);
+}
+.home-shell :is(.chat-pane .markdown a, .chat-editor-status, .mirror-all-chats) {
+  color: var(--accent);
+}
+.home-shell :is(.mirror-avatar, .mirror-avatar.codex) {
+  background: var(--positive-wash);
+  color: var(--positive);
+}
+.home-shell .mirror-avatar.claude {
+  background: var(--warning-wash);
+  color: var(--warning);
+}
+.home-shell
+  :is(
+    .mirror-notepad,
+    .mirror-controls > div,
+    .mirror-history button,
+    .mirror-text-pages button,
+    .flow-archive-action
+  ) {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.home-shell .composer .composer-timing {
+  background: var(--accent-wash);
+  color: var(--accent);
+  border-color: #465785;
+}
+.home-shell .mirror-log pre {
+  background: var(--surface-0);
+}
+
+/* Welcome, model/setup controls and QUARK share the same semantic colors. */
+.home-shell
+  :is(
+    .welcome-step,
+    .welcome-provider,
+    .welcome-cli-setup,
+    .welcome-phone,
+    .model-tier,
+    .model-settings .model-enabled label,
+    .quark-desk,
+    .quark-decisions,
+    .quark-advanced,
+    .quark-project-card,
+    .quark-ticket
+  ) {
+  background: var(--surface-1);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.home-shell :is(.welcome-intro, .connection-welcome) {
+  background: var(--accent-wash);
+  border-color: #465785;
+}
+.home-shell :is(.welcome-number, .welcome-orbit span, .connection-icon) {
+  background: var(--surface-2);
+  color: var(--accent);
+  border-color: var(--line);
+}
+.home-shell
+  :is(.welcome-intro svg, .welcome-code, .welcome-phone > svg, .welcome-orbit i, .activity-kind) {
+  color: var(--accent);
+}
+.home-shell
+  :is(
+    .welcome-intro p,
+    .welcome-step p,
+    .welcome-phone p,
+    .welcome-page .welcome-fine,
+    .welcome-sign-in small,
+    .welcome-model-list small,
+    .model-settings small,
+    .model-heading > p:last-child,
+    .model-explainer,
+    .model-routing > p:not(.home-eyebrow),
+    .model-catalog-note,
+    .model-tier header p,
+    .model-provider-choice label,
+    .model-provider-choice details,
+    .model-save > span,
+    .model-enabled p,
+    .model-restore p
+  ) {
+  color: var(--muted);
+}
+.home-shell .welcome-pill {
+  background: var(--surface-3);
+  color: var(--muted);
+}
+.home-shell :is(.welcome-pill.ready, .model-feedback) {
+  background: var(--positive-wash);
+  color: var(--positive);
+}
+.home-shell :is(.model-feedback.error, .activity-warning) {
+  color: var(--warning);
+  background: var(--warning-wash);
+  border-color: #79603b;
+}
+.home-shell :is(.welcome-page .welcome-problem, .apps-problem) {
+  color: var(--danger);
+}
+.home-shell
+  :is(
+    .model-settings button,
+    .model-settings select,
+    .model-settings label,
+    .model-settings strong
+  ) {
+  color: var(--ink);
+}
+.home-shell .model-settings button {
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+.home-shell .model-settings .model-primary {
+  background: var(--accent-solid);
+  color: #fff;
+}
+.home-shell .model-enabled label:has(input:checked) {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+}
+.home-shell .model-enabled a {
+  color: var(--accent);
+}
+.home-shell
+  :is(.welcome-model-list li, .model-route-list, .model-route-list > label, .model-restore) {
+  border-color: var(--line);
+}
+.home-shell
+  :is(
+    .activity-calm,
+    .quark-column,
+    .quark-account,
+    .quark-provider-reserve,
+    .quark-desk > header,
+    .quark-rate-history
+  ) {
+  background: var(--surface-2);
+}
+.home-shell .quark-workspace {
+  --q-border: var(--line);
+  color: var(--ink);
+}
+.home-shell
+  :is(
+    .quark-summary-counts button,
+    .quark-ticket-actions > a,
+    .quark-budget-error button,
+    .quark-provider-reserve summary,
+    .quark-project-instructions summary,
+    .quark-total-caps summary,
+    .quark-account summary
+  ) {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.home-shell .quark-summary-counts button[aria-pressed='true'] {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+}
+.home-shell :is(.quark-symbol, .quark-ticket-model, .quark-column h3 b) {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+.home-shell
+  :is(
+    .quark-ticket-project,
+    .quark-ticket-facts,
+    .quark-column-empty,
+    .quark-rate-history figcaption
+  ) {
+  color: var(--muted);
+}
+.home-shell
+  :is(.quark-budget-slider label, .quark-budget-slider-heading strong, .quark-rate-label > strong) {
+  color: var(--ink);
+}
+.home-shell :is(.quark-account.is-stale > header small, .quark-account-reason, .quark-rate-paused) {
+  color: var(--warning);
+}
+.home-shell .quark-budget-meter {
+  background: var(--surface-0);
+}
+.home-shell .quark-budget-meter > span {
+  background: var(--positive);
+}
+.home-shell .quark-ticket footer {
+  border-color: var(--line);
+}
+.home-shell :is(.apps-state.state-running, .setup-account.state-connected) {
+  color: var(--positive);
+}
+.home-shell :is(.apps-state.state-not_responding, .setup-account.state-unavailable) {
+  color: var(--warning);
+}
+.home-shell .setup-step-number {
+  background: var(--accent-solid);
+  color: #fff;
+}
+
+/* The retained classic workspace remains usable with the shared dark tokens. */
+.app-shell
+  :is(
+    .sidebar,
+    .team-panel,
+    .topbar,
+    .composer-area,
+    .composer,
+    .task-card,
+    .agent-card,
+    .host-card
+  ) {
+  background: var(--surface-1);
+  border-color: var(--line);
+}
+.app-shell
+  :is(
+    .search-box,
+    .project-link.selected,
+    .project-icon,
+    .workspace-symbol,
+    .thinking,
+    .tool-call,
+    .message.user .markdown
+  ) {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.app-shell
+  :is(
+    .help-link,
+    .section-heading,
+    .breadcrumbs,
+    .breadcrumbs strong,
+    .channel-identity p,
+    .message-heading time,
+    .team-description
+  ) {
+  color: var(--muted);
+}
+:root :is(.badge, .avatar) {
+  background: var(--surface-2);
+  color: var(--muted);
+  border-color: var(--line);
+}
+:root :is(.badge.running, .badge.working, .badge.waiting, .badge.needs_decision) {
+  background: var(--warning-wash);
+  color: var(--warning);
+  border-color: #79603b;
+}
+:root :is(.badge.failed, .badge.interrupted, .error-banner, .home-error) {
+  background: var(--danger-wash);
+  color: var(--danger);
+  border-color: #79515f;
+}
+
+/* Reader chrome is dark. Scientific pages and rendered figures remain original. */
+:root
+  :is(
+    .pdf-reader,
+    .pdf-reader::backdrop,
+    .pdf-heading,
+    .pdf-toolbar,
+    .pdf-opening,
+    .document-format
+  ) {
+  background: var(--surface-1);
+  color: var(--ink);
+  border-color: var(--line);
+}
+:root :is(.pdf-heading small, .latex-note, .latex-app > header p) {
+  color: var(--muted);
+}
+:root
+  :is(
+    .pdf-toolbar button,
+    .pdf-toolbar select,
+    .pdf-toolbar input,
+    .document-format button,
+    .document-format select
+  ) {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line);
+}
+:root :is(.pdf-status, .pdf-error) {
+  background: var(--warning-wash);
+  color: var(--warning);
+}
+:root .reader-modes button[aria-pressed='true'] {
+  background: var(--accent-wash);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+:root .document-reading-scroll {
+  color-scheme: light;
+}
+
+@media (max-width: 1100px) {
+  .home-shell .overview-destinations {
+    grid-template-columns: 1fr;
+  }
+  .home-shell .destination {
+    flex-direction: row;
+    align-items: center;
+    min-height: 100px;
+    padding: 18px;
+  }
+  .home-shell .destination > svg {
+    position: static;
+  }
+}
+@media (max-width: 700px) {
+  .home-shell .home-header-inner {
+    min-height: 58px;
+    gap: 6px;
+    padding: env(safe-area-inset-top, 0px) 12px 0;
+  }
+  .home-shell .home-content {
+    padding-inline: 12px;
+  }
+  .home-shell .home-header-actions {
+    gap: 6px;
+  }
+  .home-shell .home-brand {
+    min-width: 0;
+  }
+  .home-shell .overview {
+    padding-top: 6px;
+  }
+  .home-shell .overview-main {
+    display: contents;
+  }
+  .home-shell .overview-destinations {
+    grid-template-columns: 1fr;
+  }
+  .home-shell .destination {
+    gap: 14px;
+    min-height: 100px;
+    padding: 18px;
+    border-radius: 12px;
+  }
+  .home-shell .destination-text strong {
+    font-size: 22px;
+  }
+  .home-shell .overview-panel {
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .ui-dialog {
+    padding: 18px;
+    border-radius: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-button,
+  .ui-dialog-overlay,
+  .ui-dialog {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* Connected chat workspace: one frame, a list column and a reading column. */
+@media (min-width: 701px) {
+  .home-shell .home-content:has(> .main-chat) {
+    padding: 0;
+  }
+  .home-shell .main-chat.flow-page {
+    gap: 0;
+    padding: 0;
+    border-top: 1px solid var(--line);
+  }
+  .home-shell .main-chat > .chat-list {
+    padding: 18px 16px 0;
+    border-right: 1px solid var(--line);
+    background: var(--surface-1);
+    gap: 12px;
+  }
+  .home-shell .main-chat > .chat-pane {
+    border: 0;
+    border-radius: 0;
+    background: var(--surface-0);
+  }
+  .home-shell .main-chat .chat-list-scroll {
+    border: 0;
+    border-radius: 0;
+    margin-inline: -8px;
+  }
+  .home-shell .main-chat .chat-list .chat-row {
+    border-radius: 9px;
+    margin-block: 3px;
+  }
+}
+.home-shell .chat-filters {
+  flex-wrap: nowrap;
+  border-radius: 9px;
+}
+.home-shell .chat-filters button {
+  flex: 0 0 auto;
+}
+.home-shell .chat-search input {
+  background: transparent;
+}
+.home-shell .home-orb {
+  border: 0;
+  background: transparent;
+}
+.home-shell .home-brand img {
+  filter: brightness(2.2);
+}
+.home-shell .overview-fresh.muted {
+  color: var(--muted);
+}
+.home-shell .owner-work-board .todo-add textarea {
+  background-image: repeating-linear-gradient(
+    transparent 0,
+    transparent calc(1.7em - 1px),
+    var(--line) calc(1.7em - 1px),
+    var(--line) 1.7em
+  );
+}
+.home-shell :is(.config-section, .config-models, .config-models.is-custom) {
+  background: var(--surface-1);
+  border-color: var(--line);
+}
+.home-shell .config-section details > summary {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.home-shell .model-tier-number {
+  color: var(--muted);
+}
+
+/* Keep each chat category visible, including Groups, without a clipped last tab. */
+.home-shell .chat-filters {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.home-shell .chat-filters button {
+  grid-column: span 2;
+  padding-inline: 6px;
+}
+.home-shell .chat-filters button:nth-child(n + 4) {
+  grid-column: span 3;
+}
+.home-shell .quark-workspace {
+  --q-muted: var(--muted);
+}
+.home-shell .quark-rate-label > label:first-child {
+  color: var(--muted);
+  font-size: 16px;
+}
+:root .phone-settings-panel {
+  background: var(--surface-1);
+}
+.home-shell .phone-settings .primary {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+}
+.home-shell .phone-settings .secondary {
+  background: var(--surface-2);
+}
+@media (min-width: 1100px) {
+  .home-shell .overview-grid {
+    grid-template-areas: 'nav side' 'resources todo';
+    grid-template-rows: auto 1fr;
+  }
+  .home-shell .overview-main {
+    display: contents;
+  }
+  .home-shell .resource-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Setup selection and Computer health share the app's readable dark palette. */
+.home-shell .config-folder label.selected {
+  background: var(--accent-wash);
+}
+.home-shell .config-folder small {
+  font-size: 16px;
+}
+.home-shell .health-page {
+  --health-line: var(--line);
+  --health-soft: var(--surface-2);
+  --health-muted: var(--muted);
+  --health-blue: var(--accent);
+  --q-muted: var(--muted);
+}
+.home-shell
+  :is(
+    .health-snapshot,
+    .health-panel,
+    .health-assistant,
+    .health-settings,
+    .health-plot,
+    .health-latest,
+    .health-message.is-assistant,
+    .health-message.is-consult
+  ) {
+  background: var(--surface-1);
+  border-color: var(--line);
+}
+.home-shell .health-page button {
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+.home-shell
+  :is(
+    .health-segmented button[aria-pressed='true'],
+    .health-segmented button[aria-selected='true'],
+    .health-message.is-question,
+    .health-running
+  ) {
+  background: var(--accent-wash);
+  color: var(--ink);
+}
+.home-shell :is(.health-metrics.is-stale .health-metric, .health-status.is-unknown) {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.home-shell .health-status {
+  background: var(--positive-wash);
+  color: var(--positive);
+}
+.home-shell :is(.health-status.is-pressure, .health-notice) {
+  background: var(--warning-wash);
+  color: var(--warning);
+}
+.home-shell .health-alert {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+.home-shell .health-section-heading p.is-stale {
+  color: var(--warning);
+}
+.home-shell .health-page .quark-welcome p {
+  color: var(--muted);
+}
+.home-shell .health-page .assistant-launch p {
+  color: var(--muted);
+}
+:root :is(.recovery-panel, .recovery-update) {
+  background: var(--surface-1);
+  border-color: var(--line);
+  color: var(--ink);
+}
+:root .recovery-warning {
+  background: var(--warning-wash);
+  color: var(--warning);
+  border-color: #79603b;
+}
+:root .recovery-notice {
+  background: var(--positive-wash);
+  color: var(--positive);
+  border-color: var(--line);
+}
+
+.home-shell .recovery-dialog .secondary {
+  background: var(--surface-2);
+}
+.home-shell .recovery-dialog .primary {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+}
