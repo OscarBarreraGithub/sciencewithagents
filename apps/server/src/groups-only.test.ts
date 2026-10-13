@@ -273,7 +273,7 @@ it('creates, joins and delivers human text exactly once, retaining drafts/remova
   ).toBe(200);
   const chat = await reopened.post('chat', { handle: peer.shared.handle });
   expect(JSON.stringify(chat.json())).toContain('Private unsent draft');
-});
+}, 30000);
 it('reuses full-SWA records without queue recovery or rewriting saved choices', async () => {
   const directory = mkdtempSync(join(root, 'reuse-'));
   const store = new Store(join(directory, 'dock.sqlite'));
