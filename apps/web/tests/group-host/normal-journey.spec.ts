@@ -555,99 +555,106 @@ test('own report controls stay on the exact completed reply and retain terminal 
     terminalKey = randomUUID();
   const capturedRequestId = randomUUID(),
     terminalRequestId = randomUUID();
-  await page.route('**/api/groups/chat', async (route) => {
-    const response = await route.fetch();
-    const value = await response.json();
-    const add = (id: string, text: string) => ({
-      id,
-      agentId: value.detail.agent.id,
-      runId: null,
-      kind: 'assistant',
-      title: 'Codex response',
-      text,
-      status: 'complete',
-      createdAt: new Date().toISOString(),
+  try {
+    await page.route('**/api/groups/chat', async (route) => {
+      const response = await route.fetch();
+      const value = await response.json();
+      const add = (id: string, text: string) => ({
+        id,
+        agentId: value.detail.agent.id,
+        runId: null,
+        kind: 'assistant',
+        title: 'Codex response',
+        text,
+        status: 'complete',
+        createdAt: new Date().toISOString(),
+      });
+      value.detail.entries.push(
+        add(earlierId, 'Earlier ordinary reply'),
+        add(capturedId, 'Exact captured reply · λ'),
+        add(terminalId, 'Exact unavailable reply · μ'),
+      );
+      value.nativeRequests = [
+        {
+          key: capturedKey,
+          text: 'Create the selected report',
+          intent: 'work',
+          requestId: capturedRequestId,
+          resultId: capturedId,
+          documentAvailable: true,
+          state: 'completed',
+          message: 'Reply retained.',
+          delivery: 'complete',
+        },
+        {
+          key: terminalKey,
+          text: 'Create the other report',
+          intent: 'work',
+          requestId: terminalRequestId,
+          resultId: terminalId,
+          documentAvailable: false,
+          documentCaptureState: 'unavailable',
+          state: 'completed',
+          message: 'Reply retained.',
+          delivery: 'complete',
+        },
+      ];
+      await route.fulfill({ response, json: value });
     });
-    value.detail.entries.push(
-      add(earlierId, 'Earlier ordinary reply'),
-      add(capturedId, 'Exact captured reply · λ'),
-      add(terminalId, 'Exact unavailable reply · μ'),
-    );
-    value.nativeRequests = [
-      {
-        key: capturedKey,
-        text: 'Create the selected report',
-        intent: 'work',
-        requestId: capturedRequestId,
-        resultId: capturedId,
-        documentAvailable: true,
-        state: 'completed',
-        message: 'Reply retained.',
-        delivery: 'complete',
-      },
-      {
-        key: terminalKey,
-        text: 'Create the other report',
-        intent: 'work',
-        requestId: terminalRequestId,
-        resultId: terminalId,
-        documentAvailable: false,
-        documentCaptureState: 'unavailable',
-        state: 'completed',
-        message: 'Reply retained.',
-        delivery: 'complete',
-      },
-    ];
-    await route.fulfill({ response, json: value });
-  });
-  const offers: unknown[] = [];
-  await page.route('**/api/groups/document-offer', (route) => {
-    offers.push(route.request().postDataJSON());
-    return route.fulfill({
-      status: 503,
-      json: {
-        error: 'Private fixture diagnostic must not be shown.',
-        code: 'GROUP_DOCUMENT_CAPTURE_PENDING',
-      },
+    const offers: unknown[] = [];
+    await page.route('**/api/groups/document-offer', (route) => {
+      offers.push(route.request().postDataJSON());
+      return route.fulfill({
+        status: 503,
+        json: {
+          error: 'Private fixture diagnostic must not be shown.',
+          code: 'GROUP_DOCUMENT_CAPTURE_PENDING',
+        },
+      });
     });
-  });
-  await create(page, 'Retained Pine');
-  await page.getByRole('tab', { name: 'Your Claude Code', exact: true }).click();
-  await page.getByText('Saved SWA group agent', { exact: true }).click();
-  const exact = page.locator('.message.assistant').filter({ hasText: 'Exact captured reply · λ' });
-  const terminal = page
-    .locator('.message.assistant')
-    .filter({ hasText: 'Exact unavailable reply · μ' });
-  await expect(
-    exact.getByRole('button', { name: 'Open report from this reply', exact: true }),
-  ).toBeVisible();
-  await expect(
-    page
+    await create(page, 'Retained Pine');
+    await page.getByRole('tab', { name: 'Your Claude Code', exact: true }).click();
+    await page.getByText('Saved SWA group agent', { exact: true }).click();
+    const exact = page
       .locator('.message.assistant')
-      .filter({ hasText: 'Earlier ordinary reply' })
-      .getByRole('button'),
-  ).toHaveCount(0);
-  await expect(terminal.getByRole('button')).toHaveCount(0);
-  await expect(terminal).toContainText('explicitly request new Work from My group agent');
-  await exact.getByRole('button', { name: 'Open report from this reply', exact: true }).click();
-  await expect(exact).toContainText(
-    'Report capture is still finishing. Retry this same saved reply.',
-  );
-  await expect(page.locator('.conversation')).not.toContainText('Private fixture diagnostic');
-  expect(offers).toEqual([{ handle: (await savedGroup(page)).shared.handle, key: capturedKey }]);
-  await page.getByText('Message details', { exact: true }).click();
-  await expect(
-    page.getByRole('button', { name: 'Open report from this reply', exact: true }),
-  ).toHaveCount(1);
-  await page.reload();
-  await page.getByRole('tab', { name: 'Your Claude Code', exact: true }).click();
-  await page.getByText('Saved SWA group agent', { exact: true }).click();
-  await expect(terminal).toContainText('explicitly request new Work from My group agent');
-  await expect(
-    exact.getByRole('button', { name: 'Open report from this reply', exact: true }),
-  ).toBeVisible();
-  expect(offers).toHaveLength(1); // reload never captures files or replays the original Work
-  expect((await fixtureCommand('inspect')).synthesisRequests).toBe(0);
+      .filter({ hasText: 'Exact captured reply · λ' });
+    const terminal = page
+      .locator('.message.assistant')
+      .filter({ hasText: 'Exact unavailable reply · μ' });
+    await expect(
+      exact.getByRole('button', { name: 'Open report from this reply', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('.message.assistant')
+        .filter({ hasText: 'Earlier ordinary reply' })
+        .getByRole('button'),
+    ).toHaveCount(0);
+    await expect(terminal.getByRole('button')).toHaveCount(0);
+    await expect(terminal).toContainText('explicitly request new Work from My group agent');
+    await exact.getByRole('button', { name: 'Open report from this reply', exact: true }).click();
+    await expect(exact).toContainText(
+      'Report capture is still finishing. Retry this same saved reply.',
+    );
+    await expect(page.locator('.conversation')).not.toContainText('Private fixture diagnostic');
+    expect(offers).toEqual([{ handle: (await savedGroup(page)).shared.handle, key: capturedKey }]);
+    await page.getByText('Message details', { exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Open report from this reply', exact: true }),
+    ).toHaveCount(1);
+    await page.reload();
+    await page.getByRole('tab', { name: 'Your Claude Code', exact: true }).click();
+    await page.getByText('Saved SWA group agent', { exact: true }).click();
+    await expect(terminal).toContainText('explicitly request new Work from My group agent');
+    await expect(
+      exact.getByRole('button', { name: 'Open report from this reply', exact: true }),
+    ).toBeVisible();
+    expect(offers).toHaveLength(1); // reload never captures files or replays the original Work
+    expect((await fixtureCommand('inspect')).synthesisRequests).toBe(0);
+  } finally {
+    // Finish this test's live chat reads before its page and request context close.
+    await page.unrouteAll({ behavior: 'wait' });
+  }
 });
 
 test('Groups presentation retains a failed create, reads shared messages and restores drafts through opening retry', async ({

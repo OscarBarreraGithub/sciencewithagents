@@ -5,11 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { mkdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
+const evidenceRoot = process.env.DOCK_SETTLEMENT_EVIDENCE_DIR;
 type HostConnection = { origin: string; cookie: string; port: number };
 let child: ChildProcess | undefined,
   connection: HostConnection & { secondary: HostConnection; unconfigured: HostConnection };
 test.beforeAll(async () => {
-  await mkdir(join(root, 'data/final-journey'), { recursive: true, mode: 0o700 });
+  const receipts = join(root, evidenceRoot ?? 'data/final-journey');
+  await mkdir(receipts, { recursive: true, mode: 0o700 });
   child = spawn(
     process.execPath,
     [
@@ -23,8 +25,7 @@ test.beforeAll(async () => {
         ...process.env,
         WRANGLER_SEND_METRICS: 'false',
         GROUP_HOST_ACCEPTANCE_RECEIPT: join(
-          root,
-          'data/final-journey',
+          receipts,
           `compact-native-${test.info().project.name}.json`,
         ),
       },
@@ -96,7 +97,11 @@ async function manager(page: Page) {
 }
 async function capture(page: Page, label: string) {
   await page.screenshot({
-    path: join(root, 'data/normal-groups', `${test.info().project.name}-${label}.png`),
+    path: join(
+      root,
+      evidenceRoot ?? 'data/normal-groups',
+      `${test.info().project.name}-${label}.png`,
+    ),
   });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     await page.evaluate(() => innerWidth + 2),
@@ -439,6 +444,203 @@ test('My group agent keeps exact agent retries across human-tab switches, shared
   await expect(input).toHaveValue('Retained manager draft');
   expect(new Set(posts.map((post) => post.body.handle)).size).toBe(1);
   await capture(page, 'group-manager-reading');
+});
+
+test('a held native acknowledgement settles after a fast tab switch and preserves the newer Work draft through reload', async ({
+  page,
+}) => {
+  await enter(page);
+  await create(page, 'Held acknowledgement');
+  await manager(page);
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await page.getByText('My agent on this computer', { exact: true }).click();
+  await page.getByRole('button', { name: 'Enable agents on this computer', exact: true }).click();
+  await expect(page.locator('.group-native-owner')).toContainText('Local agent access enabled');
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  const posts: Record<string, unknown>[] = [];
+  let held: Record<string, unknown> | undefined;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/groups/request-agent', async (route) => {
+    posts.push(route.request().postDataJSON());
+    const attempt = posts.length;
+    const response = await route.fetch();
+    if (attempt === 1) {
+      await route.fulfill({ status: 503, json: { error: 'Native acknowledgement unavailable.' } });
+      return;
+    }
+    expect(response.ok()).toBe(true);
+    if (attempt === 2) {
+      held = await response.json();
+      await gate;
+    }
+    await route.fulfill({ response });
+  });
+  const input = page.getByPlaceholder('Message my group agent…');
+  const newer = 'The newer Work draft must survive the old Ask acknowledgement.';
+  try {
+    await input.fill('Original exact Ask request');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Retry previous message', exact: true }),
+    ).toBeVisible();
+    await page.reload();
+    await chat(page);
+    await page
+      .getByPlaceholder('Message the group…')
+      .fill('Typing while the original reply is unknown.');
+    await page.getByRole('button', { name: 'Retry previous message', exact: true }).click();
+    await expect.poll(() => held?.key).toBe(posts[0]!.key);
+    expect(posts).toHaveLength(2);
+    expect(posts[1]).toEqual(posts[0]);
+    expect(posts[0]!.intent).toBe('ask');
+    await manager(page);
+    await page.getByRole('combobox', { name: 'Agent request', exact: true }).selectOption('work');
+    await input.fill(newer);
+    await expect(
+      page.getByRole('button', { name: 'Retry previous message', exact: true }),
+    ).toBeVisible();
+    release();
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+    await expect(input).toHaveValue(newer);
+    expect(posts).toHaveLength(2);
+    const accepted = await page.request.post(`${connection.origin}/api/groups/chat`, {
+      headers: { Origin: connection.origin },
+      data: { handle: posts[0]!.handle },
+    });
+    expect(
+      (await accepted.json()).nativeRequests.filter(
+        (receipt: { key: string }) => receipt.key === posts[0]!.key,
+      ),
+    ).toEqual([expect.objectContaining({ key: held!.key, requestId: held!.requestId })]);
+    await input.scrollIntoViewIfNeeded();
+    await capture(page, 'settled-after-fast-switch');
+    await page.reload();
+    await manager(page);
+    await expect(input).toHaveValue(newer);
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+    expect(posts).toHaveLength(2); // Settlement and reload do not dispatch another turn.
+    await page.getByRole('combobox', { name: 'Agent request', exact: true }).selectOption('work');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(input).toHaveValue('');
+    expect(posts).toHaveLength(3);
+    expect(posts[2]).toMatchObject({ text: newer, intent: 'work' });
+    expect(posts[2]!.key).not.toBe(posts[0]!.key);
+  } finally {
+    release();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+});
+
+test('a late old send acknowledgement preserves a newer same-text pending attempt after remount', async ({
+  page,
+}) => {
+  await enter(page);
+  await create(page, 'Exact attempt ownership');
+  await chat(page);
+  await page.evaluate(() => {
+    const view = window as typeof window & { completedSendCleanups: string[] };
+    view.completedSendCleanups = [];
+    const remove = Storage.prototype.removeItem;
+    Storage.prototype.removeItem = function (key: string) {
+      remove.call(this, key);
+      if (this === sessionStorage && key.includes(':composer-request:'))
+        view.completedSendCleanups.push(key);
+    };
+  });
+  const text = 'The same words belong to two distinct explicit attempts.';
+  const sends: Record<string, unknown>[] = [];
+  const agents: Record<string, unknown>[] = [];
+  let held = false;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/groups/send', async (route) => {
+    const input = route.request().postDataJSON();
+    sends.push(input);
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    if (sends.length === 1) {
+      held = true;
+      await gate;
+    }
+    await route.fulfill({ response });
+  });
+  await page.route('**/api/groups/request-agent', async (route) => {
+    agents.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 503,
+      json: { error: 'New attempt acknowledgement unavailable.' },
+    });
+  });
+  const pending = () =>
+    page.evaluate(() => {
+      const key = Object.keys(sessionStorage).find(
+        (key) =>
+          key.startsWith('dock:') && key.includes(':workspace:send:') && key.endsWith(':pending'),
+      );
+      return key
+        ? (JSON.parse(sessionStorage.getItem(key)!) as { key: string; text: string })
+        : null;
+    });
+  try {
+    await page.getByPlaceholder('Message the group…').fill(text);
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect.poll(() => held).toBe(true);
+    await manager(page);
+    const input = page.getByPlaceholder('Message my group agent…');
+    await page.getByRole('button', { name: 'Retry previous message', exact: true }).click();
+    await expect(input).toHaveValue('');
+    expect(sends).toHaveLength(2);
+    expect(sends[1]).toEqual(sends[0]);
+    // A new explicit attempt may use identical text; its UUID still owns recovery.
+    await page.getByRole('combobox', { name: 'Agent request', exact: true }).selectOption('work');
+    await input.fill(text);
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Retry previous message', exact: true }),
+    ).toBeVisible();
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({ text, intent: 'work' });
+    expect(agents[0]!.key).not.toBe(sends[0]!.key);
+    await expect.poll(pending).toMatchObject({ key: agents[0]!.key, text });
+    release();
+    // Both old callbacks have returned through GroupChat.send before checking the
+    // canonical Composer receipt. This avoids a timing delay masking a late clear.
+    await expect
+      .poll(() =>
+        page.evaluate((key) => {
+          const view = window as typeof window & { completedSendCleanups: string[] };
+          return view.completedSendCleanups.filter((item) =>
+            item.endsWith(`:composer-request:${key}`),
+          ).length;
+        }, String(sends[0]!.key)),
+      )
+      .toBe(2);
+    await expect.poll(pending).toMatchObject({ key: agents[0]!.key, text });
+    await expect(input).toHaveValue(text);
+    await expect(
+      page.getByRole('button', { name: 'Retry previous message', exact: true }),
+    ).toBeVisible();
+    await page.reload();
+    await manager(page);
+    await expect(input).toHaveValue(text);
+    await expect.poll(pending).toMatchObject({ key: agents[0]!.key, text });
+    expect(sends).toHaveLength(2);
+    expect(agents).toHaveLength(1); // Neither settlement nor reload dispatches K2.
+    await input.scrollIntoViewIfNeeded();
+    await capture(page, 'newer-attempt-after-late-ack');
+    await chat(page);
+    await expect(
+      page.locator('.group-shared-chat .message.user .markdown').filter({ hasText: text }),
+    ).toHaveCount(1);
+  } finally {
+    release();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
 });
 
 test('first local request waits for owner enable and continues the same saved request', async ({

@@ -53,6 +53,13 @@ import { PromptHistory, scrollToPrompt } from './PromptHistory';
 import { promptLengthError } from './promptLength';
 import { providerErrorRows } from './providerErrors';
 import { internalToolValidation } from './toolValidation';
+import {
+  onPendingMessageSettled,
+  ownsPendingMessage,
+  samePendingMessage,
+  settlePendingMessage,
+  type PendingMessage,
+} from './composer-settlement';
 
 function SendTiming({
   steer,
@@ -875,14 +882,6 @@ export function Composer({
   }, [canSteer, specialized, steer]);
   const [priority, setPriority] = useState<JobEstimate['priority']>('interactive');
   const [unknownLegacyMode, setUnknownLegacyMode] = useState(false);
-  type PendingMessage = {
-    key: string;
-    text: string;
-    steer: boolean;
-    draft?: WorkspaceDraftSubmission;
-    scheduling?: JobEstimate;
-    modeUnknown?: boolean;
-  };
   const retry = useRef<PendingMessage | null>(null);
   const [pendingText, setPendingText] = useState<string | null>(null);
   const [rejectedText, setRejectedText] = useState<string | null>(() => {
@@ -893,94 +892,110 @@ export function Composer({
     }
   });
   const sendingRef = useRef(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const textarea = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (!draft.ready) return;
     let active = true;
-    try {
-      // Migrate only the local host's older storage. Never copy it into another account's host.
-      if (apiScope() === 'local') {
-        const legacyKey = `dock:draft:${agent.id}`;
-        const oldDraft = localStorage.getItem(legacyKey);
-        if (oldDraft !== null && !localStorage.getItem(`${storageKey}:legacy-migrated`)) {
-          localStorage.setItem(`${storageKey}:legacy`, oldDraft);
-          localStorage.setItem(`${storageKey}:legacy-migrated`, '1');
-          setLegacyBackup(oldDraft);
-          if (!draft.currentText() && draft.state?.own.revision === 0) {
-            setText(oldDraft);
-            void draft
-              .flush()
-              .then(() => {
-                localStorage.removeItem(legacyKey);
-                localStorage.removeItem(`${storageKey}:legacy`);
-                if (active) setLegacyBackup(null);
-              })
-              .catch(() => {});
-          } else if (draft.currentText() === oldDraft) {
-            localStorage.removeItem(legacyKey);
-            localStorage.removeItem(`${storageKey}:legacy`);
-            setLegacyBackup(null);
+    // Attach before reading storage: settlement either reaches this listener or
+    // removes the receipt before restore reads it, including a tab remount.
+    const unsubscribe = onPendingMessageSettled(receiptStorage, storageKey, (pending) => {
+      if (!active || !samePendingMessage(retry.current, pending)) return;
+      retry.current = null;
+      setPendingText(null);
+      setUnknownLegacyMode(false);
+    });
+    const restore = () => {
+      try {
+        // Migrate only the local host's older storage. Never copy it into another account's host.
+        if (apiScope() === 'local') {
+          const legacyKey = `dock:draft:${agent.id}`;
+          const oldDraft = localStorage.getItem(legacyKey);
+          if (oldDraft !== null && !localStorage.getItem(`${storageKey}:legacy-migrated`)) {
+            localStorage.setItem(`${storageKey}:legacy`, oldDraft);
+            localStorage.setItem(`${storageKey}:legacy-migrated`, '1');
+            setLegacyBackup(oldDraft);
+            if (!draft.currentText() && draft.state?.own.revision === 0) {
+              setText(oldDraft);
+              void draft
+                .flush()
+                .then(() => {
+                  localStorage.removeItem(legacyKey);
+                  localStorage.removeItem(`${storageKey}:legacy`);
+                  if (active) setLegacyBackup(null);
+                })
+                .catch(() => {});
+            } else if (draft.currentText() === oldDraft) {
+              localStorage.removeItem(legacyKey);
+              localStorage.removeItem(`${storageKey}:legacy`);
+              setLegacyBackup(null);
+            }
+          }
+          const oldPending = localStorage.getItem(`${legacyKey}:pending`);
+          if (oldPending && !receiptStorage.getItem(`${storageKey}:pending`)) {
+            receiptStorage.setItem(`${storageKey}:pending`, oldPending);
+            localStorage.removeItem(`${legacyKey}:pending`);
           }
         }
-        const oldPending = localStorage.getItem(`${legacyKey}:pending`);
-        if (oldPending && !receiptStorage.getItem(`${storageKey}:pending`)) {
-          receiptStorage.setItem(`${storageKey}:pending`, oldPending);
-          localStorage.removeItem(`${legacyKey}:pending`);
-        }
+        const raw = receiptStorage.getItem(`${storageKey}:pending`);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as Partial<PendingMessage>;
+        const pending: PendingMessage = {
+          key: parsed.key ?? '',
+          text: parsed.text ?? '',
+          steer: parsed.steer === true,
+          ...(typeof parsed.steer !== 'boolean' || parsed.modeUnknown ? { modeUnknown: true } : {}),
+          ...(parsed.draft ? { draft: parsed.draft } : {}),
+          ...(parsed.scheduling ? { scheduling: jobEstimateSchema.parse(parsed.scheduling) } : {}),
+        };
+        if (typeof pending.key !== 'string' || typeof pending.text !== 'string') return;
+        retry.current = pending;
+        setPendingText(pending.text);
+        setUnknownLegacyMode(Boolean(pending.modeUnknown));
+        setSteer(pending.steer);
+        if (specialized) return;
+        void api<{
+          run: { text: string } | null;
+          submitted?: { text: string; steer: boolean } | null;
+        }>(`/agents/${agent.id}/receipts/${pending.key}`)
+          .then(async (value) => {
+            if (!active || retry.current?.key !== pending.key) return;
+            const acknowledged =
+              value.submitted ?? (value.run ? { text: value.run.text, steer: false } : null);
+            if (
+              acknowledged?.text !== pending.text ||
+              (!pending.modeUnknown && acknowledged.steer !== pending.steer)
+            )
+              return;
+            if (ownsPendingMessage(receiptStorage, storageKey, pending)) {
+              if (pending.draft) await draft.clearSent(pending.text, pending.draft);
+              else if (messageText(draft.currentText()) === pending.text) {
+                setText('');
+                await draft.flush();
+              }
+            }
+            if (!active || retry.current?.key !== pending.key) return;
+            settlePendingMessage(receiptStorage, storageKey, pending);
+          })
+          .catch(() => {
+            /* Keep the exact pending key for a deliberate retry. */
+          });
+      } catch {
+        fail('The saved draft receipt could not be read. Your draft is retained.');
       }
-      const raw = receiptStorage.getItem(`${storageKey}:pending`);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Partial<PendingMessage>;
-      const pending: PendingMessage = {
-        key: parsed.key ?? '',
-        text: parsed.text ?? '',
-        steer: parsed.steer === true,
-        ...(typeof parsed.steer !== 'boolean' || parsed.modeUnknown ? { modeUnknown: true } : {}),
-        ...(parsed.draft ? { draft: parsed.draft } : {}),
-        ...(parsed.scheduling ? { scheduling: jobEstimateSchema.parse(parsed.scheduling) } : {}),
-      };
-      if (typeof pending.key !== 'string' || typeof pending.text !== 'string') return;
-      retry.current = pending;
-      setPendingText(pending.text);
-      setUnknownLegacyMode(Boolean(pending.modeUnknown));
-      setSteer(pending.steer);
-      if (specialized) return;
-      void api<{
-        run: { text: string } | null;
-        submitted?: { text: string; steer: boolean } | null;
-      }>(`/agents/${agent.id}/receipts/${pending.key}`)
-        .then(async (value) => {
-          if (!active || retry.current?.key !== pending.key) return;
-          const acknowledged =
-            value.submitted ?? (value.run ? { text: value.run.text, steer: false } : null);
-          if (
-            acknowledged?.text !== pending.text ||
-            (!pending.modeUnknown && acknowledged.steer !== pending.steer)
-          )
-            return;
-          if (pending.draft) await draft.clearSent(pending.text, pending.draft);
-          else if (messageText(draft.currentText()) === pending.text) {
-            setText('');
-            await draft.flush();
-          }
-          if (!active || retry.current?.key !== pending.key) return;
-          const saved = receiptStorage.getItem(`${storageKey}:pending`);
-          if (saved && (JSON.parse(saved) as PendingMessage).key !== pending.key) return;
-          receiptStorage.removeItem(`${storageKey}:pending`);
-          retry.current = null;
-          setPendingText(null);
-          setUnknownLegacyMode(false);
-        })
-        .catch(() => {
-          /* Keep the exact pending key for a deliberate retry. */
-        });
-    } catch {
-      fail('The saved draft receipt could not be read. Your draft is retained.');
-    }
+    };
+    restore();
     return () => {
       active = false;
+      unsubscribe();
     };
-  }, [storageKey, draft.ready]);
+  }, [storageKey, draft.ready, receiptStorage]);
   const nativeCommandRetry = useRef<{ key: string; text: string } | null>(null);
   const runNativeCommand = async (commandText: string) => {
     if (sendingRef.current || apiScope() !== scope) return;
@@ -1099,8 +1114,8 @@ export function Composer({
     setLiteralSlash(false);
     sendingRef.current = true;
     setSending(true);
+    let pending = retry.current;
     try {
-      let pending = retry.current;
       if (!pending) {
         const token = await draft.flush();
         if ((!token && !draftOverride) || messageText(draft.currentText()) !== value)
@@ -1132,32 +1147,48 @@ export function Composer({
           'The selected computer changed. Reopen the original computer to send its draft.',
         );
       await send(pending.text, pending.key, pending.steer, pending.draft, pending.scheduling);
-      if (draftRevision.current === sentRevision && pending.draft)
-        await draft.clearSent(pending.text, pending.draft);
-      else if (
-        draftRevision.current === sentRevision &&
-        messageText(draft.currentText()) === pending.text
-      ) {
-        setText('');
-        await draft.flush();
+      // A remounted composer owns its draft, even if its text happens to match
+      // this older send. Only the originating live view may clear its sent text.
+      if (mounted.current && ownsPendingMessage(receiptStorage, storageKey, pending)) {
+        if (draftRevision.current === sentRevision && pending.draft)
+          await draft.clearSent(pending.text, pending.draft);
+        else if (
+          draftRevision.current === sentRevision &&
+          messageText(draft.currentText()) === pending.text
+        ) {
+          setText('');
+          await draft.flush();
+        }
       }
-      receiptStorage.removeItem(`${storageKey}:pending`);
-      retry.current = null;
-      setPendingText(null);
-      setSteer(null);
-      try {
-        onSent?.(draft.currentText());
-      } catch {
-        // Delivery is confirmed. A view transition must never create a send retry.
-        fail('Message accepted. Reopen this conversation to continue. Your draft is retained.');
+      const currentAttempt = samePendingMessage(retry.current, pending);
+      const settled = settlePendingMessage(receiptStorage, storageKey, pending);
+      if (mounted.current && currentAttempt && settled) {
+        retry.current = null;
+        setPendingText(null);
+        setSteer(null);
+        try {
+          onSent?.(draft.currentText());
+        } catch {
+          // Delivery is confirmed. A view transition must never create a send retry.
+          fail('Message accepted. Reopen this conversation to continue. Your draft is retained.');
+        }
+        textarea.current?.focus({ preventScroll: true });
       }
-      textarea.current?.focus({ preventScroll: true });
       return true;
     } catch (e) {
+      // Refusals are local to the originating live view, not acceptance events.
+      // A restored receipt must remain available for that view's explicit retry.
+      if (!mounted.current) return false;
       if (e instanceof ApiError && e.code === 'DRAFT_CHANGED') {
+        if (
+          !pending ||
+          !samePendingMessage(retry.current, pending) ||
+          !ownsPendingMessage(receiptStorage, storageKey, pending)
+        )
+          return false;
         // This typed refusal happens before reservation. A confirmed delivery
         // returns its existing receipt first, even after the draft has changed.
-        const rejected = retry.current?.text ?? null;
+        const rejected = pending.text;
         setRejectedText(rejected);
         try {
           if (rejected) receiptStorage.setItem(`${storageKey}:rejected`, rejected);
@@ -1173,6 +1204,12 @@ export function Composer({
         return false;
       }
       if (e instanceof ApiError && e.code === 'NO_ACTIVE_TURN') {
+        if (
+          !pending ||
+          !samePendingMessage(retry.current, pending) ||
+          !ownsPendingMessage(receiptStorage, storageKey, pending)
+        )
+          return false;
         // The host rejected this before reserving or submitting it. Keep the
         // draft, but let an explicit next Send become a normal follow-up.
         retry.current = null;
@@ -1188,7 +1225,7 @@ export function Composer({
       return false;
     } finally {
       sendingRef.current = false;
-      setSending(false);
+      if (mounted.current) setSending(false);
     }
   };
   const canSend =

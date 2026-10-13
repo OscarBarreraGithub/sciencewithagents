@@ -11,6 +11,12 @@ first-run recovery, composers and original-color PDF reading. These are isolated
 checks, not installation, physical-device or independent two-person acceptance. The existing
 browser and Mac launcher remain the delivery path. [Interface system](UI_SYSTEM.md).
 
+The 2026-10-13 delivery correction reconciles accepted messages when a conversation view
+is reopened before its response arrives. Late acknowledgements and refusals preserve newer
+drafts, message identities and steering choices; recovery does not send another message.
+Focused checks pass across the four Chromium layouts and iPhone WebKit emulation.
+Published CI, installed activation and real-device acceptance remain separate checks.
+
 The 2026-10-12 Groups candidate adds an optional Claude Code plugin/local MCP adapter and
 selected-conversation background summaries without Dock manager or QUARK admission.
 Full SWA and saved group-agent work remain retained. New prompts/final replies from the

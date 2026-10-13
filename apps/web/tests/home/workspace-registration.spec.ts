@@ -91,6 +91,11 @@ test('two cold browsers share registration within each document and can edit the
         await route.fulfill({ response });
       });
       await view.goto(`/#/chat/${id}`);
+      // Registration and its saved draft settle the cold composer's loading row.
+      await expect
+        .poll(() => view.evaluate(() => localStorage.getItem('dock:local:workspace:client')))
+        .not.toBeNull();
+      await expect(view.locator('.composer [data-draft]')).toHaveAttribute('data-draft', 'saved');
       const list = await openQueue(view);
       await expect(list.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(2);
       await expect(list.getByRole('button', { name: 'Edit', exact: true }).first()).toBeEnabled();
