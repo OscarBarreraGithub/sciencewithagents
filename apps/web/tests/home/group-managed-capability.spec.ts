@@ -7,6 +7,9 @@ import {
   groupHostOpenSchema,
 } from '@dock/shared/dist/group-host.js';
 import { groupNativeOwnerStatusSchema } from '@dock/shared/dist/group-native-owner.js';
+import { groupConversationSharingStatusSchema } from '@dock/shared/dist/group-conversation-sharing.js';
+import { groupPhoneHostViewSchema } from '@dock/shared/dist/group-phone-host.js';
+import { groupExternalFilesViewSchema } from '@dock/shared/dist/group-external-files.js';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const date = '2026-10-09T12:00:00.000Z';
@@ -198,6 +201,17 @@ for (const capability of ['direct', 'legacy', 'managed'] as const) {
               ? { ...feed, entries: [] }
               : feed;
       else if (path === '/api/groups/original') value = { eventId: id(11), text: original };
+      else if (path === '/api/groups/conversation-sharing' && input?.action === 'status')
+        value = groupConversationSharingStatusSchema.parse({
+          selection: null,
+          pending: 0,
+          model: null,
+          latest: null,
+        });
+      else if (path === '/api/groups/phone' && input?.action === 'status')
+        value = groupPhoneHostViewSchema.parse({ devices: [], link: null, expiresAt: null });
+      else if (path === '/api/groups/files' && input?.action === 'status')
+        value = groupExternalFilesViewSchema.parse({ proposals: [], preview: null });
       else if (path === '/api/groups/workspace' && input?.action === 'status')
         value = {
           revision: 0,
@@ -269,6 +283,9 @@ for (const capability of ['direct', 'legacy', 'managed'] as const) {
       }, group.handle);
     } else await page.goto(`/#/chats/groups/${group.handle}`);
     await expect(page.getByRole('heading', { name: group.name, exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'Your Claude Code', exact: true }).click();
+    await page.getByText('Saved SWA group agent', { exact: true }).click();
+    await expect(page.getByPlaceholder('Message my group agent…')).toBeVisible();
     // This is the existing native-owner status read; no separate capability poll.
     const manage = page.getByRole('dialog', { name: 'Manage group', exact: true });
     await page.getByRole('button', { name: 'Manage', exact: true }).click();
@@ -313,8 +330,10 @@ for (const capability of ['direct', 'legacy', 'managed'] as const) {
     });
     await manage.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Contribution mode: Contribute' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Group chat', exact: true }).click();
     await expect(page.getByText(original, { exact: true })).toBeVisible();
-    await page.getByRole('tab', { name: 'My group agent', exact: true }).click();
+    await page.getByRole('tab', { name: 'Your Claude Code', exact: true }).click();
+    await page.getByText('Saved SWA group agent', { exact: true }).click();
     const intent = page.getByRole('combobox', { name: 'Agent request', exact: true });
     await expect(intent).toBeEnabled();
     await expect(intent.locator('option')).toHaveText(['Ask', 'Work']);

@@ -119,8 +119,14 @@ test('fresh Groups separates creator, joining and shared-file setup with optiona
   );
   await openGroups(page);
   const setupButton = page.getByRole('button', { name: 'Group setup', exact: true });
-  await expect(setupButton).toHaveText('Setup');
-  expect((await setupButton.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect(setupButton).toHaveAccessibleName('Group setup');
+  await expect(setupButton.locator('svg')).toHaveAttribute('aria-hidden', 'true');
+  const setupBox = (await setupButton.boundingBox())!;
+  expect(setupBox.height).toBeGreaterThanOrEqual(44);
+  expect(setupBox.width).toBeGreaterThanOrEqual(44);
+  expect(
+    await setupButton.evaluate((button) => parseFloat(getComputedStyle(button).fontSize)),
+  ).toBeGreaterThanOrEqual(16);
   await setupButton.click();
   const setup = page.getByRole('dialog', { name: 'Group setup', exact: true });
   await expect(setup).toBeVisible();

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,7 +88,11 @@ async function chat(page: Page) {
 }
 async function manager(page: Page) {
   await expect(page.locator('.groups-workspace')).toBeVisible();
-  await page.getByRole('tab', { name: 'My group agent', exact: true }).click();
+  await page.getByRole('tab', { name: 'Your Claude Code', exact: true }).click();
+  const savedAgent = page.locator('.group-legacy-agent');
+  if (!(await savedAgent.evaluate((element) => (element as HTMLDetailsElement).open)))
+    await savedAgent.getByText('Saved SWA group agent', { exact: true }).click();
+  await expect(page.getByPlaceholder('Message my group agent…')).toBeVisible();
 }
 async function capture(page: Page, label: string) {
   await page.screenshot({
@@ -97,6 +101,38 @@ async function capture(page: Page, label: string) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     await page.evaluate(() => innerWidth + 2),
   );
+}
+async function fullyVisible(locator: Locator) {
+  await expect(locator).toBeInViewport();
+  await expect
+    .poll(() =>
+      locator.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        let top = 0,
+          bottom = innerHeight,
+          left = 0,
+          right = innerWidth;
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          const css = getComputedStyle(parent);
+          const clip = parent.getBoundingClientRect();
+          if (['auto', 'scroll', 'hidden', 'clip'].includes(css.overflowY)) {
+            top = Math.max(top, clip.top);
+            bottom = Math.min(bottom, clip.bottom);
+          }
+          if (['auto', 'scroll', 'hidden', 'clip'].includes(css.overflowX)) {
+            left = Math.max(left, clip.left);
+            right = Math.min(right, clip.right);
+          }
+        }
+        return (
+          rect.top >= top - 1 &&
+          rect.bottom <= bottom + 1 &&
+          rect.left >= left - 1 &&
+          rect.right <= right + 1
+        );
+      }),
+    )
+    .toBe(true);
 }
 test('My group agent keeps exact agent retries across human-tab switches, shared drafts and owner access', async ({
   page,
@@ -118,7 +154,7 @@ test('My group agent keeps exact agent retries across human-tab switches, shared
   await enter(page);
   await create(page, 'Compact River');
   await chat(page);
-  await expect(page.getByRole('tab')).toHaveText(['Group chat', 'My group agent']);
+  await expect(page.getByRole('tab')).toHaveText(['Group chat', 'Your Claude Code']);
   await expect(page.getByRole('tab', { name: 'Group chat', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -130,7 +166,7 @@ test('My group agent keeps exact agent retries across human-tab switches, shared
   const controls = page.locator('.group-host-controls');
   await expect(controls).toHaveJSProperty('open', false);
   await expect(page.locator('.group-host-controls')).toBeHidden();
-  await expect(page.getByRole('tab', { name: 'My group agent', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Your Claude Code', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -271,12 +307,19 @@ test('My group agent keeps exact agent retries across human-tab switches, shared
   const readingSize = test.info().project.name === 'desktop' ? '22px' : '20px';
   await expect(replyBubble).toHaveCSS('font-size', readingSize);
   await expect(input).toHaveCSS('font-size', readingSize);
-  await expect(replyBubble).toBeInViewport();
-  if (test.info().project.name === 'desktop') {
-    const composer = await input.boundingBox();
-    expect(composer!.width).toBeLessThanOrEqual(1050);
-    expect(composer!.width).toBeGreaterThan(900);
-  }
+  await replyBubble.scrollIntoViewIfNeeded();
+  await fullyVisible(replyBubble);
+  const legacy = await page.locator('.group-legacy-chat').boundingBox();
+  const composer = await input.boundingBox();
+  expect(legacy!.width).toBeLessThanOrEqual(840);
+  expect(composer!.x).toBeGreaterThanOrEqual(legacy!.x);
+  expect(composer!.x + composer!.width).toBeLessThanOrEqual(legacy!.x + legacy!.width);
+  expect(composer!.width).toBeGreaterThan(legacy!.width * 0.55);
+  expect(composer!.height).toBeGreaterThanOrEqual(44);
+  const send = page.getByRole('button', { name: 'Send message', exact: true });
+  const sendBox = await send.boundingBox();
+  expect(sendBox!.height).toBeGreaterThanOrEqual(44);
+  expect(sendBox!.width).toBeGreaterThanOrEqual(44);
   await expect(page.locator('.conversation-scroll-hint[aria-hidden="true"]')).toBeHidden();
   await capture(page, 'readable-completed-reply');
   await page.getByText('Message details', { exact: true }).click();
@@ -287,23 +330,49 @@ test('My group agent keeps exact agent retries across human-tab switches, shared
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '150%';
   });
-  await expect(input).toBeInViewport();
+  await expect(input).toHaveCSS(
+    'font-size',
+    test.info().project.name === 'desktop' ? '33px' : '30px',
+  );
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
   );
+  // The retained agent lives in a scrolling disclosure. Its transcript must keep
+  // useful space, and both the final reply and composer must remain reachable.
+  const timeline = page.locator('.conversation');
+  expect(await timeline.evaluate((element) => element.clientHeight)).toBeGreaterThanOrEqual(120);
   expect(
-    await page.locator('.conversation').evaluate((element) => {
-      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-        if (
-          ['auto', 'scroll'].includes(getComputedStyle(parent).overflowY) &&
-          parent.scrollHeight > parent.clientHeight + 1
-        )
-          return false;
-      }
-      return true;
-    }),
-  ).toBe(true);
+    await timeline.evaluate((element) => element.scrollHeight - element.clientHeight),
+  ).toBeGreaterThan(0);
+  await timeline.hover();
+  await page.mouse.wheel(0, -10000);
+  await expect.poll(() => timeline.evaluate((element) => element.scrollTop)).toBe(0);
+  await page.mouse.wheel(0, 10000);
+  await expect
+    .poll(() =>
+      timeline.evaluate(
+        (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+  expect(await timeline.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await replyBubble.scrollIntoViewIfNeeded();
+  await fullyVisible(replyBubble);
   await capture(page, 'readable-reply-large-text');
+  await page.locator('.group-legacy-agent > summary').focus();
+  for (
+    let step = 0;
+    step < 20 && !(await input.evaluate((el) => el === document.activeElement));
+    step++
+  )
+    await page.keyboard.press('Tab');
+  await expect(input).toBeFocused();
+  await fullyVisible(input);
+  await input.fill('Enlarged retained draft');
+  await page.keyboard.press('Tab');
+  await expect(send).toBeFocused();
+  await fullyVisible(send);
+  await capture(page, 'readable-composer-large-text');
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '';
   });

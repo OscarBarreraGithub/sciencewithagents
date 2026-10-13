@@ -237,7 +237,7 @@ for (const selected of [false, true])
       await expect(page.locator('.xterm-rows')).toContainText(`PWD_${owned.root}`);
       expect(
         await page.locator('.owner-terminal-location').evaluate((e) => getComputedStyle(e).color),
-      ).toBe('rgb(179, 192, 181)');
+      ).toBe('rgb(238, 240, 245)');
       const geometry = await page.locator('.owner-terminal-host').boundingBox();
       expect(geometry!.height).toBeGreaterThan(page.viewportSize()!.height * 0.45);
       for (const label of ['Ctrl C', 'Ctrl D', 'Enter']) {

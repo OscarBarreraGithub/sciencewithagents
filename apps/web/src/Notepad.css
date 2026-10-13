@@ -1,12 +1,12 @@
-/* Full-page prompt notepad: a warm yellow writing surface in the top layer. */
+/* Full-page prompt notepad: a ruled writing surface in the shared dark palette. */
 dialog.notepad,
 .home-shell dialog.notepad {
-  --pad-ink: #202738;
-  --pad-muted: #6d6a58;
-  --pad-line: #e8dfb8;
-  --pad-paper: #fff9df;
-  --pad-rule: #f1e6bb;
-  --pad-blue: #465cdf;
+  --pad-ink: var(--ink);
+  --pad-muted: var(--muted);
+  --pad-line: var(--line);
+  --pad-paper: var(--surface-0);
+  --pad-rule: var(--line);
+  --pad-blue: var(--accent);
   position: fixed;
   inset: var(--notepad-top, 0px) 0 auto;
   width: 100vw;
@@ -18,7 +18,7 @@ dialog.notepad,
   border: 0;
   border-radius: 0;
   box-shadow: none;
-  background: #fffdf5;
+  background: var(--surface-1);
   color: var(--pad-ink);
   font-family:
     'Manrope',
@@ -34,7 +34,7 @@ dialog.notepad[open] {
   grid-template-rows: auto minmax(0, 1fr);
 }
 dialog.notepad::backdrop {
-  background: #20273840;
+  background: #080a10b8;
 }
 .notepad-bar {
   display: flex;
@@ -42,13 +42,13 @@ dialog.notepad::backdrop {
   gap: 16px;
   padding: 12px 20px;
   border-bottom: 1px solid var(--pad-line);
-  background: #fffdf5;
+  background: var(--surface-1);
 }
 .notepad-title {
   flex: 1;
   min-width: 0;
 }
-.notepad-title p {
+:root .notepad .notepad-title p {
   font-size: var(--text-small);
   color: var(--pad-muted);
   margin: 0;
@@ -63,13 +63,13 @@ dialog.notepad::backdrop {
   line-height: 1.25;
   color: var(--pad-ink);
 }
-.notepad-status {
+:root .notepad .notepad-status {
   font-size: var(--text-small);
   color: var(--pad-muted);
   white-space: nowrap;
 }
-.notepad-status.failed {
-  color: #a33122;
+:root .notepad .notepad-status.failed {
+  color: var(--danger);
   font-weight: 650;
 }
 .notepad-actions {
@@ -77,7 +77,8 @@ dialog.notepad::backdrop {
   gap: 8px;
   flex-shrink: 0;
 }
-.notepad-button {
+.notepad-button,
+.notepad .message-queue-actions .subtle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -86,33 +87,39 @@ dialog.notepad::backdrop {
   padding: 8px 14px;
   border: 1px solid var(--pad-line);
   border-radius: 10px;
-  background: white;
+  background: var(--surface-2);
   color: var(--pad-ink);
   font: inherit;
   font-size: var(--text-small);
   font-weight: 650;
   cursor: pointer;
 }
-.notepad-button:hover {
+.notepad .message-queue-actions .subtle {
+  font-size: max(16px, var(--text-small));
+}
+.notepad-button:hover,
+.notepad .message-queue-actions .subtle:hover {
   border-color: var(--pad-blue);
 }
 .notepad-button:focus-visible,
+.notepad .message-queue-actions .subtle:focus-visible,
 .notepad textarea:focus-visible,
 .notepad-versions button:focus-visible {
   outline: 2px solid var(--pad-blue);
   outline-offset: 2px;
 }
 .notepad-button.primary {
-  background: var(--pad-blue);
-  border-color: var(--pad-blue);
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
   color: white;
 }
-.notepad-button:disabled {
+.notepad-button:disabled,
+.notepad .message-queue-actions .subtle:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .notepad-button[aria-expanded='true'] {
-  background: #f4efd8;
+  background: var(--surface-3);
 }
 .notepad-body {
   display: grid;
@@ -161,7 +168,7 @@ dialog.notepad.with-history .notepad-body {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.notepad-count {
+:root .notepad .notepad-count {
   margin: 0;
   font-size: var(--text-small);
   color: var(--pad-muted);
@@ -175,7 +182,7 @@ dialog.notepad.with-history .notepad-body {
   padding: 14px;
   border: 1px solid var(--pad-line);
   border-radius: 14px;
-  background: white;
+  background: var(--surface-1);
 }
 .notepad-history-head {
   display: flex;
@@ -187,15 +194,15 @@ dialog.notepad.with-history .notepad-body {
   margin: 0;
   font-size: var(--text-reading);
 }
-.notepad-history p,
-.notepad-history-note {
+:root .notepad .notepad-history p,
+:root .notepad .notepad-history-note {
   margin: 0;
   font-size: var(--text-small);
   color: var(--pad-muted);
   overflow-wrap: anywhere;
 }
-.notepad-history-error p {
-  color: #a33122;
+:root .notepad .notepad-history-error p {
+  color: var(--danger);
   margin-bottom: 8px;
 }
 .notepad-versions {
@@ -213,7 +220,7 @@ dialog.notepad.with-history .notepad-body {
   padding: 8px 10px;
   border: 1px solid var(--pad-line);
   border-radius: 10px;
-  background: #fffdf5;
+  background: var(--surface-2);
   color: var(--pad-ink);
   font: inherit;
   text-align: left;
@@ -233,8 +240,8 @@ dialog.notepad.with-history .notepad-body {
   font-size: var(--text-caption);
   padding: 1px 6px;
   border-radius: 6px;
-  background: #edf0ff;
-  color: #3a4cb8;
+  background: var(--accent-wash);
+  color: var(--accent);
 }
 .notepad-versions small {
   color: var(--pad-muted);
@@ -275,8 +282,8 @@ dialog.notepad.with-history .notepad-body {
   padding: 10px 20px calc(12px + env(safe-area-inset-bottom, 0px));
   border: 1px solid var(--pad-line);
   border-radius: 12px;
-  box-shadow: 0 8px 32px #20273826;
-  background: #fffdf5;
+  box-shadow: var(--shadow-popover);
+  background: var(--surface-1);
   font-size: var(--text-small);
 }
 .notepad-options-head {
@@ -292,9 +299,9 @@ dialog.notepad.with-history .notepad-body {
   min-height: 44px;
   margin: 4px 8px 4px 0;
 }
-.notepad-notice {
+:root .notepad .notepad-notice {
   margin: 0;
-  color: #a33122;
+  color: var(--danger);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -311,8 +318,8 @@ dialog.notepad.with-history .notepad-body {
   min-height: 44px;
   border: 1px solid var(--pad-line);
   border-radius: 10px;
-  background: white;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%236d6a58' stroke-width='1.5'%3E%3Cpath d='m3 5 4 4 4-4'/%3E%3C/svg%3E");
+  background: var(--surface-2);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%23a4adbd' stroke-width='1.5'%3E%3Cpath d='m3 5 4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
   color: var(--pad-ink);
@@ -337,7 +344,7 @@ dialog.notepad.with-history .notepad-body {
   .notepad-title h2 {
     font-size: var(--text-lead);
   }
-  .notepad-status {
+  :root .notepad .notepad-status {
     max-width: 45%;
     white-space: normal;
     text-align: right;
@@ -370,7 +377,7 @@ dialog.notepad.with-history .notepad-body {
   .notepad-bar {
     padding-block: 6px;
   }
-  .notepad-title p {
+  :root .notepad .notepad-title p {
     display: none;
   }
   dialog.notepad.with-history .notepad-body {

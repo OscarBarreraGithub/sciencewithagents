@@ -92,10 +92,14 @@ test('a taken-over and delivered queued editor retains its local copy without sa
       return route.fulfill({ json: run });
     });
   };
-  const refresh = (tab: Page) =>
-    tab.evaluate(() =>
+  const refresh = async (tab: Page) => {
+    await tab.evaluate(() =>
       (window as unknown as { refreshQueueFixture(): void }).refreshQueueFixture(),
     );
+    // The first tab's clock is paused before page timers exist. Deliver the
+    // event debounce without also running its independent five-second poll.
+    if (tab === page) await page.clock.runFor(300);
+  };
   const openEdit = async (tab: Page, name: 'Edit' | 'Take over edit') => {
     await tab.getByRole('button', { name: /Expand queue/ }).click();
     const queue = tab.getByRole('dialog', { name: 'Queued messages', exact: true });
@@ -105,12 +109,12 @@ test('a taken-over and delivered queued editor retains its local copy without sa
   try {
     await setup(page.context(), true);
     await setup(otherContext, false);
+    await page.clock.install({ time: new Date('2030-01-01T00:00:00Z') });
+    await page.clock.pauseAt(new Date('2030-01-01T00:00:01Z'));
     await page.goto(`/#/chat/${agent.id}`);
     await other.goto(`/#/chat/${agent.id}`);
     const pad = await openEdit(page, 'Edit');
     await expect(pad).toBeVisible();
-    await page.clock.install({ time: new Date('2030-01-01T00:00:00Z') });
-    await page.clock.pauseAt(new Date('2030-01-01T00:00:01Z'));
     const localText = 'Unsent scientific edits retained only in the first tab.';
     const local = pad.getByRole('textbox');
     await local.fill(localText);
@@ -161,6 +165,60 @@ test('a taken-over and delivered queued editor retains its local copy without sa
     await expect(pad.getByRole('button', { name: 'Retry saved action', exact: true })).toHaveCount(
       0,
     );
+    const secondaryStyle = (element: HTMLElement | SVGElement) => {
+      const css = getComputedStyle(element);
+      return [css.backgroundColor, css.borderColor, css.color];
+    };
+    const copyStyle = await pad
+      .getByRole('button', { name: 'Copy text', exact: true })
+      .evaluate(secondaryStyle);
+    for (const name of ['Close edit', 'Inspect saved edit']) {
+      const control = pad.getByRole('button', { name, exact: true });
+      expect(await control.evaluate(secondaryStyle)).toEqual(copyStyle);
+      const box = (await control.boundingBox())!;
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(
+        await control.evaluate((element) => parseFloat(getComputedStyle(element).fontSize)),
+      ).toBeGreaterThanOrEqual(16);
+    }
+    // The retained local copy must remain readable in its header, ruled paper,
+    // versions and expanded options, including text inherited from shared styles.
+    const contrast = await pad.evaluate((dialog) => {
+      const rgb = (value: string) => value.match(/[\d.]+/g)!.map(Number);
+      const luminance = (color: number[]) =>
+        color.slice(0, 3).reduce((sum, channel, i) => {
+          const value = channel / 255;
+          return (
+            sum +
+            (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4) *
+              [0.2126, 0.7152, 0.0722][i]!
+          );
+        }, 0);
+      return Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          '.notepad-title h2, .notepad-status, .notepad-count, .notepad-export, .notepad-history p, .notepad-versions button, .notepad-button:not(:disabled), .message-queue-actions .subtle:not(:disabled), .notepad-paper textarea',
+        ),
+      )
+        .filter((element) => element.getClientRects().length)
+        .map((element) => {
+          let surface: Element | null = element;
+          while (
+            surface?.parentElement &&
+            (rgb(getComputedStyle(surface).backgroundColor)[3] ?? 1) === 0
+          )
+            surface = surface.parentElement;
+          const foreground = luminance(rgb(getComputedStyle(element).color));
+          const background = luminance(rgb(getComputedStyle(surface!).backgroundColor));
+          return {
+            element: element.className,
+            ratio:
+              (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05),
+          };
+        });
+    });
+    expect(contrast.length).toBeGreaterThan(8);
+    for (const sample of contrast) expect(sample.ratio, sample.element).toBeGreaterThanOrEqual(4.5);
     await page.screenshot({ path: info.outputPath('delivered-editor-local-copy.png') });
     await pad.getByRole('button', { name: 'Close edit', exact: true }).click();
     await expect(pad).toHaveCount(0);

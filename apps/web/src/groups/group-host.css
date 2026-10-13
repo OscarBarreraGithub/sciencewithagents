@@ -160,8 +160,8 @@
   margin-block: 6px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--paper);
-  color: var(--home-ink, var(--ink));
+  background: var(--surface-2, var(--soft));
+  color: var(--ink);
   font-size: max(16px, 1rem);
   line-height: 1.5;
   cursor: pointer;
@@ -175,14 +175,14 @@
 .group-host-controls .secondary {
   min-height: 44px;
   border-color: var(--line);
-  background: var(--paper);
-  color: var(--home-ink, var(--ink));
+  background: var(--surface-2, var(--soft));
+  color: var(--ink);
 }
 .group-setup-dialog summary:hover,
 .group-host-controls summary:hover,
 .group-setup-dialog .secondary:hover,
 .group-host-controls .secondary:hover {
-  background: var(--soft);
+  background: var(--surface-3, var(--soft));
 }
 .group-local-visibility {
   display: flex;

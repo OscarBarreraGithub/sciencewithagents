@@ -940,6 +940,8 @@ body {
 @media (max-width: 1100px) {
   .home-shell .overview-destinations {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
   }
   .home-shell .destination {
     flex-direction: row;
@@ -949,6 +951,11 @@ body {
   }
   .home-shell .destination > svg {
     position: static;
+  }
+}
+@media (min-width: 701px) and (max-width: 1100px) and (max-height: 500px) {
+  .home-shell .overview-destinations {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 @media (max-width: 700px) {
@@ -1047,6 +1054,15 @@ body {
   border: 0;
   background: transparent;
 }
+.home-shell .home-orb:is(:hover, :active) {
+  background: transparent;
+  box-shadow: none;
+}
+.home-shell .home-mobile-allowances .home-chip {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .home-shell .home-brand img {
   filter: brightness(2.2);
 }
@@ -1103,18 +1119,6 @@ body {
 .home-shell .phone-settings .secondary {
   background: var(--surface-2);
 }
-@media (min-width: 1100px) {
-  .home-shell .overview-grid {
-    grid-template-areas: 'nav side' 'resources todo';
-    grid-template-rows: auto 1fr;
-  }
-  .home-shell .overview-main {
-    display: contents;
-  }
-  .home-shell .resource-stats {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
 
 /* Setup selection and Computer health share the app's readable dark palette. */
 .home-shell .config-folder label.selected {
@@ -1122,6 +1126,18 @@ body {
 }
 .home-shell .config-folder small {
   font-size: 16px;
+}
+/* Leave enough room for the longest provider stop at the current reading size. */
+@container worker-sliders (max-width: 24em) {
+  .home-shell .config-stops:not(.three) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-shell .config-stops:not(.three) > span:not(.active) {
+    display: none;
+  }
+  .home-shell .config-stops:not(.three) > .active {
+    text-align: center;
+  }
 }
 .home-shell .health-page {
   --health-line: var(--line);
@@ -1186,6 +1202,10 @@ body {
 :root :is(.recovery-panel, .recovery-update) {
   background: var(--surface-1);
   border-color: var(--line);
+  color: var(--ink);
+}
+:root .recovery-request-text {
+  background: var(--surface-0);
   color: var(--ink);
 }
 :root .recovery-warning {

@@ -374,6 +374,14 @@
   border-radius: 14px;
   overflow: hidden;
 }
+.group-host-workspace .group-legacy-chat .group-chat {
+  --group-reading-size: max(20px, 1.25rem);
+}
+@media (min-width: 1800px) {
+  .group-host-workspace .group-legacy-chat .group-chat {
+    --group-reading-size: max(22px, 1.375rem);
+  }
+}
 .groups-form-dialog input,
 .groups-form-dialog textarea,
 .group-host-controls input,

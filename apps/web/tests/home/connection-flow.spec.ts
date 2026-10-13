@@ -543,7 +543,7 @@ test('another computer has copyable prompts for each machine without starting se
   });
   expect(colors).toEqual({
     foreground: 'rgb(238, 240, 245)',
-    background: 'rgb(29, 34, 48)',
+    background: 'rgb(16, 18, 22)',
   });
   await expect(guide).toContainText('Sign in to Codex or Claude normally on each computer');
   await install.getByRole('button', { name: 'Copy', exact: true }).click();

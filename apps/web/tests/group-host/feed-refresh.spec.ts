@@ -164,7 +164,9 @@ test('shared chat follows paginated originals and retries damaged arrivals witho
   await expect(conversation.locator('.message')).toHaveCount(7);
   await expect(conversation).toContainText('Exact shared original 7');
   await expect(page.getByRole('button', { name: 'Retry group messages' })).toHaveCount(0);
-  await page.getByRole('tab', { name: 'My group agent', exact: true }).click();
+  await page.getByRole('tab', { name: 'Your Claude Code', exact: true }).click();
+  await page.getByText('Saved SWA group agent', { exact: true }).click();
+  await expect(page.getByPlaceholder('Message my group agent…')).toBeVisible();
   available = 8;
   await page.getByRole('tab', { name: 'Group chat', exact: true }).click();
   await expect(conversation.locator('.message')).toHaveCount(8);
