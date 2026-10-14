@@ -1609,10 +1609,13 @@ it('protected hosted configuration routes approval only in server headers for al
   ).toBe('GROUP_CREATOR_SETUP_REQUIRED');
   const changed = { ...descriptor, service: { ...descriptor.service, endpointId: randomUUID() } };
   const changedInvitation = `http://127.0.0.1:4330/#/groups?invite=${encodeURIComponent(JSON.stringify(changed))}`;
-  expect(
-    (await b.post('join', { key: randomUUID(), invitation: changedInvitation, displayName: 'B' }))
-      .statusCode,
-  ).toBe(400);
+  const changedServiceJoin = await b.post('join', {
+    key: randomUUID(),
+    invitation: changedInvitation,
+    displayName: 'B',
+  });
+  expect(changedServiceJoin.statusCode).toBe(409);
+  expect(changedServiceJoin.json().code).toBe('GROUP_SERVICE_REGISTRATION_REQUIRED');
   expect(networkCalls).toBe(beforeRefused);
   const joined = await joinMember(a, b, open.group.handle);
   const input = {
@@ -4447,15 +4450,13 @@ it('protected per-enrollment routes retain two creators across restart, lost rep
     JSON.parse(new URLSearchParams(new URL(link).hash.slice('#/groups?'.length)).get('invite')!);
   const install = (link: string) => installService(member.host.directory, descriptor(link).service);
   const beforeImport = calls.length;
-  expect(
-    (
-      await member.post('join', {
-        key: randomUUID(),
-        displayName: 'Reader',
-        invitation: secondInvitation,
-      })
-    ).statusCode,
-  ).toBe(400);
+  const unregisteredJoin = await member.post('join', {
+    key: randomUUID(),
+    displayName: 'Reader',
+    invitation: secondInvitation,
+  });
+  expect(unregisteredJoin.statusCode).toBe(409);
+  expect(unregisteredJoin.json().code).toBe('GROUP_SERVICE_REGISTRATION_REQUIRED');
   expect(calls).toHaveLength(beforeImport);
   install(firstInvitation);
   const originalPath = join(member.host.directory, 'service.json'),
@@ -4487,15 +4488,13 @@ it('protected per-enrollment routes retain two creators across restart, lost rep
   const alteredLink = `https://app.example.invalid/#/groups?invite=${encodeURIComponent(JSON.stringify(alteredInvitation))}`;
   const beforeAltered = calls.length,
     intentsBeforeAltered = member.host.db.prepare('SELECT count(*) n FROM gh_operations').get()!.n;
-  expect(
-    (
-      await member.post('join', {
-        key: randomUUID(),
-        displayName: 'Reader',
-        invitation: alteredLink,
-      })
-    ).statusCode,
-  ).toBe(400);
+  const alteredJoin = await member.post('join', {
+    key: randomUUID(),
+    displayName: 'Reader',
+    invitation: alteredLink,
+  });
+  expect(alteredJoin.statusCode).toBe(409);
+  expect(alteredJoin.json().code).toBe('GROUP_INVITATION_SERVICE_CHANGED');
   expect(calls).toHaveLength(beforeAltered);
   expect(member.host.db.prepare('SELECT count(*) n FROM gh_operations').get()!.n).toBe(
     intentsBeforeAltered,
