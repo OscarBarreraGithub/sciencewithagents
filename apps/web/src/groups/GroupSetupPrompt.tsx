@@ -146,7 +146,7 @@ const prompts = [
   },
 ];
 
-function CopyPrompt({
+export function CopyPrompt({
   label,
   button,
   text: prompt,

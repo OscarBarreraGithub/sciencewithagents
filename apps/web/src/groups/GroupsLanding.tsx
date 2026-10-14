@@ -5,6 +5,8 @@ import { DisplayName } from './DisplayName';
 import { Modal } from '../Modal';
 import { Button } from '../ui/Button';
 import { Hash, Plus, Settings2, Users } from 'lucide-react';
+import { CopyPrompt } from './GroupSetupPrompt';
+import { groupCreationSetupPrompt } from './group-creation-prompt';
 import './groups.css';
 import './groups-list.css';
 
@@ -207,9 +209,26 @@ export function GroupsLanding({
                     onChange={(event) => setProject(event.target.value)}
                   />
                 </label>
-                <p>
-                  Sharing files too? After creation, connect GitHub in Manage group → Shared files.
-                </p>
+                <section
+                  className="group-setup-choice group-create-guide"
+                  aria-label="Set up with your agent"
+                >
+                  <h3>Set up with your agent</h3>
+                  <p>
+                    Your agent checks hosting, helps create the group and asks whether you want
+                    shared files. Members join by invitation; only the creator needs Cloudflare
+                    hosting.
+                  </p>
+                  <p>
+                    Give this prompt to your existing agent. Copying it does not run setup or make a
+                    model call.
+                  </p>
+                  <CopyPrompt
+                    label="Group creation setup prompt"
+                    button="Copy group setup prompt"
+                    text={groupCreationSetupPrompt}
+                  />
+                </section>
                 {setupCodeRequired && (
                   <>
                     <label>

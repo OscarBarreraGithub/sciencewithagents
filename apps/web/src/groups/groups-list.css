@@ -65,10 +65,19 @@
   font-size: 1rem;
   padding: 12px 0;
 }
-.group-setup-dialog summary {
+.group-setup-dialog summary,
+.group-create-guide summary {
   min-height: 44px;
   cursor: pointer;
   padding-block: 10px;
+}
+.group-create-guide {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.group-create-guide :is(h3, p, summary, .setup-prompt-head, pre) {
+  font-size: max(16px, 1rem);
 }
 .group-setup-choice h3 {
   font-size: 1rem;

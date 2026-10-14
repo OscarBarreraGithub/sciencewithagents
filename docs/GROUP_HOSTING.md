@@ -25,6 +25,12 @@ are not an account-wide quota reservation or billing guarantee.
 
 ### Human steps
 
+In **New group**, use **Set up with your agent → Copy group setup prompt** and paste it
+into your existing setup agent. It guides hosting, invitations and optional private Git
+files in one journey, even when hosting is already configured. **Read prompt** shows the
+instructions for manual copying; the copy button performs no setup or model call. Your
+typed names stay in the form. The separate **Group setup** dialog remains available.
+
 1. Creator: sign in to **your** Cloudflare account, confirm the account and Workers Free,
    and approve your service's HTTPS address. The setup agent handles the commands below.
 2. Members: give the external setup agent the creator's invitation privately, then choose

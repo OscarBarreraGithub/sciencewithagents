@@ -1,4 +1,74 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Request } from '@playwright/test';
+
+async function installCreationClipboard(page: Page) {
+  await page.addInitScript(() => {
+    const state = { texts: [] as string[], fail: false };
+    (window as Window & { creationClipboard?: typeof state }).creationClipboard = state;
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          if (state.fail) throw new Error('Clipboard permission denied');
+          state.texts.push(text);
+        },
+      },
+    });
+  });
+}
+
+async function checkCreationGuide(page: Page, form: Locator) {
+  const requests: string[] = [];
+  const record = (request: Request) => {
+    if (request.method() === 'POST') requests.push(request.url());
+  };
+  page.on('request', record);
+  const guide = form.getByRole('region', { name: 'Set up with your agent', exact: true });
+  const prompt = guide.getByLabel('Group creation setup prompt');
+  await expect(guide).toBeVisible();
+  await expect(prompt).toBeHidden();
+  const read = guide.getByText('Read prompt', { exact: true });
+  await read.click();
+  await expect(prompt).toBeVisible();
+  await read.click();
+  const copy = guide.getByRole('button', { name: 'Copy group setup prompt', exact: true });
+  await expect(copy).toHaveAttribute('type', 'button');
+  for (const target of [copy, read]) {
+    const box = (await target.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(
+      await target.evaluate((e) => parseFloat(getComputedStyle(e).fontSize)),
+    ).toBeGreaterThanOrEqual(16);
+  }
+  await copy.click();
+  const clipboard = () =>
+    page.evaluate(
+      () =>
+        (window as Window & { creationClipboard?: { texts: string[] } }).creationClipboard!.texts,
+    );
+  await expect.poll(clipboard).toHaveLength(1);
+  const [copied] = await clipboard();
+  expect(copied).toContain('docs/GROUP_HOSTING.md');
+  expect(copied).toContain('ONE intended PRIVATE repository');
+  await expect(prompt).toBeHidden();
+  await page.screenshot({ path: test.info().outputPath('new-group-guide.png') });
+  await page.evaluate(() => {
+    (window as Window & { creationClipboard?: { fail: boolean } }).creationClipboard!.fail = true;
+  });
+  await guide.getByRole('button', { name: 'Copied', exact: true }).click();
+  await expect(guide.getByRole('status')).toContainText('copy it by hand');
+  await expect(prompt).toBeVisible();
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(copied);
+  await expect.poll(clipboard).toHaveLength(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    page.viewportSize()!.width + 2,
+  );
+  await read.click();
+  page.off('request', record);
+  expect(requests).toEqual([]);
+  await expect(form.getByLabel('Your display name', { exact: true })).toHaveValue('Amina');
+  await expect(form.getByLabel('Project name', { exact: true })).toHaveValue('Research group');
+}
 
 async function openGroups(page: Page) {
   await page.goto('/#/chats');
@@ -14,6 +84,7 @@ async function openGroups(page: Page) {
 test('Groups detects external setup without leaving, recovers a failed refresh and preserves form entries', async ({
   page,
 }) => {
+  await installCreationClipboard(page);
   await page.clock.install();
   let configured = false;
   let unavailable = false;
@@ -52,6 +123,8 @@ test('Groups detects external setup without leaving, recovers a failed refresh a
   await expect(create).toBeDisabled();
   await form.getByLabel('Your display name', { exact: true }).fill('Amina');
   await form.getByLabel('Project name', { exact: true }).fill('Research group');
+  await checkCreationGuide(page, form);
+  await expect(create).toBeDisabled();
   await form.getByRole('button', { name: 'Set up hosting', exact: true }).click();
   const setup = page.getByRole('dialog', { name: 'Group setup', exact: true });
   await expect(setup).toBeVisible();
@@ -204,6 +277,7 @@ test('fresh Groups separates creator, joining and shared-file setup with optiona
 test('configured Groups keeps setup available in a dialog with collapsed prompt text', async ({
   page,
 }) => {
+  await installCreationClipboard(page);
   await page.route('**/api/groups', (route) =>
     route.fulfill({
       json: {
@@ -233,6 +307,10 @@ test('configured Groups keeps setup available in a dialog with collapsed prompt 
   await expect(creator.getByLabel('Cloudflare Groups setup prompt')).toBeVisible();
   await setup.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await page.getByRole('button', { name: 'New group', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'New group', exact: true });
+  await form.getByLabel('Your display name', { exact: true }).fill('Amina');
+  await form.getByLabel('Project name', { exact: true }).fill('Research group');
+  await checkCreationGuide(page, form);
   await expect(
     page
       .getByRole('dialog', { name: 'New group', exact: true })
