@@ -5,7 +5,7 @@ authority, spending and acceptance. Some repairs were reviewed but had not reach
 running server. Future managers must finish a bounded user outcome, preserve the real
 source of instructions and verify the installed workflow before reporting success.
 
-This is a historical review as of 2026-10-08. Use [Status](STATUS.md) for current behavior
+This is a historical review through 2026-10-14. Use [Status](STATUS.md) for current behavior
 and [Groups release readiness](GROUP_RELEASE_READINESS.md) for outstanding release gates.
 Private transcripts, logs, account usage and machine-specific receipts stay outside source.
 
@@ -52,8 +52,8 @@ counters establish repeated context processing; they do not establish an exact b
 exclusive responsibility for account allowance changes.
 
 Choose one bounded deliverable with an observable finish condition. Reuse passing evidence
-unless a change, failure or unresolved concern justifies another check. Bound correction
-rounds to two, then record a disposition or split the work. Preserve authorized caps and
+unless a new change or concrete failure justifies another check. Bound focused correction
+rounds to two, then record a disposition; renaming work does not reset the limit. Preserve caps and
 native goal settings; do not invent new budgets or change them from historical usage.
 
 ## Checkpoints discarded valid review state
@@ -108,9 +108,26 @@ The [public CI run left running at handoff](https://github.com/OscarBarreraGithu
 finished with an iPhone WebKit failure: correcting a partial Slurm review draft did not
 produce the expected save request. Passing sibling jobs did not resolve that failure.
 
-Follow an existing run to its terminal result and carry a failure into the next handoff.
-Investigate the focused case before rerunning broad suites. Do not label a timing-sensitive
-failure flaky or repaired without evidence.
+Give an existing CI run an explicit disposition: observe completion, or intentionally cancel
+an out-of-scope/superseded run and record failed/cancelled jobs at handoff. Required gates
+still block readiness. Do not wait indefinitely for unrelated CI or claim skipped/cancelled
+jobs passed. Diagnose the focused failure with evidence before another run; do not label it
+flaky or repaired without evidence.
+
+## October 14: broad CI delayed a bounded Groups handoff
+
+Broad retained full-SWA CI delayed the Groups handoff. Stale invitation-status assertions
+and a folder-navigation fixture needed narrow fixes, rather than repeated broad testing.
+Before work, choose the smallest required check and stop condition using [AGENTS.md](../AGENTS.md).
+Prompt/docs-only edits need inspection/formatting and typecheck only when TypeScript changes;
+they do not need a full suite or browser matrix. Behavior/contracts need the affected test
+file/workflow once, including relevant failure/retry. Stop after passing unless a new change
+or concrete failure justifies another check. Broader checks require a stated shared-runtime,
+multiple-component risk or enforced release gate. Separate product regressions from test or
+environment failures with evidence; record unrelated issues as scoped follow-ups. Two focused
+correction rounds end in a disposition, without resetting the limit by renaming the work.
+Changed workflow/auth/data/delivery regressions and required checks still block readiness.
+Once bounded checks and review pass, move to the authorized real user workflow check.
 
 ## A dark theme was mistaken for the requested redesign
 

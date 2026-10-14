@@ -26,6 +26,18 @@ Adjacent questions and steering add to unfinished work unless the person explici
 or replaces it. Keep stable work IDs, assignees, next actions and evidence across handoffs and
 compaction; reconcile earlier open requests before claiming completion.
 
+Before work, name the smallest required check and its stop condition. Prompt/docs-only edits
+need inspection/formatting; typecheck only if TypeScript source changed, with no full suite or
+browser matrix. For behavior/contracts, run the affected test file/workflow once, including
+failure/retry where relevant; stop after passing unless a new change or concrete failure
+justifies another check. Full suites require shared-runtime/multiple-component risk or an
+enforced release gate; state the specific reason first. Diagnose product versus test/environment
+failures with evidence; do not rerun broad checks to guess or chase unrelated failures. Record
+a scoped follow-up. After two focused correction rounds, record a disposition; renaming work
+does not reset the limit. Required checks and changed workflow/auth/data/delivery regressions
+still block readiness; never claim skipped/cancelled checks passed. Once bounded checks and
+review pass, move to the real user workflow check within authorized scope.
+
 Use strict TypeScript, pnpm workspaces, shared Zod contracts, parameterized SQLite,
 generated IDs, durable idempotency and append-only events. Runtime data belongs under
 ignored data/. Never commit conversations, credentials, logs, worktrees or private drawings.
