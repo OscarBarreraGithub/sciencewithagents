@@ -497,9 +497,10 @@ export function GroupsLanding({
               <section className="group-setup-choice" aria-label="Finish joining with your agent">
                 <h3>Finish joining with your agent</h3>
                 <p>
-                  This computer needs a trusted service registration check. Give this private prompt
-                  to your existing setup agent, then retry Join group here with the same invitation
-                  and name. Copying does not run setup or contact the invitation’s service.
+                  This custom service or saved route needs your setup agent. Ordinary workers.dev
+                  invitations join directly. Give this private prompt to your existing setup agent,
+                  then retry Join group here with the same invitation and name. Copying does not run
+                  setup or contact the invitation’s service.
                 </p>
                 <CopyPrompt
                   key={JSON.stringify([name, invitation])}

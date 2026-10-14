@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import WebSocket from 'ws';
+import { publicWorkersLookup, workersServiceUrl } from './group-service-network.js';
 import {
   GROUP_UPDATE_LIMITS,
   groupUpdateSchema,
@@ -112,6 +113,9 @@ export class GroupHostUpdates {
     let peer: WebSocket;
     try {
       peer = new WebSocket(destination.url, {
+        ...(workersServiceUrl(new URL(destination.url), 'wss:')
+          ? { lookup: publicWorkersLookup, agent: false }
+          : {}),
         headers: destination.headers,
         handshakeTimeout: 5000,
         maxPayload: GROUP_UPDATE_LIMITS.frameBytes,

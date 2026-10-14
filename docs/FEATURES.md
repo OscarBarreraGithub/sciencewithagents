@@ -424,6 +424,11 @@ optional native Groups list exposes the same status on ordinary routine reads. T
 changes still require browser/release acceptance; fixtures do not establish live accounts or
 physical-phone acceptance.
 
+Ordinary creator-hosted `workers.dev` invitations join directly in the authenticated app,
+adding a member route while preserving existing creator/default services. Custom domains
+and protected-route mismatches retain the native setup-agent handoff. Durable join retries
+keep the original membership bearer and operation through restart. See [Groups hosting](GROUP_HOSTING.md).
+
 Groups GitHub onboarding source adds optional join usernames, authenticated own-member
 metadata shared across installations, creator-only repository advertisement from a verified
 native binding, and per-username native GitHub access checks. Manage provides contextual

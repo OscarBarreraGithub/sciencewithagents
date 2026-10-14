@@ -127,7 +127,10 @@ import {
   groupServiceHash as serviceHash,
   readRegistryService,
   readCreatorService,
+  registerService,
+  memberService,
 } from '../../../scripts/group-service-registry.mjs';
+import { groupServiceFetch, workersServiceUrl } from './group-service-network.js';
 
 const slotSchema = z.strictObject({
   handle: z.uuid(),
@@ -249,7 +252,7 @@ export class GroupHost {
     } = {},
   ) {
     this.directory = privateGroupDirectory(root);
-    this.http = options.http ?? fetch;
+    this.http = options.http ?? groupServiceFetch;
     const profile =
       options.betaProfile === undefined ? publicGroupBetaProfile : options.betaProfile;
     this.betaConfiguration = profile ? betaGroupServiceConfiguration(profile) : null;
@@ -1026,8 +1029,10 @@ export class GroupHost {
       service?: z.infer<typeof groupHostedInvitationServiceSchema>;
     };
     let beta: Record['beta'];
+    let invitationUrl: URL;
     try {
       const url = new URL(input.invitation);
+      invitationUrl = url;
       if (!['http:', 'https:'].includes(url.protocol) || url.search || url.username || url.password)
         throw new Error();
       const encoded = new URLSearchParams(url.hash.replace(/^#\/?groups\??/, ''));
@@ -1041,9 +1046,8 @@ export class GroupHost {
           service: groupHostedInvitationServiceSchema.optional(),
         })
         .parse(JSON.parse(encoded.get('invite') ?? ''));
-      config = invitation.service
-        ? this.serviceFor({ serviceHash: serviceHash(invitation.service), creator: false })
-        : this.configured();
+      if (invitation.service) memberService(invitation.service);
+      config = invitation.service ?? this.configured();
       if (config.mode === 'beta') {
         if (invitation.serviceId !== config.profile.serviceId || !invitation.admission)
           throw new Error('service mismatch');
@@ -1054,32 +1058,13 @@ export class GroupHost {
         throw new Error('protected service mismatch');
       }
     } catch (error) {
-      if (error instanceof GroupHostError) {
-        if (error.code !== 'GROUP_SERVICE_CHANGED') throw error;
-        throw new GroupHostError(
-          409,
-          'GROUP_SERVICE_REGISTRATION_REQUIRED',
-          'This invitation’s Groups service is not registered or needs reconciliation on this computer. Your existing groups are unchanged. Finish joining with your setup agent, then retry the same invitation.',
-        );
-      }
+      if (error instanceof GroupHostError) throw error;
       throw new GroupHostError(
         400,
         'INVALID_INVITATION',
-        'Paste the complete invitation for the Groups service on this computer. Invitations cannot change a protected service or choose an endpoint.',
+        'Paste the complete invitation from the group creator. The invitation address and service must match.',
       );
     }
-    if (
-      invitation.service &&
-      (config.mode !== 'hosted' ||
-        serviceHash(invitation.service) !== serviceHash(config) ||
-        invitation.service.hostingAuthorization.approvalCapability !==
-          config.hostingAuthorization.approvalCapability)
-    )
-      throw new GroupHostError(
-        409,
-        'GROUP_INVITATION_SERVICE_CHANGED',
-        'This invitation’s protected service approval differs from the saved mapping. Ask your setup agent to reconcile it; do not replace the protected identity. Existing groups are unchanged.',
-      );
     return this.lock(`join-group:${invitation.groupId}`, async () => {
       if (
         this.db
@@ -1095,6 +1080,90 @@ export class GroupHost {
           'GROUP_IDENTITY_CONFLICT',
           'This group identity already belongs to another saved service. Existing contexts and routes were preserved.',
         );
+      if (invitation.service) {
+        const service = invitation.service;
+        const legacy = readGroupServiceConfiguration(this.directory);
+        if (legacy?.mode === 'disabled') this.configured();
+        let registered: ActiveGroupServiceConfiguration | null;
+        try {
+          const entry = readRegistryService(this.directory, serviceHash(service));
+          registered = entry
+            ? (groupServiceConfigurationSchema.parse(entry) as ActiveGroupServiceConfiguration)
+            : legacy && legacy.mode !== 'disabled' && serviceHash(legacy) === serviceHash(service)
+              ? legacy
+              : null;
+        } catch {
+          throw new GroupHostError(
+            409,
+            'GROUP_SERVICE_CHANGED',
+            'This protected service route needs repair. Ask your setup agent to restore its exact files; existing groups are preserved.',
+          );
+        }
+        if (registered) {
+          if (
+            registered.mode !== 'hosted' ||
+            publicationCanonical(
+              groupHostedInvitationServiceSchema.parse({
+                version: registered.version,
+                mode: registered.mode,
+                endpoint: registered.endpoint,
+                endpointId: registered.endpointId,
+                hostingAuthorization: registered.hostingAuthorization,
+              }),
+            ) !== publicationCanonical(service)
+          )
+            throw new GroupHostError(
+              409,
+              'GROUP_INVITATION_SERVICE_CHANGED',
+              'This invitation’s service approval differs from the saved mapping. Ask your setup agent to reconcile it; existing groups are preserved.',
+            );
+          config = registered;
+        } else {
+          if (
+            this.db
+              .prepare(
+                `SELECT 1 FROM (
+            SELECT body FROM gh_groups UNION ALL SELECT body FROM gh_operations
+          ) WHERE json_extract(body,'$.serviceHash')=? LIMIT 1`,
+              )
+              .get(serviceHash(service))
+          )
+            throw new GroupHostError(
+              409,
+              'GROUP_SERVICE_CHANGED',
+              'The original protected route for a saved group is missing. Ask your setup agent to restore it before retrying.',
+            );
+          if (!workersServiceUrl(new URL(service.endpoint)))
+            throw new GroupHostError(
+              409,
+              'GROUP_SERVICE_REGISTRATION_REQUIRED',
+              'This invitation uses a custom service address. Register it with your existing setup agent, then retry this invitation. Ordinary workers.dev invitations join directly.',
+            );
+          if (
+            service.endpoint !== `${service.hostingAuthorization.origin}/` ||
+            invitationUrl.origin !== service.hostingAuthorization.origin ||
+            invitationUrl.pathname !== '/join' ||
+            invitationUrl.protocol !== 'https:'
+          )
+            throw new GroupHostError(
+              400,
+              'INVALID_INVITATION',
+              'The invitation address does not match its group service. Ask the creator for the complete invitation.',
+            );
+          try {
+            // An explicit authenticated Join adds a member route only. Never
+            // activate a creator, rewrite defaults or replace protected entries.
+            registerService(this.directory, service);
+          } catch {
+            throw new GroupHostError(
+              409,
+              'GROUP_SERVICE_REGISTRATION_REQUIRED',
+              'The protected service registry needs reconciliation or is full. Ask your setup agent to check it; existing groups are preserved.',
+            );
+          }
+          config = this.serviceFor({ serviceHash: serviceHash(service), creator: false });
+        }
+      }
       const safeInput = {
         ...input,
         invitation: createHash('sha256').update(input.invitation).digest('hex'),

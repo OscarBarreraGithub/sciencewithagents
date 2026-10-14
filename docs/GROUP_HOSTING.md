@@ -33,8 +33,9 @@ typed names stay in the form. The separate **Group setup** dialog remains availa
 
 1. Creator: sign in to **your** Cloudflare account, confirm the account and Workers Free,
    and approve your service's HTTPS address. The setup agent handles the commands below.
-2. Members: give the external setup agent the creator's invitation privately, then choose
-   **Join group** in the app. No code exchange or separate creator approval.
+2. Members: paste the creator's ordinary `workers.dev` invitation into **Join group** in
+   the app. Custom domains or protected-route errors use the existing setup agent.
+   No code exchange or separate creator approval.
 3. Enable native local agents when ready. Verify one shared message in each direction.
 4. For group messages while the computer is closed, use the optional [hosted Groups phone
    view](GROUP_PHONE_FEED.md) after the matching Worker update. Full phone access to agents
@@ -181,11 +182,19 @@ fragment includes the exact service descriptor (the schema above **without**
 `setupCapability`), group identity and invitation secret. The same link can enroll multiple people before expiry. The fragment is removed
 from the browser address immediately. Do not paste it into public issues, logs or source.
 
-If Join reports that the invitation’s service needs registration, use **Finish joining with
-your agent** in the Join dialog. Its private copy/manual prompt includes the display name
-and invitation already entered; neither is saved as additional bearer material. Locate the
-existing SWA installation for this runbook. Keep the dialog open and retry the same Join
-after trusted registration. Malformed invitations have a separate error and can be corrected.
+On the joining computer, open **Join group**, paste the invitation and enter your name.
+Ordinary HTTPS `worker.account.workers.dev` invitations connect directly. Authenticated Join
+adds a member-only private route for that creator; it preserves `service.json`, the creator
+selection, other services and all saved enrollments. It makes no deployment, account or
+model call. The invitation origin must match the exact service and `/join` path. Public
+IPv4 DNS answers are checked and pinned for HTTP/WebSocket connections; mixed/private DNS,
+redirects, alternate ports and forwarded browser credentials are refused. IPv6-only service
+connections fail closed.
+
+For a custom-domain service, a changed protected approval, a full registry or missing saved
+route, use **Finish joining with your agent**. Its private prompt includes the display name
+and invitation already entered. Keep the dialog open and retry that same Join after exact
+native reconciliation. Malformed invitations have a separate error and can be corrected.
 No Cloudflare signup, deployment or second Worker is required for a member.
 
 On the joining computer, the external setup agent saves the invitation in a temporary
@@ -197,8 +206,8 @@ node scripts/group-cloudflare-setup.mjs join /absolute/member-app-data \
 ```
 
 This validates the descriptor and writes a join-only private configuration; it makes no
-network request. The person verifies the service belongs to the intended creator. Arbitrary
-browser invitations cannot choose a host, trigger a fetch or override an existing mapping.
+network request. The person verifies the advanced service belongs to the intended creator.
+Custom-domain browser invitations cannot trigger a fetch or override an existing mapping.
 If every service-descriptor field matches an existing mapping, the helper reuses it, including
 on the creator's own installation. Existing creator authority stays private and unchanged.
 A different verified service gets its own registry entry. A changed routing approval for an
@@ -206,7 +215,7 @@ existing service identity refuses before writing; an invitation cannot replace i
 capability. Missing or changed entries refuse access to the affected original Group instead
 of falling back to another creator. A Group UUID already retained under another service is
 rejected before membership handoff.
-The setup agent is the explicit trusted configuration boundary. Remove the temporary
+The setup agent remains the trusted boundary for advanced service imports. Remove the temporary
 invitation file after handoff. If setup took longer than 7 days, obtain a fresh invitation
 from the same creator; the saved service mapping stays valid.
 

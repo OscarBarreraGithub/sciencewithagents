@@ -15,8 +15,9 @@ two installed computers. See [Status](STATUS.md#groups) and the [normal workflow
 Fresh installations have no maintainer service default. The creator's external setup agent
 deploys the protected Worker to the creator's own verified Cloudflare Workers Free account,
 following the exact commands in [hosting setup](GROUP_HOSTING.md). Members configure that
-same exact HTTPS service from the creator's invitation through their trusted setup agent;
-they do not need their own Worker or Cloudflare account for Groups.
+same exact HTTPS service from the creator's invitation. Authenticated Join registers
+ordinary `workers.dev` member routes directly; custom domains retain the trusted native
+setup-agent import. Members need no Worker or Cloudflare account for Groups.
 
 Repository deployment defaults remain disabled. `local-test` accepts explicit HTTP loopback
 configuration for owned tests. `hosted` requires the exact approved HTTPS root origin,
@@ -27,8 +28,13 @@ verification remains enabled. No service is deployed or purchased by opening Gro
 
 Protected configuration stays in same-owner private host files. The creator alone retains
 `setupCapability`; member hosts omit it. Invitations include a routing-only service descriptor
-in their fragment. The external setup script validates and saves that descriptor without
-fetching it; browser invitation requests cannot select a URL or replace configuration.
+in their fragment. For ordinary Join, the host admits only an exact HTTPS `worker.account.workers.dev` root
+with a matching `/join` invitation origin. It adds a member-only registry entry without
+changing defaults, creator authority or existing routes. Its HTTP and WebSocket connections
+pin checked public IPv4 DNS answers, refuse private/mixed DNS and redirects, and retain
+native TLS hostname verification. IPv6-only services fail closed. Custom domains use the
+external setup script, which validates/saves the descriptor without fetching it. Invitations
+cannot replace protected configuration or restore a missing retained route automatically.
 Membership credentials are independently generated on each installation. They use headers,
 never URLs, event JSON, receipts or logs. Delivery rejects browser Origin, setup headers,
 queries and non-POST requests. Changing the saved endpoint, endpoint identity or binding

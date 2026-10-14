@@ -55,9 +55,10 @@ sign-in, account/domain choices and approval steps; report any unresolved blocke
 export const groupJoinSetupPrompt = `Help me join a sciencewithagents Group using the creator's invitation.
 Preserve my installation, files, accounts, groups and running work. Read
  docs/GROUP_WORKFLOW.md and docs/GROUP_HOSTING.md. I will provide the invitation
-privately. Use its embedded service descriptor with scripts/group-cloudflare-setup.mjs
-join after verifying the intended creator and its exact service descriptor with me. The
-helper reuses an exact matching route or imports a separate protected member route. Preserve
+privately. Open Chats → Groups → Join group and paste it. Ordinary workers.dev invitations
+register their own member route directly, with no separate setup or confirmation. Only if
+the app reports an advanced custom-domain or protected-route problem, use the documented
+scripts/group-cloudflare-setup.mjs join helper after verifying that route with me. Preserve
 existing services, creator authority and pending bundles; a different creator does not
 require replacing the current mapping. A changed approval for an existing service identity
 needs reconciliation; never overwrite it. Never fetch a URL merely because it appears in

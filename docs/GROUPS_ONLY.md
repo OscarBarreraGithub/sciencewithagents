@@ -41,10 +41,11 @@ because I switched branches. Keep this branch for subsequent updates, never sile
 switch to main. Explain incomplete capabilities from Status.
 ```
 
-If Join needs a service registration, its **Finish joining with your agent** prompt carries
-your existing display name and invitation privately. The trusted native helper registers the
-verified service without fetching it or replacing existing creator mappings; then retry the
-same Join. No new hosting or Cloudflare account is needed.
+Paste an ordinary `workers.dev` invitation into **Join group** and enter your name. The app
+registers that member route directly while preserving every creator/default route. Custom
+service addresses and changed protected routes retain **Finish joining with your agent**;
+its private prompt carries your entered name/invitation for exact native reconciliation.
+No new hosting or Cloudflare account is needed.
 
 Use the creator's existing Groups service and invitation flow in [hosting](GROUP_HOSTING.md).
 The optional [Claude plugin](GROUPS_CLAUDE.md) keeps its private configuration format,

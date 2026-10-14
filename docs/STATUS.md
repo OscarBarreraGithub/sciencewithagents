@@ -1,5 +1,12 @@
 # Current status
 
+**Direct invitation source candidate, 2026-10-14:** authenticated Join registers an exact
+creator-hosted `workers.dev` member route without a separate setup-agent handoff. Existing
+creator/default routes, disabled settings and durable join identities are preserved; custom
+domains and genuine protected-route mismatches retain native reconciliation. Public DNS is
+pinned for Workers HTTP/WebSocket connections. Exact independent review, installed activation
+and two-person acceptance remain separate gates.
+
 **GitHub onboarding source candidate, 2026-10-14:** optional join/member usernames use
 existing authenticated shared feature events; creator repository metadata and native access
 checks feed Manage. Contextual prompts cover separate GitHub invitation and acceptance.

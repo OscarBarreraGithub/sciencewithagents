@@ -33,12 +33,13 @@ uses fake providers and is not a substitute for this setup.
    New links open the service's `/join` page, which guides recipients into their own app.
    A creator's private localhost/phone address is not a group login. Older links can be
    pasted into **Join group** in the recipient's configured app.
-4. The member gives the **join setup prompt** and invitation to their setup agent. It
-   configures the creator's service in private host files; members do not deploy another
-   Worker or need Cloudflare for Groups. One installation can retain Groups from several
+4. The member opens **Join group**, enters their name and pastes the invitation. Ordinary
+   creator-hosted `workers.dev` invitations register their member route directly; no
+   separate setup-agent handoff, Cloudflare account or Worker deployment is needed. One installation can retain Groups from several
    creators; each imported service keeps its own route. Joining first does not grant creator
-   permission or prevent later setup of your own service. If setup outlasts the invitation, obtain a fresh
-   link from the same creator. Choose **Join group**. The group opens
+   permission or prevent later setup of your own service. For a custom-domain service or a changed protected route, use the dialog's setup-agent
+   prompt to reconcile that exact route. If the invitation expires, obtain a fresh link
+   from the same creator. Choose **Join group**. The group opens
    immediately, and the creator's member list updates automatically. Previously accepted
    pending requests become members when read by the updated service, provided their
    invitation was not revoked and its issuer remains active. Existing members stay joined
@@ -211,8 +212,9 @@ work and drafts. A lost acknowledgement offers **Review saved list change**, a r
 The creator's own Cloudflare service is configured by the external setup agent, following
 [hosting](GROUP_HOSTING.md). Each installation generates its own membership bearer and
 retains exact setup requests in private host storage. Invitations can carry routing-only
-configuration for the setup agent, but cannot change browser-selected endpoints or overwrite
-existing mappings. Creation credentials stay on the creator's computer. Private
+configuration. Authenticated Join adds an exact ordinary `workers.dev` member route;
+custom domains need native import. Invitations cannot overwrite existing mappings or
+replace missing retained routes. Creation credentials stay on the creator's computer. Private
 `groups/service.json` uses a same-owner `0700` directory and `0600` files; symlinks and hard
 links are refused. Redirects are refused. Existing pinned beta groups remain compatible.
 See [delivery contracts and limits](GROUP_DELIVERY.md), [native owner setup](GROUP_NATIVE_OWNER_SETUP.md)

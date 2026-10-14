@@ -138,9 +138,10 @@ to join the group in my invitation. Preserve my installation, accounts and files
 Follow docs/CONTRIBUTOR_SETUP.md and docs/GROUP_WORKFLOW.md. Use my own Codex or Claude
 sign-in and native tools. Install the chosen provider CLI if missing, or update its
 existing installation, then verify its version and model discovery.
-Configure the invitation's group service using the documented
-setup-agent process, without deploying a separate service or using the maintainer's
-account. Open Chats → Groups → Join group. The invitation grants membership;
+Open Chats → Groups → Join group and use the invitation. Ordinary workers.dev invitations
+connect directly; no separate service registration, deployment or Cloudflare account is
+needed. For an advanced custom-domain service or a changed protected route, follow
+docs/GROUP_HOSTING.md with my existing setup agent. The invitation grants membership;
 no confirmation code or separate approval is needed. Verify Group chat messaging. Follow
 docs/GROUPS_CLAUDE.md to connect my existing Claude Code only when requested; keep full SWA.
 Keep phone access and GitHub optional; list only the human steps I still need to do.
