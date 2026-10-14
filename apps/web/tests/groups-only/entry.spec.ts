@@ -255,35 +255,9 @@ test('real creation reuses its supplied folder and exact create/bind receipts af
     );
     const link = await prepareBrowserHandoff(root(), 4372);
     await page.goto(link!);
-    // Prepare only server-issued navigation IDs; the browser still selects and binds the real folder.
-    const origin = new URL(page.url()).origin;
-    const browse = async (folderId?: string, offset = 0) => {
-      const query = new URLSearchParams({ offset: String(offset) });
-      if (folderId) query.set('folderId', folderId);
-      const response = await page.request.get(`${origin}/api/project-folders?${query}`);
-      expect(response.ok()).toBe(true);
-      return response.json();
-    };
-    let listing = await browse();
-    let parentId = listing.locations.find(
-      (value: { kind: string }) => value.kind === 'computer',
-    ).id;
-    const parent = dirname(folder);
-    for (const segment of parent.slice(parse(parent).root.length).split(sep).filter(Boolean)) {
-      listing = await browse(parentId);
-      let child = listing.folders.find((value: { name: string }) => value.name === segment);
-      while (!child && listing.nextOffset !== null) {
-        listing = await browse(parentId, listing.nextOffset);
-        child = listing.folders.find((value: { name: string }) => value.name === segment);
-      }
-      expect(child, `Server-issued navigation for ${segment}`).toBeTruthy();
-      parentId = child.id;
-    }
-    await page.route('**/api/project-folders?*', (route) => {
-      const url = new URL(route.request().url());
-      if (!url.searchParams.has('folderId')) url.searchParams.set('folderId', parentId);
-      return route.continue({ url: url.toString() });
-    });
+    // The file handoff can finish goto while access restoration is still navigating.
+    // Wait for the app document before installing the later lost-response routes.
+    await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'New group', exact: true }).click();
     const form = page.getByRole('dialog', { name: 'New group', exact: true });
     const groupName = `Onboarding ${info.project.name} ${randomUUID().slice(0, 8)}`;
@@ -292,6 +266,27 @@ test('real creation reuses its supplied folder and exact create/bind receipts af
     await form.getByRole('radio', { name: 'Use my intended work folder', exact: true }).check();
     await form.getByRole('button', { name: 'Choose work folder', exact: true }).click();
     const browser = page.getByRole('dialog', { name: 'Choose a project folder' });
+    // Use real navigation and its server-issued IDs, rather than rewriting an
+    // initial request during the handoff's cross-document navigation.
+    const path = browser.getByRole('navigation', { name: 'Folder path', exact: true });
+    const folders = browser.locator('.folder-browser-list');
+    await browser
+      .getByRole('navigation', { name: 'Locations', exact: true })
+      .getByRole('button', { name: 'This computer', exact: true })
+      .click();
+    await expect(path.locator('button[aria-current="location"]')).toHaveText('This computer');
+    const parent = dirname(folder);
+    for (const segment of parent.slice(parse(parent).root.length).split(sep).filter(Boolean)) {
+      await expect(folders).toHaveAttribute('aria-busy', 'false');
+      const child = folders.getByRole('button', { name: segment, exact: true });
+      const more = folders.getByRole('button', { name: 'Load more folders', exact: true });
+      while ((await child.count()) === 0 && (await more.count()) > 0) {
+        await more.click();
+        await expect(folders).toHaveAttribute('aria-busy', 'false');
+      }
+      await child.click();
+      await expect(path.locator('button[aria-current="location"]')).toHaveText(segment);
+    }
     await browser
       .getByRole('combobox', { name: 'Search scope', exact: true })
       .selectOption('children');
