@@ -556,9 +556,13 @@ it('Read-only holds exact original group queue IDs before model discovery, inclu
   );
   let allowed = false;
   f.connector.contributions(() => allowed);
-  expect(f.runtime.groupHostBackgroundReason!(binding.agentId, run.id)).toContain('Read-only');
-  expect(f.runtime.groupHostBackgroundReason!(helper.id, helperRun.id)).toContain('Read-only');
-  expect(f.runtime.pulsar.decision(run, new Set()).reason).toContain('Read-only');
+  expect(f.runtime.groupHostBackgroundReason!(binding.agentId, run.id)).toContain(
+    'Automatic sharing is paused',
+  );
+  expect(f.runtime.groupHostBackgroundReason!(helper.id, helperRun.id)).toContain(
+    'Automatic sharing is paused',
+  );
+  expect(f.runtime.pulsar.decision(run, new Set()).reason).toContain('Automatic sharing is paused');
   const prepare = vi.spyOn(f.runtime.modelPolicy, 'prepare');
   await (f.runtime as unknown as { drain(): Promise<void> }).drain();
   expect(prepare).not.toHaveBeenCalled();
@@ -566,7 +570,9 @@ it('Read-only holds exact original group queue IDs before model discovery, inclu
   await f.restart();
   f.connector.contributions(() => allowed);
   expect(f.connector.context(input.requestId)!.runId).toBe(run.id);
-  expect(f.runtime.groupHostBackgroundReason!(binding.agentId, run.id)).toContain('Read-only');
+  expect(f.runtime.groupHostBackgroundReason!(binding.agentId, run.id)).toContain(
+    'Automatic sharing is paused',
+  );
   allowed = true;
   expect(f.runtime.groupHostBackgroundReason!(binding.agentId, run.id)).toBeNull();
   expect(f.store.runs()).toHaveLength(2);

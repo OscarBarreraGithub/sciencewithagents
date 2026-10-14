@@ -77,8 +77,10 @@ even if its native session ID is unchanged; status is read again after recovery.
 requests without a saved generation can only look up an accepted receipt. If none exists,
 their identity remains saved separately while you can explicitly stop the current selection.
 Native `groups_stop_sharing` calls may omit the generation for a new current-selection Stop;
-retrying their key always recovers the original result. Read-only or removed local groups pause
-automatic summaries. Summaries run no more than once a minute per computer, with a bounded
+retrying their key always recovers the original result. **Pause automatic sharing** holds
+queued summaries without stopping your native Claude conversation or discarding its backlog.
+Reading and manual group messages remain model-free; resuming can process saved authorized
+exchanges using allowance. Removed local groups also pause automatic summaries. Summaries run no more than once a minute per computer, with a bounded
 pending queue. Uncertain model attempts are never automatically repeated; ask your Claude
 to share a selected update. Delivery retries retain the same UUID and saved summary, back
 off, and stop automatically after a terminal refusal or eight failed attempts. The sharing

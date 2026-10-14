@@ -110,7 +110,13 @@ native hooks can observe this same folder. Propose only my intended committed SH
 Manage. Do not claim a proposal uploaded files or that Git sharing created a hosted report capture.
 ```
 
-Stop/reselection, read-only mode and local removal prevent old pending checkpoints from
+**Pause automatic sharing** keeps reading and manual human messages available without a
+model call, while holding new group-agent requests and queued summaries/model handoffs.
+**Resume automatic sharing** may process already authorized queued work using allowance;
+running work may finish and saved receipts/backlog remain. Your native Claude conversation
+is unaffected. Phone posting requires its separate pairing permission.
+
+Stop/reselection, paused automatic sharing and local removal prevent old pending checkpoints from
 publishing. Stop does not close Claude or its jobs. Before replacing an attached folder,
 Stop sharing, close that native conversation and its jobs, and confirm the exact stopped
 selection in Manage. Closure never approves files. Existing saved owner phone configuration

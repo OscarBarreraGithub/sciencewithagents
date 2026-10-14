@@ -193,7 +193,7 @@ it('retains independent Read-only revisions and exact delayed retries offline wi
   expect(f.http).not.toHaveBeenCalled();
 });
 
-it('Read-only denies fresh sends, Ask/Work and confirmation before service or native discovery while retaining drafts and reads', async () => {
+it('paused automatic sharing denies new Ask/Work and confirmation before service or native discovery', async () => {
   const f = fixture();
   f.host.localMode({ handle: f.value.handle, key: randomUUID(), revision: 0, mode: 'read-only' });
   const availability = vi.spyOn(f.host.native, 'availability');
@@ -206,9 +206,6 @@ it('Read-only denies fresh sends, Ask/Work and confirmation before service or na
         intent,
       }),
     ).rejects.toMatchObject({ code: 'GROUP_LOCAL_READ_ONLY' });
-  await expect(
-    f.host.send({ handle: f.value.shared.handle, key: randomUUID(), text: 'New human message' }),
-  ).rejects.toMatchObject({ code: 'GROUP_LOCAL_READ_ONLY' });
   await expect(f.host.confirmAction(f.value.shared.handle, {} as never)).rejects.toMatchObject({
     code: 'GROUP_LOCAL_READ_ONLY',
   });
@@ -218,23 +215,35 @@ it('Read-only denies fresh sends, Ask/Work and confirmation before service or na
   expect((await f.host.list()).groups[0].local?.mode).toBe('read-only');
 });
 
-it('Read-only chosen during a fresh send authority check prevents retaining or publishing that new contribution', async () => {
+it('pausing during a human send preserves its exact private-note receipt without a native call', async () => {
   const f = fixture();
   const owner = f.host as unknown as {
-    resolve(handle: string): Promise<{ value: typeof f.value; slot: typeof f.value.shared }>;
+    resolve(handle: string): Promise<{ value: typeof f.value; slot: typeof f.value.private }>;
   };
+  let paused = false;
   vi.spyOn(owner, 'resolve').mockImplementation(async () => {
-    f.host.localMode({ handle: f.value.handle, key: randomUUID(), revision: 0, mode: 'read-only' });
-    return { value: f.value, slot: f.value.shared };
+    if (!paused) {
+      f.host.localMode({
+        handle: f.value.handle,
+        key: randomUUID(),
+        revision: 0,
+        mode: 'read-only',
+      });
+      paused = true;
+    }
+    return { value: f.value, slot: f.value.private };
   });
-  await expect(
-    f.host.send({
-      handle: f.value.shared.handle,
-      key: randomUUID(),
-      text: 'Do not publish after mode changes.',
-    }),
-  ).rejects.toMatchObject({ code: 'GROUP_LOCAL_READ_ONLY' });
-  expect(Number(f.host.db.prepare('SELECT count(*) n FROM gh_sends').get()!.n)).toBe(0);
+  const availability = vi.spyOn(f.host.native, 'availability');
+  const input = {
+    handle: f.value.private.handle,
+    key: randomUUID(),
+    text: 'Manual note while paused.',
+  };
+  const receipt = await f.host.send(input);
+  expect(receipt.status).toBe('accepted');
+  expect(await f.host.send(input)).toEqual(receipt);
+  expect(Number(f.host.db.prepare('SELECT count(*) n FROM gh_sends').get()!.n)).toBe(1);
+  expect(availability).not.toHaveBeenCalled();
   expect(f.http).not.toHaveBeenCalled();
 });
 

@@ -129,11 +129,13 @@ The older selected-writer workflow remains separate for retained activity; selec
 does not take over these per-member summaries. Long originals and full summary storage
 remain original-only. See [summary limits](GROUP_PROMOTION.md#per-member-local-feed-summaries).
 
-The visible **Contribute / Read-only** selector controls this computer’s saved participation.
-Read-only keeps drafts, messages, reports and model-free Git sync available while blocking new
-contributions and unstarted group model handoffs. Already running work may finish. Returning
-to Contribute may release previously authorized queued work using your allowance; it does not
-enable agents or replay uncertain turns. Interrupted changes keep an exact explicit retry.
+The **Automatic sharing: On / Paused** control offers **Pause automatic sharing** and
+**Resume automatic sharing** for this computer. Reading and manually sending messages use
+no model and remain available while paused. The server holds new group-agent requests,
+queued summaries and unstarted model handoffs; already running work may finish. Resuming
+may process already authorized queued work using allowance. It does not enable agents,
+discard backlog or replay uncertain turns. Interrupted changes retain an exact retry.
+Phone posting still requires its separate explicit permission.
 See [local settings](GROUP_LOCAL_SETTINGS.md).
 
 **Manage** keeps invitations and **My agent on this computer** easy to reach. **Advanced**

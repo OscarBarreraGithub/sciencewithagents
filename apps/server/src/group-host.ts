@@ -500,7 +500,7 @@ export class GroupHost {
       throw new GroupHostError(
         409,
         'GROUP_LOCAL_READ_ONLY',
-        'This group is Read-only on this computer. Choose Contribute to send or start group work. Reading and file sync remain available; running work may finish.',
+        'Automatic sharing is paused on this computer. Resume automatic sharing before new group-agent requests or protected sharing actions. Reading and manual messages use no model and remain available; running work may finish.',
       );
   }
   localMode(raw: unknown): host.GroupHostSummary {
@@ -1399,7 +1399,6 @@ export class GroupHost {
     const { value } = await this.resolve(input.handle),
       config = this.serviceFor(value);
     if (!value.binding) throw unavailable();
-    if (input.action === 'pair' && input.allowPost) this.requireContribution(input.handle);
     const command =
       input.action === 'status'
         ? { kind: 'list' as const }
@@ -2434,12 +2433,6 @@ export class GroupHost {
   async send(raw: unknown) {
     const input = host.groupHostSendSchema.parse(raw);
     return this.lock(`send:${input.handle}:${input.key}`, async () => {
-      if (
-        !this.db
-          .prepare('SELECT 1 FROM gh_sends WHERE handle=? AND key=?')
-          .get(input.handle, input.key)
-      )
-        this.requireContribution(input.handle);
       const { value, slot } = await this.resolve(input.handle);
       const send = z
         .strictObject({
@@ -2464,7 +2457,6 @@ export class GroupHost {
                 throw new Conflict('Send retry content changed. Retry the original message.');
               return JSON.parse(String(prior.body));
             }
-            this.requireContribution(input.handle);
             const result = {
               messageId: randomUUID(),
               operationId: randomUUID(),

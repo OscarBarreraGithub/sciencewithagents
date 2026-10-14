@@ -24,7 +24,15 @@ function savedStops(storage: string): SavedStops {
   }
   return { pending: null, legacy: raw };
 }
-export function GroupClaudeConnection({ handle, legacy }: { handle: string; legacy?: ReactNode }) {
+export function GroupClaudeConnection({
+  handle,
+  legacy,
+  paused = false,
+}: {
+  handle: string;
+  legacy?: ReactNode;
+  paused?: boolean;
+}) {
   const [status, setStatus] = useState<ReturnType<typeof statusSchema.parse> | null>(null);
   const [error, setError] = useState(''),
     [copied, setCopied] = useState(false),
@@ -131,18 +139,22 @@ export function GroupClaudeConnection({ handle, legacy }: { handle: string; lega
           <>
             <p
               className="group-sharing-state"
-              data-sharing={status.selection?.enabled ? 'on' : 'off'}
+              data-sharing={status.selection?.enabled && !paused ? 'on' : 'off'}
             >
               <span aria-hidden="true" />
               {status.selection?.enabled
-                ? 'Automatic sharing is on for your selected Claude conversation.'
+                ? paused
+                  ? 'Automatic sharing is paused; your Claude conversation remains selected.'
+                  : 'Automatic sharing is on for your selected Claude conversation.'
                 : 'Automatic sharing is off.'}
             </p>
             {status.model && <p>Summary model: {status.model}</p>}
             {status.selection?.enabled && (
               <p>
                 {status.pending} {status.pending === 1 ? 'update' : 'updates'} waiting. SWA must
-                stay open to summarize and deliver.
+                stay open to summarize and deliver.{' '}
+                {paused &&
+                  'Resume automatic sharing to process this saved backlog using allowance. Your private Claude conversation stays native.'}
               </p>
             )}
             {status.latest && <p>{status.latest.message}</p>}

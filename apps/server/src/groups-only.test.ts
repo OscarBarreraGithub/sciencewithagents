@@ -220,7 +220,7 @@ it('boots fresh without Runtime or a provider and preserves owner authentication
   const handoff = await owner.request('POST', '/api/local-access/handoff', {});
   expect(handoff.statusCode).toBe(200);
 });
-it('creates, joins and delivers human text exactly once, retaining drafts/removal/read-only through reload', async () => {
+it('creates, joins and delivers human text exactly once, retaining drafts/removal/paused sharing through reload', async () => {
   await startWorker();
   const creator = await installation();
   const member = await installation();
@@ -269,10 +269,43 @@ it('creates, joins and delivers human text exactly once, retaining drafts/remova
     mode: 'read-only',
   });
   expect(mode.statusCode).toBe(200);
+  const worker = member.services.sharing,
+    session = randomUUID();
+  worker.journal.registerSession(session);
+  worker.journal.select({ handle: peer.group.handle, sessionId: session, key: randomUUID() });
+  worker.journal.observe(session, 'UserPromptSubmit', 'A selected native prompt while paused.');
+  worker.journal.observe(session, 'Stop', 'A selected reply remains queued privately.');
+  const queued = worker.journal.jobs(['queued']).map((job) => job.id);
+  expect(queued).toHaveLength(1);
+  const pausedInput = {
+    handle: peer.shared.handle,
+    key: randomUUID(),
+    text: 'Manual message while paused',
+  };
+  const pausedSend = await member.post('send', pausedInput);
+  expect(pausedSend.statusCode, pausedSend.body).toBe(200);
+  expect((await member.post('send', pausedInput)).json()).toEqual(pausedSend.json());
+  await worker.step();
+  expect(worker.journal.jobs(['queued']).map((job) => job.id)).toEqual(queued);
+  expect(summary).not.toHaveBeenCalled();
+  const pausedFeed = await creator.post('feed', { handle: group.shared.handle, query });
   expect(
-    (await member.post('send', { handle: peer.shared.handle, key: randomUUID(), text: 'Denied' }))
-      .statusCode,
-  ).toBe(409);
+    pausedFeed
+      .json()
+      .entries.filter(
+        (event: { condensedText: string }) => event.condensedText === pausedInput.text,
+      ),
+  ).toHaveLength(1);
+  expect(
+    (
+      await member.post('request-agent', {
+        handle: peer.shared.handle,
+        key: randomUUID(),
+        text: 'No new agent work',
+        intent: 'ask',
+      })
+    ).json().code,
+  ).toBe('GROUP_LOCAL_READ_ONLY');
   const hidden = await member.post('local-visibility', {
     handle: peer.group.handle,
     key: randomUUID(),

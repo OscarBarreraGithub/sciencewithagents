@@ -1640,7 +1640,7 @@ it('keeps untouched group file status optional after another enrollment proposes
       key: randomUUID(),
       head: proposal.head,
     }),
-  ).rejects.toThrow('Enable contribution');
+  ).rejects.toThrow('Resume automatic sharing');
   untouchedContext.visibility = 'private';
   await expect(adapter.externalRequest({ action: 'status', handle: untouched })).rejects.toThrow(
     'visible shared group',

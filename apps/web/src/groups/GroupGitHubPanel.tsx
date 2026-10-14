@@ -108,6 +108,12 @@ ${githubSignInGuidance}`
           : 'Shared repository setup needed if you want files. GitHub is optional for chat.'}
       </p>
       <p>{view?.message}</p>
+      {readOnly && (
+        <p>
+          Resume automatic sharing to publish a GitHub username or repository announcement. Native
+          GitHub setup and checking access remain available.
+        </p>
+      )}
       <label>
         Your GitHub username (optional)
         <input

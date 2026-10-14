@@ -89,7 +89,7 @@ export class GroupFeaturePromotion {
       !this.host.localContributing(String(row.enrollment_handle))
     )
       throw new Error(
-        'Local contributions are paused; optional summaries wait for Contribute and a visible group.',
+        'Automatic sharing is paused or this group is hidden. Resume automatic sharing and restore the group if hidden to process queued summaries.',
       );
     const port = await this.host.promotionContext(String(row.enrollment_handle));
     if (
@@ -123,7 +123,9 @@ export class GroupFeaturePromotion {
       throw new Error('Exact authoritative synthesis receipt required.');
     await port.revalidate();
     if (!this.host.localContributing(String(row.enrollment_handle)))
-      throw new Error('Read-only; optional summaries are paused.');
+      throw new Error(
+        'Automatic sharing is paused. Resume automatic sharing to process queued summaries.',
+      );
     return {
       context: port.context,
       enrollmentHandle: String(row.enrollment_handle),

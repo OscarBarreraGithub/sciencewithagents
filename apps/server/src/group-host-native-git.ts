@@ -84,7 +84,9 @@ export class GroupHostNativeGit {
       !this.host.localVisible(handle) ||
       !this.host.localContributing(handle)
     )
-      throw new Conflict('Enable contribution for this visible shared group before sharing files.');
+      throw new Conflict(
+        'Resume automatic sharing for this visible shared group before sharing files.',
+      );
     const binding = this.connector.workspaceScope
       ? this.connector.workspaceScope(scope.context, scope.enrollmentHandle)
       : this.connector.resolveLocalContext(scope.context, scope.enrollmentHandle);

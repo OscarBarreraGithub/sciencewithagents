@@ -16,7 +16,7 @@ receipt; a later restore cannot be undone by replaying an earlier remove. Groups
 lists return visible groups and a separate removed list with the current revisions.
 Local operation, human-send, draft and summary-source receipts share a 2-GiB
 conservative byte-admission budget. This replaces small lifetime row-count limits.
-Normal records stop at 2044 MiB, leaving 4 MiB for local Read-only/remove controls
+Normal records stop at 2044 MiB, leaving 4 MiB for local sharing-pause/remove controls
 and creator revocation intents. Those controls do not enable agents or replay work.
 The counter includes retained payload bytes, row overhead and future human-send
 receipt space; it is separate from hosted storage, other local databases and physical
@@ -35,28 +35,30 @@ native turns are not replayed. Passive viewing and removal make no model request
 
 Current source checks and remaining service/provider acceptance are recorded in [Status](STATUS.md#groups).
 
-## Read-only or Contribute
+## Pause automatic sharing
 
-The visible **Contribute** or **Read-only** button opens this computer’s saved mode selector.
-Use Read-only when you want to keep reading without new contributions or model spending.
-The host enforces this preference; it is more than a disabled composer. A lost reply retains
-**Retry saved mode change** after reload. **Check current mode** only reads, and an acknowledged
-retry is followed by a current Groups list read rather than trusting an old receipt.
+The **Automatic sharing: On / Paused** button opens this computer’s saved setting.
+**Pause automatic sharing** holds new group-agent requests, queued summaries and model
+handoffs; **Resume automatic sharing** may process already authorized queued work using
+provider allowance. Reading and manually sending group messages use no model and remain
+available while paused. Your normal private Claude conversation remains native. Phone
+posting is a separate explicit pairing permission: a phone without it still cannot send.
 
-Read-only pauses new human sends, Ask/Work requests and local action confirmations.
-It also holds unstarted group model turns, including summary helpers, before discovery
-or provider handoff. Their original queue, request and batch IDs remain saved. Running
-work may finish and retain its truthful results. Reading, drafts, history, recovery and
-Git file sync remain available; reading and Git transport make no model request.
+The host enforces the pause. Ask/Work, action confirmations and new report/file/profile
+publications still require resuming; repository sign-in, access checks and existing Git
+sync remain available. Original queue/request/batch IDs and drafts stay saved. Already
+running work may finish, and exact pre-pause receipts can still reconcile. Pausing does
+not cancel work or discard backlog; changing this setting does not enable an agent or
+change accounts/models. Failed or uncertain turns retain their explicit recovery and are
+never automatically replayed.
 
-Contribute resumes already authorized queued work. Changing the mode does not enable
-agents, change accounts/models or create a new turn by itself. Failed or uncertain turns
-still require their existing explicit recovery; they are never automatically replayed.
-If a late startup cannot be proved to have no handoff or measured spend, its original
-receipt and evidence remain available for inspection instead of automatic replay.
+A lost reply retains **Retry saved sharing change** after reload. **Check current sharing
+setting** only reads. An acknowledged retry reads the current Groups list rather than
+trusting an earlier receipt. If a late startup cannot be proved to have no handoff or
+measured spend, its original evidence remains available instead of automatic replay.
 
 The authenticated `POST /api/groups/local-mode` accepts a saved handle, UUID key,
 expected mode revision and `mode` (`read-only` or `contribute`). Its append-only revisions
 are independent of local visibility. Exact old retries cannot undo a later choice;
 refresh the Groups list for current `local.mode` and `local.modeRevision`. A missing
-setting means Contribute for compatibility, without granting native agent enablement.
+setting means automatic sharing On for compatibility, without granting native agent enablement.

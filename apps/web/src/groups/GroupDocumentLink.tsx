@@ -420,7 +420,7 @@ function GroupReportPublish({
       retained = !!key;
       if (!key) {
         if (currentReadOnly.current) {
-          setNotice('Choose Contribute in Groups before sharing a new report.');
+          setNotice('Resume automatic sharing in Groups before sharing a new report.');
           return;
         }
         const latest = await preflight();
@@ -494,8 +494,8 @@ function GroupReportPublish({
       )}
       {readOnly && !saved && (
         <p>
-          This group is Read-only. Choose Contribute in Groups to share a new report; reading and
-          separate Git sync remain available.
+          Automatic sharing is paused. Resume automatic sharing in Groups to share a new report;
+          reading and separate Git sync remain available.
         </p>
       )}
       <button disabled={busy || checking} onClick={() => void preflight()}>

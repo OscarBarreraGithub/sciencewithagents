@@ -469,11 +469,25 @@ it('owner phone pairing retains one exact link after lost acknowledgement and re
     revision: 0,
     mode: 'read-only',
   });
-  await expect(reopened.host.phone({ ...input, key: randomUUID() }, true)).rejects.toMatchObject({
-    code: 'GROUP_LOCAL_READ_ONLY',
-  });
+  const pausedPair = await humanPost(reopened, { ...input, key: randomUUID() });
+  expect(pausedPair.statusCode, pausedPair.body).toBe(200);
   const reading = await humanPost(reopened, { ...input, key: randomUUID(), allowPost: false });
   expect(reading.statusCode, reading.body).toBe(200);
+  const readOnlyFragment = new URLSearchParams(new URL(reading.json().link).hash.slice(1));
+  const readOnlyClaim = await phone({
+    ...claim,
+    pairId: readOnlyFragment.get('id'),
+    pairSecret: readOnlyFragment.get('pair'),
+    pairProof: readOnlyFragment.get('proof'),
+    expiresAt: Number(readOnlyFragment.get('expires')),
+    key: randomUUID(),
+    deviceId: randomUUID(),
+    deviceCredential: secret(),
+  });
+  expect(readOnlyClaim.status).toBe(200);
+  const readingCookie = readOnlyClaim.headers.get('set-cookie')!.split(';')[0]!;
+  expect((await phone({ kind: 'feed', before: null, since: 0 }, readingCookie)).status).toBe(200);
+  expect((await phone({ ...human, key: randomUUID() }, readingCookie)).status).toBe(403);
 });
 it('keeps full SWA available with legacy data permissions or a broken optional sharing journal', async () => {
   const f = await installation(undefined, { dataMode: 0o775 });
@@ -878,7 +892,7 @@ it('paired chosen-folder setup works before agents and synchronizes actual revie
   ).toBe(409);
   expect(
     (await post('groups/send', { handle, key: randomUUID(), text: 'New human post' })).statusCode,
-  ).toBe(409);
+  ).toBe(200);
   expect(
     (
       await post('groups/draft', {

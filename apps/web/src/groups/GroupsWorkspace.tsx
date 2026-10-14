@@ -61,7 +61,7 @@ function Workspace(props: GroupsWorkspaceProps) {
           >
             <summary>
               {props.members.length} {props.members.length === 1 ? 'member' : 'members'}
-              {props.readOnly && ' · Read-only'}
+              {props.readOnly && ' · Automatic sharing paused'}
             </summary>
             <ul>
               {props.members.map((member) => (

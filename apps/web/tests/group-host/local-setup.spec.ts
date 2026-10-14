@@ -431,25 +431,25 @@ test('Read-only is server-enforced, retains editable drafts and exact mode retry
   await saved;
   if (!(await page.getByRole('dialog', { name: 'Manage group', exact: true }).isVisible()))
     await page.getByRole('button', { name: 'Manage', exact: true }).click();
-  await page.getByRole('button', { name: 'Contribution mode: Contribute', exact: true }).click();
+  await page.getByRole('button', { name: 'Automatic sharing: On', exact: true }).click();
   let dialog = page.getByRole('dialog', {
-    name: 'Contribution mode on this computer',
+    name: 'Automatic sharing on this computer',
     exact: true,
   });
   await expect(dialog).toContainText('Already running work may finish.');
   await screenshot(page, 'contribution-mode');
-  await dialog.getByRole('button', { name: 'Read-only', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Pause automatic sharing', exact: true }).click();
   await expect(
-    dialog.getByRole('button', { name: 'Retry saved mode change', exact: true }),
+    dialog.getByRole('button', { name: 'Retry saved sharing change', exact: true }),
   ).toBeVisible();
   await page.reload();
   expect(operations).toHaveLength(1);
   await expect(draft).toHaveValue('Retained while reading · λ');
   await draft.fill('Edited without contributing · γ');
-  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
   const mode = page.getByRole('button', {
-    name: 'Contribution mode: Read-only, saved change pending',
+    name: 'Automatic sharing: Paused, saved change pending',
     exact: true,
   });
   await expect(mode).toBeVisible();
@@ -474,28 +474,30 @@ test('Read-only is server-enforced, retains editable drafts and exact mode retry
         ...(target === 'request-agent' ? { intent: 'ask' } : {}),
       },
     });
-    expect(refused.status()).toBe(409);
-    expect(await refused.json()).toMatchObject({ code: 'GROUP_LOCAL_READ_ONLY' });
+    expect(refused.status()).toBe(target === 'send' ? 200 : 409);
+    expect(await refused.json()).toMatchObject(
+      target === 'send' ? { status: 'accepted' } : { code: 'GROUP_LOCAL_READ_ONLY' },
+    );
   }
   await mode.click();
-  dialog = page.getByRole('dialog', { name: 'Contribution mode on this computer', exact: true });
-  await dialog.getByRole('button', { name: 'Check current mode', exact: true }).click();
-  await expect(dialog).toContainText('Current mode refreshed.');
+  dialog = page.getByRole('dialog', { name: 'Automatic sharing on this computer', exact: true });
+  await dialog.getByRole('button', { name: 'Check current sharing setting', exact: true }).click();
+  await expect(dialog).toContainText('Current sharing setting refreshed.');
   expect(operations).toHaveLength(1);
-  await dialog.getByRole('button', { name: 'Retry saved mode change', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Retry saved sharing change', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(operations).toHaveLength(2);
   expect(operations[1]).toEqual(operations[0]);
   await expect(
-    page.getByRole('button', { name: 'Contribution mode: Read-only', exact: true }),
+    page.getByRole('button', { name: 'Automatic sharing: Paused', exact: true }),
   ).toBeVisible();
   await screenshot(page, 'read-only-draft');
-  await page.getByRole('button', { name: 'Contribution mode: Read-only', exact: true }).click();
-  dialog = page.getByRole('dialog', { name: 'Contribution mode on this computer', exact: true });
-  await dialog.getByRole('button', { name: 'Contribute', exact: true }).click();
+  await page.getByRole('button', { name: 'Automatic sharing: Paused', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Automatic sharing on this computer', exact: true });
+  await dialog.getByRole('button', { name: 'Resume automatic sharing', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(
-    page.getByRole('button', { name: 'Contribution mode: Contribute', exact: true }),
+    page.getByRole('button', { name: 'Automatic sharing: On', exact: true }),
   ).toBeVisible();
   await page
     .getByRole('dialog', { name: 'Manage group', exact: true })
@@ -523,14 +525,14 @@ test('mode retry acknowledges the original receipt while showing a later saved s
   await create(page, 'Current Meadow');
   if (!(await page.getByRole('dialog', { name: 'Manage group', exact: true }).isVisible()))
     await page.getByRole('button', { name: 'Manage', exact: true }).click();
-  await page.getByRole('button', { name: 'Contribution mode: Contribute', exact: true }).click();
+  await page.getByRole('button', { name: 'Automatic sharing: On', exact: true }).click();
   let dialog = page.getByRole('dialog', {
-    name: 'Contribution mode on this computer',
+    name: 'Automatic sharing on this computer',
     exact: true,
   });
-  await dialog.getByRole('button', { name: 'Read-only', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Pause automatic sharing', exact: true }).click();
   await expect(
-    dialog.getByRole('button', { name: 'Retry saved mode change', exact: true }),
+    dialog.getByRole('button', { name: 'Retry saved sharing change', exact: true }),
   ).toBeVisible();
   const later = await page.request.post(`${connection.origin}/api/groups/local-mode`, {
     headers: { Origin: connection.origin },
@@ -541,22 +543,22 @@ test('mode retry acknowledges the original receipt while showing a later saved s
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
   await page
     .getByRole('button', {
-      name: 'Contribution mode: Contribute, saved change pending',
+      name: 'Automatic sharing: On, saved change pending',
       exact: true,
     })
     .click();
-  dialog = page.getByRole('dialog', { name: 'Contribution mode on this computer', exact: true });
-  await dialog.getByRole('button', { name: 'Retry saved mode change', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Automatic sharing on this computer', exact: true });
+  await dialog.getByRole('button', { name: 'Retry saved sharing change', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(operations).toHaveLength(2);
   expect(operations[1]).toEqual(operations[0]);
   await expect(
-    page.getByRole('button', { name: 'Contribution mode: Contribute', exact: true }),
+    page.getByRole('button', { name: 'Automatic sharing: On', exact: true }),
   ).toBeVisible();
   if (!(await page.getByRole('dialog', { name: 'Manage group', exact: true }).isVisible()))
     await page.getByRole('button', { name: 'Manage', exact: true }).click();
-  await page.getByRole('button', { name: 'Contribution mode: Contribute', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Read-only', exact: true }).click();
+  await page.getByRole('button', { name: 'Automatic sharing: On', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Pause automatic sharing', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(operations[2]).toMatchObject({ revision: 2, mode: 'read-only' });
   expect(operations[2]!.key).not.toBe(operations[0]!.key);

@@ -682,7 +682,7 @@ function ScopedGroupsApp({
                   />
                 )}
                 <div className="groups-management-mode">
-                  <p>Contribution mode</p>
+                  <p>Automatic sharing</p>
                   <GroupContributionMode
                     key={`local-mode:${selected.group.handle}`}
                     group={localGroup ?? selected.group}
@@ -837,10 +837,7 @@ function ScopedGroupsApp({
                       externalOnly={groupsOnly}
                     />
                   )}
-                <GroupPhonePanel
-                  handle={selected.shared.handle}
-                  readOnly={localGroup?.local?.mode === 'read-only'}
-                />
+                <GroupPhonePanel handle={selected.shared.handle} />
                 <div ref={setNativeControlsTarget} />
                 {(groupsOnly || selected.native.executionMode === 'host') && controlsOpen && (
                   <GroupExternalFilesPanel
@@ -984,6 +981,7 @@ function ScopedGroupsApp({
                         <GroupClaudeConnection
                           key={selected.group.handle}
                           handle={selected.group.handle}
+                          paused={localGroup?.local?.mode === 'read-only'}
                           legacy={
                             groupsOnly ? undefined : (
                               <GroupConversation

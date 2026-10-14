@@ -13,11 +13,9 @@ import './group-phone-panel.css';
 
 export function GroupPhonePanel({
   handle,
-  readOnly = false,
   request,
 }: {
   handle: string;
-  readOnly?: boolean;
   request?: (input: GroupPhoneHostRequest) => Promise<unknown>;
 }) {
   const [view, setView] = useState<GroupPhoneHostView | null>(null);
@@ -123,15 +121,16 @@ export function GroupPhonePanel({
       <label className="group-phone-check">
         <input
           type="checkbox"
-          checked={allowPost && !readOnly}
+          checked={allowPost}
           onChange={(e) => setAllowPost(e.target.checked)}
-          disabled={readOnly || busy || !!pending || unreadable}
+          disabled={busy || !!pending || unreadable}
         />
         Allow this phone to send human messages
       </label>
       <p>
         Read-only is the default. This permission does not start Claude, run commands, or approve
-        files. Revoke the connection below to stop phone access.
+        files, and is independent of automatic sharing being paused. Revoke the connection below to
+        stop phone access.
       </p>
       <div className="group-phone-controls">
         <Button
@@ -144,7 +143,7 @@ export function GroupPhonePanel({
               handle,
               key: crypto.randomUUID(),
               label: label.trim(),
-              allowPost: allowPost && !readOnly,
+              allowPost,
             })
           }
         >

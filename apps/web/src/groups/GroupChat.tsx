@@ -881,7 +881,7 @@ export function GroupChat({
                   <select
                     aria-label="Send to"
                     value={sendTarget}
-                    disabled={deliveryBusy || readOnly}
+                    disabled={deliveryBusy}
                     onChange={(event) =>
                       setSendTarget(event.target.value === 'message' ? 'message' : 'agent')
                     }
@@ -915,7 +915,9 @@ export function GroupChat({
         maxLength={24_000}
         agent={chat?.detail.agent ?? slot.agent}
         workspace={null}
-        disabled={!view.ready || refused || groupMessages.revoked || readOnly}
+        disabled={
+          !view.ready || refused || groupMessages.revoked || (readOnly && sendTarget === 'agent')
+        }
         draftOverride={draft}
         specialized={!fixture}
         attachments={fixture}

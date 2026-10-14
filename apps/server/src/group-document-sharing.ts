@@ -140,7 +140,7 @@ export class GroupDocumentSharing {
         throw new GroupHostError(
           409,
           'GROUP_LOCAL_READ_ONLY',
-          'This group is Read-only on this computer. Choose Contribute before sharing a new report. Existing saved publications can still reconcile.',
+          'Automatic sharing is paused on this computer. Resume automatic sharing to share a new report. Existing saved publications can still finish.',
         );
       const capacity = await this.preflight(handle, id, version, {
         sharedHandle: input.sharedHandle,
@@ -158,7 +158,7 @@ export class GroupDocumentSharing {
         throw new GroupHostError(
           409,
           'GROUP_LOCAL_READ_ONLY',
-          'This group became Read-only before a new report publication was admitted.',
+          'Automatic sharing is paused on this computer. Resume automatic sharing to share a new report. Existing saved publications can still finish.',
         );
       const manifest = sharedDocumentManifestSchema.parse({
         publicationId: randomUUID(),

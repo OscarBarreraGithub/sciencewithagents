@@ -181,7 +181,7 @@ export function createGroupHostNativeConnector(
       !contributions(modeMarker.data.enrollmentHandle) &&
       unstarted
     )
-      return 'Group is Read-only on this computer; its unstarted native turn remains queued.';
+      return 'Automatic sharing is paused on this computer; resume automatic sharing to release this unstarted queued native turn.';
     if (!backgroundVisible) return null;
     // Saved batch/synthesis identity also covers helpers queued before this update.
     const background = ['group_member_feed_batches', 'group_local_synthesis'].some((table) => {

@@ -83,7 +83,7 @@ test('distribution failure shows dark recovery and preserves storage before retr
   );
 });
 
-test('real shared conversation keeps private drafts and supports read-only, local removal and restoration', async ({
+test('real shared conversation keeps private drafts and supports paused automatic sharing, local removal and restoration', async ({
   page,
 }, info) => {
   const calls: string[] = [];
@@ -148,29 +148,51 @@ test('real shared conversation keeps private drafts and supports read-only, loca
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
   const manage = page.getByRole('dialog', { name: 'Manage group' });
   await expect(manage).toBeVisible();
-  await manage.getByRole('button', { name: /Contribution mode: Contribute/ }).click();
-  const mode = page.getByRole('dialog', { name: 'Contribution mode on this computer' });
-  await mode.getByRole('button', { name: 'Read-only', exact: true }).click();
+  await manage.getByRole('button', { name: /Automatic sharing: On/ }).click();
+  const mode = page.getByRole('dialog', { name: 'Automatic sharing on this computer' });
+  await mode.getByRole('button', { name: 'Pause automatic sharing', exact: true }).click();
   await expect(mode).toBeHidden();
   await manage.getByRole('button', { name: 'Done', exact: true }).click();
-  await expect(page.locator('.groups-workspace-heading')).toContainText('Read-only');
+  await expect(page.locator('.groups-workspace-heading')).toContainText('Automatic sharing paused');
   await expect(composer).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   await expect(composer).toHaveValue(draft);
-  const editedDraft = `${draft} edited while read-only`;
-  await composer.fill(editedDraft);
-  const sendsBeforeEnter = calls.filter((path) => path === '/api/groups/send').length;
-  await composer.press('Enter');
-  // Phones may insert a newline; neither pointer mode may contribute.
-  const readOnlyDraft = await composer.inputValue();
-  expect(readOnlyDraft.trim()).toBe(editedDraft);
+  const pausedText = `${draft} sent manually while automatic sharing is paused`;
+  await composer.fill(pausedText);
+  const pausedSends: Record<string, unknown>[] = [];
+  await page.route('**/api/groups/send', async (route) => {
+    pausedSends.push(route.request().postDataJSON());
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    if (pausedSends.length === 1)
+      await route.fulfill({ status: 503, json: { error: 'Lost paused human send receipt' } });
+    else await route.fulfill({ response });
+  });
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Retry previous message', exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Retry previous message', exact: true }).click();
+  await expect(composer).toHaveValue('');
+  await expect(
+    page
+      .locator('.group-shared-chat .conversation .markdown')
+      .getByText(pausedText, { exact: true }),
+  ).toHaveCount(1);
+  expect(pausedSends).toHaveLength(2);
+  expect(pausedSends[1]).toEqual(pausedSends[0]);
+  expect(calls.filter((path) => path === '/api/groups/request-agent')).toEqual([]);
+  await page.unroute('**/api/groups/send');
+  const pausedDraft = `Retained private draft while paused ${info.project.name}`;
+  await composer.fill(pausedDraft);
   await expect(page.locator('.composer [data-draft]')).toHaveAttribute('data-draft', 'saved');
   await page.reload();
-  await expect(composer).toHaveValue(readOnlyDraft);
-  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
-  expect(calls.filter((path) => path === '/api/groups/send')).toHaveLength(sendsBeforeEnter);
-  await expect(page.locator('.group-shared-chat .conversation')).not.toContainText(editedDraft);
-  await page.screenshot({ path: info.outputPath('groups-human-read-only.png'), fullPage: true });
+  await expect(composer).toHaveValue(pausedDraft);
+  await page.screenshot({
+    path: info.outputPath('groups-human-sharing-paused.png'),
+    fullPage: true,
+  });
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
   await manage.getByRole('button', { name: 'Remove from my app', exact: true }).click();
   const remove = page.getByRole('dialog', { name: 'Remove group from my app' });
@@ -185,17 +207,17 @@ test('real shared conversation keeps private drafts and supports read-only, loca
   const restore = page.getByRole('dialog', { name: 'Restore group to this app' });
   await restore.getByRole('button', { name: 'Restore group', exact: true }).click();
   await row.click();
-  await expect(composer).toHaveValue(readOnlyDraft);
+  await expect(composer).toHaveValue(pausedDraft);
   await expect(composer).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
-  await manage.getByRole('button', { name: /Contribution mode: Read-only/ }).click();
-  await mode.getByRole('button', { name: 'Contribute', exact: true }).click();
+  await manage.getByRole('button', { name: /Automatic sharing: Paused/ }).click();
+  await mode.getByRole('button', { name: 'Resume automatic sharing', exact: true }).click();
   await expect(mode).toBeHidden();
   await page.screenshot({ path: info.outputPath('groups-human-manage.png'), fullPage: true });
   await manage.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(composer).toBeEnabled();
-  await expect(composer).toHaveValue(readOnlyDraft);
+  await expect(composer).toHaveValue(pausedDraft);
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
   const bounds = await composer.boundingBox();
   expect(bounds).not.toBeNull();

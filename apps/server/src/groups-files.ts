@@ -272,7 +272,9 @@ export class GroupsFiles implements GroupWorkspacePort {
       !this.host.localVisible(handle) ||
       (!reading && !this.host.localContributing(handle))
     )
-      throw new Conflict('Enable contribution for this visible shared group before sharing files.');
+      throw new Conflict(
+        'Resume automatic sharing for this visible shared group before sharing files.',
+      );
     const workspace = this.scope(scope.context, scope.enrollmentHandle);
     if (!workspace) throw new Conflict('Choose the selected Claude’s shared folder first.');
     const repo = await this.repository.repository(workspace);

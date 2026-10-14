@@ -74,7 +74,7 @@ export function GroupContributionMode({
       if (sessionStorage.getItem(storage) === JSON.stringify(operation))
         sessionStorage.removeItem(storage);
       setPending(null);
-      setNotice('Saved mode change acknowledged. Reading the current mode…');
+      setNotice('Saved sharing change acknowledged. Reading the current setting…');
       await refresh();
       if (version === generation.current) setOpen(false);
     } catch (reason) {
@@ -110,10 +110,16 @@ export function GroupContributionMode({
     try {
       await refresh();
       if (version === generation.current)
-        setNotice('Current mode refreshed. Checking does not repeat or clear a saved change.');
+        setNotice(
+          'Current sharing setting refreshed. Checking does not repeat or clear a saved change.',
+        );
     } catch (reason) {
       if (version === generation.current)
-        setError(reason instanceof Error ? reason.message : 'The current mode could not be read.');
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : 'The current sharing setting could not be read.',
+        );
     } finally {
       if (version === generation.current) {
         inFlight.current = false;
@@ -126,15 +132,15 @@ export function GroupContributionMode({
       <button
         type="button"
         className="secondary group-mode-button"
-        aria-label={`Contribution mode: ${mode === 'read-only' ? 'Read-only' : 'Contribute'}${pending ? ', saved change pending' : ''}`}
+        aria-label={`Automatic sharing: ${mode === 'read-only' ? 'Paused' : 'On'}${pending ? ', saved change pending' : ''}`}
         onClick={() => setOpen(true)}
       >
-        {mode === 'read-only' ? 'Read-only' : 'Contribute'}
+        {mode === 'read-only' ? 'Paused' : 'On'}
         {pending ? ' · check change' : ''}
       </button>
       {open && (
         <Modal
-          title="Contribution mode on this computer"
+          title="Automatic sharing on this computer"
           close={() => {
             if (!busy) setOpen(false);
           }}
@@ -145,23 +151,22 @@ export function GroupContributionMode({
             </strong>
           </p>
           <p>
-            Current mode: <strong>{mode === 'read-only' ? 'Read-only' : 'Contribute'}</strong>.
+            Automatic sharing: <strong>{mode === 'read-only' ? 'Paused' : 'On'}</strong>.
           </p>
           <p>
-            Read-only keeps messages, reports and Git sync available while preventing new
-            contributions and model handoffs on this computer. Your drafts are retained. Already
-            running work may finish.
+            Reading and sending messages yourself do not use model allowance. Pausing automatic
+            sharing holds queued summaries and new group-agent requests. You can keep talking
+            privately to Claude. Work already running may finish.
           </p>
           <p>
-            Contribute allows new messages and agent requests. Ask, Work and automatic agent
-            summaries use your own provider allowance. Switching to Read-only makes no model
-            request. Returning to Contribute may release already-authorized queued work using your
-            allowance.
+            Ask, Work and automatic summaries use your model allowance. Resuming may process
+            previously queued updates. Pausing keeps your drafts and saved updates; it does not
+            cancel your Claude conversation.
           </p>
           {pending && (
             <p>
-              The reply to switching to {pending.mode === 'read-only' ? 'Read-only' : 'Contribute'}{' '}
-              is uncertain. Retry that exact saved change, or check the current mode without
+              The reply to switching to {pending.mode === 'read-only' ? 'Paused' : 'On'} is
+              uncertain. Retry that exact saved change, or check the current setting without
               repeating it.
             </p>
           )}
@@ -175,7 +180,7 @@ export function GroupContributionMode({
                 disabled={busy}
                 onClick={() => void change(pending.mode)}
               >
-                Retry saved mode change
+                Retry saved sharing change
               </button>
             ) : (
               <>
@@ -186,7 +191,7 @@ export function GroupContributionMode({
                   disabled={busy || mode === 'read-only'}
                   onClick={() => void change('read-only')}
                 >
-                  Read-only
+                  Pause automatic sharing
                 </button>
                 <button
                   className="secondary"
@@ -195,7 +200,7 @@ export function GroupContributionMode({
                   disabled={busy || mode === 'contribute'}
                   onClick={() => void change('contribute')}
                 >
-                  Contribute
+                  Resume automatic sharing
                 </button>
               </>
             )}
@@ -205,7 +210,7 @@ export function GroupContributionMode({
               disabled={busy}
               onClick={() => void check()}
             >
-              Check current mode
+              Check current sharing setting
             </button>
           </div>
         </Modal>
