@@ -1,3 +1,4 @@
+import { githubSignInGuidance } from './group-creation-prompt';
 import {
   groupsOnlyCreatorPrompt,
   groupsOnlyJoinPrompt,
@@ -104,7 +105,8 @@ closure is confirmed; it pushes exact reviewed commits without force.
 Preserve dirty work and divergent branches and resolve conflicts through a reviewed change.
 Do not claim that joining a group grants GitHub access, that uncommitted files are synced,
 or that the app merges every branch automatically. Verify a reviewed change can reach the
-other member's checkout, and explain any remaining sign-in or collaborator-access blocker.`;
+other member's checkout, and explain any remaining sign-in or collaborator-access blocker.
+${githubSignInGuidance}`;
 
 export const groupGitHubSetupPromptForFolder = (folder: string, selected = true) =>
   `${groupGitHubSetupPrompt}\n${selected ? 'The app validated my selected work folder' : 'The host resolved this current group workspace'}: ${JSON.stringify(folder)}. ${selected ? 'Bind this exact saved selection to this group' : 'Ask me to confirm or choose the intended work folder'}; inspect its files and existing Git before proceeding.`;

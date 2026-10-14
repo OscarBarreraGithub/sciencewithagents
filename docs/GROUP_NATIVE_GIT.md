@@ -31,6 +31,24 @@ repository. Joining a group does not grant access to that repository.
    Pause/resume remains available in advanced controls. Existing uncommitted files are not
    uploaded. A missing collaborator account remains an explicit setup step.
 
+For native GitHub sign-in, first check `gh auth status --active --hostname github.com`
+and keep your valid own-account session. If needed, run
+`gh auth login --hostname github.com --web` in an observable interactive terminal or
+retain its background session handle. Your agent must read stdout/stderr while it waits
+and **immediately show the actual current one-time device code and verification URL in
+private agent chat**, before asking you to authorize—even if the browser opens automatically.
+It should tell you it is waiting for sign-in, without waiting for process exit or your
+request for the code. Browser opening or copying to a clipboard alone is insufficient.
+
+If output is silent, read the same process output instead of launching duplicate logins.
+If the attempt expires, end it before one fresh serial login and show the new code and URL.
+After authorization, inspect process completion, `gh auth status --active --hostname github.com`
+and `gh api user --jq .login` to confirm the username before claiming success. Preserve the
+credential store, existing accounts and Git protocol. Keep device codes out of shared feeds
+and source; never print tokens/passwords, use `--show-token`, or substitute `GH_TOKEN`/PAT
+workarounds. See the official [login](https://cli.github.com/manual/gh_auth_login) and
+[status](https://cli.github.com/manual/gh_auth_status) manuals.
+
 The app does not infer collaborator identities or send GitHub invitations. The setup
 agent uses native Git/GitHub tools for account sign-in, repository creation and invitations.
 The browser cannot supply a filesystem path, executable or shell command to the Git API.

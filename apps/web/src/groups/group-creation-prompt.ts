@@ -1,3 +1,6 @@
+export const githubSignInGuidance = `For requested GitHub setup, first check my own active account with gh auth status --active --hostname github.com; keep a valid session. If login is needed, run gh auth login --hostname github.com --web in an observable interactive terminal, or retain its background session handle. Read stdout/stderr promptly WHILE it waits. Immediately show the actual current one-time device code AND verification URL in our private agent chat before asking me to authorize, even if a browser opens automatically. Tell me you are waiting for sign-in; do not wait for process exit or for me to ask for the code. Browser opening or clipboard copying alone is insufficient.
+If output is silent, read the SAME process output; do not launch duplicate logins. If an attempt expires, end that attempt before ONE fresh serial login and immediately show its new code and URL. After authorization, inspect process completion, gh auth status --active --hostname github.com and gh api user --jq .login to confirm the username before claiming success. Preserve my credential store, accounts and existing Git protocol. Keep the device code out of shared group feeds and source. Never print auth tokens/passwords, use --show-token, or substitute GH_TOKEN/PAT workarounds.`;
+
 export function groupCreationSetupPrompt(context: {
   displayName: string;
   projectName: string;
@@ -49,7 +52,9 @@ need no model or provider installation; using you as my setup agent uses your al
 Follow the folderSelected choice above. If false, finish chat setup without GitHub. If true,
 reuse the supplied canonical folder and saved selection without choosing it a second time.
 GitHub is still optional: ask only whether I want repository sharing if I have not said.
-Only if I request it, sign in with MY OWN native Git/GitHub account. Inspect current files,
+Only if I request it, sign in with MY OWN native Git/GitHub account.
+${context.folderSelected ? githubSignInGuidance : ''}
+Inspect current files,
 history, branches, remotes and private/runtime material before any intended commit.
 Create or use ONE intended PRIVATE repository, initializing new shared history only once.
 Invite only the GitHub usernames I explicitly supply; never infer them from display names.
