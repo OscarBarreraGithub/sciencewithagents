@@ -1,7 +1,8 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
-import { resolve } from 'node:path';
+import { resolve, join, basename, dirname, parse, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import { prepareBrowserHandoff } from '../../../server/dist/local-browser-handoff.js';
 const root = () =>
   JSON.parse(
@@ -104,6 +105,7 @@ test('real shared conversation keeps private drafts and supports read-only, loca
   const create = page.getByRole('dialog', { name: 'New group', exact: true });
   await create.getByLabel('Your display name').fill('Browser researcher');
   await create.getByLabel('Project name').fill(groupName);
+  await create.getByRole('radio', { name: 'Chat only — no GitHub', exact: true }).check();
   await create.getByRole('button', { name: 'Create group', exact: true }).click();
   await expect(page.getByRole('heading', { name: groupName, exact: true })).toBeVisible();
   const row = page.getByRole('button', { name: new RegExp(groupName) });
@@ -233,4 +235,142 @@ test('distribution refusal keeps a bounded server explanation and recovers from 
   await page.unroute('**/api/distribution');
   await page.getByRole('button', { name: 'Retry opening app' }).click();
   await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
+});
+
+test('real creation reuses its supplied folder and exact create/bind receipts after lost replies', async ({
+  page,
+}, info) => {
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'swa-onboarding-')));
+  const folderName = basename(folder);
+  try {
+    await page.addInitScript(() =>
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            (window as Window & { setupCopy?: string }).setupCopy = text;
+          },
+        },
+      }),
+    );
+    const link = await prepareBrowserHandoff(root(), 4372);
+    await page.goto(link!);
+    // Prepare only server-issued navigation IDs; the browser still selects and binds the real folder.
+    const origin = new URL(page.url()).origin;
+    const browse = async (folderId?: string, offset = 0) => {
+      const query = new URLSearchParams({ offset: String(offset) });
+      if (folderId) query.set('folderId', folderId);
+      const response = await page.request.get(`${origin}/api/project-folders?${query}`);
+      expect(response.ok()).toBe(true);
+      return response.json();
+    };
+    let listing = await browse();
+    let parentId = listing.locations.find(
+      (value: { kind: string }) => value.kind === 'computer',
+    ).id;
+    const parent = dirname(folder);
+    for (const segment of parent.slice(parse(parent).root.length).split(sep).filter(Boolean)) {
+      listing = await browse(parentId);
+      let child = listing.folders.find((value: { name: string }) => value.name === segment);
+      while (!child && listing.nextOffset !== null) {
+        listing = await browse(parentId, listing.nextOffset);
+        child = listing.folders.find((value: { name: string }) => value.name === segment);
+      }
+      expect(child, `Server-issued navigation for ${segment}`).toBeTruthy();
+      parentId = child.id;
+    }
+    await page.route('**/api/project-folders?*', (route) => {
+      const url = new URL(route.request().url());
+      if (!url.searchParams.has('folderId')) url.searchParams.set('folderId', parentId);
+      return route.continue({ url: url.toString() });
+    });
+    await page.getByRole('button', { name: 'New group', exact: true }).click();
+    const form = page.getByRole('dialog', { name: 'New group', exact: true });
+    const groupName = `Onboarding ${info.project.name} ${randomUUID().slice(0, 8)}`;
+    await form.getByLabel('Your display name').fill('Creator');
+    await form.getByLabel('Project name').fill(groupName);
+    await form.getByRole('radio', { name: 'Use my intended work folder', exact: true }).check();
+    await form.getByRole('button', { name: 'Choose work folder', exact: true }).click();
+    const browser = page.getByRole('dialog', { name: 'Choose a project folder' });
+    await browser
+      .getByRole('combobox', { name: 'Search scope', exact: true })
+      .selectOption('children');
+    await browser.getByRole('searchbox', { name: 'Search folders', exact: true }).fill(folderName);
+    await browser.getByRole('button', { name: 'Search folders', exact: true }).click();
+    await browser
+      .locator('.folder-browser-list')
+      .getByRole('button', { name: new RegExp(folderName) })
+      .click();
+    await browser.getByRole('button', { name: 'Use this folder', exact: true }).click();
+    await expect(form).toContainText(folder);
+    await form.getByRole('button', { name: 'Copy group setup prompt', exact: true }).click();
+    const prompt = await page.evaluate(() => (window as Window & { setupCopy?: string }).setupCopy);
+    expect(prompt).toContain(JSON.stringify(groupName));
+    expect(prompt).toContain(JSON.stringify(folder));
+    await page.reload();
+    await expect(form.getByLabel('Project name')).toHaveValue(groupName);
+    const creates: Record<string, unknown>[] = [],
+      binds: Record<string, unknown>[] = [];
+    await page.route('**/api/groups/create', async (route) => {
+      creates.push(route.request().postDataJSON());
+      const response = await route.fetch();
+      if (creates.length === 1)
+        await route.fulfill({
+          status: 503,
+          json: { error: 'Lost create reply; retry the saved request.' },
+        });
+      else await route.fulfill({ response });
+    });
+    await page.route('**/api/groups/workspace', async (route) => {
+      const input = route.request().postDataJSON();
+      if (input.action !== 'select') return route.continue();
+      binds.push(input);
+      const response = await route.fetch();
+      if (binds.length === 1)
+        await route.fulfill({
+          status: 503,
+          json: { error: 'Lost bind reply; retry the saved request.' },
+        });
+      else await route.fulfill({ response });
+    });
+    const create = form.getByRole('button', { name: 'Create group', exact: true });
+    await create.click();
+    await expect(form.getByRole('alert')).toContainText('Lost create reply');
+    await page.reload();
+    await create.click();
+    await expect(form.getByRole('alert')).toContainText('Lost bind reply');
+    await form.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    await page.getByRole('button', { name: 'Group setup', exact: true }).click();
+    const recovery = page.getByRole('dialog', { name: 'Group setup', exact: true });
+    await recovery.getByText('Recover an interrupted request', { exact: true }).click();
+    await recovery.getByRole('button', { name: 'Recover pending setup', exact: true }).click();
+    await expect(page.getByRole('heading', { name: groupName, exact: true })).toBeVisible();
+    await recovery.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    await page.evaluate(() => {
+      location.hash = '#/chats/groups';
+    });
+    await page.getByRole('button', { name: 'Continue group setup', exact: true }).click();
+    await expect(form.getByLabel('Project name')).toHaveValue(groupName);
+    await expect(form.getByLabel('Project name')).toBeDisabled();
+    await expect(form.getByRole('button', { name: 'Group created', exact: true })).toBeDisabled();
+    await form.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    await page.getByRole('button', { name: new RegExp(groupName) }).click();
+    expect(creates).toHaveLength(2);
+    expect(new Set(creates.map((input) => input.key)).size).toBe(1);
+    expect(creates[0]).not.toHaveProperty('selectionKey');
+    expect(creates[0]).not.toHaveProperty('path');
+    expect(binds).toHaveLength(2);
+    expect(binds[0]).toEqual(binds[1]);
+    expect(binds[0]).not.toHaveProperty('path');
+    await page.getByRole('button', { name: 'Manage', exact: true }).click();
+    const manage = page.getByRole('dialog', { name: 'Manage group' });
+    await manage.getByText('Your saved setup choices', { exact: true }).click();
+    await manage.getByRole('button', { name: 'Copy saved setup prompt', exact: true }).click();
+    expect(
+      await page.evaluate(() => (window as Window & { setupCopy?: string }).setupCopy),
+    ).toContain('This group already exists; do not create another group.');
+    await page.screenshot({ path: info.outputPath('created-group-context.png') });
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });

@@ -41,11 +41,36 @@ because I switched branches. Keep this branch for subsequent updates, never sile
 switch to main. Explain incomplete capabilities from Status.
 ```
 
+If Join needs a service registration, its **Finish joining with your agent** prompt carries
+your existing display name and invitation privately. The trusted native helper registers the
+verified service without fetching it or replacing existing creator mappings; then retry the
+same Join. No new hosting or Cloudflare account is needed.
+
 Use the creator's existing Groups service and invitation flow in [hosting](GROUP_HOSTING.md).
 The optional [Claude plugin](GROUPS_CLAUDE.md) keeps its private configuration format,
 selected session and generation-bound Stop receipts. Ordinary shared reading and human
 transport make no model call. Automatic summaries use the central bulk policy and allowance.
 Direct hosted phone pairing stays under Manage and requires the compatible existing Worker.
+
+## Create and update
+
+New group first saves your display name, project name and either **Chat only** or the
+intended folder selected through the app. Copy its contextual setup prompt into your
+existing agent in that folder. The agent verifies its current folder; copying never changes
+its working directory. Keep private paths out of shared messages. Choices and exact retries
+survive tab reloads. **Setup pending** means no hosted group exists yet: reuse your existing
+creator service, or configure your first service using [hosting](GROUP_HOSTING.md), then
+return to the saved form. The app notices readiness; Create binds that same saved selection
+without asking again. Manage retains the creator’s contextual prompt for optional GitHub
+setup. Chat invitations and separate GitHub collaborator invitations remain distinct.
+
+**App updates** in Groups shows a model-free source metadata check of `groups-only`.
+The running app refreshes at startup (at most once a minute across restarts), normally every
+six hours, or after 15 minutes on failure. Cached results survive restarts; an offline result
+labels the last successful reading as historical. Copy update instructions for your existing
+external agent: future updates follow the branch head, with one exact SHA resolved for each
+prepared review. Checks never apply changes, change the native checkout or deploy hosting.
+The optional native plugin exposes the same cached status in `groups_list`; its SessionStart reminder surfaces that status when already reading `groups_list` in the normal Groups routine, without waking an idle Claude or a model timer.
 
 ## Files with your existing Claude
 
@@ -100,3 +125,28 @@ Before reopening main, inspect its saved scheduling and queued-work implications
 supported controls. Groups-only preserves those records and does not dispatch them; this is
 not a promise about full-SWA activation with scheduling enabled. Existing full-runtime fixtures deliberately use
 `--full-swa` or `--demo`; these flags are for maintenance, not the Groups product flow.
+
+## Optional GitHub invitations and member access
+
+Join accepts an optional GitHub username and keeps it through uncertain retries. It is a
+self-declared account name, not proof of personal identity. A separate authenticated shared
+metadata announcement carries each member’s own username to the group; failed announcements
+stay pending in Manage and retry independently of membership. Existing members can share or
+clear their own username there. No invitation bearer is persisted for this feature.
+
+In Manage → Members and GitHub access, the creator advertises the repository only after its
+existing native folder connection and private GitHub access are verified. Members cannot
+replace this canonical repository with their own local remote. Missing repository metadata
+means setup is needed if files are wanted; chat remains available without GitHub.
+
+Check GitHub access uses the local native `gh` account, fixed github.com GETs, a private-repo
+and viewer-permission check, and bounded collaborator/invitation pagination. Access confirmed,
+Invitation pending, No access and Not checked describe the supplied username’s access.
+Failures or incomplete lists never prove No access. Results show their timestamp and use a
+one-minute cache; there is no model call or member polling timer.
+
+The creator selects a named member and copies the contextual prompt for their native agent
+to send only the intended repository collaborator invitation. The app sends no GitHub
+invitation itself. Members separately accept GitHub access using their own accounts and
+clone the same repository/history into their intended folder. Chat invitations grant no
+GitHub permission. No admin or organization-wide access is requested.

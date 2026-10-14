@@ -1,3 +1,5 @@
+import { AppSourceUpdates } from './app-source-updates.js';
+import { repoRoot } from './paths.js';
 import { GroupsFiles } from './groups-files.js';
 import { claudeModelCatalog } from './claude-model-catalog.js';
 import { join } from 'node:path';
@@ -20,6 +22,7 @@ import { WorkspaceState } from './workspace-state.js';
 export async function createGroupsServices(
   root: string,
   options: {
+    inspectSource?: () => Promise<import('./app-source-check.js').Inspection>;
     http?: typeof fetch;
     summarize?: GroupsSummary;
     filesFixture?: ConstructorParameters<typeof GroupsFiles>[3];
@@ -31,6 +34,7 @@ export async function createGroupsServices(
   let documents: GroupFeatureDocuments | undefined;
   let policy: ModelPolicy | undefined;
   let files: GroupsFiles | undefined;
+  let appUpdates: AppSourceUpdates | undefined;
   try {
     host = new GroupHost(root, {
       http: options.http,
@@ -68,6 +72,7 @@ export async function createGroupsServices(
       host,
       () => new GroupsConversationWorker(host!, root, summarize),
     )!;
+    appUpdates = new AppSourceUpdates(store, 'groups-only', repoRoot, options.inspectSource);
     const hostId = new WorkspaceState(store).hostId;
     let closing: Promise<void> | undefined;
     return {
@@ -77,7 +82,9 @@ export async function createGroupsServices(
       sharing,
       hostId,
       files,
+      appUpdates,
       start: () => {
+        appUpdates!.start();
         sharing.start();
         files!.start();
       },
@@ -96,6 +103,7 @@ export async function createGroupsServices(
         errors.push(error);
       }
     };
+    await close(() => appUpdates?.close());
     await close(() => host && groupsConversationWorker(host)?.close());
     await close(() => files?.close());
     // Report readers can still use the host DB while their active locks drain.

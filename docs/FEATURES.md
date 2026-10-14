@@ -415,3 +415,18 @@ to opted-out projects. Misc conversations retain their separate reply-only prefe
 QUARK also reports spare capacity before a reset and projected reserve depletion. Its bounded
 coordinator wake-ups advise managers to advance suitable work while keeping provider choices,
 project caps and machine limits. Forecasts are estimates, not a promise to exhaust a window.
+
+Groups-only New group saves names and an explicit chat-only or server-selected folder choice
+before preparing a contextual external-agent prompt. Pending hosting is labelled; reload and
+creation/binding retries retain choices and identities. Groups-only App updates uses cached,
+model-free branch metadata checks and copyable branch-following update instructions; the
+optional native Groups list exposes the same status on ordinary routine reads. These source
+changes still require browser/release acceptance; fixtures do not establish live accounts or
+physical-phone acceptance.
+
+Groups GitHub onboarding source adds optional join usernames, authenticated own-member
+metadata shared across installations, creator-only repository advertisement from a verified
+native binding, and per-username native GitHub access checks. Manage provides contextual
+collaborator invitation/acceptance prompts; the app performs no GitHub mutation. Source
+fixtures distinguish confirmed/pending/no-access/unknown and do not establish live-account
+or two-person acceptance. See [Groups-only guide](GROUPS_ONLY.md).

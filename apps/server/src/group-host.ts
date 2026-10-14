@@ -1057,9 +1057,9 @@ export class GroupHost {
       if (error instanceof GroupHostError) {
         if (error.code !== 'GROUP_SERVICE_CHANGED') throw error;
         throw new GroupHostError(
-          400,
-          'INVALID_INVITATION',
-          'This invitation belongs to another Groups service. Your existing groups are unchanged. Ask your setup agent to check the invitation’s service and your saved Groups configuration before continuing.',
+          409,
+          'GROUP_SERVICE_REGISTRATION_REQUIRED',
+          'This invitation’s Groups service is not registered or needs reconciliation on this computer. Your existing groups are unchanged. Finish joining with your setup agent, then retry the same invitation.',
         );
       }
       throw new GroupHostError(
@@ -1076,9 +1076,9 @@ export class GroupHost {
           config.hostingAuthorization.approvalCapability)
     )
       throw new GroupHostError(
-        400,
-        'INVALID_INVITATION',
-        'This invitation belongs to another Groups service. Your existing groups are unchanged. Ask your setup agent to check the invitation’s service and your saved Groups configuration before continuing.',
+        409,
+        'GROUP_INVITATION_SERVICE_CHANGED',
+        'This invitation’s protected service approval differs from the saved mapping. Ask your setup agent to reconcile it; do not replace the protected identity. Existing groups are unchanged.',
       );
     return this.lock(`join-group:${invitation.groupId}`, async () => {
       if (
@@ -2096,6 +2096,39 @@ export class GroupHost {
         verifyNative();
       },
     });
+  }
+  /** Authenticated active roster; the initial enrollment at position one is the creator. */
+  async githubRoster(handle: string) {
+    const { value, slot } = await this.resolve(handle);
+    if (slot.context.visibility !== 'shared' || !this.localVisible(handle))
+      throw new Conflict('Open a visible shared group.');
+    const members: { memberId: string; installationId: string; displayName: string }[] = [];
+    let after = 0,
+      creatorMemberId: string | null = null;
+    for (let page = 0; page < 2; page++) {
+      const reply = await this.membership(
+        value,
+        { kind: 'roster', after, limit: 50 },
+        value.identity.groupId,
+      );
+      if (reply.kind !== 'members') throw unavailable();
+      for (const entry of reply.entries) {
+        members.push(entry.identity);
+        if (entry.position === 1) creatorMemberId = entry.identity.memberId;
+      }
+      if (reply.next === null)
+        return {
+          members,
+          creatorMemberId,
+          creator: value.creator,
+          ownMemberId: value.identity.memberId,
+        };
+      after = reply.next;
+    }
+    throw unavailable();
+  }
+  githubContribution(handle: string) {
+    this.requireContribution(handle);
   }
   /** Protected typed feature producer. No browser route accepts this capability;
    * feature owners supply concise metadata only, never implicit work authority. */

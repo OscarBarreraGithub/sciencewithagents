@@ -1,6 +1,4 @@
-import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { promisify } from 'node:util';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
@@ -14,51 +12,16 @@ import { Conflict, Store } from './store.js';
 import { BugReports } from './bug-reports.js';
 import { recoveryBackupsFor } from './recovery-backups.js';
 
-const upstream = 'https://github.com/OscarBarreraGithub/sciencewithagents.git';
-const ref = 'refs/sciencewithagents/updates/main';
-const execute = promisify(execFile);
+import {
+  inspectAppSource,
+  appSourceUpstream as upstream,
+  type Inspection,
+} from './app-source-check.js';
+export { inspectAppSource } from './app-source-check.js';
 const revision = z.string().regex(/^[a-f0-9]{40,64}$/);
-type Inspection = { head: string; target: string; current: boolean; localChanges: boolean };
 type SavedCheck = AppUpdateCheck & { head?: string; target?: string };
 type SavedJob = AppUpdateJob & { checkId: string; target: string };
 const services = new WeakMap<Store, AppUpdates>();
-
-/** Only fetch source metadata. No checkout, reset, clean, credential transfer or model work. */
-export async function inspectAppSource(root: string, source = upstream): Promise<Inspection> {
-  const git = async (args: string[]) =>
-    (
-      await execute('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
-        cwd: root,
-        timeout: 20_000,
-        maxBuffer: 512 * 1024,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' },
-      })
-    ).stdout.trim();
-  const succeeds = async (args: string[]) => {
-    try {
-      await git(args);
-      return true;
-    } catch (error) {
-      if ((error as { code?: unknown }).code === 1) return false;
-      throw error;
-    }
-  };
-  await git(['fetch', '--no-tags', '--no-recurse-submodules', source, `+refs/heads/main:${ref}`]);
-  const head = revision.parse(await git(['rev-parse', 'HEAD']));
-  const target = revision.parse(await git(['rev-parse', `${ref}^{commit}`]));
-  // Local commits on top of upstream are legitimate customizations. The maintainer's
-  // public tree can also have a different history from the development checkout.
-  const current =
-    head === target ||
-    (await succeeds(['merge-base', '--is-ancestor', target, head])) ||
-    (await succeeds(['diff', '--quiet', head, target, '--']));
-  return {
-    head,
-    target,
-    current,
-    localChanges: !!(await git(['status', '--porcelain', '--untracked-files=normal'])),
-  };
-}
 
 /** Reuse the maintenance manager and QUARK; this is not a second agent runtime. */
 export class AppUpdates {

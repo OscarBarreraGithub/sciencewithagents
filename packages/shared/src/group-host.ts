@@ -1,3 +1,4 @@
+import { appSourceUpdatesSchema } from './app-source-updates.js';
 import { z } from 'zod';
 import { groupDocumentCaptureStateSchema } from './group-documents.js';
 import { agentSchema, detailSchema } from './index.js';
@@ -83,6 +84,7 @@ export const groupHostOpenSchema = z.strictObject({
     .optional(),
 });
 export const groupHostListSchema = z.strictObject({
+  appUpdates: appSourceUpdatesSchema.optional(),
   groups: z.array(groupHostSummarySchema).max(32),
   removed: z.array(groupHostSummarySchema).max(32).optional(),
   service: z.strictObject({

@@ -1,3 +1,9 @@
+import { retainJoinGitHub } from './group-join-github';
+import { GroupGitHubPanel } from './GroupGitHubPanel';
+import { CreatedGroupSetup } from './CreatedGroupSetup';
+import { bindCreatedGroup } from './group-creation-binding';
+import { GroupAppUpdates } from './GroupAppUpdates';
+import type { AppSourceUpdates } from '@dock/shared/dist/app-source-updates.js';
 import { DisplayName } from './DisplayName';
 import { GroupReports } from './GroupReports';
 import { GroupHostedExport } from './GroupHostedExport';
@@ -62,11 +68,9 @@ const pending = (action: string, input: unknown) => {
   sessionStorage.setItem(storage, JSON.stringify(result));
   return { key: result.key, clear: () => sessionStorage.removeItem(storage) };
 };
-function hasPendingSetup() {
+function hasPendingSetup(scope = apiScope()) {
   try {
-    return ['create', 'join'].some((kind) =>
-      sessionStorage.getItem(`swa:groups:${apiScope()}:${kind}`),
-    );
+    return ['create', 'join'].some((kind) => sessionStorage.getItem(`swa:groups:${scope}:${kind}`));
   } catch {
     return false;
   }
@@ -113,19 +117,30 @@ function GroupConversation({
     </GroupDocumentScope>
   );
 }
-export function GroupsApp({
-  route,
-  listHeader,
-  query,
-  sidebarFooter,
-  groupsOnly = false,
-}: {
+type GroupsAppProps = {
   route: string;
   groupsOnly?: boolean;
   listHeader?: ReactNode;
   query?: string;
   sidebarFooter?: ReactNode;
-}) {
+};
+export function GroupsApp(props: GroupsAppProps) {
+  return <ScopedGroupsApp key={apiScope()} {...props} />;
+}
+function ScopedGroupsApp({
+  route,
+  listHeader,
+  query,
+  sidebarFooter,
+  groupsOnly = false,
+}: GroupsAppProps) {
+  const scope = apiScope();
+  const guardScope = () => {
+    if (!active.current || scope !== apiScope())
+      throw new Error(
+        'The computer or setup view changed. Return to the original computer and retry the saved request.',
+      );
+  };
   const [setupOpen, setSetupOpen] = useState(false);
   useEffect(observeGroupUpdates, []);
   const [invitation, setInvitation] = useState(initialGroupInvitation);
@@ -187,6 +202,7 @@ export function GroupsApp({
   const controlsDialog = useRef<HTMLDialogElement>(null);
   const [inviteCopy, setInviteCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const inviteText = useRef<HTMLTextAreaElement>(null);
+  const [appUpdates, setAppUpdates] = useState<AppSourceUpdates | null>(null);
   const membersPanel = useRef<HTMLDetailsElement>(null);
   const [membershipError, setMembershipError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -215,6 +231,7 @@ export function GroupsApp({
         await request('groups', undefined, controller.signal),
       );
       if (controller.signal.aborted) return;
+      setAppUpdates(value.appUpdates ?? null);
       setList(value.groups);
       setRemoved(value.removed ?? []);
       setService(value.service.message);
@@ -252,7 +269,6 @@ export function GroupsApp({
   };
   const handle = route.startsWith('chats/groups') ? route.split('/')[2] : route.split('/')[1];
   useEffect(() => {
-    if (handle) return;
     const refresh = () => {
       if (!document.hidden) void load();
     };
@@ -391,7 +407,9 @@ export function GroupsApp({
     <section className={`flow-page main-chat groups-main-chat${handle ? ' has-selection' : ''}`}>
       <aside className="chat-list" aria-label="Conversations">
         {listHeader}
+        {appUpdates && <GroupAppUpdates value={appUpdates} />}
         <GroupsLanding
+          key={scope}
           selectedId={selected?.group.id}
           query={query}
           onSetup={() => setSetupOpen(true)}
@@ -449,7 +467,11 @@ export function GroupsApp({
             if (group) location.hash = `#/chats/groups/${group.handle}`;
           }}
           onCreate={async (input) => {
+            guardScope();
             const submittedRevision = groupInvitationRevision();
+            const submittedRoute = location.hash;
+            const draftStorage = `swa:groups:${scope}:creation-draft`;
+            const creationDraft = JSON.parse(sessionStorage.getItem(draftStorage) ?? 'null');
             setNewSetupCodeAllowed(false);
             // Creation capabilities stay in memory until the authenticated host
             // receives them; tab recovery stores only the code's fingerprint.
@@ -465,17 +487,25 @@ export function GroupsApp({
                   .map((v) => v.toString(16).padStart(2, '0'))
                   .join('')
               : undefined;
+            guardScope();
             const operation = pending('create', {
               projectName: input.projectName,
               displayName: input.displayName,
+              ...(input.selectionKey ? { selectionKey: input.selectionKey } : {}),
               ...(setupCodeHash ? { setupCodeHash } : {}),
             });
             let value: contracts.GroupHostOpen;
             try {
               value = contracts.groupHostOpenSchema.parse(
-                await request('create', { ...input, key: operation.key }),
+                await request('create', {
+                  projectName: input.projectName,
+                  displayName: input.displayName,
+                  ...(input.setupCode ? { setupCode: input.setupCode } : {}),
+                  key: operation.key,
+                }),
               );
             } catch (reason) {
+              guardScope();
               // Local validation failed before any durable/network operation.
               // Correcting an invalid code can safely start a fresh attempt.
               if (reason instanceof ApiError && reason.code === 'GROUP_BETA_SETUP_INVALID')
@@ -483,12 +513,42 @@ export function GroupsApp({
               if (canReplaceSetupCode(reason)) setNewSetupCodeAllowed(true);
               throw reason;
             }
+            guardScope();
+            const folderProblem = await bindCreatedGroup(
+              operation.key,
+              value.shared.handle,
+              input.selectionKey,
+              scope,
+              () => active.current,
+            );
+            guardScope();
+            // Persist completion before retiring the durable request, including the reload gap.
+            if (creationDraft) {
+              const completed = {
+                ...creationDraft,
+                name: input.displayName,
+                project: input.projectName,
+                created: value.group.handle,
+                folderProblem,
+                creationKey: operation.key,
+                open: false,
+              };
+              sessionStorage.setItem(
+                `swa:groups:${scope}:creation-context:${value.group.handle}`,
+                JSON.stringify(completed),
+              );
+              if (groupInvitationRevision() === submittedRevision)
+                sessionStorage.setItem(draftStorage, JSON.stringify(completed));
+            }
             operation.clear();
-            if (groupInvitationRevision() === submittedRevision)
+            if (groupInvitationRevision() === submittedRevision && location.hash === submittedRoute)
               location.hash = `#/chats/groups/${value.group.handle}`;
             void load();
+            return value.group.handle;
           }}
           onJoin={async (input) => {
+            guardScope();
+            const submittedRoute = location.hash;
             const consumedInvitation = initialGroupInvitation();
             const submittedRevision = groupInvitationRevision();
             // Only the request identity/hash is retained in browser storage. Invitation secrets remain in memory until the authenticated host receives them.
@@ -499,27 +559,43 @@ export function GroupsApp({
             )
               .map((v) => v.toString(16).padStart(2, '0'))
               .join('');
+            guardScope();
             const operation = pending('join', {
               displayName: input.displayName,
               invitationHash: hash,
+              ...(input.githubUsername ? { githubUsername: input.githubUsername } : {}),
             });
             let value: ReturnType<typeof contracts.groupHostJoinResultSchema.parse>;
             try {
               value = contracts.groupHostJoinResultSchema.parse(
-                await request('join', { ...input, key: operation.key }),
+                await request('join', {
+                  invitation: input.invitation,
+                  displayName: input.displayName,
+                  key: operation.key,
+                }),
               );
             } catch (reason) {
+              guardScope();
               // These failures occur before a durable join or network request.
               // Keep uncertain acknowledgements, but allow correcting bad input.
               if (
                 reason instanceof ApiError &&
-                ['INVALID_INVITATION', 'GROUP_SETUP_REQUIRED'].includes(reason.code ?? '')
+                [
+                  'INVALID_INVITATION',
+                  'GROUP_SETUP_REQUIRED',
+                  'GROUP_SERVICE_REGISTRATION_REQUIRED',
+                  'GROUP_INVITATION_SERVICE_CHANGED',
+                ].includes(reason.code ?? '')
               )
                 operation.clear();
               throw reason;
             }
+            guardScope();
+            await retainJoinGitHub(scope, value.group, input.githubUsername, () => active.current);
+            guardScope();
             operation.clear();
-            const stillCurrent = groupInvitationRevision() === submittedRevision;
+            const stillCurrent =
+              groupInvitationRevision() === submittedRevision && location.hash === submittedRoute;
             if (stillCurrent && initialGroupInvitation() === consumedInvitation) {
               clearGroupInvitation();
               setInvitation(null);
@@ -595,6 +671,16 @@ export function GroupsApp({
                   </button>
                 </div>
                 {controlsOpen && error && <p role="alert">{error}</p>}
+                <CreatedGroupSetup handle={selected.group.handle} />
+                {controlsOpen && (
+                  <GroupGitHubPanel
+                    key={`github:${selected.shared.handle}`}
+                    handle={selected.shared.handle}
+                    enrollment={selected.group.handle}
+                    readOnly={localGroup?.local?.mode === 'read-only'}
+                    invitation={invite || undefined}
+                  />
+                )}
                 <div className="groups-management-mode">
                   <p>Contribution mode</p>
                   <GroupContributionMode
@@ -965,16 +1051,68 @@ export function GroupsApp({
               <button
                 onClick={() =>
                   void act(async () => {
+                    guardScope();
+                    const submittedRoute = location.hash;
                     for (const kind of ['create', 'join'] as const) {
-                      const storage = `swa:groups:${apiScope()}:${kind}`;
+                      const storage = `swa:groups:${scope}:${kind}`;
                       const saved = JSON.parse(sessionStorage.getItem(storage) ?? 'null') as {
                         key: string;
+                        input?: string;
                       } | null;
                       if (!saved) continue;
                       const value = contracts.groupHostResumeResultSchema.parse(
                         await request('resume', { key: saved.key, kind }),
                       );
+                      guardScope();
+                      if (kind === 'create') {
+                        const original = saved.input
+                          ? (JSON.parse(saved.input) as { selectionKey?: string })
+                          : {};
+                        const opened = contracts.groupHostOpenSchema.parse(
+                          await request('open', { handle: value.group.handle }),
+                        );
+                        guardScope();
+                        const folderProblem = await bindCreatedGroup(
+                          saved.key,
+                          opened.shared.handle,
+                          original.selectionKey,
+                          scope,
+                          () => active.current,
+                        );
+                        guardScope();
+                        const draftStorage = `swa:groups:${scope}:creation-draft`;
+                        const draft = JSON.parse(sessionStorage.getItem(draftStorage) ?? 'null');
+                        if (draft) {
+                          const recovered = {
+                            ...draft,
+                            created: value.group.handle,
+                            folderProblem,
+                            creationKey: saved.key,
+                            open: false,
+                          };
+                          sessionStorage.setItem(draftStorage, JSON.stringify(recovered));
+                          sessionStorage.setItem(
+                            `swa:groups:${scope}:creation-context:${value.group.handle}`,
+                            JSON.stringify(recovered),
+                          );
+                          window.dispatchEvent(new Event('swa:group-creation-recovered'));
+                        }
+                      }
+                      guardScope();
+                      if (kind === 'join') {
+                        const original = saved.input
+                          ? (JSON.parse(saved.input) as { githubUsername?: string })
+                          : {};
+                        await retainJoinGitHub(
+                          scope,
+                          value.group,
+                          original.githubUsername,
+                          () => active.current,
+                        );
+                        guardScope();
+                      }
                       sessionStorage.removeItem(storage);
+                      if (location.hash !== submittedRoute) return;
                       if (value.group.state === 'pending')
                         setJoinReceipt({ handle: value.group.handle, name: value.group.name });
                       else location.hash = `#/chats/groups/${value.group.handle}`;

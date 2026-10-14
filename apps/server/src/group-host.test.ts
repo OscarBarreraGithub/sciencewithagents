@@ -1796,11 +1796,9 @@ it('distinguishes another owner’s hosted service from a malformed invitation b
     invitation: `${creatorService.hostingAuthorization.origin}/join#${fragment}`,
     displayName: 'Recipient',
   });
-  expect(result.statusCode).toBe(400);
+  expect(result.statusCode).toBe(409);
   expect(result.json()).toMatchObject({
-    code: 'INVALID_INVITATION',
-    error:
-      'This invitation belongs to another Groups service. Your existing groups are unchanged. Ask your setup agent to check the invitation’s service and your saved Groups configuration before continuing.',
+    code: 'GROUP_SERVICE_REGISTRATION_REQUIRED',
   });
   const malformed = await recipient.post('join', {
     key: randomUUID(),
@@ -1815,6 +1813,37 @@ it('distinguishes another owner’s hosted service from a malformed invitation b
   expect(recipient.host.configuration()).toEqual(recipientService);
   expect(recipient.host.db.prepare('SELECT count(*) n FROM gh_operations').get()?.n).toBe(0);
   expect((await recipient.host.list()).groups).toEqual([]);
+  const privateInvitation = join(recipient.directory, 'join-invitation.txt');
+  writeFileSync(
+    privateInvitation,
+    `${creatorService.hostingAuthorization.origin}/join#${fragment}`,
+    { mode: 0o600 },
+  );
+  const imported = spawnSync(
+    process.execPath,
+    [
+      join(repoRoot, 'scripts/group-cloudflare-setup.mjs'),
+      'join',
+      recipient.directory,
+      privateInvitation,
+    ],
+    { encoding: 'utf8' },
+  );
+  rmSync(privateInvitation);
+  expect(imported.status, imported.stderr).toBe(0);
+  expect(http).not.toHaveBeenCalled();
+  expect(readFileSync(configPath, 'utf8')).toBe(originalConfig);
+  expect(recipient.host.configuration()).toEqual(recipientService);
+  http.mockRejectedValue(new Error('fixture offline after trusted registration'));
+  const retry = await recipient.post('join', {
+    key: randomUUID(),
+    invitation: `${creatorService.hostingAuthorization.origin}/join#${fragment}`,
+    displayName: 'Recipient',
+  });
+  expect(retry.json().code).not.toBe('GROUP_SERVICE_REGISTRATION_REQUIRED');
+  expect(http).toHaveBeenCalled();
+  expect(String(http.mock.calls[0]![0])).toContain(creatorService.hostingAuthorization.origin);
+  expect(readFileSync(configPath, 'utf8')).toBe(originalConfig);
 });
 it('lost create and join replies resume exact retained intents without invitation secrets in URL or browser authority', async () => {
   let lose = true;

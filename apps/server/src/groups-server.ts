@@ -1,3 +1,4 @@
+import { registerAppSourceUpdateRoutes } from './app-source-updates.js';
 import { chooseFolder, FolderConnections, type FolderPicker } from './folder-picker.js';
 import {
   folderBrowseSchema,
@@ -53,6 +54,7 @@ export async function createGroupsServer(
     (!!options.localAccess &&
       security.browserOrigins.has(`http://${request.headers.host}`) &&
       options.localAccess.browser(request.headers.cookie));
+  registerAppSourceUpdateRoutes(app, services.appUpdates, authenticated);
   const folders = new FolderConnections(
     services.store,
     services.root,
@@ -95,7 +97,11 @@ export async function createGroupsServer(
           security.browserOrigins.has(`http://${request.headers.host}`) &&
           options.localAccess.browser(request.headers.cookie)),
     services.sharing,
-    { workspace: services.files, git: services.files },
+    {
+      workspace: services.files,
+      git: services.files,
+      appUpdates: () => services.appUpdates.status(),
+    },
   );
   // Hosted Groups phone pairing is independent. Retain existing owner device authentication.
   const locks = new Map<string, Promise<unknown>>();

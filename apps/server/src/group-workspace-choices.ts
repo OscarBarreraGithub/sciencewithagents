@@ -43,6 +43,7 @@ export function assertGroupWorkspaceFolder(selection: WorkspaceChoice['selection
   } catch {
     throw new Conflict(
       'The chosen group folder changed or is unavailable. Its saved work was preserved; choose it again.',
+      'GROUP_FOLDER_BINDING_REFUSED',
     );
   }
 }
@@ -97,7 +98,10 @@ export class GroupWorkspaceChoices {
     }
     const current = this.get(anchor, enrollment);
     if ((current?.revision ?? 0) !== change.revision)
-      throw new Conflict('The shared folder selection changed. Refresh before choosing again.');
+      throw new Conflict(
+        'The shared folder selection changed. Refresh before choosing again.',
+        'GROUP_FOLDER_BINDING_REFUSED',
+      );
     const selection = workspaceChoiceSchema.shape.selection.parse(
       'selection' in change ? change.selection : change.resolveSelection(),
     );

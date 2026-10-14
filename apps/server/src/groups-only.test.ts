@@ -1,10 +1,22 @@
+import { GroupGitHub } from './group-github.js';
+import { GroupGitHubAccess } from './group-github-access.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { GroupsConversationJournal } from './groups-conversation-journal.js';
 import { GroupGitRepository } from './group-git-repository.js';
 import { afterAll, afterEach, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  existsSync,
+  readFileSync,
+  renameSync,
+  realpathSync,
+} from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer as netServer } from 'node:net';
@@ -121,6 +133,12 @@ async function installation(
   const port = await freePort();
   const services = await createGroupsServices(directory, {
     summarize: summary,
+    inspectSource: async () => ({
+      head: 'a'.repeat(40),
+      target: 'a'.repeat(40),
+      current: true,
+      localChanges: false,
+    }),
     filesFixture: options.filesFixture,
   });
   if (!existing)
@@ -177,6 +195,12 @@ async function installation(
 it('boots fresh without Runtime or a provider and preserves owner authentication', async () => {
   const owner = await installation();
   expect((await owner.request('GET', '/api/groups', undefined, false)).statusCode).toBe(401);
+  expect((await owner.request('GET', '/api/groups/app-updates', undefined, false)).statusCode).toBe(
+    401,
+  );
+  expect((await owner.request('GET', '/api/groups/app-updates')).json()).toMatchObject({
+    branch: 'groups-only',
+  });
   expect((await owner.request('GET', '/api/distribution', undefined, false)).json()).toEqual({
     distribution: 'groups-only',
   });
@@ -379,6 +403,26 @@ it('identifies Groups before remote phone pairing without exposing group records
   ).toBe(401);
 });
 
+it('continues aggregate cleanup when the optional updater rejects close', async () => {
+  const owner = await installation();
+  await owner.services.appUpdates!.check();
+  const closeStore = vi.spyOn(owner.services.store, 'close');
+  const closeHost = vi.spyOn(owner.services.host, 'close');
+  const closeFiles = vi.spyOn(owner.services.files, 'close');
+  const closeSharing = vi.spyOn(owner.services.sharing, 'close');
+  const finishUpdater = owner.services.appUpdates!.close.bind(owner.services.appUpdates);
+  vi.spyOn(owner.services.appUpdates!, 'close').mockImplementationOnce(async () => {
+    await finishUpdater();
+    throw new Error('Updater close failure');
+  });
+  await expect(owner.services.close()).rejects.toThrow('Groups could not close every service');
+  await owner.app.close();
+  cleanup.pop();
+  expect(closeSharing).toHaveBeenCalled();
+  expect(closeFiles).toHaveBeenCalledOnce();
+  expect(closeHost).toHaveBeenCalledOnce();
+  expect(closeStore).toHaveBeenCalledOnce();
+});
 it('closes all services after a consumer failure and awaits constructor failure cleanup', async () => {
   const owner = await installation();
   const closeStore = vi.spyOn(owner.services.store, 'close');
@@ -863,4 +907,236 @@ it('missing or invalid native folder observations invalidate files without disru
   expect(journal.sessionFolder(sessionId)).toBeNull();
   expect(Number(journal.db.prepare('SELECT count(*) n FROM gc_session_folders').get()!.n)).toBe(4);
   journal.close();
+});
+
+it('shares authenticated GitHub profiles across independent enrollments with exact retry and creator-only repo metadata', async () => {
+  await startWorker();
+  const a = await installation(),
+    b = await installation();
+  const created = groupHostOpenSchema.parse(
+    (
+      await a.post('create', {
+        key: randomUUID(),
+        projectName: 'GitHub metadata',
+        displayName: 'Creator',
+      })
+    ).json(),
+  );
+  const invitation = (
+    await a.post('invite', { key: randomUUID(), handle: created.group.handle })
+  ).json();
+  const joined = (
+    await b.post('join', {
+      key: randomUUID(),
+      invitation: `http://invitation.invalid/#${invitation.fragment}`,
+      displayName: 'Member',
+    })
+  ).json();
+  const member = groupHostOpenSchema.parse(
+    (await b.post('open', { handle: joined.group.handle })).json(),
+  );
+  let intendedRepository = 'owner/repo';
+  const git = async () => ({
+    available: true,
+    connected: true,
+    repository: `https://github.com/${intendedRepository}`,
+    workspacePath: null,
+    branch: 'main',
+    githubUsername: '',
+    autoSync: false,
+    dirty: false,
+    busy: false,
+    message: '',
+    tasks: [],
+    preview: null,
+  });
+  const access = () =>
+    new GroupGitHubAccess(async ([path]) =>
+      path === 'user'
+        ? { login: 'Owner' }
+        : ['repos/owner/repo', 'repos/owner/other'].includes(path)
+          ? { full_name: path.slice('repos/'.length), private: true, permissions: { push: true } }
+          : path.includes('collaborators')
+            ? [{ login: 'creator-gh' }]
+            : [{ invitee: { login: 'member-gh' }, expired: false }],
+    );
+  const ga = new GroupGitHub(a.services.host, git, access()),
+    gb = new GroupGitHub(b.services.host, git, access());
+  await ga.request({ action: 'repository', handle: created.shared.handle, key: randomUUID() });
+  await ga.request({
+    action: 'profile',
+    handle: created.shared.handle,
+    key: randomUUID(),
+    username: 'creator-gh',
+  });
+  const key = randomUUID();
+  const publication = vi
+    .spyOn(b.services.host, 'publishFeatureEvent')
+    .mockRejectedValueOnce(new Error('lost profile reply'));
+  const pending = await gb.request({
+    action: 'profile',
+    handle: member.shared.handle,
+    key,
+    username: 'member-gh',
+  });
+  expect(pending.pending).toHaveLength(1);
+  await gb.request({ action: 'retry', handle: member.shared.handle, key });
+  publication.mockRestore();
+  const result = await ga.request({ action: 'check', handle: created.shared.handle });
+  expect(result.members.find((m) => m.memberId === member.member.memberId)).toMatchObject({
+    username: 'member-gh',
+    status: 'Invitation pending',
+  });
+  expect(result.members.find((m) => m.memberId === created.member.memberId)).toMatchObject({
+    username: 'creator-gh',
+    status: 'Access confirmed',
+  });
+  await b.services.host.send({
+    handle: member.shared.handle,
+    key: randomUUID(),
+    text: JSON.stringify({
+      kind: 'swa-github-profile-v1',
+      username: 'spoof',
+      memberId: created.member.memberId,
+    }),
+  });
+  await b.services.host.publishFeatureEvent(
+    member.shared.handle,
+    `spoof-${randomUUID()}`,
+    JSON.stringify({ kind: 'swa-github-repository-v1', repository: 'evil/repo' }),
+    'GitHub onboarding · Private repository evil/repo',
+  );
+  const received = await gb.request({ action: 'status', handle: member.shared.handle });
+  expect(received.repository).toBe('owner/repo');
+  await gb.request({
+    action: 'profile',
+    handle: member.shared.handle,
+    key: randomUUID(),
+    username: 'missing-gh',
+  });
+  const absent = await ga.request({ action: 'check', handle: created.shared.handle });
+  expect(absent.members.find((m) => m.memberId === member.member.memberId)?.status).toBe(
+    'No access',
+  );
+  const unavailable = new GroupGitHub(
+    a.services.host,
+    git,
+    new GroupGitHubAccess(async () => {
+      throw new Error('auth unavailable');
+    }),
+  );
+  const unknown = await unavailable.request({ action: 'check', handle: created.shared.handle });
+  expect(unknown.members.every((m) => m.status === 'Not checked')).toBe(true);
+
+  expect(received.members.find((m) => m.memberId === created.member.memberId)?.username).toBe(
+    'creator-gh',
+  );
+  const repositoryKey = randomUUID();
+  const hold = vi
+    .spyOn(a.services.host, 'publishFeatureEvent')
+    .mockRejectedValueOnce(new Error('held repo announcement'));
+  await ga.request({ action: 'repository', handle: created.shared.handle, key: repositoryKey });
+  hold.mockRestore();
+  intendedRepository = 'owner/other';
+  await expect(
+    ga.request({ action: 'repository', handle: created.shared.handle, key: repositoryKey }),
+  ).rejects.toMatchObject({ code: 'GROUP_GITHUB_REPOSITORY_PRECONDITION' });
+  expect(
+    JSON.parse(
+      String(
+        a.services.host.db
+          .prepare('SELECT input FROM gh_github_intents WHERE key=?')
+          .get(repositoryKey)!.input,
+      ),
+    ).repository,
+  ).toBe('owner/repo');
+  const authenticated = a.services.host.authenticatedContext.bind(a.services.host);
+  const originals: string[] = [];
+  let failOriginal = true;
+  const intercept = vi
+    .spyOn(a.services.host, 'authenticatedContext')
+    .mockImplementation(async (raw) => {
+      const reader = await authenticated(raw);
+      return {
+        ...reader,
+        original: async (eventId) => {
+          originals.push(eventId);
+          if (failOriginal) {
+            failOriginal = false;
+            throw new Error('original temporarily unavailable');
+          }
+          return reader.original(eventId);
+        },
+      };
+    });
+  const incomplete = await ga.request({
+    action: 'repository',
+    handle: created.shared.handle,
+    key: randomUUID(),
+  });
+  expect(incomplete.complete).toBe(false);
+  expect(incomplete.members.every((m) => m.status === 'Not checked')).toBe(true);
+  expect(incomplete.checkedAt).toBeNull();
+  expect(incomplete.message).toContain('incomplete');
+  const recoveredMetadata = await ga.request({ action: 'check', handle: created.shared.handle });
+  expect(recoveredMetadata.complete).toBe(true);
+  expect(recoveredMetadata.repository).toBe('owner/other');
+  expect(originals[1]).toBe(originals[0]);
+  intercept.mockRestore();
+  expect(a.services.store.runs()).toHaveLength(0);
+  expect(b.services.store.runs()).toHaveLength(0);
+}, 20000);
+
+it('a moved selected folder gives a definitive typed refusal while hosted creation remains retained', async () => {
+  await startWorker();
+  const temporary = realpathSync(mkdtempSync(join(tmpdir(), 'swa-folder-refusal-')));
+  cleanup.push(async () => rmSync(temporary, { recursive: true, force: true }));
+  const folder = join(temporary, 'project');
+  mkdirSync(folder);
+  const owner = await installation(undefined, { folderPicker: async () => folder });
+  const createKey = randomUUID();
+  const created = groupHostOpenSchema.parse(
+    (
+      await owner.post('create', {
+        key: createKey,
+        projectName: 'Created before folder refusal',
+        displayName: 'Owner',
+      })
+    ).json(),
+  );
+  const pick = await owner.request('POST', '/api/projects/connect-folder', {
+    key: randomUUID(),
+    selectOnly: true,
+  });
+  expect(pick.statusCode, pick.body).toBe(200);
+  renameSync(folder, `${folder}-moved`);
+  const refusal = await owner.post('workspace', {
+    action: 'select',
+    handle: created.shared.handle,
+    key: randomUUID(),
+    revision: 0,
+    selectionKey: pick.json().selection.key,
+  });
+  expect(refusal.statusCode).toBe(409);
+  expect(refusal.json().code).toBe('GROUP_FOLDER_BINDING_REFUSED');
+  expect(
+    groupHostOpenSchema.parse(
+      (
+        await owner.post('create', {
+          key: createKey,
+          projectName: 'Created before folder refusal',
+          displayName: 'Owner',
+        })
+      ).json(),
+    ).group.id,
+  ).toBe(created.group.id);
+  expect(
+    (
+      await owner.post('create', {
+        key: randomUUID(),
+        projectName: 'Next intended group',
+        displayName: 'Owner',
+      })
+    ).statusCode,
+  ).toBe(200);
 });

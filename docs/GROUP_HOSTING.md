@@ -181,6 +181,13 @@ fragment includes the exact service descriptor (the schema above **without**
 `setupCapability`), group identity and invitation secret. The same link can enroll multiple people before expiry. The fragment is removed
 from the browser address immediately. Do not paste it into public issues, logs or source.
 
+If Join reports that the invitation’s service needs registration, use **Finish joining with
+your agent** in the Join dialog. Its private copy/manual prompt includes the display name
+and invitation already entered; neither is saved as additional bearer material. Locate the
+existing SWA installation for this runbook. Keep the dialog open and retry the same Join
+after trusted registration. Malformed invitations have a separate error and can be corrected.
+No Cloudflare signup, deployment or second Worker is required for a member.
+
 On the joining computer, the external setup agent saves the invitation in a temporary
 same-owner `0600` file, then runs:
 
@@ -481,3 +488,10 @@ Feature transitions do not append membership receipts/audit and no longer consum
 The measured 100-original/ten-summary journey grew logical storage 549,234 bytes and physical storage 802,816 bytes (about 0.524/0.766 MiB). With that exact daily workload, the 128 MiB logical budget lasts roughly 244 days before other actions/data; this is an example, not a guarantee. One 5 MiB report added 5,337,088 physical bytes. The 256 MiB hosted report budget fits roughly fifty such reports, or about seven weeks at one daily report. Preflight explains current required/remaining capacity before a new upload. Normal project files/private Git stay separate; hosted manifest links still consume Cloudflare and are never silently redirected or deleted.
 
 The combined conservative membership/revocation plus feature envelope is approximately 628.2 MiB. Use the conservative 1 GB Free object guidance and the account's 5 GB total: roughly seven fully occupied groups would approach that account total before other storage. These are application limits, not storage or daily-quota reservations. See current [Cloudflare pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [limits](https://developers.cloudflare.com/durable-objects/platform/limits/). No paid upgrade, account operation or production deployment is implied by these local source/fixture checks.
+
+The New group form can save names and a server-selected intended folder before hosting is
+configured. Its contextual prompt reuses those choices; do not ask for them again or infer
+that copying changed the agent’s working directory. Reconcile existing creator authority
+and pending bundles first. First-service setup is separate from app updates: a branch update
+alone never requires Cloudflare sign-up or a redundant deployment. Return to the saved form
+when hosting is ready; creation and folder binding retain their exact retry identities.

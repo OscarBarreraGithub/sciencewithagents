@@ -41,3 +41,12 @@ follow docs/GROUPS_ONLY.md; it keeps full SWA records/source without starting ma
 Reload native hooks at an idle checkpoint after an update so the selected session has a current
 private folder proof. Missing/invalid proof refuses file publication while summaries can continue. Use the creator's own Cloudflare service;
 members join it. Never install a login service, buy capacity or change a plan automatically.
+
+When already reading `groups_list` as part of the normal Groups routine, surface its cached
+`appUpdates`. If an update
+is available, tell the owner that its named branch can update and point to Groups → App
+updates for the external-agent prompt. An error is an unavailable check; `lastSuccessful`
+is historical evidence only. These metadata checks use no model. Do not create a timer,
+wake an idle conversation or install/apply an update without the owner’s instruction.
+
+Do not poll app update status on every prompt or repeat an unchanged update notice each turn.

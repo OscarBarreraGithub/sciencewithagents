@@ -1,5 +1,17 @@
 # Current status
 
+**GitHub onboarding source candidate, 2026-10-14:** optional join/member usernames use
+existing authenticated shared feature events; creator repository metadata and native access
+checks feed Manage. Contextual prompts cover separate GitHub invitation and acceptance.
+Root browser acceptance and exact independent review remain pending for this slice; no
+live-account, physical-phone or public-release claim is made.
+
+**2026-10-14 source candidate:** New group saves names and an optional server-selected
+folder before generating its contextual prompt; pending hosting and exact create/bind retries
+remain explicit. Groups-only adds model-free branch update metadata and native status reads.
+Focused units/builds pass; this slice still needs root’s browser acceptance and exact independent
+review before publication. No live Cloudflare/GitHub or physical-phone acceptance is claimed.
+
 **Temporary Groups-only beta, 2026-10-13:** ready for joint beta testing, contingent on
 independent approval of the exact final candidate and publication of the `groups-only` branch.
 This is a temporary branch of the same repository. The existing launcher opens Groups with

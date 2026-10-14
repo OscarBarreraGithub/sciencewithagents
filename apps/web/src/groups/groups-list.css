@@ -170,3 +170,38 @@
 .main-chat.has-selection .chat-pane .group-chat.flow-chat-main .composer textarea {
   font-size: var(--group-reading-size, 20px);
 }
+
+.groups-form fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  min-width: 0;
+}
+.groups-form fieldset label {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  min-height: 44px;
+  gap: 10px;
+}
+.groups-form fieldset input[type='radio'] {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  flex: 0 0 20px;
+  margin: 0;
+}
+.group-creation-path {
+  overflow-wrap: anywhere;
+}
+.group-app-updates {
+  margin: 8px 12px;
+  overflow-wrap: anywhere;
+}
+.group-github-member {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}

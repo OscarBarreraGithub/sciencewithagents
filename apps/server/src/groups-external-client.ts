@@ -75,7 +75,12 @@ export class GroupsExternalClient {
       case 'groups_list': {
         groupExternalInputs[name].parse(raw);
         const value = contracts.groupHostListSchema.parse(await this.request(''));
-        return { groups: value.groups, removed: value.removed ?? [], service: value.service };
+        return {
+          groups: value.groups,
+          removed: value.removed ?? [],
+          service: value.service,
+          ...(value.appUpdates ? { appUpdates: value.appUpdates } : {}),
+        };
       }
       case 'groups_open':
         return this.publicGroup(await this.opened(groupExternalInputs[name].parse(raw).handle));

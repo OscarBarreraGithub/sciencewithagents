@@ -32,8 +32,13 @@ export type GroupsLandingProps = {
     projectName: string;
     displayName: string;
     setupCode?: string;
+    selectionKey?: string;
+  }) => Promise<string | void>;
+  onJoin: (input: {
+    invitation: string;
+    displayName: string;
+    githubUsername?: string;
   }) => Promise<void>;
-  onJoin: (input: { invitation: string; displayName: string }) => Promise<void>;
   onRetry: () => void;
 };
 /** Supplied by an authenticated host. Labels and initials confer no authority. */

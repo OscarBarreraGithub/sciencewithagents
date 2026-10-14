@@ -1,3 +1,6 @@
+import { Conflict } from './store.js';
+import { GroupGitHub } from './group-github.js';
+import type { AppSourceUpdates } from '@dock/shared/dist/app-source-updates.js';
 import type { GroupWorkspacePort } from './group-workspace-choices.js';
 import type { GroupHostNativeGit } from './group-host-native-git.js';
 import { registerGroupReportRoutes } from './group-document-sharing.js';
@@ -31,10 +34,19 @@ export function registerGroupHostRoutes(
   humanReviewAuthenticated: (request: FastifyRequest) => boolean = () => false,
   conversationSharing?: GroupsConversationWorker,
   ports?: {
+    appUpdates?: () => AppSourceUpdates;
     workspace: GroupWorkspacePort;
     git: Pick<GroupHostNativeGit, 'request' | 'externalRequest' | 'assertWorkspaceIdle'>;
   },
 ) {
+  const github = new GroupGitHub(host, async (handle) => {
+    const git = ports?.git ?? groupHostNativeGit(host);
+    if (!git) throw new Error('Native repository status is unavailable.');
+    return git.request({ action: 'status', handle });
+  });
+  app.addHook('preClose', async () => {
+    await github.idle();
+  });
   const documents = groupFeatureDocuments(host);
   if (documents) {
     registerGroupDocumentsRoutes(app, documents.documents, authenticated, (handle, id) =>
@@ -70,8 +82,12 @@ export function registerGroupHostRoutes(
         error: 'Open an authenticated owner browser or paired device to use Groups.',
       });
   };
-  app.get('/api/groups', { onRequest: guard }, async () => host.list());
+  app.get('/api/groups', { onRequest: guard }, async () => ({
+    ...(await host.list()),
+    ...(ports?.appUpdates ? { appUpdates: ports.appUpdates() } : {}),
+  }));
   const actions: Record<string, (v: unknown, request: FastifyRequest) => unknown> = {
+    github: (raw) => github.request(raw),
     phone: (raw, request) => host.phone(raw, humanReviewAuthenticated(request)),
     'conversation-sharing': async (raw: unknown) => {
       if (!conversationSharing)
@@ -124,7 +140,13 @@ export function registerGroupHostRoutes(
               'Open the folder chooser on this computer.',
             );
           if (!ports) groupHostNativeGit(host)?.assertWorkspaceIdle(scope.handle);
-          return folders.sharedSelection(input.selectionKey);
+          try {
+            return folders.sharedSelection(input.selectionKey);
+          } catch (reason) {
+            if (reason instanceof Conflict)
+              throw new Conflict(reason.message, 'GROUP_FOLDER_BINDING_REFUSED');
+            throw reason;
+          }
         },
       });
     },

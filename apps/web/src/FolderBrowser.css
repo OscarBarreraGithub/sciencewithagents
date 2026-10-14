@@ -31,7 +31,7 @@ dialog.folder-browser[open] {
   grid-template-columns: 170px minmax(0, 1fr);
   flex: 1;
   min-height: 0;
-  border: 1px solid var(--home-line, #e4e0d6);
+  border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -41,8 +41,8 @@ dialog.folder-browser[open] {
 .folder-browser-places {
   padding: 8px;
   overflow: auto;
-  background: #f3f2ee;
-  border-right: 1px solid var(--home-line, #e4e0d6);
+  background: var(--surface-1);
+  border-right: 1px solid var(--line);
 }
 .folder-browser-places button {
   display: flex;
@@ -57,8 +57,8 @@ dialog.folder-browser[open] {
   white-space: nowrap;
 }
 .folder-browser-places button[aria-current] {
-  color: var(--home-blue, #3f55d6);
-  background: #e5e9fb;
+  color: var(--accent);
+  background: var(--accent-wash);
   font-weight: 650;
 }
 .folder-browser svg {
@@ -69,7 +69,7 @@ dialog.folder-browser[open] {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: white;
+  background: var(--surface-0);
 }
 .folder-browser-toolbar {
   display: flex;
@@ -97,7 +97,7 @@ dialog.folder-browser[open] {
   align-items: center;
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--home-line, #e4e0d6);
+  border: 1px solid var(--line);
   border-radius: 10px;
 }
 .folder-browser-search input {
@@ -112,7 +112,7 @@ dialog.folder-browser[open] {
   padding: 8px 10px;
 }
 .folder-browser-search:focus-within {
-  outline: 2px solid var(--home-blue, #3f55d6);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 .folder-browser-search input:focus {
@@ -127,7 +127,7 @@ dialog.folder-browser[open] {
   flex-shrink: 0;
   padding: 0 10px;
   overflow-x: auto;
-  border-bottom: 1px solid var(--home-line, #e4e0d6);
+  border-bottom: 1px solid var(--line);
   overscroll-behavior-x: contain;
 }
 .folder-browser-path span {
@@ -143,7 +143,7 @@ dialog.folder-browser[open] {
   font-size: var(--text-small);
 }
 .folder-browser-path button[aria-current] {
-  color: var(--home-ink, #202738);
+  color: var(--ink);
   font-weight: 650;
 }
 .folder-browser-options {
@@ -153,7 +153,7 @@ dialog.folder-browser[open] {
   flex-wrap: wrap;
   gap: 4px 12px;
   padding: 4px 12px;
-  border-bottom: 1px solid var(--home-line, #e4e0d6);
+  border-bottom: 1px solid var(--line);
 }
 .folder-browser-options label {
   display: flex;
@@ -193,15 +193,15 @@ dialog.folder-browser[open] {
   text-align: left;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #f0eee8;
+  border-bottom: 1px solid var(--line);
   border-radius: 0;
   padding: 10px 14px;
 }
 .folder-browser-list > button:hover {
-  background: #f2f5fc;
+  background: var(--surface-3);
 }
 .folder-browser-list > button > svg:first-child {
-  color: #708bb9;
+  color: var(--accent);
 }
 .folder-browser-list > button > span {
   flex: 1;
@@ -216,7 +216,7 @@ dialog.folder-browser[open] {
 }
 .folder-browser-list small {
   font-size: var(--text-small);
-  color: var(--home-muted, #656d7a);
+  color: var(--muted);
 }
 .folder-browser-list > p {
   margin: 0;
@@ -283,7 +283,7 @@ dialog.folder-browser[open] {
     flex-shrink: 0;
     padding: 4px;
     border-right: 0;
-    border-bottom: 1px solid var(--home-line, #e4e0d6);
+    border-bottom: 1px solid var(--line);
     overflow-x: auto;
   }
   .folder-browser-places button {
@@ -303,8 +303,8 @@ dialog.folder-browser[open] {
     gap: 0;
   }
   .folder-browser-history button {
-    width: 40px;
-    flex-basis: 40px;
+    width: 44px;
+    flex-basis: 44px;
   }
   .folder-browser-options {
     padding-inline: 10px;
@@ -337,4 +337,41 @@ dialog.folder-browser[open] {
   .folder-browser-actions {
     margin-top: 6px;
   }
+}
+
+.folder-browser {
+  color: var(--ink);
+  color-scheme: dark;
+}
+.folder-browser button,
+.folder-browser-search input,
+.folder-browser-options select {
+  color: var(--ink);
+}
+.folder-browser-search {
+  background: var(--surface-0);
+}
+.folder-browser-search input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+.folder-browser-options select,
+.folder-browser-options option {
+  background: var(--surface-1);
+  color: var(--ink);
+}
+.folder-browser button:not(:disabled):hover {
+  background: var(--surface-3);
+}
+.folder-browser button[aria-current]:not(:disabled):hover {
+  background: var(--accent-wash);
+}
+.folder-browser button:focus-visible,
+.folder-browser-options select:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+.folder-browser button:disabled {
+  color: var(--muted);
+  opacity: 0.6;
 }

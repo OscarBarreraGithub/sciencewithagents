@@ -28,6 +28,18 @@ it('authenticates the exact existing local companion and never sends its long-li
     reads++;
     return {
       groups: [],
+      appUpdates: {
+        branch: 'groups-only',
+        check: {
+          id: randomUUID(),
+          checkedAt: new Date().toISOString(),
+          state: 'available',
+          message: 'groups-only can update',
+          localChanges: false,
+        },
+        lastSuccessful: null,
+        nextCheckAt: null,
+      },
       service: { configured: true, message: 'Configured fixture' },
       native: { available: false, message: 'No provider in fixture' },
     };
@@ -42,6 +54,7 @@ it('authenticates the exact existing local companion and never sends its long-li
     expect(await client.call('groups_list', {})).toMatchObject({
       groups: [],
       service: { configured: true },
+      appUpdates: { branch: 'groups-only', check: { state: 'available' } },
     });
     expect(reads).toBe(1);
     const stranger = directory();
