@@ -1,4 +1,4 @@
-/* New project and manager configuration: warm white panels, fine borders. */
+/* New project and manager configuration layout. */
 .config-form,
 .project-config.embedded {
   display: grid;
@@ -52,9 +52,7 @@
   padding: 0 12px;
   border: 1px solid var(--home-line);
   border-radius: 10px;
-  background: white;
-  color: var(--home-ink);
-  font: inherit;
+  font-family: inherit;
   font-weight: 500;
 }
 .home-shell .config-section select {

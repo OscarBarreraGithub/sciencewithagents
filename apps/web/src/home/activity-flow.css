@@ -159,7 +159,7 @@
 }
 .flow-form-panel :is(button, .secondary) {
   min-height: 44px;
-  font-size: var(--text-small);
+  font-size: max(1rem, 16px);
   padding: 10px 15px;
   border: 1px solid var(--home-line);
   border-radius: 10px;
@@ -278,13 +278,4 @@
   .activity-calm {
     padding: 38px 22px;
   }
-}
-
-.flow-form-panel .secondary {
-  background: #fff;
-  color: var(--home-ink);
-}
-.flow-form-panel .secondary:hover:not(:disabled) {
-  border-color: var(--home-blue);
-  background: #f1f3ff;
 }

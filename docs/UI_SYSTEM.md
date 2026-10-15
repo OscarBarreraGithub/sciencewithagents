@@ -19,6 +19,11 @@ primary actions. Adjacent secondary controls, including three-dot menus, share o
 Use at least 44 CSS pixels for action targets and 16 pixels for setup/control text. Keep
 visible keyboard focus, sufficient text contrast and reduced-motion support.
 
+Native configuration fields and secondary flow buttons use the shared appearance in
+`apps/web/src/ui/dark.css`; component styles should preserve it when setting layout.
+Check actual control colors in focused, hovered and disabled states: a scan of large
+panels misses light overrides on short inputs and buttons.
+
 The 2026-10-13 Groups workspace slice replaces the rejected theme-only layout. Desktop uses
 one narrow sidebar for global destinations, conversation categories, compact group rows and
 computer/allowance utilities. The main canvas has a title/member header, understated Group
