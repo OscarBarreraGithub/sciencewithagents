@@ -15,7 +15,7 @@ The agent follows [the setup guide](docs/setup.md). It can help you install miss
 You can also clone this repository and open it in your agent:
 
 ```sh
-git clone https://github.com/OscarBarreraGithub/sciencewithagents-starter.git "Science with Agents"
+git clone https://github.com/OscarBarreraGithub/sciencewithagents.git "Science with Agents"
 ```
 
 ## What you get
@@ -51,4 +51,4 @@ My Projects/    Your projects and references to existing work
 
 This is an instruction kit. It does not run a server, keep a sleeping computer awake, or automatically connect every chat interface. Setup checks what your chosen tools can actually do. Native recording and completion checks need to be established for that host; the docs distinguish those steps from capabilities already verified.
 
-The [earlier application](https://github.com/OscarBarreraGithub/sciencewithagents) remains available separately. This repository contains the smaller, instruction-based method.
+The [earlier application](https://github.com/OscarBarreraGithub/sciencewithagents-legacy) remains available separately. This repository contains the smaller, instruction-based method.
