@@ -54,6 +54,8 @@ The starter uses conservative defaults for previously open choices: hold only th
 
 The release checks cover local documentation links, tracked-file privacy exclusions, a clean checkout, project Git boundaries, and the paper build/render. The prior synthetic artifact tests checked packaging mechanics; they are not a privacy certificate or real-project reproduction study.
 
+The November 17 starter check passed: 21 distributed files; 76 local links in a fresh clone; 19 external documentation links; private workspace/import/record exclusions; an independently initialized project repository; and an explicitly selected scientific ZIP excluding a synthetic private transcript. The manuscript built twice with no unresolved references or overfull boxes, remained five pages, and all pages were visually inspected. The content audit mapped 187 earlier inventory items, including 120 previously selected items, to their current instructions, paper treatment, or explicit optional/later scope. These counts describe this release's audit.
+
 Still host-specific: instruction loading after actual compaction, native completion hooks, durable capture of live manager/worker activity, browser read/write handoffs, scheduler delivery, and hard usage controls. Setup must verify the route it establishes and report untested capabilities. A successful local cross-provider manuscript review does not establish all accounts or platforms.
 
 At each future change, ask: can the existing notebook, Git history, or native tool do this already? Add a file or helper only for a concrete unmet need. Keep this checklist aligned with the documented behavior and evidence.
