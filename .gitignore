@@ -1,0 +1,31 @@
+# Private workspace and earlier design material.
+/.swa/
+/tmp/
+/Records/
+/Lab Notebook.md
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Projects have independent Git histories. Keep only the public shelf guide.
+/My Projects/*
+!/My Projects/README.md
+
+# Personal imports stay local unless deliberately contributed to this package.
+/Workflows/*
+!/Workflows/README.md
+!/Workflows/review.md
+!/Workflows/literature.md
+!/Workflows/figures.md
+!/Workflows/cluster.md
+!/Workflows/cross-agent.md
+!/Workflows/heartbeat.md
+
+# Paper build files; the reviewed PDF is distributed.
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
